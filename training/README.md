@@ -4,7 +4,11 @@
 
 - [Model parallelism](model-parallelism)
 
+- [Parallelism from first principles: derivations and cost models](model-parallelism/derivations.md)
+
 - [Performance](performance)
+
+- [Training arithmetic and numerics](arithmetic.md)
 
 - [Fault Tolerance](fault-tolerance)
 

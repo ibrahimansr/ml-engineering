@@ -1,6 +1,8 @@
 # Model Parallelism
 
 
+For the derivations of memory and communication costs of each approach see [Parallelism From First Principles](derivations.md).
+
 ## Parallelism overview
 
 In the modern Machine Learning the various approaches to parallelism are used to:

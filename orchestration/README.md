@@ -4,6 +4,8 @@ There are many container/accelerator orchestration solutions - many of which are
 
 So far I have been working with SLURM and Kubernetes.
 
+For scheduler, launcher and fault-tolerance internals see [Orchestration Internals for ML Workloads](internals.md).
+
 ## SLURM
 
 - [SLURM](slurm/) - Simple Linux Utility for Resource Management, which you're guaranteed to find on most HPC environments and typically it's supported by most cloud providers.  It has been around for more than 2 decades

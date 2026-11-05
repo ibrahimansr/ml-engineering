@@ -29,7 +29,7 @@ re_md_link_full = re.compile(r"""
 )
 """, re.VERBOSE|re.MULTILINE)
 
-img_exts = ["jpg", "jpeg", "png"]
+img_exts = ["jpg", "jpeg", "png", "gif", "svg"]
 re_link_images = re.compile("(" + "|".join(img_exts) + ")", re.VERBOSE|re.MULTILINE|re.IGNORECASE)
 
 cwd_abs_path = Path.cwd()

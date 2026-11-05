@@ -16,6 +16,24 @@ I've been compiling this information mostly for myself so that I could quickly f
 ## Table of Contents
 
 
+**Part 0. Foundations** - start here if you're new to systems
+
+1. **[Computer Architecture](./foundations/computer-architecture.md)** - number formats, CPUs, memory hierarchy, PCIe, what a GPU is.
+
+1. **[Linux and Operating Systems](./foundations/linux-and-os.md)** - shell, processes, memory, filesystems, containers, CUDA versions.
+
+1. **[Concurrency and Parallelism](./foundations/concurrency.md)** - threads, processes, the GIL, DataLoader internals, CUDA streams.
+
+1. **[Computer Networking](./foundations/networking.md)** - TCP/IP, data center networks, RDMA, InfiniBand, collectives intro.
+
+1. **[Distributed Systems](./foundations/distributed-systems.md)** - ranks, failures, rendezvous, synchronous training, fault tolerance.
+
+**Part 0.5. Model Architectures**
+
+1. **[The Transformer and Its Evolution](./models/architectures.md)** - norms, positional encodings, attention variants, MoE, and why each was chosen.
+
+1. **[Beyond the Standard Transformer](./models/beyond-transformers.md)** - SSMs, linear attention, hybrids, multimodal, diffusion.
+
 **Part 1. Insights**
 
 1. **[The AI Battlefield Engineering](./insights/ai-battlefield.md)** - what you need to know in order to succeed.
@@ -47,6 +65,8 @@ I've been compiling this information mostly for myself so that I could quickly f
 **Part 5. Inference**
 
 1. **[Inference](inference)** - model inference insights
+1. **[Inference Arithmetic](inference/arithmetic.md)** - rooflines, KV cache sizing, quantization and capacity planning
+1. **[Inside a Serving Engine](inference/serving-engine-internals.md)** - paged attention, scheduling, speculative decoding, disaggregation
 
 
 **Part 6. Development**

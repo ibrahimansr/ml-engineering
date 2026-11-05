@@ -2,6 +2,11 @@
 
 XXX: this chapter is under construction - some sections are complete, some are still starting out, many are yet to be started, but there are already enough of useful sections completed to make it a good reading.
 
+**Subsections**:
+
+- [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md)
+- [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md)
+
 ## Glossary
 
 - CLA: Cross-Layer Attention

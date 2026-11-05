@@ -1,11 +1,21 @@
 README.md
 
+foundations/computer-architecture.md
+foundations/linux-and-os.md
+foundations/concurrency.md
+foundations/networking.md
+foundations/distributed-systems.md
+
+models/architectures.md
+models/beyond-transformers.md
+
 insights/ai-battlefield.md
 insights/how-to-choose-cloud-provider.md
 insights/when-to-upgrade-gpus/README.md
 
 compute/README.md
 compute/accelerator/README.md
+compute/accelerator/execution-model.md
 compute/accelerator/benchmarks/README.md
 compute/accelerator/nvidia/debug.md
 compute/accelerator/amd/debug.md
@@ -17,6 +27,7 @@ storage/README.md
 
 network/README.md
 network/comms.md
+network/collectives-internals.md
 network/debug/README.md
 network/benchmarks/README.md
 
@@ -27,10 +38,13 @@ orchestration/slurm/users.md
 orchestration/slurm/performance.md
 orchestration/slurm/launchers/README.md
 orchestration/kubernetes/README.md
+orchestration/internals.md
 
 training/README.md
 training/model-parallelism/README.md
+training/model-parallelism/derivations.md
 training/performance/README.md
+training/arithmetic.md
 training/fault-tolerance/README.md
 training/reproducibility/README.md
 training/instabilities/README.md
@@ -43,6 +57,8 @@ training/re-train-hub-models.md
 training/datasets.md
 
 inference/README.md
+inference/arithmetic.md
+inference/serving-engine-internals.md
 
 debug/README.md
 debug/pytorch.md

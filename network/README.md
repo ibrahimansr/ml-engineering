@@ -3,6 +3,7 @@
 **Subsections**:
 
 - [Communication Patterns](comms.md)
+- [Collective Communication Internals and Cost Models](collectives-internals.md)
 - [Network Debug](debug)
 - [Network Benchmarks](benchmarks)
 
