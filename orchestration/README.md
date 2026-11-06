@@ -4,7 +4,7 @@ There are many container/accelerator orchestration solutions - many of which are
 
 So far I have been working with SLURM and Kubernetes.
 
-For scheduler, launcher and fault-tolerance internals see [Orchestration Internals for ML Workloads](internals.md).
+For scheduler, launcher and fault-tolerance internals see [Orchestration Internals for ML Workloads](internals.md). New to Kubernetes? Start with [Kubernetes From Zero](kubernetes-from-zero.md).
 
 ## SLURM
 

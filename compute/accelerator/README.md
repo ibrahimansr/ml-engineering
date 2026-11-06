@@ -15,6 +15,7 @@ The other computational difference is that while both training and inference hav
 General:
 - [Benchmarks](benchmarks)
 - [GPU Execution Model and Kernels](execution-model.md)
+- [Writing GPU Kernels, Hands-On](writing-kernels.md)
 
 NVIDIA:
 - [Troubleshooting NVIDIA GPUs](nvidia/debug.md)

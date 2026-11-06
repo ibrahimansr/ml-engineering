@@ -1,5 +1,9 @@
 # Foundations: Computer Architecture for ML Engineers
 
+## Prerequisites
+
+None. This is the first chapter of the book; it assumes only that you can read Python.
+
 This chapter is for the reader who can write a transformer from scratch in PyTorch but has never had to think about what happens beneath `tensor.cuda()`. It starts from bits and ends at the point where the rest of this book's hardware chapters - [compute](../compute/), [storage](../storage/README.md), [network](../network/README.md) - and the [GPU execution model](../compute/accelerator/execution-model.md) chapter should read as natural continuations rather than a wall of acronyms.
 
 The goal is not to turn you into a hardware designer. The goal is that when someone says "this job is PCIe-bound", "the dataloader is on the wrong NUMA node" or "decode is memory-bandwidth-bound", you know what physical thing they mean, why it is the bottleneck, and how to check it with arithmetic before you check it with a profiler.
@@ -23,6 +27,8 @@ The chapter is organized bottom-up:
 
 A note on numbers: every hardware number in this chapter is either a published spec (stated as such), a derivation with the arithmetic shown, or an order-of-magnitude figure explicitly marked as approximate. Real hardware varies by SKU, firmware, BIOS settings and the phase of the moon, so treat the approximate figures as "the right power of ten", not as something to put in a capacity plan.
 
+A note on code: nearly every section has something to run. Pure-Python examples need only `python3` plus `numpy`; examples marked **[torch]** need `pip install torch numpy` in a virtualenv (e.g. `python3 -m venv /tmp/venv && /tmp/venv/bin/pip install torch numpy`); C examples need any C compiler (`clang` on macOS via `xcode-select --install`, `gcc` on Linux). Outputs pasted below come from one run on an Apple M4 laptop (4 performance + 6 efficiency cores, 16 GiB unified memory, macOS 15) **while it was busy with other jobs**, so treat absolute numbers as anecdotes and look at the ratios. Commands marked **untested** need Linux and/or an NVIDIA GPU and were not run while writing this chapter - they follow documented tools, but verify on your machine.
+
 
 
 ## Bits, bytes and number representation
@@ -36,6 +42,37 @@ Eight bits make a **byte**, the smallest unit most hardware can address. A byte 
 Bit patterns are usually written in **hexadecimal** (base 16), because one hex digit is exactly 4 bits: `0xFF = 1111 1111 = 255`, `0x3F80_0000` is a 32-bit pattern you'll meet below.
 
 Multi-byte values have a byte order, **endianness**. x86 and (in practice) ARM servers are *little-endian*: the least significant byte sits at the lowest address. You will rarely care, except when parsing binary file formats by hand.
+
+You can look at all of this from Python. The point of the snippet is that bytes have no inherent meaning: the same byte is 255 or -1, and the same 4 bytes are an integer or a float, depending only on how you choose to read them.
+
+```python
+# why_binary.py
+import struct, sys
+x = 255
+print(f"{x:d} = 0b{x:08b} = 0x{x:02X}")
+raw = bytes([0xFF])
+print("as uint8:", int.from_bytes(raw, "little", signed=False))
+print("as int8: ", int.from_bytes(raw, "little", signed=True))
+v = 0x3F800000
+print("0x3F800000 as fp32:", struct.unpack("<f", v.to_bytes(4, "little"))[0])
+print("int32 1 little-endian bytes:", (1).to_bytes(4, "little").hex(" "))
+print("int32 1 big-endian bytes:   ", (1).to_bytes(4, "big").hex(" "))
+print("this machine is", sys.byteorder, "endian")
+```
+
+Output:
+
+```
+255 = 0b11111111 = 0xFF
+as uint8: 255
+as int8:  -1
+0x3F800000 as fp32: 1.0
+int32 1 little-endian bytes: 01 00 00 00
+int32 1 big-endian bytes:    00 00 00 01
+this machine is little endian
+```
+
+The same idea is behind `tensor.view(torch.int32)` on a float tensor, `np.frombuffer`, and every hand-written parser for a `.safetensors` header or a binary token file: you are telling the machine how to interpret bytes it otherwise knows nothing about. Get the dtype or the byte order wrong and you get garbage, not an error.
 
 ### Unsigned and signed integers
 
@@ -187,6 +224,58 @@ Why bother with fewer bits at all? Two reasons, both of which this chapter will 
 
 One more subtlety: low-precision matmuls almost always **accumulate** in higher precision. A bf16 matmul multiplies bf16 pairs but sums the products in fp32, because adding thousands of products in bf16 would lose most of the result to rounding (the `256 + 1 = 256` problem above, applied to a dot product of length 4096).
 
+You don't need to memorize the table: PyTorch will tell you the limits of each format, and a few lines show the fp16 underflow problem and why loss scaling fixes it. **[torch]**
+
+```python
+# range_precision.py
+import torch
+for dt in [torch.float32, torch.bfloat16, torch.float16, torch.float8_e4m3fn, torch.float8_e5m2]:
+    fi = torch.finfo(dt)                      # max, smallest normal ("tiny"), epsilon
+    print(f"{str(dt):22} max={fi.max:<12.4g} tiny={fi.tiny:<10.3g} eps={fi.eps:.3g}")
+
+g = torch.tensor([1e-3, 1e-5, 1e-7, 1e-9])   # (4,) typical small gradient magnitudes
+print("\nfp16 raw:        ", g.half().tolist())
+print("bf16 raw:        ", g.bfloat16().tolist())
+S = 1024.0                                    # a static loss scale
+print("fp16 scaled/S:   ", (g * S).half().float().div(S).tolist())
+
+w = torch.tensor(1.0)
+upd = torch.tensor(1e-4)                      # lr * grad
+print("\nbf16 w + 1e-4:", (w.bfloat16() + upd.bfloat16()).item())
+print("fp32 w + 1e-4:", (w + upd).item())
+```
+
+Output (torch 2.x on CPU):
+
+```
+torch.float32          max=3.403e+38    tiny=1.18e-38   eps=1.19e-07
+torch.bfloat16         max=3.39e+38     tiny=1.18e-38   eps=0.00781
+torch.float16          max=6.55e+04     tiny=6.1e-05    eps=0.000977
+torch.float8_e4m3fn    max=448          tiny=0.0156     eps=0.125
+torch.float8_e5m2      max=5.734e+04    tiny=6.1e-05    eps=0.25
+
+fp16 raw:         [0.0010004043579101562, 1.0013580322265625e-05, 1.1920928955078125e-07, 0.0]
+bf16 raw:         [0.00099945068359375, 1.0013580322265625e-05, 1.0011717677116394e-07, 9.968061931431293e-10]
+fp16 scaled/S:    [0.0010004043579101562, 9.998679161071777e-06, 1.00000761449337e-07, 9.89530235528946e-10]
+
+bf16 w + 1e-4: 1.0
+fp32 w + 1e-4: 1.000100016593933
+```
+
+What to notice:
+
+- `1e-5` and `1e-7` survive in raw fp16 even though they're below fp16's smallest *normal* number (`6.1e-5`): they're stored as **subnormals**, with fewer significant bits (`1e-7` came back as `1.19e-7`, a 19% error). `1e-9` is below even the smallest subnormal (`2**-24 = 6e-8`) and becomes exactly 0. That's a gradient that silently stopped existing.
+- Multiplying by `S = 1024` before the cast moves every value into fp16's comfortable range; dividing afterwards (in fp32) recovers them to ~3 significant digits. That's all loss scaling is. PyTorch's `torch.amp.GradScaler` does the same thing, picking `S` dynamically: it grows `S` until a step overflows to inf, then skips that step and halves `S`.
+- bf16 keeps `1e-9` (fp32's range), but `1.0 + 1e-4` in bf16 is still `1.0` (bf16's precision). Range and precision fail in different places, and you need both answers before choosing a format.
+
+### Try this
+
+1. Run `why_binary.py`, then reinterpret the float `-0.0` as bits (`struct.pack(">f", -0.0).hex()`). Why does `-0.0 == 0.0` return `True` even though the bits differ?
+2. Using `np.float16`, find the largest integer `k` such that `np.float16(k) + np.float16(1) != np.float16(k)`. Predict it first from the mantissa width (hint: 10 stored bits plus the implicit one).
+3. Sum `[0.1] * 10_000_000` in fp32 with a plain Python loop using `np.float32` (slow, but run it for `10**6`), then with `math.fsum`. How far apart are they, and why does `np.sum` on the same array get much closer? (Hint: numpy uses pairwise summation.)
+4. Change `S` in `range_precision.py` to `2**20` and add a gradient of `100.0`. What happens in fp16? That's the overflow that `GradScaler` detects and backs off from.
+5. Build a `(8, 8192, 131072)` shape in your head: how many elements, and does it fit in int32 indexing? Check with Python, don't guess.
+
 
 
 ## Units and the classic mistakes
@@ -226,6 +315,42 @@ Who uses what, in practice:
 
 The checklist before trusting any bandwidth or capacity calculation: bits or bytes? decimal or binary? one direction or both? dense or sparse? spec or measured?
 
+Every conversion above as five functions, so you can stop doing them in your head:
+
+```python
+# units.py
+def gbps_to_GBps(gbit):            return gbit / 8                        # bits -> bytes
+def tb_disk_in_gib(tb):            return tb * 1e12 / 2**30               # decimal TB -> GiB
+def mib_to_gb(mib):                return mib * 2**20 / 1e9               # nvidia-smi MiB -> decimal GB
+def pcie_GBps(gt_s, lanes, enc=128/130): return gt_s * 1e9 * enc * lanes / 8 / 1e9
+
+print(f"400 Gbps NIC          = {gbps_to_GBps(400):.0f} GBps")
+print(f"8 x 400 Gbps NICs     = {8 * gbps_to_GBps(400):.0f} GBps  (vs 450 GBps NVLink4 per direction)")
+print(f"'1 TB' NVMe           = {tb_disk_in_gib(1):.0f} GiB")
+print(f"81559 MiB (H100 80GB) = {mib_to_gb(81559):.1f} GB")
+print(f"PCIe 5 x16            = {pcie_GBps(32, 16):.1f} GBps per direction")
+print(f"NVLink4 '900 GBps'    = {900/2:.0f} GBps per direction")
+print(f"KiB/KB {2**10/1e3:.3f}  MiB/MB {2**20/1e6:.3f}  GiB/GB {2**30/1e9:.3f}  TiB/TB {2**40/1e12:.3f}")
+```
+
+Output:
+
+```
+400 Gbps NIC          = 50 GBps
+8 x 400 Gbps NICs     = 400 GBps  (vs 450 GBps NVLink4 per direction)
+'1 TB' NVMe           = 931 GiB
+81559 MiB (H100 80GB) = 85.5 GB
+PCIe 5 x16            = 63.0 GBps per direction
+NVLink4 '900 GBps'    = 450 GBps per direction
+KiB/KB 1.024  MiB/MB 1.049  GiB/GB 1.074  TiB/TB 1.100
+```
+
+### Try this
+
+1. On your laptop, compare `df -h /` with `df -H /` (macOS and GNU coreutils both support `-H` for powers of 1000). Which one matches the number on the box your disk came in?
+2. A spec sheet says a NIC is "800G". A colleague estimates a 140 GB checkpoint takes `140 / 800 = 0.18 s` to send. Find all the mistakes (there are at least two) and compute a realistic lower bound.
+3. Look up the HBM bandwidth and the "with sparsity" bf16 TFLOPS of any recent accelerator. Convert both to dense, per-direction, decimal units and compute the ratio `FLOPS / bandwidth`. You'll use that ratio in the [roofline section](#arithmetic-intensity-and-the-roofline-model).
+
 
 
 ## The CPU
@@ -239,6 +364,43 @@ A CPU executes a stream of **instructions**: tiny operations like "load 8 bytes 
 The CPU is driven by a **clock**: an oscillator ticking at, say, 3 GHz, i.e. one **cycle** every `1 / 3e9 = 0.33` ns. In 0.33 ns light travels about 10 cm. This is not a trivia point: it's why signals can't cross a large chip, let alone reach memory centimeters away, in one cycle, and why everything far from the core costs many cycles.
 
 Why not just raise the clock? Dynamic power scales roughly with `capacitance * voltage**2 * frequency`, and higher frequency needs higher voltage, so power grows much faster than linearly with clock. Clocks hit a power/heat wall around 2005 at 3-5 GHz and have barely moved since. Every performance gain after that came from doing *more per cycle* and from *more cores* - which is the story of the rest of this section, and ultimately why GPUs won ML.
+
+You can see real instructions in two minutes. Here is a C function compiled for this ARM64 laptop, next to the Python bytecode for the same addition:
+
+```c
+// add.c
+long add3(long a, long b, long c) { return a + b + c; }
+float dot4(const float *x, const float *y) {
+    return x[0]*y[0] + x[1]*y[1] + x[2]*y[2] + x[3]*y[3];
+}
+```
+
+```console
+$ clang -O2 -S -o - add.c | grep -vE '^\s*(\.|;|$)|^l'      # strip assembler directives
+_add3:                                  ; @add3
+	add	x8, x1, x0
+	add	x0, x8, x2
+	ret
+_dot4:                                  ; @dot4
+	ldp	s0, s1, [x0]
+	ldp	s2, s3, [x1]
+	fmul	s1, s1, s3
+	fmadd	s0, s0, s2, s1
+	ldp	s1, s2, [x0, #8]
+	ldp	s3, s4, [x1, #8]
+	fmadd	s0, s1, s3, s0
+	fmadd	s0, s2, s4, s0
+	ret
+$ python3 -c "import dis; dis.dis(lambda a, b, c: a + b + c)"
+  1           RESUME                   0
+              LOAD_FAST_BORROW_LOAD_FAST_BORROW 1 (a, b)
+              BINARY_OP                0 (+)
+              LOAD_FAST_BORROW         2 (c)
+              BINARY_OP                0 (+)
+              RETURN_VALUE
+```
+
+Read the assembly: `add x8, x1, x0` adds registers `x1` and `x0` into `x8`; `ldp s0, s1, [x0]` loads a *pair* of 32-bit floats from the address in `x0`; `fmadd` is a fused multiply-add (one instruction, two FLOPs). `add3` is two machine instructions. The Python version is six bytecodes, and *each* `BINARY_OP` runs (roughly) dozens to hundreds of machine instructions in the interpreter (type checks, reference counting, dispatch) before it gets to the one `add` that does the work. That ratio is the "interpreter overhead" behind "pure Python is 50-100x slower than numpy". On x86 Linux, `gcc -O2 -S -o - add.c` shows the same thing with `lea`/`add`, and `mulss`/`addss` for the floats (FMA is not part of baseline x86-64; add `-march=native` on a recent CPU to see `vfmadd` instructions).
 
 ### Pipelining
 
@@ -270,11 +432,87 @@ To find enough independent instructions, the core executes **out of order**: it 
 
 The metric for how well this works is **IPC** (instructions per cycle). Well-behaved numeric code may hit 2-4; code that constantly waits on memory can drop below 0.5.
 
+You can watch out-of-order, superscalar execution help or fail to help with a ten-line experiment. Summing an array with one accumulator makes every addition wait for the one before it (a **dependency chain**): a floating-point add takes a few cycles of latency, so the core sits idle between them no matter how many adders it has. Four independent accumulators give the core four chains to interleave:
+
+```c
+// ilp.c - one dependency chain vs four independent ones. Same number of adds.
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#define N (1 << 24)
+static double now(void){struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec*1e-9;}
+int main(void){
+    float *x = malloc(N * sizeof(float));
+    for (int i = 0; i < N; i++) x[i] = 1.0f / (i + 1);
+    for (int rep = 0; rep < 2; rep++) {
+        double t = now(); float s = 0;
+        for (int i = 0; i < N; i++) s += x[i];               // each add waits for the previous
+        double t1 = now() - t;
+        t = now(); float a=0,b=0,c=0,d=0;
+        for (int i = 0; i < N; i += 4) { a += x[i]; b += x[i+1]; c += x[i+2]; d += x[i+3]; }
+        double t4 = now() - t;
+        printf("1 chain: %.2f ms (%.2f ns/add)   4 chains: %.2f ms (%.2f ns/add)   sums %.4f %.4f\n",
+               t1*1e3, t1/N*1e9, t4*1e3, t4/N*1e9, s, a+b+c+d);
+    }
+}
+```
+
+```console
+$ clang -O2 -o ilp ilp.c && ./ilp
+1 chain: 14.16 ms (0.84 ns/add)   4 chains: 4.98 ms (0.30 ns/add)   sums 15.4037 16.4197
+1 chain: 10.04 ms (0.60 ns/add)   4 chains: 3.01 ms (0.18 ns/add)   sums 15.4037 16.4197
+```
+
+Three things to take away:
+
+- **3-4x faster with identical arithmetic**, purely from exposing independent work. The compiler won't do this for you for floats (without `-ffast-math`), because reordering float additions changes the result.
+- **It does change the result**: 15.4037 vs 16.4197. The exact sum of `1/i` for `i` up to `2**24` is 17.2127 (computed in Python with fp64). Both fp32 answers are wrong, because once the running sum is around 15, adding terms smaller than ~1e-6 rounds to no change at all (fp32's epsilon at 15 is ~1e-6). Four partial sums each stay smaller, so they lose less. This is the same reason [reductions in fp32 across GPUs aren't bitwise reproducible](distributed-systems.md) when the reduction order changes.
+- GPUs and BLAS libraries apply the same trick at massive scale: a matmul kernel keeps many independent accumulators in registers per thread.
+
 ### Branch prediction
 
 With a 15-20 stage pipeline, waiting for every `if` to resolve would waste ~15-20 cycles per branch. Instead the CPU **predicts** which way the branch goes, based on its history, and speculatively executes down that path. Predictors are very good (well above 95% accuracy on typical code). A **misprediction** means throwing away the speculative work: a penalty on the order of 15-20 cycles, ~5 ns at 3-4 GHz.
 
 ML relevance: mostly indirect. Data-dependent branching inside an inner loop (e.g. per-element `if` in a tokenizer or a custom data filter) can run several times slower on random data than on sorted data. And it's one reason GPU-style hardware, which has essentially no branch prediction, wants branch-free code.
+
+The classic demonstration: the same loop over the same numbers, once shuffled and once sorted. With sorted data the branch `v[i] >= 128` is false for the first half and true for the second, so the predictor is almost always right. With random data it's a coin flip.
+
+```c
+// branch.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#define N (1 << 24)
+static double now(void){struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec*1e-9;}
+static int cmp(const void *a, const void *b){ return *(int*)a - *(int*)b; }
+static long run(const int *v){
+    long s = 0;
+    for (int i = 0; i < N; i++)
+        if (v[i] >= 128) { s += v[i]; __asm__ volatile(""); }  // empty asm stops the compiler making it branch-free
+    return s;
+}
+int main(void){
+    int *v = malloc(N * sizeof(int));
+    srand(0); for (int i = 0; i < N; i++) v[i] = rand() % 256;
+    int *w = malloc(N * sizeof(int));
+    for (int i = 0; i < N; i++) w[i] = v[i];
+    qsort(w, N, sizeof(int), cmp);
+    for (int rep = 0; rep < 3; rep++) {
+        double t = now(); long a = run(v); double tr = now() - t;
+        t = now(); long b = run(w); double ts = now() - t;
+        printf("random: %5.1f ms   sorted: %5.1f ms   (same sum: %d)\n", tr*1e3, ts*1e3, a == b);
+    }
+}
+```
+
+```console
+$ clang -O2 -o branch branch.c && ./branch
+random:  52.1 ms   sorted:   5.8 ms   (same sum: 1)
+random:  50.5 ms   sorted:   4.9 ms   (same sum: 1)
+random:  53.5 ms   sorted:   4.4 ms   (same sum: 1)
+```
+
+About 10x. Per element, the random run costs ~3 ns versus ~0.3 ns; with half the branches mispredicted that's roughly 5-6 ns per miss, in line with the table below. The interesting failure, which I hit while writing this: without the empty `asm` statement, `clang -O2` rewrites the `if` into a branch-free conditional select (`csel` on ARM, `cmov` on x86) and vectorizes the loop, and both versions run in ~1.2 ms. The compiler knows this trick; your Python tokenizer's inner loop doesn't get it.
 
 ### SIMD: one instruction, many numbers
 
@@ -324,7 +562,59 @@ Socket(s):             2
 NUMA node(s):          2
 ```
 
+On a Linux box, the cache sizes and which hardware threads share a core are in `/sys` (**untested** here, Linux-only):
+
+```console
+$ lscpu -e=CPU,CORE,SOCKET,NODE | head -4       # CPU 0 and CPU 112 sharing CORE 0 = SMT siblings
+CPU CORE SOCKET NODE
+  0    0      0    0
+  1    1      0    0
+  2    2      0    0
+$ cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list
+0,112
+$ grep . /sys/devices/system/cpu/cpu0/cache/index*/size
+/sys/devices/system/cpu/cpu0/cache/index0/size:48K
+/sys/devices/system/cpu/cpu0/cache/index1/size:32K
+/sys/devices/system/cpu/cpu0/cache/index2/size:2048K
+/sys/devices/system/cpu/cpu0/cache/index3/size:107520K
+$ lstopo-no-graphics --no-io       # from the hwloc package: the whole tree, sockets -> caches -> cores -> PUs
+```
+
+(The sizes shown are illustrative of a recent Xeon, not from a real run.) On a Mac the equivalent is `sysctl`; here is the laptop these examples ran on - note it has *heterogeneous* cores, 4 performance ("perflevel0") and 6 efficiency ("perflevel1"), and no SMT:
+
+```console
+$ sysctl hw.perflevel0.physicalcpu hw.perflevel1.physicalcpu hw.perflevel0.l1dcachesize \
+         hw.perflevel0.l2cachesize hw.perflevel1.l2cachesize hw.cachelinesize hw.pagesize \
+         hw.memsize machdep.cpu.brand_string \
+         hw.optional.arm.FEAT_BF16 hw.optional.arm.FEAT_FP16 hw.optional.arm.FEAT_SME hw.optional.arm.FEAT_SME2
+hw.perflevel0.physicalcpu: 4
+hw.perflevel1.physicalcpu: 6
+hw.perflevel0.l1dcachesize: 131072
+hw.perflevel0.l2cachesize: 16777216
+hw.perflevel1.l2cachesize: 4194304
+hw.cachelinesize: 128
+hw.pagesize: 16384
+hw.memsize: 17179869184
+machdep.cpu.brand_string: Apple M4
+hw.optional.arm.FEAT_BF16: 1
+hw.optional.arm.FEAT_FP16: 1
+hw.optional.arm.FEAT_SME: 1
+hw.optional.arm.FEAT_SME2: 1
+$ python3 -c "import os; print(os.cpu_count())"
+10
+```
+
+`os.cpu_count()` says 10, which hides that 6 of those cores are much slower. On Linux, the number your process may *actually* use can be smaller than `os.cpu_count()` - containers and Slurm restrict it with cgroups and CPU affinity - so size worker pools with `len(os.sched_getaffinity(0))` (Linux-only), not `os.cpu_count()`.
+
 When the [CPU chapter](../compute/cpu/README.md#how-many-cpu-cores-do-you-need-for-dataloader-work) tells you to budget one core per `DataLoader` worker, it means physical cores.
+
+### Try this
+
+1. Compile `add.c` with `-O0` instead of `-O2` and diff the assembly. Count the extra loads and stores: at `-O0` the compiler spills every variable to the stack.
+2. In `ilp.c`, try 2, 8 and 16 accumulators. Where does the speedup stop? On most cores it flattens at roughly `fadd latency * number of FP add pipes` independent chains; estimate both numbers from your measurement.
+3. In `branch.c`, replace the `if` with the branch-free `s += v[i] * (v[i] >= 128);` and remove the `asm`. Now does sorting matter?
+4. Run `python3 -c "import numpy; numpy.show_config()"` and find which SIMD extensions your numpy build detected (look for "SIMD Extensions" / "found").
+5. On a Linux server, compare `nproc`, `os.cpu_count()` and `len(os.sched_getaffinity(0))` inside and outside a `taskset -c 0-3 python3 ...` invocation (**untested** here).
 
 
 
@@ -391,6 +681,49 @@ Notes:
 - The kernel launch and `cudaMemcpy` rows are a large part of why small-batch inference and tiny ops are slow, and why CUDA Graphs and kernel fusion exist. Details are in the [execution model chapter](../compute/accelerator/execution-model.md).
 - The coast-to-coast row is bounded by physics: light in fiber travels at ~200,000 km/s, so ~4,000 km takes ~20 ms one way, ~40 ms round trip at the very least; real routes are longer.
 
+Don't take the table on faith: you can measure the memory rows of it on your own machine in about 30 lines of C. The trick is **pointer chasing**: build a random cycle through a buffer where each element stores the address of the next one. Each load's address depends on the previous load's result, so the out-of-order core *cannot* overlap them, and the time per step is the true load-to-use latency of whichever level of the hierarchy the buffer fits in.
+
+```c
+// chase.c - measure load-to-use latency by pointer chasing a random cycle.
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+static double now(void){struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec*1e-9;}
+int main(void){
+    const size_t LINE = 128;                         // one node per cache line (128 B on Apple M; use 64 on x86)
+    for (size_t bytes = 16 << 10; bytes <= (512u << 20); bytes *= 4) {
+        size_t n = bytes / LINE;
+        char *buf = aligned_alloc(LINE, bytes);
+        size_t *perm = malloc(n * sizeof(size_t));
+        for (size_t i = 0; i < n; i++) perm[i] = i;
+        for (size_t i = n - 1; i > 0; i--) { size_t j = rand() % (i + 1), t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+        for (size_t i = 0; i < n; i++)                // node perm[i] points to node perm[i+1]
+            *(void **)(buf + perm[i] * LINE) = buf + perm[(i + 1) % n] * LINE;
+        void **p = (void **)(buf + perm[0] * LINE);
+        size_t steps = 20 * 1000 * 1000;
+        double t = now();
+        for (size_t i = 0; i < steps; i++) p = (void **)*p;
+        t = now() - t;
+        printf("%9zu KiB  %6.1f ns/load   (%p)\n", bytes >> 10, t / steps * 1e9, (void *)p);  // print p so the loop isn't optimized away
+        free(buf); free(perm);
+    }
+}
+```
+
+```console
+$ clang -O2 -o chase chase.c && ./chase          # Apple M4, performance core
+       16 KiB     0.9 ns/load   (0x12700af80)
+       64 KiB     0.9 ns/load   (0x128008500)
+      256 KiB     7.0 ns/load   (0x12801fe00)
+     1024 KiB    11.1 ns/load   (0x1180de880)
+     4096 KiB    30.8 ns/load   (0x1080bce80)
+    16384 KiB    96.7 ns/load   (0x107305b80)
+    65536 KiB   106.4 ns/load   (0x1103fbc00)
+   262144 KiB   111.0 ns/load   (0x13bf96580)
+```
+
+You can read the hierarchy straight off it: ~0.9 ns while the buffer fits in the 128 KiB L1 data cache of an M4 performance core (`sysctl hw.perflevel0.l1dcachesize` reports 131072), a jump once it spills to the 16 MiB shared L2, and a plateau around 100-110 ns once it's DRAM-sized - the "1.5 minutes" row in the table. The steps between 256 KiB and 16 MiB are a mix of L2 latency and TLB misses (at 16 KiB pages, a 4 MiB buffer is 256 pages, and every random access may need a fresh translation); separating the two needs hardware counters, which I didn't use. On x86 Linux, set `LINE = 64`, compile with `gcc -O2`, and pin to one core with `taskset -c 2 ./chase` (**untested** here); expect the same shape with different breakpoints.
+
 ### Cache lines and locality
 
 Caches don't store individual bytes. They store **cache lines**: aligned 64-byte blocks on x86 and most ARM server cores (Apple's M-series uses 128 bytes). When you read one `float32` from DRAM, the hardware fetches the whole 64-byte line containing it - 16 floats - because the cost of a DRAM access is dominated by latency, so you might as well bring the neighbors.
@@ -403,6 +736,38 @@ That bet pays off because real programs have **locality**:
 On top of caching, a **hardware prefetcher** watches the access pattern and, if it sees a steady stride, starts fetching lines *before* you ask for them. Sequential access is the easy case for prefetchers; random access defeats them.
 
 Caches also keep the cores coherent: if core 0 writes a line that core 5 has cached, core 5's copy is invalidated. Two threads writing different variables that happen to sit in the same 64-byte line will ping-pong that line between cores (**false sharing**) - a classic way for a multi-threaded data pipeline to scale negatively.
+
+False sharing is easy to provoke. Two threads each increment *their own* counter; the only thing that changes between runs is whether the two counters sit in the same cache line:
+
+```c
+// false_sharing.c - two threads, two different counters. Only their distance in memory changes.
+#include <pthread.h>
+#include <stdio.h>
+#include <time.h>
+#define ITERS 200000000L
+static double now(void){struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec*1e-9;}
+static _Alignas(256) volatile long slots[64];      // 512 bytes, aligned to a line boundary
+static void *bump(void *p){ volatile long *c = p; for (long i = 0; i < ITERS; i++) (*c)++; return NULL; }
+static double run(int gap){                         // gap in longs between the two counters
+    pthread_t a, b; double t = now();
+    pthread_create(&a, NULL, bump, (void *)&slots[0]);
+    pthread_create(&b, NULL, bump, (void *)&slots[gap]);
+    pthread_join(a, NULL); pthread_join(b, NULL);
+    return now() - t;
+}
+int main(void){
+    for (int rep = 0; rep < 2; rep++)
+        printf("same line (8 B apart): %.2f s    different lines (256 B apart): %.2f s\n", run(1), run(32));
+}
+```
+
+```console
+$ clang -O2 -o false_sharing false_sharing.c && ./false_sharing     # Linux: gcc -O2 -pthread
+same line (8 B apart): 0.42 s    different lines (256 B apart): 0.24 s
+same line (8 B apart): 0.38 s    different lines (256 B apart): 0.19 s
+```
+
+A 2x slowdown for doing *exactly* the same work, because every increment forces the line to move between the two cores' caches. On large multi-socket x86 servers, where the line has to cross a mesh or a socket link, the penalty is typically much larger. The fix is padding: put per-thread data at least one cache line apart (C: `_Alignas(64)`, C++: `alignas(std::hardware_destructive_interference_size)`). In Python you rarely control layout this precisely, but the same effect shows up one level up in shared-memory ring buffers and per-worker statistics arrays written by many processes.
 
 ### Experiment: why a strided loop is slow
 
@@ -463,6 +828,14 @@ On the same M4, random order was about 3x slower (two runs: 81.5 vs 34.6 ms, 92.
 
 This is also the physical reason [random-access dataset reads are slower than sequential ones](../storage/README.md#sequential-vs-random-access-io), one level further down the hierarchy.
 
+### Try this
+
+1. Run `chase.c` with `LINE = 8` instead of 128 (keep the random permutation). Nodes now share lines; does small-buffer latency change? Does large-buffer latency change? Explain with spatial locality.
+2. Replace the random permutation in `chase.c` with the identity (`perm[i] = i`, so each node points to the next line). The loads are still dependent - so why is it much faster at DRAM sizes? (Hint: the prefetcher.)
+3. In the strided-sum experiment, repeat with `float64` and with `int8`. Where does the plateau end now, in elements and in bytes?
+4. Take a `(4096, 4096)` float32 numpy array `x`. Time `x.sum(axis=0)` vs `x.sum(axis=1)`, and `x.T.copy()` vs `x.copy()`. Which one walks memory with stride 1? Then do the same with a torch tensor and `.contiguous()`.
+5. Change `gap` in `false_sharing.c` through `1, 2, 4, 8, 16, 32` longs. At which gap does the penalty disappear, and does that match `sysctl hw.cachelinesize` (or `getconf LEVEL1_DCACHE_LINESIZE` on Linux)?
+
 
 
 ## Bandwidth vs latency
@@ -511,6 +884,58 @@ NVMe:     QD = IOPS * latency  (more on this in the storage section)
 
 A single CPU core can only track a limited number of outstanding cache misses (on the order of tens), which is why one thread can't saturate a socket's memory bandwidth and why memory-bound CPU code needs many threads. A GPU needs megabytes in flight, which is why it needs tens of thousands of threads. Same law, different scale.
 
+The model and a measurement, side by side. The first half recomputes the PCIe table above; the second times `np.copyto` (a memcpy) on this laptop for sizes from 64 bytes to 256 MiB:
+
+```python
+# eff_bw.py - (1) the model time = latency + n/bandwidth; (2) measure it for host memcpy.
+import time, numpy as np
+lat, bw = 10e-6, 55e9                                   # the PCIe example from the text
+for n in [4, 4 << 10, 1 << 20, 1 << 30]:
+    t = lat + n / bw
+    print(f"model  {n:>11,} B  {t*1e6:9.1f} us  {n/t/1e9:7.3f} GBps")
+print(f"half-peak size = lat*bw = {lat*bw/1e3:.0f} KB\n")
+
+for n in [64, 4 << 10, 64 << 10, 1 << 20, 16 << 20, 256 << 20]:
+    src = np.ones(n, dtype=np.uint8); dst = np.empty_like(src)
+    reps = max(3, (1 << 28) // n)                       # ~256 MiB moved per size
+    np.copyto(dst, src)                                 # warm up (page faults, caches)
+    t = time.perf_counter()
+    for _ in range(reps): np.copyto(dst, src)
+    t = (time.perf_counter() - t) / reps
+    print(f"memcpy {n:>11,} B  {t*1e6:9.3f} us  {n/t/1e9:7.2f} GBps")
+```
+
+Output (Apple M4, one run):
+
+```
+model            4 B       10.0 us    0.000 GBps
+model        4,096 B       10.1 us    0.407 GBps
+model    1,048,576 B       29.1 us   36.077 GBps
+model  1,073,741,824 B    19532.6 us   54.972 GBps
+half-peak size = lat*bw = 550 KB
+
+memcpy          64 B      0.228 us     0.28 GBps
+memcpy       4,096 B      0.280 us    14.61 GBps
+memcpy      65,536 B      1.233 us    53.14 GBps
+memcpy   1,048,576 B     16.039 us    65.38 GBps
+memcpy  16,777,216 B    665.063 us    25.23 GBps
+memcpy 268,435,456 B  14261.597 us    18.82 GBps
+```
+
+Three regimes in one table:
+
+- **64 B - 4 KiB: overhead-bound.** ~0.2 us is the fixed cost of a numpy call from Python, which dwarfs the time to move 64 bytes. This is the same shape as the PCIe model, with Python call overhead playing the role of link latency.
+- **64 KiB - 1 MiB: cache-resident.** Source and destination both fit in the 16 MiB L2, so the copy runs at cache bandwidth.
+- **16 MiB and up: DRAM-bound.** Now every byte is read from and written back to DRAM, so the bus carries 2x the bytes shown. A single core also can't keep enough misses in flight to saturate the memory system (Little's law again) - the M4's memory is specified much faster than ~19 GBps x 2.
+
+A second run while the machine was loaded by other jobs gave 2-10x lower numbers in every row - a reminder to benchmark on a quiet machine and to report the conditions.
+
+### Try this
+
+1. Change `lat` in `eff_bw.py` to 2 us (a fast RDMA message) and `bw` to 50e9 (one 400 Gbps NIC). What's the half-bandwidth message size now? Compare with the default bucket size of PyTorch DDP (`bucket_cap_mb=25`).
+2. Modify the memcpy loop to use 2, 4 and 8 threads (each copying its own slice with `np.copyto`, which releases the GIL). Does the 256 MiB row scale? At what thread count does it flatten?
+3. Use Little's law: if one core can have ~20 outstanding 64-byte misses and DRAM latency is 100 ns, what's the max bandwidth one core can pull? Compare with your measurement.
+
 
 
 ## Virtual memory at the hardware level
@@ -525,6 +950,43 @@ Memory is managed in fixed-size **pages**, 4 KiB by default on x86-64. The OS ke
 
 The **MMU** (memory management unit) does translation in hardware, and the **TLB** (translation lookaside buffer) caches recent translations. A TLB hit costs roughly nothing. A TLB miss triggers a **page walk**: the hardware walks the page table tree, each step potentially a cache miss, costing from tens to hundreds of cycles.
 
+You can watch virtual memory work from Python. Allocating memory only reserves *virtual addresses*; physical pages are assigned lazily the first time each page is touched, via a **page fault** - a trap into the kernel, which finds a free physical page, zeroes it, and installs the mapping:
+
+```python
+# pages.py
+import mmap, resource, time, numpy as np
+page = mmap.PAGESIZE
+print("page size:", page, "bytes")
+
+def faults(): return resource.getrusage(resource.RUSAGE_SELF).ru_minflt
+def rss_mib(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20   # macOS reports bytes; Linux KiB (use / 2**10)
+
+n = 256 << 20                                 # 256 MiB
+f0 = faults()
+a = np.empty(n, dtype=np.uint8)               # reserves virtual address space only
+print(f"after np.empty(256 MiB): minor faults +{faults()-f0:>7}, peak RSS {rss_mib():6.0f} MiB")
+t = time.perf_counter()
+a[::page] = 1                                 # touch one byte per page
+t = time.perf_counter() - t
+nf = faults() - f0
+print(f"after touching each page: minor faults +{nf:>7}, peak RSS {rss_mib():6.0f} MiB")
+print(f"expected faults n/page = {n // page}; {t*1e3:.0f} ms total, {t/nf*1e9:.0f} ns per fault")
+t = time.perf_counter(); a[::page] = 2; t = time.perf_counter() - t
+print(f"second pass (already mapped): {t*1e3:.1f} ms")
+```
+
+Output (macOS on Apple silicon, where pages are 16 KiB; on x86-64 Linux you'd see 4096):
+
+```
+page size: 16384 bytes
+after np.empty(256 MiB): minor faults +      1, peak RSS     25 MiB
+after touching each page: minor faults +  16385, peak RSS    281 MiB
+expected faults n/page = 16384; 12 ms total, 704 ns per fault
+second pass (already mapped): 0.1 ms
+```
+
+`np.empty` of 256 MiB costs one fault and no memory. Touching one byte per page costs exactly one fault per page (16384 of them), ~0.7 us each, and resident memory (**RSS**, resident set size: physical memory actually backing the process) grows by 256 MiB. The second pass over the same pages is ~100x faster because the translations now exist. This is why the first iteration of a training loop, or the first read of a freshly allocated buffer, is slow, and why "virtual memory size" in `top` means almost nothing. The OS side of this (overcommit, the OOM killer, `mmap` of files) is in [the Linux chapter](linux-and-os.md).
+
 ### Huge pages and TLB reach
 
 A TLB has a limited number of entries - on the order of 64 in the first-level data TLB and 1-2 thousand in the second level, depending on the core. The amount of memory the TLB can cover without misses is its **reach**:
@@ -538,6 +1000,18 @@ A TLB has a limited number of entries - on the order of 64 in the first-level da
 
 8 MiB is tiny compared to a multi-GiB working set like a dataset buffer, an embedding table being looked up at random, or a CPU-offloaded optimizer state. Every random access then pays a TLB miss on top of a cache miss. **Huge pages** (2 MiB, or 1 GiB on x86-64) cut the number of translations by 512x or 262144x. Linux can use them automatically (**transparent huge pages**, THP) or explicitly (`hugetlbfs`); the policy side is in the [Linux chapter](linux-and-os.md).
 
+Checking THP and huge-page usage on a Linux box (**untested** here, Linux-only; the bracketed word is the active setting):
+
+```console
+$ cat /sys/kernel/mm/transparent_hugepage/enabled
+always [madvise] never
+$ grep -E "AnonHugePages|HugePages_Total|Hugepagesize" /proc/meminfo
+AnonHugePages:   10485760 kB
+HugePages_Total:        0
+Hugepagesize:        2048 kB
+$ grep AnonHugePages /proc/$(pgrep -f train.py | head -1)/smaps_rollup   # THP use of one process
+```
+
 ### Why this matters for GPUs: pinned memory
 
 Devices like GPUs, NICs and NVMe drives copy memory using **DMA** (next sections), and DMA engines work with *physical* addresses (via an IOMMU, which is a TLB for devices). That creates a problem: the OS is free to move or swap out a virtual page at any moment, so a device can't safely DMA from an ordinary page.
@@ -545,6 +1019,38 @@ Devices like GPUs, NICs and NVMe drives copy memory using **DMA** (next sections
 The solution is **pinned** (page-locked) memory: pages the OS promises not to move. When you call `tensor.cuda()` on an ordinary ("pageable") CPU tensor, the CUDA driver first copies it into an internal pinned staging buffer and only then DMAs it to the GPU - two copies, and the call is synchronous. With `pin_memory=True` in the `DataLoader` the batch is placed in pinned memory up front, the copy is a single DMA, and `.to("cuda", non_blocking=True)` can overlap with compute. See [Pinned memory and non-blocking device copy](../training/performance/README.md#pinned-memory-and-non-blocking-device-copy).
 
 Pinned memory is a finite resource: pinning tens of GiB reduces what the OS can manage and can starve the rest of the system.
+
+Measuring the difference yourself takes a dozen lines. **[GPU]**, **untested** (no NVIDIA GPU on the machine writing this):
+
+```python
+# pinned_vs_pageable.py
+import time, torch
+assert torch.cuda.is_available()
+n = 256 << 20                                            # 256 MiB
+dst = torch.empty(n, dtype=torch.uint8, device="cuda")
+for pinned in [False, True]:
+    src = torch.empty(n, dtype=torch.uint8, pin_memory=pinned)
+    dst.copy_(src); torch.cuda.synchronize()             # warm up
+    t0 = time.perf_counter()
+    dst.copy_(src, non_blocking=True)                    # how long does the *call* take?
+    t_call = time.perf_counter() - t0
+    torch.cuda.synchronize()
+    start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    start.record()
+    for _ in range(10): dst.copy_(src, non_blocking=True)
+    end.record(); torch.cuda.synchronize()
+    ms = start.elapsed_time(end) / 10
+    print(f"pinned={pinned!s:5}  call returned in {t_call*1e3:6.2f} ms  copy {ms:6.2f} ms  {n/ms/1e6:6.1f} GBps")
+```
+
+What to expect: with `pinned=True`, the call returns almost immediately (the copy is queued on the GPU) and the bandwidth is close to what the PCIe link delivers (~55 GBps on PCIe 5 x16 per the measurement quoted below); with `pinned=False`, the call blocks for roughly the whole copy, and bandwidth is lower because of the extra staging copy. I'm not quoting a ratio because I haven't measured one; it depends on the host's memcpy speed. (On Apple silicon, `pin_memory()` succeeds but CPU and GPU share one physical memory, so there's no PCIe hop to measure.)
+
+### Try this
+
+1. In `pages.py`, replace `np.empty` with `np.zeros`. Does the fault count change at allocation time? (Most allocators get zeroed pages from the OS lazily, so `np.zeros` for big arrays often costs no more than `np.empty`.)
+2. Touch every 4096th byte instead of every `page`th byte on this Mac. Does the fault count go up 4x? Why not?
+3. On Linux, run `perf stat -e dTLB-load-misses,page-faults python3 pages.py` (**untested** here) and compare with `madvise`-backed huge pages enabled vs disabled.
+4. Allocate a 1 GiB pinned tensor in a loop until it fails, on a machine where that's safe. What fails first and with what error? (Do this on your own machine, not a shared node.)
 
 
 
@@ -595,6 +1101,22 @@ cat /sys/bus/pci/devices/0000:18:00.0/numa_node
 
 How to apply it - `numactl`, `os.sched_setaffinity`, `pynvml`, `srun` - is in [NUMA affinity](../training/performance/README.md#numa-affinity).
 
+The two-line version of "apply it", for one rank whose GPU sits on NUMA node 0 (**untested** here, Linux-only):
+
+```console
+$ numactl --cpunodebind=0 --membind=0 python train.py            # run on node 0's cores, allocate from node 0's DRAM
+$ python3 -c "import os; os.sched_setaffinity(0, range(0, 56)); print(sorted(os.sched_getaffinity(0))[:4], '...')"
+[0, 1, 2, 3] ...
+$ numastat -p $(pgrep -f train.py | head -1)                      # per-node memory of a running process
+```
+
+### Try this
+
+1. On any Linux server, run `numactl -H` and find the distance matrix. Is it 2 nodes or more? If a single-socket box shows several nodes, it's running with SNC/NPS enabled.
+2. Use `nvidia-smi topo -m` to build a table "GPU -> NUMA node -> CPU list" for a GPU node you have access to, then check what a running job's processes actually have: `taskset -cp <pid>` for each rank (**untested** here).
+3. Benchmark remote vs local memory with a STREAM-like copy: `numactl --cpunodebind=0 --membind=1 python3 eff_bw.py` vs `--membind=0`. How big is the gap on the 256 MiB row?
+4. Compute the per-socket DDR bandwidth of a server you use (channels x MT/s x 8 B) from `dmidecode -t memory` (needs root) and compare it with one GPU's HBM bandwidth.
+
 
 
 ## Buses and interconnects
@@ -633,6 +1155,30 @@ If the CPU had to move every byte to a device by executing load and store instru
 
 DMA is why [pinned memory](#why-this-matters-for-gpus-pinned-memory) is needed, and why "zero-copy" designs are possible at all.
 
+The CUDA `deviceQuery` sample (from NVIDIA's `cuda-samples` repo) reports how many copy engines a GPU has, in a line like `Concurrent copy and kernel execution: Yes with 2 copy engine(s)` (the count varies by GPU). You can see copy engines at work from PyTorch by issuing a copy on a second stream while a matmul runs on the default one. **[GPU]**, **untested**:
+
+```python
+# overlap.py - a host->device copy on a side stream overlaps with compute on the default stream.
+import torch
+x = torch.randn(8192, 8192, device="cuda")                  # (8192, 8192) fp32
+h = torch.empty(512 << 20, dtype=torch.uint8, pin_memory=True)   # 512 MiB pinned host buffer
+d = torch.empty_like(h, device="cuda")
+side = torch.cuda.Stream()
+def timed(fn):
+    s, e = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    torch.cuda.synchronize(); s.record(); fn(); e.record(); torch.cuda.synchronize()
+    return s.elapsed_time(e)
+def matmuls():  [x @ x for _ in range(10)]
+def copy():     d.copy_(h, non_blocking=True)
+def both():
+    with torch.cuda.stream(side): d.copy_(h, non_blocking=True)   # copy engine
+    matmuls()                                                    # SMs
+    torch.cuda.current_stream().wait_stream(side)
+print(f"matmuls {timed(matmuls):.1f} ms, copy {timed(copy):.1f} ms, both overlapped {timed(both):.1f} ms")
+```
+
+If DMA and compute overlap, "both" is close to `max(matmuls, copy)`, not their sum. If `h` is not pinned, the copy can't be done by the copy engine asynchronously and the overlap disappears.
+
 ### GPUDirect: cutting the CPU and its memory out of the path
 
 By default, data moving between a GPU and anything else goes through host memory: the device DMAs into a buffer in CPU DRAM, then the GPU DMAs it out again. That costs an extra copy, host memory bandwidth, and if the buffer is on the wrong NUMA node, a socket-link crossing. NVIDIA's **GPUDirect** family of technologies removes the host DRAM hop:
@@ -645,9 +1191,58 @@ By default, data moving between a GPU and anything else goes through host memory
 
 What's bypassed is host memory and the CPU's involvement in the data movement; the bytes still travel over PCIe, so the path benefits a lot from the GPU and the NIC/NVMe being under the **same PCIe switch** (traffic never reaches the root complex). This is why GPU servers pair each GPU with a NIC on the same switch, and why `nvidia-smi topo -m` labels pairs as `PIX` (same switch), `PXB`, `PHB` (through the host bridge), `NODE` or `SYS` (across sockets) - the further down that list, the worse.
 
+How to check whether GPUDirect paths are actually in use on a node (**untested** here; module and tool names as of CUDA 12.x / recent NCCL):
+
+```console
+$ nvidia-smi topo -m | head -3                  # look at the GPU<->NIC entries: PIX/PXB good, SYS bad
+$ lsmod | grep -E "nvidia_peermem|nv_peer_mem"  # kernel module that enables GPUDirect RDMA with Mellanox/NVIDIA NICs
+$ NCCL_DEBUG=INFO torchrun --nproc-per-node 8 allreduce_test.py 2>&1 | grep -E "NET/|GDRDMA" | head
+#   lines of the form "... via NET/IB/0/GDRDMA" mean NCCL is doing GPUDirect RDMA on that path;
+#   "via NET/IB/0" without GDRDMA means it's staging through host memory
+$ /usr/local/cuda/gds/tools/gdscheck -p         # GPUDirect Storage: which filesystems/drivers support it
+```
+
 ### NVLink and NVSwitch
 
 PCIe is a general-purpose standard and, as the table above shows, a GPU's PCIe 5 x16 link gives ~63 GBps per direction. Training with tensor parallelism needs GPUs to exchange activations every layer, so NVIDIA built a dedicated GPU-to-GPU link, **NVLink**. An H100 has 18 NVLink 4 links totaling 450 GBps per direction, ~7x its PCIe bandwidth. An **NVSwitch** is a switch chip for NVLink: in an 8-GPU HGX board, every GPU connects to the NVSwitches, so any GPU can talk to any other at full NVLink bandwidth simultaneously. In rack-scale systems (GB200 NVL72) NVSwitch extends the same fabric across a whole rack of GPUs. AMD's equivalent is Infinity Fabric; the open-standard effort is UALink. All the numbers are in [NVLink](../network/README.md#nvlink).
+
+Why this matters, in one calculation: the lower bound for a ring all-reduce of 7B parameters' worth of bf16 gradients across 8 GPUs, over each kind of link. In a ring all-reduce each GPU sends (and receives) `2 * (N - 1) / N` times the buffer size - derived in [collectives internals](../network/collectives-internals.md).
+
+```python
+# allreduce_links.py
+N = 8
+S = 7e9 * 2                                              # 7B params, bf16 grads = 14 GB
+links = {"NVLink4 via NVSwitch (450 GBps)": 450e9,
+         "PCIe 5 x16 (63 GBps spec)": 63e9,
+         "PCIe 5 x16 (~55 GBps measured)": 55e9,
+         "one 400 Gbps NIC (50 GBps)": 50e9}
+per_gpu = 2 * (N - 1) / N * S
+print(f"bytes each GPU sends: {per_gpu/1e9:.1f} GB")
+for name, bw in links.items():
+    print(f"{name:<34} {per_gpu/bw*1e3:8.1f} ms")
+```
+
+```
+bytes each GPU sends: 24.5 GB
+NVLink4 via NVSwitch (450 GBps)        54.4 ms
+PCIe 5 x16 (63 GBps spec)             388.9 ms
+PCIe 5 x16 (~55 GBps measured)        445.5 ms
+one 400 Gbps NIC (50 GBps)            490.0 ms
+```
+
+An ~8x gap between NVLink and PCIe on every gradient sync. (Real all-reduces within a node over NVSwitch can use NVLS/in-switch reduction and other algorithms, so treat this as a ring-model bound, not a prediction.) Checking the links on a real node (**untested** here):
+
+```console
+$ nvidia-smi nvlink --status -i 0       # per-link speed for GPU 0; an H100 SXM should list 18 links
+$ nvidia-smi topo -m                    # "NV18" between two GPUs = connected by 18 NVLinks
+```
+
+### Try this
+
+1. A GPU server has 4 PCIe switches, each with 2 GPUs and 1 NIC under it, and a Gen5 x16 uplink. If all 8 GPUs read training data from host memory at the same time, what's the max per-GPU host-to-device bandwidth? (Each uplink is shared by 2 GPUs.)
+2. Extend `allreduce_links.py` with the 2-level case: 8 GPUs per node over NVLink, 16 nodes over 8x 400 Gbps NICs per node. Which level dominates?
+3. Run `system_profiler SPDisplaysDataType` on a Mac or `lspci -tv` on Linux and draw the device tree you see. Where does the GPU hang?
+4. On a GPU node, run `nvidia-smi --query-gpu=index,pcie.link.gen.current,pcie.link.width.current --format=csv` idle and then under load (e.g. while a matmul loop runs). Do the numbers change?
 
 **CXL** (Compute Express Link) is worth knowing by name: a protocol running over PCIe's physical layer that adds cache-coherent memory semantics, used for things like memory expansion cards. It's not (yet) central to GPU training, so I'll leave it there.
 
@@ -679,6 +1274,46 @@ Two separate metrics, the storage version of [latency vs bandwidth](#bandwidth-v
 - **Throughput**: bytes per second - matters for big sequential reads (a large shard, a checkpoint).
 - They're related by block size: `throughput = IOPS * block_size`. 1M IOPS of 4 KiB blocks is `1e6 * 4096 = 4.1` GBps. A drive can be IOPS-limited for small blocks and throughput-limited for large ones.
 
+Measured on this laptop's internal SSD, single-threaded (queue depth 1), with the OS page cache bypassed so we see the drive and not RAM:
+
+```python
+# iops.py - the same 1 GiB file read two ways: small random blocks vs big sequential ones.
+# macOS: F_NOCACHE bypasses the page cache. Linux: open with os.O_DIRECT (needs aligned buffers,
+# e.g. an mmap-allocated one with os.preadv) or drop caches first (sync; echo 3 | sudo tee /proc/sys/vm/drop_caches).
+import os, random, time, fcntl
+path, size = "/tmp/ca/iops.bin", 1 << 30
+if not os.path.exists(path):
+    with open(path, "wb") as f:
+        for _ in range(size >> 24): f.write(os.urandom(1 << 24))
+fd = os.open(path, os.O_RDONLY)
+if hasattr(fcntl, "F_NOCACHE"): fcntl.fcntl(fd, fcntl.F_NOCACHE, 1)
+
+def run(block, nops, rand):
+    offs = [random.randrange(size // block) * block for _ in range(nops)] if rand else \
+           [i * block for i in range(nops)]
+    t = time.perf_counter()
+    for o in offs: os.pread(fd, block, o)
+    t = time.perf_counter() - t
+    print(f"{'random' if rand else 'seq':>6} {block>>10:>5} KiB x {nops:>6}: {nops/t:>9,.0f} IOPS  "
+          f"{nops*block/t/1e9:6.2f} GBps  {t/nops*1e6:7.1f} us/op")
+
+run(4 << 10, 20000, rand=True)
+run(4 << 10, 20000, rand=False)
+run(1 << 20, 1000, rand=True)
+run(1 << 20, 1000, rand=False)
+```
+
+```
+random     4 KiB x  20000:     4,805 IOPS    0.02 GBps    208.1 us/op
+   seq     4 KiB x  20000:    22,691 IOPS    0.09 GBps     44.1 us/op
+random  1024 KiB x   1000:     1,501 IOPS    1.57 GBps    666.3 us/op
+   seq  1024 KiB x   1000:     1,438 IOPS    1.51 GBps    695.4 us/op
+```
+
+- Random 4 KiB: ~5K IOPS, ~0.02 GBps, ~200 us per read. That's the latency regime: at QD 1 the drive sits idle between requests.
+- Sequential 4 KiB is ~5x faster per op even with the cache bypassed - the drive and OS read ahead.
+- 1 MiB reads, random or sequential, both reach ~1.5 GBps: at that block size the cost is transfer, not seeking, so "random" stops mattering. **This is why datasets are packed into large shards** (WebDataset tars, Arrow/Parquet files, pre-tokenized `.bin` files): turning millions of small random reads into fewer large ones.
+
 ### Queue depth
 
 **Queue depth** (QD) is how many I/O requests are outstanding at once. Flash drives are internally massively parallel (many NAND dies and channels), but a single request only uses one of them. Little's law again:
@@ -690,6 +1325,43 @@ to reach 1M IOPS:       1e6 * 80e-6   = QD 80
 ```
 
 So a drive rated at 1M IOPS delivers ~1% of that to a single-threaded program that reads one file at a time and waits for each read. This is why dataloaders need many workers or async I/O, and why benchmarks must specify queue depth. See [Queue Depth](../storage/README.md#queue-depth) and [fio](../storage/README.md#fio) for measuring it.
+
+Little's law in action, on the same file. Each thread keeps one read outstanding, so N threads = queue depth N (`os.pread` releases the GIL, so the threads genuinely overlap):
+
+```python
+# qd.py
+import os, random, time, fcntl
+from concurrent.futures import ThreadPoolExecutor
+path, size, block, total = "/tmp/ca/iops.bin", 1 << 30, 4096, 40000
+fd = os.open(path, os.O_RDONLY)
+fcntl.fcntl(fd, fcntl.F_NOCACHE, 1)                      # macOS only; see iops.py
+offs = [random.randrange(size // block) * block for _ in range(total)]
+def worker(chunk):
+    for o in chunk: os.pread(fd, block, o)
+for qd in [1, 4, 16, 64]:
+    chunks = [offs[i::qd] for i in range(qd)]
+    t = time.perf_counter()
+    with ThreadPoolExecutor(qd) as ex: list(ex.map(worker, chunks))
+    t = time.perf_counter() - t
+    iops = total / t
+    print(f"QD {qd:>3}: {iops:>9,.0f} IOPS   implied latency QD/IOPS = {qd/iops*1e6:6.1f} us")
+```
+
+```
+QD   1:     7,557 IOPS   implied latency QD/IOPS =  132.3 us
+QD   4:    14,896 IOPS   implied latency QD/IOPS =  268.5 us
+QD  16:    85,262 IOPS   implied latency QD/IOPS =  187.7 us
+QD  64:    94,366 IOPS   implied latency QD/IOPS =  678.2 us
+```
+
+12x more IOPS from QD 1 to QD 64 on a laptop SSD, with the same drive and the same data. The per-request latency goes *up* as the queue deepens (requests wait behind each other), but total throughput goes up much more. Past some depth the drive is saturated and extra depth only adds latency. The same experiment with `fio --rw=randread --bs=4k --iodepth=N --ioengine=libaio --direct=1` (Linux) is the standard way to characterize a drive.
+
+### Try this
+
+1. Run `qd.py` with `block = 1 << 20`. Does queue depth still help? Why less?
+2. Remove the `F_NOCACHE` line and run `iops.py` twice. What does the second run measure?
+3. Your dataset is 10M JPEGs of ~100 KB each on a drive that does 7K IOPS at QD 1 and 90K at QD 64. How many images/s can one DataLoader worker reading synchronously get? How many workers (each QD 1) do you need for 20K images/s? What changes if you pack them into 1 GB tar shards?
+4. On Linux, run `fio --name=t --filename=/tmp/fio.bin --size=1G --rw=randread --bs=4k --iodepth=32 --ioengine=libaio --direct=1 --runtime=20 --time_based` and compare with `qd.py` at QD 32 (**untested** here).
 
 Above the device sits the OS (page cache, buffered vs direct I/O, `mmap`) - see [Foundations: Linux and the OS](linux-and-os.md) and [Direct vs Buffered IO](../storage/README.md#direct-vs-buffered-io) - and above that, networked and parallel file systems, covered in the [storage chapter](../storage/README.md).
 
@@ -710,6 +1382,42 @@ A matmul is the opposite: billions of identical, independent multiply-adds with 
 And instead of avoiding memory stalls with caches and speculation, it **tolerates** them: when one group of threads waits on memory, the hardware instantly switches to another group that's ready. With enough groups, there's always someone ready to compute. This is the "keep many requests in flight" principle from the [random gather experiment](#experiment-why-a-strided-loop-is-slow) and [Little's law](#bandwidth-vs-latency), turned into a whole chip.
 
 That is a GPU. It was built for graphics (millions of pixels, same shader program on each), and turned out to be exactly what neural networks need.
+
+You can see the latency/throughput split on any machine with a GPU, including a Mac (PyTorch's `mps` device is the Apple GPU). Time one elementwise multiply at growing sizes on CPU and GPU: **[torch]**
+
+```python
+# lat_vs_tput.py
+import time, torch
+devs = ["cpu"] + (["mps"] if torch.backends.mps.is_available() else []) + (["cuda"] if torch.cuda.is_available() else [])
+def sync(d):
+    if d == "mps": torch.mps.synchronize()
+    if d == "cuda": torch.cuda.synchronize()
+for d in devs:
+    for n in [1, 1 << 10, 1 << 16, 1 << 20, 1 << 24]:
+        x = torch.ones(n, device=d)                       # (n,) fp32
+        for _ in range(3): y = x * 2.0                    # warm up
+        sync(d); reps = 200; t = time.perf_counter()
+        for _ in range(reps): y = x * 2.0
+        sync(d); t = (time.perf_counter() - t) / reps
+        print(f"{d:>4} n={n:>10,}  {t*1e6:8.1f} us/op  {n*8/t/1e9:7.2f} GBps (read+write)")
+```
+
+Output (M4, CPU vs its 10-core GPU, machine busy with other jobs so the CPU rows are pessimistic):
+
+```
+ cpu n=         1       1.2 us/op     0.01 GBps (read+write)
+ cpu n=     1,024       1.3 us/op     6.39 GBps (read+write)
+ cpu n=    65,536      38.8 us/op    13.50 GBps (read+write)
+ cpu n= 1,048,576     566.0 us/op    14.82 GBps (read+write)
+ cpu n=16,777,216    6211.9 us/op    21.61 GBps (read+write)
+ mps n=         1      15.8 us/op     0.00 GBps (read+write)
+ mps n=     1,024       8.3 us/op     0.98 GBps (read+write)
+ mps n=    65,536      16.5 us/op    31.77 GBps (read+write)
+ mps n= 1,048,576     105.5 us/op    79.52 GBps (read+write)
+ mps n=16,777,216    1727.8 us/op    77.68 GBps (read+write)
+```
+
+For one element the GPU is **13x slower** than the CPU (15.8 vs 1.2 us): that's the cost of encoding and submitting a GPU command and waiting for it. For 16M elements the GPU is **3.6x faster**, because it brings far more parallel memory traffic to bear. The crossover here is somewhere between 1K and 64K elements. On an H100 the large-size bandwidth is ~40x higher than this laptop GPU's, but the small-size latency is the same order of magnitude (a few microseconds) - which is exactly why tiny kernels waste a datacenter GPU.
 
 ### The pieces
 
@@ -738,6 +1446,45 @@ Note the register file: ~33 MiB of registers, more than the L2 cache. That's the
 Threads execute in groups of 32 called **warps**: one instruction is issued for all 32 threads at once (NVIDIA calls this **SIMT**, single instruction multiple threads - SIMD with a per-thread programming model). An SM holds up to 64 warps (2048 threads) resident at once on H100, and picks a ready warp to issue from every cycle. If threads in a warp take different sides of an `if`, both sides run with half the threads masked off (**divergence**) - the GPU's version of branch misprediction cost.
 
 **Tensor cores** are where the FLOPS actually live: dedicated units that multiply small matrix tiles (e.g. 16x16-ish fragments) in a single operation. Of the H100's 989 dense bf16 TFLOPS, all of it is tensor cores; the general FP32 lanes manage about 67 TFLOPS. A workload that can't be expressed as matmuls (a sort, an elementwise op, a custom loop) only sees the small number. That's the hardware reason ML architectures are built out of matmuls.
+
+The published totals are internally consistent, and backing out the per-unit rates is a good habit for any accelerator spec sheet:
+
+```python
+# h100_math.py - back out per-unit rates from H100 SXM published totals.
+SMS, LANES_PER_SM, TC_PER_SM = 132, 128, 4
+fp32_peak, bf16_dense = 66.9e12, 989.4e12              # published, FLOP/s
+lanes = SMS * LANES_PER_SM
+print(f"FP32 lanes: {lanes:,}")
+print(f"clock implied by FP32 peak: {fp32_peak / (lanes * 2) / 1e9:.2f} GHz  (lanes * 2 FLOPs/FMA * clock)")
+for clk in [1.83e9, 1.98e9]:
+    print(f"bf16 dense FLOPs/clock/SM at {clk/1e9:.2f} GHz: {bf16_dense / (SMS * clk):,.0f}")
+print(f"tensor-core vs FP32-lane peak: {bf16_dense / fp32_peak:.1f}x")
+print(f"resident threads: {SMS * 2048:,}  (2048 per SM)")
+print(f"register file total: {SMS * 256 / 1024:.1f} MiB  (256 KiB per SM)")
+print(f"HBM3 per-pin rate: {3.35e12 * 8 / 5120 / 1e9:.2f} Gbps on a 5120-bit bus")
+```
+
+```
+FP32 lanes: 16,896
+clock implied by FP32 peak: 1.98 GHz  (lanes * 2 FLOPs/FMA * clock)
+bf16 dense FLOPs/clock/SM at 1.83 GHz: 4,096
+bf16 dense FLOPs/clock/SM at 1.98 GHz: 3,786
+tensor-core vs FP32-lane peak: 14.8x
+resident threads: 270,336  (2048 per SM)
+register file total: 33.0 MiB  (256 KiB per SM)
+HBM3 per-pin rate: 5.23 Gbps on a 5120-bit bus
+```
+
+The FP32 figure implies the 1.98 GHz boost clock exactly. The bf16 figure comes out to a clean 4096 FLOPs per clock per SM (1024 per tensor core) only at ~1.83 GHz, which suggests the tensor-core number is quoted at a lower clock than the FP32 one; I haven't found NVIDIA stating this explicitly, so treat that as an inference. Either way, tensor cores are ~15x the general-purpose lanes.
+
+On a real GPU, PyTorch reports the basic properties directly (**[GPU]**, **untested**; field names as of PyTorch 2.x):
+
+```python
+import torch
+p = torch.cuda.get_device_properties(0)
+print(p.name, p.multi_processor_count, "SMs,", p.total_memory / 2**30, "GiB, compute capability", p.major, p.minor)
+# NVIDIA H100 80GB HBM3 132 SMs, 79.6 GiB, compute capability 9 0   <- expected shape, not a captured run
+```
 
 **HBM** (high bandwidth memory) is DRAM stacked vertically into towers and placed right next to the GPU die on a silicon interposer, with a very wide connection: 1024 bits per stack. The H100 has 5 active stacks, a 5120-bit bus; `3.35e12 * 8 / 5120 = 5.2` Gbps per pin. Compare with a DDR5 channel's 64 bits. HBM's bandwidth comes from width and proximity, not from lower latency - per access it's no faster than ordinary DRAM. The tradeoff is capacity and cost: HBM is expensive and capacity-limited (80-288 GB per GPU), which is why "will it fit in GPU memory" is the first question in every training plan. Details in [Accelerator memory size and speed](../compute/accelerator/README.md#accelerator-memory-size-and-speed).
 
@@ -769,6 +1516,13 @@ The host/device split also means two different failure modes for "the GPU is slo
 2. **The GPU is idle, waiting for the CPU** - launch overhead from many tiny kernels, the dataloader not keeping up, synchronizations. That's a host-side problem, which no GPU upgrade fixes. With a kernel launch costing a few microseconds on the CPU, a model that runs thousands of tiny kernels per step can be entirely CPU-bound; this is what CUDA Graphs and `torch.compile` attack.
 
 The [execution model chapter](../compute/accelerator/execution-model.md) takes all of this - kernels, grids, blocks, warps, occupancy, streams - to the next level of detail.
+
+### Try this
+
+1. In `lat_vs_tput.py`, remove the `sync(d)` before reading the clock on the GPU path. What "bandwidth" do you get now, and why is it nonsense?
+2. Add `y = x.sum().item()` to the timed loop on the GPU. How much slower per iteration? That's the cost of a forced sync.
+3. Find the smallest `n` at which the GPU beats the CPU on your machine, for `x * 2.0` and for `x @ x` with `x` of shape `(n, n)`. Why are the crossovers so different?
+4. Run `h100_math.py` with the numbers for an accelerator you use (SM count, lanes, peak FLOPS, HBM bus width). Does everything back out to a sensible clock?
 
 
 
@@ -813,6 +1567,39 @@ TFLOPS (log)
      ~0.17           GEMV (decode, batch 1): ~1
 ```
 
+The whole model fits in a function. This calculator reproduces the three worked examples below, plus decode at larger batch sizes:
+
+```python
+# roofline.py - H100 SXM dense bf16 spec numbers.
+PEAK, BW = 989e12, 3.35e12                               # FLOP/s, B/s
+
+def bound(name, flops, byts):
+    ai = flops / byts
+    t_c, t_m = flops / PEAK, byts / BW
+    kind = "compute" if t_c > t_m else "memory"
+    print(f"{name:<28} AI={ai:8.2f} FLOP/B  compute {t_c*1e6:9.1f} us  memory {t_m*1e6:9.1f} us  -> {kind}-bound, "
+          f"best {min(PEAK, ai*BW)/1e12:6.1f} TFLOPS")
+
+print(f"ridge = {PEAK/BW:.0f} FLOP/B")
+n = 4096;  bound("matmul 4096^3 bf16", 2*n**3, 3*n*n*2)
+n = 1e9;   bound("a + b, 1e9 bf16", n, 6*n)
+P = 8e9;   bound("decode 8B params, batch 1", 2*P, 2*P)
+for B in [8, 64, 256]:
+    bound(f"decode 8B params, batch {B}", 2*P*B, 2*P)     # weights read once, used B times (KV cache ignored)
+print(f"decode 8B batch 1: {16e9/BW*1e3:.1f} ms/token -> {BW/16e9:.0f} tok/s")
+```
+
+```
+ridge = 295 FLOP/B
+matmul 4096^3 bf16           AI= 1365.33 FLOP/B  compute     139.0 us  memory      30.0 us  -> compute-bound, best  989.0 TFLOPS
+a + b, 1e9 bf16              AI=    0.17 FLOP/B  compute       1.0 us  memory    1791.0 us  -> memory-bound, best    0.6 TFLOPS
+decode 8B params, batch 1    AI=    1.00 FLOP/B  compute      16.2 us  memory    4776.1 us  -> memory-bound, best    3.4 TFLOPS
+decode 8B params, batch 8    AI=    8.00 FLOP/B  compute     129.4 us  memory    4776.1 us  -> memory-bound, best   26.8 TFLOPS
+decode 8B params, batch 64   AI=   64.00 FLOP/B  compute    1035.4 us  memory    4776.1 us  -> memory-bound, best  214.4 TFLOPS
+decode 8B params, batch 256  AI=  256.00 FLOP/B  compute    4141.6 us  memory    4776.1 us  -> memory-bound, best  857.6 TFLOPS
+decode 8B batch 1: 4.8 ms/token -> 209 tok/s
+```
+
 ### Worked example 1: a big square matmul
 
 `C = A @ B`, all `n x n` bf16 matrices, n = 4096.
@@ -852,7 +1639,52 @@ time per token >= 16e9 / 3.35e12 = 4.8 ms   ->  at most ~209 tokens/s on one H10
 
 (ignoring the KV cache, which adds more bytes). Batching B requests reuses each weight B times, raising intensity ~B-fold, which is why inference servers batch aggressively and why decode throughput scales with batch size until the KV cache memory runs out. Quantizing weights to 8 or 4 bits speeds up decode almost proportionally for the same reason - fewer bytes - even if the arithmetic is done in bf16.
 
+Note the batch-256 row: with the KV cache ignored, decode approaches the ridge only at batch sizes in the hundreds. Add the KV cache bytes (which are *not* shared across the batch) and the intensity drops again - the full version of this calculation is in [inference arithmetic](../inference/arithmetic.md).
+
 The roofline is the single most useful mental model in this book: before optimizing anything, compute its intensity and you know whether to attack FLOPs or bytes. It applies identically one level out - to PCIe, NVLink and network transfers versus compute - which is what [comms/compute overlap](../network/README.md#comms-and-compute-overlap) is about.
+
+### Measuring a roofline on your own machine
+
+The theory predicts that achieved FLOPS should rise with arithmetic intensity until it hits a ceiling. Here's a square fp32 matmul at growing `n` on this laptop's GPU (**[torch]**; it picks `cuda` if available, else `mps`, else `cpu`). For fp32 the minimum-bytes intensity is `2n**3 / (3 * n**2 * 4) = n / 6`:
+
+```python
+# roofline_measure.py
+import time, torch
+d = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+def sync():
+    if d == "mps": torch.mps.synchronize()
+    if d == "cuda": torch.cuda.synchronize()
+print(f"device={d}")
+for n in [64, 128, 256, 512, 1024, 2048, 4096]:
+    a = torch.randn(n, n, device=d); b = torch.randn(n, n, device=d)   # (n, n) fp32
+    for _ in range(3): c = a @ b
+    sync(); reps = max(3, int(2e10 / (2 * n**3))); t = time.perf_counter()
+    for _ in range(reps): c = a @ b
+    sync(); t = (time.perf_counter() - t) / reps
+    flops, byts = 2 * n**3, 3 * n * n * 4
+    print(f"n={n:>5}  intensity={flops/byts:7.1f} FLOP/B  {t*1e6:9.1f} us  {flops/t/1e12:6.2f} TFLOPS")
+```
+
+```
+device=mps
+n=   64  intensity=   10.7 FLOP/B       15.1 us    0.03 TFLOPS
+n=  128  intensity=   21.3 FLOP/B       23.7 us    0.18 TFLOPS
+n=  256  intensity=   42.7 FLOP/B       32.1 us    1.05 TFLOPS
+n=  512  intensity=   85.3 FLOP/B      141.1 us    1.90 TFLOPS
+n= 1024  intensity=  170.7 FLOP/B     1026.6 us    2.09 TFLOPS
+n= 2048  intensity=  341.3 FLOP/B     7636.4 us    2.25 TFLOPS
+n= 4096  intensity=  682.7 FLOP/B    46556.3 us    2.95 TFLOPS
+```
+
+Achieved FLOPS climb 100x from `n = 64` to `n = 4096` and flatten around 2-3 TFLOPS. But notice the time column at small `n`: 15 us for a 64x64 matmul is not the memory roof, it's the **overhead roof** - the fixed per-launch cost from the [GPU section](#latency-optimized-vs-throughput-optimized). A practical roofline has three regimes, not two: overhead-bound (tiny ops), memory-bound, compute-bound. Horace He's [Making Deep Learning Go Brrrr](https://horace.io/brrr_intro.html) is built around exactly this three-way split. (Apple doesn't publish an official fp32 FLOPS figure for the M4 GPU that I could cite, so I'm not computing an MFU here.)
+
+### Try this
+
+1. Using `roofline.py`, find the decode batch size at which an 8B bf16 model becomes compute-bound on an H100 (ignoring KV cache). Then redo it for int4 weights (0.5 bytes/param) with bf16 compute.
+2. Compute the arithmetic intensity of a LayerNorm over a `(B, T, C)` bf16 tensor (read once, write once, ~8 FLOPs per element). Memory- or compute-bound?
+3. Compute the intensity of a `(B*T, C) @ (C, 4C)` MLP matmul for `C = 4096` as a function of `B*T`. At what token count per micro-batch does it cross the H100 ridge? (Bytes: read both inputs and write the output once.)
+4. Run `roofline_measure.py` with `dtype=torch.float16` (on MPS/CUDA). How much does the ceiling move?
+5. Add a memory-bound op to the measurement (`a + b` on `(n, n)` tensors) and plot both on log-log axes. Where does each sit relative to the ridge?
 
 
 
@@ -887,6 +1719,28 @@ Putting it all together, here is a simplified typical 8-GPU HGX-style training n
  NICs (e.g. 8x 400 Gbps = 8x 50 GBps) -> cluster backend network (InfiniBand / RoCE)
  Each GPU (G0-G7) has its own HBM (80-288 GB, 3-8 TBps).
 ```
+
+On a real node, `nvidia-smi topo -m` prints this as a matrix. A trimmed, illustrative example of the shape for a 2-socket, 8-GPU, 8-NIC node (**untested**; columns and legend are the real format, the specific entries are made up to match the diagram):
+
+```console
+$ nvidia-smi topo -m
+        GPU0  GPU1  GPU2  ...  GPU7  NIC0  NIC1  ...  CPU Affinity  NUMA Affinity
+GPU0     X    NV18  NV18  ...  NV18  PIX   PXB   ...  0-55          0
+GPU1    NV18   X    NV18  ...  NV18  PXB   PIX   ...  0-55          0
+...
+GPU7    NV18  NV18  NV18  ...   X    SYS   SYS   ...  56-111        1
+
+Legend:
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+```
+
+Read it as: GPU0 and NIC0 are `PIX` (same PCIe switch, ideal for GPUDirect RDMA), GPU0 and GPU7 are `NV18` (all 18 NVLinks via NVSwitch), and GPU7's processes should run on cores 56-111. The legend text is quoted from memory of the tool's output; check `nvidia-smi topo -m` on your node for the exact wording.
 
 The bandwidths along the way, using H100-generation numbers (per direction, spec):
 
@@ -925,9 +1779,53 @@ Things that go wrong along this path, each of which you can now name:
 
 For scale: copying a 1 GB batch at the measured ~55 GBps takes `1e9 / 55e9 = 18` ms. If the training step takes 500 ms and the copy overlaps with compute, that's free; if it's synchronous and the step takes 50 ms, it's a 36% overhead. Arithmetic first, then the profiler.
 
+You can time the host-side hops of this path with nothing but `time.perf_counter`. A toy version with pre-tokenized `int32` data, batch `(64, 2048)`: **[torch]**
+
+```python
+# pipeline_stages.py
+import os, time, numpy as np, torch
+B, T = 64, 2048                                          # (B, T) int32 token ids = 512 KiB per batch
+path = "/tmp/tokens.bin"
+if not os.path.exists(path):
+    np.random.randint(0, 50000, size=B * T * 200, dtype=np.int32).tofile(path)   # 200 batches
+dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
+def sync():
+    if dev == "cuda": torch.cuda.synchronize()
+    if dev == "mps": torch.mps.synchronize()
+mm = np.memmap(path, dtype=np.int32, mode="r")
+stamps = {}
+def tick(name, t0): stamps[name] = stamps.get(name, 0) + time.perf_counter() - t0
+for i in range(200):
+    t = time.perf_counter(); raw = np.array(mm[i*B*T:(i+1)*B*T]);           tick("1-2 read (page cache/disk)", t)
+    t = time.perf_counter(); x = torch.from_numpy(raw).view(B, T).long();     tick("3 to int64 tensor (B, T)", t)
+    t = time.perf_counter(); xp = x.pin_memory();                              tick("5 pin_memory copy", t)
+    t = time.perf_counter(); xd = xp.to(dev, non_blocking=True); sync();       tick(f"6 host->{dev}", t)
+for k, v in stamps.items(): print(f"{k:<28} {v/200*1e6:8.1f} us/batch")
+print(f"batch bytes on device: {xd.numel()*xd.element_size()/2**20:.1f} MiB")
+```
+
+Output on the M4 (one run; a second run on the busier machine was 1.5-3.5x slower per stage):
+
+```
+1-2 read (page cache/disk)      210.0 us/batch
+3 to int64 tensor (B, T)        281.4 us/batch
+5 pin_memory copy               233.0 us/batch
+6 host->mps                     757.1 us/batch
+batch bytes on device: 1.0 MiB
+```
+
+Every stage is hundreds of microseconds for a 1 MiB batch, and the int32 -> int64 conversion alone costs more than reading the data (it doubles the bytes - store and transfer `int32`, widen on the GPU if you can). On an NVIDIA node, replace the last stage with a CUDA-event timing and compare against `1 MiB / 55 GBps = 19 us`; if your measured number is much bigger, you're paying latency or sync overhead, not bandwidth. A real profiler (see [profiling and optimization](../training/profiling-and-optimization.md)) gives the same answer with less effort once you know what to look for.
+
 With **GPUDirect Storage**, steps 1-6 collapse into one: NVMe DMAs straight into HBM through the PCIe switch, with no host memory hop - useful when the data needs no CPU-side processing (e.g. pre-tokenized shards, checkpoint loading). With **GPUDirect RDMA**, the same applies to the network: a gradient all-reduce goes HBM -> PCIe switch -> NIC -> wire, without touching host DRAM or CPU cores.
 
 
+
+### Try this
+
+1. On a GPU node, run `nvidia-smi topo -m` and `lspci -tv`, and redraw the ASCII diagram above for *your* node: which GPU shares a switch with which NIC, and which NUMA node owns each GPU (**untested** here).
+2. In `pipeline_stages.py`, remove `.long()` and measure again. Then move the widening to the device (`xd.long()` after the copy). Which is cheapest end to end?
+3. Delete `/tmp/tokens.bin`'s page-cache copy (Linux: `vmtouch -e /tmp/tokens.bin` if installed, or drop caches; macOS: `sudo purge`) and re-run. How does stage 1-2 change? That's the difference between a warm and a cold epoch.
+4. For a job with 500 ms steps, 8 GPUs per node and 16 MiB of input per GPU per step, compute the per-node host->device bandwidth needed and the fraction of one PCIe 5 x16 link it uses. Is the input pipeline ever likely to be PCIe-bound for text LLM training? For video?
 
 ## You can now read
 

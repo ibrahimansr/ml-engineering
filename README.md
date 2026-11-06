@@ -15,73 +15,87 @@ I've been compiling this information mostly for myself so that I could quickly f
 
 ## Table of Contents
 
+New to systems? Read Part 1 in order first - every later chapter links back to it. Each chapter starts with a **Prerequisites** list, so you can also jump straight to a topic and follow the links backwards.
 
-**Part 0. Foundations** - start here if you're new to systems
+**Part 1. Foundations** - systems from zero
 
-1. **[Computer Architecture](./foundations/computer-architecture.md)** - number formats, CPUs, memory hierarchy, PCIe, what a GPU is.
+1. **[Computer Architecture](./foundations/computer-architecture.md)** - number formats, CPUs, memory hierarchy, PCIe, what a GPU is
+1. **[Linux and Operating Systems](./foundations/linux-and-os.md)** - shell, processes, memory, filesystems, ssh, systemd, CUDA versions
+1. **[Concurrency and Parallelism](./foundations/concurrency.md)** - threads, processes, the GIL, asyncio, DataLoader internals, CUDA streams
+1. **[Computer Networking](./foundations/networking.md)** - TCP/IP, sockets, DNS/HTTP/TLS, data center networks, RDMA, InfiniBand
+1. **[Distributed Systems](./foundations/distributed-systems.md)** - failures, clocks, consensus, leases, rendezvous, fault tolerance
+1. **[Containers, VMs, MicroVMs and Sandboxing](./foundations/containers-and-virtualization.md)** - namespaces, cgroups, Docker, KVM, Firecracker, gVisor, untrusted code
+1. **[Storage, Checkpoints and Data Pipelines](./foundations/storage-and-data.md)** - block/file/object storage, safetensors, checkpoint I/O, datasets at scale
 
-1. **[Linux and Operating Systems](./foundations/linux-and-os.md)** - shell, processes, memory, filesystems, containers, CUDA versions.
+**Part 2. Model Architectures**
 
-1. **[Concurrency and Parallelism](./foundations/concurrency.md)** - threads, processes, the GIL, DataLoader internals, CUDA streams.
+1. **[The Transformer and Its Evolution](./models/architectures.md)** - attention, norms, RoPE, SwiGLU, GQA, MLA, sliding windows, MoE - built in code
+1. **[Beyond the Standard Transformer](./models/beyond-transformers.md)** - linear attention, DeltaNet, SSMs/Mamba, hybrids, multimodal, diffusion - built in code
 
-1. **[Computer Networking](./foundations/networking.md)** - TCP/IP, data center networks, RDMA, InfiniBand, collectives intro.
+**Part 3. Insights**
 
-1. **[Distributed Systems](./foundations/distributed-systems.md)** - ranks, failures, rendezvous, synchronous training, fault tolerance.
+1. **[The AI Battlefield Engineering](./insights/ai-battlefield.md)** - what you need to know in order to succeed
+1. **[How to Choose a Cloud Provider](./insights/how-to-choose-cloud-provider.md)** - questions that will empower you to have a successful compute cloud experience
+1. **[When Is It Worth Upgrading GPUs?](./insights/when-to-upgrade-gpus/README.md)** - a framework for deciding whether a GPU upgrade is worth its cost
 
-**Part 0.5. Model Architectures**
+**Part 4. Hardware and Kernels**
 
-1. **[The Transformer and Its Evolution](./models/architectures.md)** - norms, positional encodings, attention variants, MoE, and why each was chosen.
+1. **[Compute](compute)** - accelerators, CPUs, CPU memory
+1. **[GPU Execution Model](compute/accelerator/execution-model.md)** - SMs, warps, memory hierarchy, tensor cores, rooflines, FlashAttention, torch.compile
+1. **[Writing GPU Kernels](compute/accelerator/writing-kernels.md)** - CUDA C++ and Triton, from vector add to tensor-core GEMM and FlashAttention
+1. **[The GPU Node Software Stack](compute/gpu-software-stack.md)** - drivers, CUDA, NCCL, RDMA and node bring-up
+1. **[Storage](storage)** - local, distributed and shared file systems
+1. **[Network](network)** - intra- and inter-node networking
+1. **[Collective Communication Internals](network/collectives-internals.md)** - ring/tree algorithms, NCCL internals, cost models
 
-1. **[Beyond the Standard Transformer](./models/beyond-transformers.md)** - SSMs, linear attention, hybrids, multimodal, diffusion.
+**Part 5. Orchestration**
 
-**Part 1. Insights**
+1. **[Orchestration Systems](orchestration)** - overview
+1. **[Slurm From Zero](orchestration/slurm/from-zero.md)** - architecture, jobs, multi-node PyTorch, preemption, admin basics
+1. **[SLURM](orchestration/slurm)** - cheatsheets, admin, performance, launchers
+1. **[Kubernetes From Zero](orchestration/kubernetes-from-zero.md)** - objects, controllers, operators, GPU workloads
+1. **[Orchestration Internals](orchestration/internals.md)** - gang scheduling, topology, elastic launch, failure arithmetic
 
-1. **[The AI Battlefield Engineering](./insights/ai-battlefield.md)** - what you need to know in order to succeed.
-
-1. **[How to Choose a Cloud Provider](./insights/how-to-choose-cloud-provider.md)** - these questions will empower you to have a successful compute cloud experience.
-
-1. **[When Is It Worth Upgrading GPUs?](./insights/when-to-upgrade-gpus/README.md)** - a practical framework for deciding whether a GPU generation upgrade is worth its cost, worked through on a real H200 → B200 benchmark.
-
-**Part 2. Hardware**
-
-1. **[Compute](compute)** - accelerators, CPUs, CPU memory.
-
-1. **[Storage](storage)** - local, distributed and shared file systems.
-
-1. **[Network](network)** - intra- and inter-node networking.
-
-
-**Part 3. Orchestration**
-
-1. **[Orchestration Systems](orchestration)** - managing containers and resources
-1. **[SLURM](orchestration/slurm)** - Simple Linux Utility for Resource Management
-
-
-**Part 4. Training**
+**Part 6. Training**
 
 1. **[Training](training)** - model training-related guides
+1. **[Training Arithmetic and Numerics](training/arithmetic.md)** - FLOPs, memory, mixed precision, FP8, optimizers
+1. **[Parallelism From First Principles](training/model-parallelism/derivations.md)** - DDP, ZeRO/FSDP, TP, SP/CP, PP, EP, composing them
+1. **[Profiling and Optimizing Training](training/profiling-and-optimization.md)** - hands-on bottleneck hunting
+1. **[Training Across Datacenters and the Internet](training/decentralized-training.md)** - DiLoCo, compression, elastic and decentralized training
 
-
-**Part 5. Inference**
+**Part 7. Inference**
 
 1. **[Inference](inference)** - model inference insights
-1. **[Inference Arithmetic](inference/arithmetic.md)** - rooflines, KV cache sizing, quantization and capacity planning
+1. **[Inference Arithmetic](inference/arithmetic.md)** - rooflines, KV cache sizing, quantization, capacity planning
 1. **[Inside a Serving Engine](inference/serving-engine-internals.md)** - paged attention, scheduling, speculative decoding, disaggregation
+1. **[Serving LLMs in Practice](inference/serving-hands-on.md)** - vLLM/SGLang, load testing, gateways, multi-node serving
 
+**Part 8. Platforms**
 
-**Part 6. Development**
+1. **[Control Planes and Fleet Management](platform/control-planes.md)** - placement, node agents, leases, reconciliation, operating services
+1. **[Infrastructure for Large-Scale RL](platform/rl-infrastructure.md)** - generators vs trainers, async RL, weight sync, environments and sandboxes
+
+**Part 9. Development**
 
 1. **[Debugging and Troubleshooting](debug)** - how to debug easy and difficult issues
-
 1. **[And more debugging](https://github.com/stas00/the-art-of-debugging)**
-
 1. **[Testing](testing)** - numerous tips and tools to make test writing enjoyable
 
-
-**Part 7. Miscellaneous**
+**Part 10. Miscellaneous**
 
 1. **[Resources](resources)** - LLM/VLM chronicles
 
+### Reading paths
+
+After Part 1, pick the path closest to the work you want to do:
+
+- **Distributed training:** Training Arithmetic → Parallelism From First Principles → Collective Communication Internals → Profiling and Optimizing Training → Training Across Datacenters → Slurm From Zero
+- **Inference:** Inference Arithmetic → Inside a Serving Engine → Serving LLMs in Practice → Kubernetes From Zero → Control Planes
+- **RL infrastructure:** Inference Arithmetic → Inside a Serving Engine → Parallelism From First Principles → Infrastructure for Large-Scale RL → Containers/Sandboxing
+- **Sandboxes and compute platforms:** Containers, VMs and MicroVMs → Kubernetes From Zero → Control Planes → The GPU Node Software Stack → Orchestration Internals
+- **Kernels and performance:** GPU Execution Model → Writing GPU Kernels → Profiling and Optimizing Training → Inside a Serving Engine (attention kernels)
+- **Model architectures:** Part 2, then Inference Arithmetic for what each design costs at serving time
 
 ## Updates
 

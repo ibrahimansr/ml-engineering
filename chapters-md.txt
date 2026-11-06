@@ -5,6 +5,8 @@ foundations/linux-and-os.md
 foundations/concurrency.md
 foundations/networking.md
 foundations/distributed-systems.md
+foundations/containers-and-virtualization.md
+foundations/storage-and-data.md
 
 models/architectures.md
 models/beyond-transformers.md
@@ -16,6 +18,8 @@ insights/when-to-upgrade-gpus/README.md
 compute/README.md
 compute/accelerator/README.md
 compute/accelerator/execution-model.md
+compute/accelerator/writing-kernels.md
+compute/gpu-software-stack.md
 compute/accelerator/benchmarks/README.md
 compute/accelerator/nvidia/debug.md
 compute/accelerator/amd/debug.md
@@ -32,11 +36,13 @@ network/debug/README.md
 network/benchmarks/README.md
 
 orchestration/README.md
+orchestration/slurm/from-zero.md
 orchestration/slurm/README.md
 orchestration/slurm/admin.md
 orchestration/slurm/users.md
 orchestration/slurm/performance.md
 orchestration/slurm/launchers/README.md
+orchestration/kubernetes-from-zero.md
 orchestration/kubernetes/README.md
 orchestration/internals.md
 
@@ -45,6 +51,7 @@ training/model-parallelism/README.md
 training/model-parallelism/derivations.md
 training/performance/README.md
 training/arithmetic.md
+training/profiling-and-optimization.md
 training/fault-tolerance/README.md
 training/reproducibility/README.md
 training/instabilities/README.md
@@ -55,10 +62,15 @@ training/dtype.md
 training/emulate-multi-node.md
 training/re-train-hub-models.md
 training/datasets.md
+training/decentralized-training.md
 
 inference/README.md
 inference/arithmetic.md
 inference/serving-engine-internals.md
+inference/serving-hands-on.md
+
+platform/control-planes.md
+platform/rl-infrastructure.md
 
 debug/README.md
 debug/pytorch.md

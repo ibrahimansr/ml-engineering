@@ -10,6 +10,10 @@
 
 - [Training arithmetic and numerics](arithmetic.md)
 
+- [Profiling and optimizing training, hands-on](profiling-and-optimization.md)
+
+- [Training across datacenters and the internet](decentralized-training.md)
+
 - [Fault Tolerance](fault-tolerance)
 
 - [Reproducibility](reproducibility)

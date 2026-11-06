@@ -6,6 +6,7 @@ XXX: this chapter is under construction - some sections are complete, some are s
 
 - [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md)
 - [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md)
+- [Serving LLMs in Practice](serving-hands-on.md)
 
 ## Glossary
 
