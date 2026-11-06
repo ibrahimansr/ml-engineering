@@ -5,6 +5,7 @@
 This chapter assumes you know ML well and systems not at all. Read these first, or keep them open next to this one:
 
 - [Linux and the OS](../foundations/linux-and-os.md): processes, signals, cgroups, namespaces and the OOM killer. Kubernetes is mostly a distributed manager for those primitives.
+- YAML: not assumed. [YAML in 15 minutes](#yaml-in-15-minutes) below covers everything this chapter uses.
 - [Containers and virtualization](../foundations/containers-and-virtualization.md): images, registries and container runtimes. A pod is a group of containers, so you need to know what a container is.
 - [Networking](../foundations/networking.md): IP addresses, ports, DNS, NAT and load balancing, which the Service and NetworkPolicy sections rely on.
 - [Distributed systems](../foundations/distributed-systems.md): consensus, leases and eventual consistency, which explain why the control plane is built around etcd and watches.
@@ -173,6 +174,187 @@ def update_with_retry(read, write, mutate, tries=5):
             return obj
     raise RuntimeError("gave up after conflicts")
 ```
+
+## YAML in 15 minutes
+
+Every Kubernetes object in this chapter is written in **YAML**, a text format for nested data (the same kind of data as a Python dict of lists of dicts). Kubernetes reads it, converts it to JSON and sends it to the API server, so anything you write in YAML maps one-to-one onto JSON. You only need a small part of the language.
+
+Everything below runs with `pip install pyyaml`. `yaml.safe_load` turns YAML text into Python objects, which is the quickest way to check what a file really means.
+
+### Mappings, lists and scalars
+
+A **mapping** is `key: value` (a Python dict). A **list** is one `- ` per item (a Python list). Nesting is done **only by indentation**, with spaces. Two spaces per level is the convention. Values without quotes are guessed: numbers become numbers, `true`/`false` become booleans, `null` becomes `None`, everything else becomes a string. `#` starts a comment.
+
+```python
+# basics.py
+import yaml, json
+
+doc = """
+name: trainer            # a string: quotes are optional
+replicas: 3              # an int
+lr: 3.0e-4               # a float
+use_bf16: true           # a bool
+checkpoint_dir: null     # None
+gpus: [0, 1, 2, 3]       # a list, inline ("flow") style
+env:                     # a nested mapping: children are indented
+  WANDB_PROJECT: rl
+  NCCL_DEBUG: WARN
+datasets:                # a list in block style: one "- " per item
+  - name: math
+    weight: 0.7
+  - name: code
+    weight: 0.3
+"""
+print(json.dumps(yaml.safe_load(doc), indent=2))
+```
+
+Output:
+
+```
+{
+  "name": "trainer",
+  "replicas": 3,
+  "lr": 0.0003,
+  "use_bf16": true,
+  "checkpoint_dir": null,
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "env": {
+    "WANDB_PROJECT": "rl",
+    "NCCL_DEBUG": "WARN"
+  },
+  "datasets": [
+    {
+      "name": "math",
+      "weight": 0.7
+    },
+    {
+      "name": "code",
+      "weight": 0.3
+    }
+  ]
+}
+```
+
+Two styles mean the same thing. `gpus: [0, 1, 2, 3]` and `metadata: {name: x}` are the inline ("flow") style. The `- ` lists and indented mappings are the block style. Kubernetes manifests mostly use block style.
+
+### Multi-line strings
+
+Shell scripts and config files embedded in a manifest use `|` (keep newlines) or `>` (fold lines into one):
+
+```python
+# multiline.py
+import yaml
+doc = """
+literal: |
+  line one
+  line two
+folded: >
+  these lines
+  become one line
+"""
+print(yaml.safe_load(doc))
+```
+
+Output:
+
+```
+{'literal': 'line one\nline two\n', 'folded': 'these lines become one line\n'}
+```
+
+You will see `|` in `command:` blocks that run a small shell script, and in ConfigMaps that hold a whole config file.
+
+### Several documents in one file
+
+`---` separates documents, so one file can hold a Deployment and its Service. `kubectl apply -f file.yaml` applies all of them.
+
+```python
+# multidoc.py
+import yaml
+doc = """
+kind: Deployment
+metadata: {name: model-server}
+---
+kind: Service
+metadata: {name: model-server}
+"""
+for d in yaml.safe_load_all(doc):
+    print(d["kind"], d["metadata"]["name"])
+```
+
+Output:
+
+```
+Deployment model-server
+Service model-server
+```
+
+### The traps
+
+Unquoted values are guessed, and the guesses bite. PyYAML follows the YAML 1.1 rules, which many tools still use:
+
+```python
+# traps.py
+import yaml
+doc = """
+country: NO        # the "Norway problem"
+version: 1.10      # looks like a version, parses as a float
+port_mapping: 22:22
+octal_ish: 0755
+quoted_country: "NO"
+quoted_version: "1.10"
+"""
+for k, v in yaml.safe_load(doc).items():
+    print(f"{k:15} -> {v!r}  ({type(v).__name__})")
+```
+
+Output:
+
+```
+country         -> False  (bool)
+version         -> 1.1  (float)
+port_mapping    -> 1342  (int)
+octal_ish       -> 493  (int)
+quoted_country  -> 'NO'  (str)
+quoted_version  -> '1.10'  (str)
+```
+
+- `NO` became `False` (the "Norway problem"); `yes`, `no`, `on`, `off` are all booleans under YAML 1.1.
+- `1.10` became the float `1.1`, so a version like CUDA `12.10` or Python `3.10` silently changes.
+- `22:22` became `1342` (YAML 1.1 reads it as base-60), and `0755` became `493` (octal).
+
+YAML 1.2 parsers fix some of these, but you rarely know which parser a tool uses. The rule is simple: **quote anything that must stay a string**: versions, image tags, ports in `host:container` form, country codes, and every value under `env:` (Kubernetes requires env values to be strings, so `value: 8` is rejected and `value: "8"` works).
+
+Indentation errors are the other common failure. Tabs are not allowed at all, and a misaligned key breaks the structure:
+
+```python
+# errors.py
+import yaml
+bad_tab = "env:\n\tNCCL_DEBUG: WARN\n"
+bad_indent = "env:\n  A: 1\n   B: 2\n"
+for name, doc in [("tab", bad_tab), ("misaligned", bad_indent)]:
+    try:
+        yaml.safe_load(doc)
+    except yaml.YAMLError as e:
+        print(f"{name}: {type(e).__name__}: {str(e).splitlines()[0]}")
+```
+
+Output:
+
+```
+tab: ScannerError: while scanning for the next token
+misaligned: ScannerError: mapping values are not allowed here
+```
+
+When a manifest fails with an error like these, check for tabs and alignment first. `python -c "import yaml,sys,json; print(json.dumps(yaml.safe_load(open(sys.argv[1])), indent=2))" file.yaml` shows exactly how a file was parsed.
+
+### Reading a manifest
+
+With that, every manifest in this chapter reads the same way: the top-level keys `apiVersion`, `kind`, `metadata`, `spec` are a mapping; `containers:` is a list (each item starts with `- `); each container is a mapping with `name`, `image`, `resources` and so on. The next section explains what those keys mean.
 
 ## Architecture and the life of a `kubectl apply`
 

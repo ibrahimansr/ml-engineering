@@ -1719,6 +1719,8 @@ ps aux                             # inside: only bash and ps, bash is PID 1
 
 ### Docker and Apptainer for ML
 
+> **New to Docker?** It is taught from zero in [Containers, VMs, MicroVMs and Sandboxing](containers-and-virtualization.md#3-docker-from-zero), later in Part 1. For now, think of a container image as a packaged root filesystem (OS libraries, Python, your code) and a container as a process started from that image, isolated with the namespaces and cgroups described above. This section only shows the flags that matter for ML; come back to it after that chapter.
+
 **Docker** runs a root daemon; users talk to it. Typical GPU invocation (requires the NVIDIA Container Toolkit on the host):
 
 ```bash
