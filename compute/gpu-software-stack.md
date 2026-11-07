@@ -7,7 +7,7 @@ This chapter goes through that stack one layer at a time, from firmware up to fr
 Conventions:
 
 - Python marked **[ran]** was executed on an Apple Silicon Mac (CPython 3.14.5, macOS 15) while writing this chapter. The output pasted under it is the real output.
-- Package names and versions marked **[apt, verified]** were read from the Ubuntu 24.04 and NVIDIA CUDA apt repositories on 2026-11-05, using `apt-cache policy` inside an `ubuntu:24.04` amd64 container. They will drift, so treat them as "as of Nov 2026".
+- Package names and versions marked **[apt, verified]** were read from the Ubuntu 24.04 and NVIDIA CUDA apt repositories on 2026-11-05, using `apt-cache policy <package>` (which prints the versions apt could install and from which repository) inside an `ubuntu:24.04` amd64 container. They will drift, so treat them as "as of Nov 2026".
 - Shell sessions on GPU nodes (`nvidia-smi`, `ibstat`, `dcgmi`, ...) are **untested** here, because there was no GPU or InfiniBand hardware. Their output is sketched from the tools' documented formats with the details trimmed. The commands and flags are real. The specific numbers in the sketched output are only examples.
 
 ## Prerequisites
@@ -15,8 +15,12 @@ Conventions:
 - [Linux and the OS](../foundations/linux-and-os.md), especially [shared libraries and `LD_LIBRARY_PATH`](../foundations/linux-and-os.md#shared-libraries-and-ld_library_path), [CUDA driver vs runtime vs toolkit](../foundations/linux-and-os.md#cuda-driver-vs-runtime-vs-toolkit-why-cuda-version-mismatch-happens), [systemd](../foundations/linux-and-os.md#systemd-and-services) and [package management](../foundations/linux-and-os.md#package-management-apt-vs-conda-vs-pip-vs-uv).
 - [Computer architecture](../foundations/computer-architecture.md): [PCIe](../foundations/computer-architecture.md#pcie), [DMA](../foundations/computer-architecture.md#dma), [GPUDirect](../foundations/computer-architecture.md#gpudirect-cutting-the-cpu-and-its-memory-out-of-the-path), [NVLink and NVSwitch](../foundations/computer-architecture.md#nvlink-and-nvswitch) and [the map of a GPU server](../foundations/computer-architecture.md#a-map-of-a-gpu-server).
 - [Networking](../foundations/networking.md), especially [HPC networking: RDMA, InfiniBand, RoCE, EFA](../foundations/networking.md#hpc-networking-rdma-infiniband-roce-efa).
-- [Containers and virtualization](../foundations/containers-and-virtualization.md), for the container half of the host-vs-container split.
-- Helpful but optional: [the GPU execution model](accelerator/execution-model.md) and [collectives internals](../network/collectives-internals.md).
+- [Toolkit](../foundations/toolkit.md): the terminal basics, Make and the "compiling C" sections (section 6 builds perftest with `./configure` and `make`, section 7 builds nccl-tests with `make`), and regular expressions (the acceptance script's parsers).
+- [Linux and the OS](../foundations/linux-and-os.md) also for the shell itself: [pipes and redirection](../foundations/linux-and-os.md#pipes-and-redirection), [scripting essentials](../foundations/linux-and-os.md#scripting-essentials) (`for` loops, `$(...)`), [/proc and /sys](../foundations/linux-and-os.md#proc-and-sys-the-kernel-as-files), [logs: journalctl and dmesg](../foundations/linux-and-os.md#logs-journalctl-and-dmesg) (Xid errors) and [how torchrun spawns workers](../foundations/linux-and-os.md#how-torchrun-spawns-workers).
+- [Containers and virtualization](../foundations/containers-and-virtualization.md), for the container half of the host-vs-container split, especially [GPUs in containers](../foundations/containers-and-virtualization.md#6-gpus-in-containers) and [IOMMU, VFIO and PCIe passthrough](../foundations/containers-and-virtualization.md#iommu-vfio-and-pcie-passthrough) (IOMMU, ACS, SR-IOV).
+- [Distributed systems](../foundations/distributed-systems.md): ranks, launchers and [collectives](../foundations/distributed-systems.md#collectives-the-workhorse-of-distributed-training); and [Networking](../foundations/networking.md#how-pytorch-distributed-bootstraps) for how NCCL bootstraps and picks interfaces.
+- Helpful: [the GPU execution model](accelerator/execution-model.md) and [writing kernels](accelerator/writing-kernels.md) (where `nvcc`, PTX and SASS come from).
+- Forward links (later chapters, not needed first): [collectives internals](../network/collectives-internals.md) (algbw/busbw, NCCL algorithms), [Slurm from zero](../orchestration/slurm/from-zero.md) (`srun`, `scontrol`, draining, health checks), [Kubernetes from zero](../orchestration/kubernetes-from-zero.md) and [orchestration internals](../orchestration/internals.md) (DaemonSets, taints, device plugins, the GPU Operator). Where this chapter uses their commands it explains just enough to follow.
 
 
 ## 1. The map: what runs where
@@ -63,7 +67,7 @@ NVIDIA's own diagram of the boundary between "driver" and "toolkit":
 
 ### Why the split is where it is
 
-The dividing line is "kernel vs process". The kernel module and `libcuda.so` speak a private protocol to each other through `ioctl` calls on `/dev/nvidia*`. Because that protocol changes between driver versions, the two must match exactly. Everything above `libcuda` uses a stable, versioned API, so it can be newer or older within the rules of [section 2](#2-versions-and-the-compatibility-rules).
+The dividing line is "kernel vs process". The kernel module and `libcuda.so` speak a private protocol to each other through `ioctl` calls on `/dev/nvidia*` (an `ioctl` is the generic "send this device a driver-specific command" [system call](../foundations/linux-and-os.md#system-calls-the-only-door); `/dev/nvidia*` are the [device files](../foundations/linux-and-os.md#everything-is-a-file) the driver creates). Because that protocol changes between driver versions, the two must match exactly. Everything above `libcuda` uses a stable, versioned API, so it can be newer or older within the rules of [section 2](#2-versions-and-the-compatibility-rules).
 
 That one fact explains the host-vs-container split:
 
@@ -115,6 +119,8 @@ mlx5_ib               520192  0
 mlx5_core            2723840  1 mlx5_ib
 ib_uverbs             200704  3 nvidia_peermem,rdma_ucm,mlx5_ib
 ```
+
+Tools in that block, one line each: `dmidecode` reads the motherboard's description of itself (model, BIOS version); `lspci` lists every device on the PCIe bus ([PCIe](../foundations/computer-architecture.md#pcie)); `lsmod` lists the kernel modules currently loaded (`modprobe <name>` loads one, `modprobe -r <name>` unloads it); `dkms` is explained [below](#dkms-why-the-driver-gets-rebuilt-when-the-kernel-changes); `systemctl is-active` asks systemd whether a [service](../foundations/linux-and-os.md#systemd-and-services) is running.
 
 The modules: `nvidia` is the core driver. `nvidia_uvm` handles unified memory and is needed by CUDA. `nvidia_modeset` and `nvidia_drm` handle display and are harmless on servers. `nvidia_peermem` lets the NIC DMA directly into GPU memory ([GPUDirect RDMA](#gpudirect-rdma-the-nic-reads-gpu-memory)). `mlx5_core` and `mlx5_ib` are the ConnectX NIC driver and its InfiniBand/RDMA part. `ib_uverbs` exposes RDMA to user space.
 
@@ -180,7 +186,7 @@ As of CUDA 13.5 (November 2026), from [NVIDIA's compatibility guide](https://doc
 
 1. **Backward compatibility.** A newer driver runs anything built for an older CUDA. A 620 driver runs a CUDA 11.8 binary.
 2. **Minor-version compatibility (CUDA 11+).** Within one CUDA major version, a runtime from a newer minor version runs on any driver at or above that major version's floor, with a limited feature set (features that need a newer driver, such as some PTX JIT paths, will fail). The floors are 11.x: `>= 450.80.02`, 12.x: `>= 525.60.13`, 13.x: `>= 580` (NVIDIA's own example uses 580.65.06, the driver released with 13.0). This is why runtime 13.2 runs on driver 580.
-3. **Forward compatibility across major versions** needs the `cuda-compat-<major>-<minor>` package, and **only on datacenter GPUs** (plus some RTX "NGC-ready" SKUs and Jetson). That package is a newer `libcuda.so` placed in `/usr/local/cuda-X.Y/compat/` and loaded through `LD_LIBRARY_PATH`. It runs on top of an older kernel module, and only on specific supported driver branches.
+3. **Forward compatibility across major versions** needs the `cuda-compat-<major>-<minor>` package, and **only on datacenter GPUs** (plus some RTX "NGC-ready" SKUs and Jetson, NVIDIA's embedded boards). That package is a newer `libcuda.so` placed in `/usr/local/cuda-X.Y/compat/` and loaded through `LD_LIBRARY_PATH`. It runs on top of an older kernel module, and only on specific supported driver branches.
 4. **Architecture support is separate.** The runtime and the binary must also know your GPU. Each GPU has a **compute capability** (`sm_80` for A100, `sm_90` for H100/H200, `sm_100` for B200). A binary contains machine code (SASS) for some capabilities and maybe PTX, an intermediate code the driver can JIT-compile for newer ones. CUDA added `sm_90` support in 11.8 and Blackwell `sm_100` in 12.8. A CUDA 12.4 wheel on a B200 therefore fails with `no kernel image is available for execution on the device` even with a perfect driver.
 
 Rules 1 to 3 as code, so you can paste in the two numbers from a node and get an answer: **[ran]**
@@ -317,7 +323,7 @@ license:        Dual MIT/GPL          # proprietary builds say "NVIDIA"
 
 ### DKMS: why the driver gets rebuilt when the kernel changes
 
-A kernel module is compiled against one specific kernel version's internal interfaces, which are not stable. When Ubuntu installs a new kernel, every out-of-tree module (NVIDIA, sometimes DOCA-OFED) has to be rebuilt for it. **DKMS** (Dynamic Kernel Module Support) automates that. The driver package installs the module *source* under `/usr/src/nvidia-<ver>/`, and an apt hook recompiles it for every kernel that gets installed. The `nvidia-dkms-*-open` package is the DKMS piece. The precompiled alternative (`linux-modules-nvidia-*` in Ubuntu) ships modules already built for Canonical's kernels.
+A kernel module is compiled against one specific kernel version's internal interfaces, which are not stable. When Ubuntu installs a new kernel, every out-of-tree module (a module not shipped inside the Linux source tree: NVIDIA's, and sometimes DOCA-OFED, the RDMA NIC stack from [section 6](#the-software-inbox-rdma-core-vs-doca-ofed)) has to be rebuilt for it. **DKMS** (Dynamic Kernel Module Support) automates that. The driver package installs the module *source* under `/usr/src/nvidia-<ver>/`, and an apt hook recompiles it for every kernel that gets installed. The `nvidia-dkms-*-open` package is the DKMS piece. The precompiled alternative (`linux-modules-nvidia-*` in Ubuntu) ships modules already built for Canonical's kernels.
 
 This only works if the kernel headers for the target kernel are installed, so put `linux-headers-$(uname -r)` (or the `linux-headers-generic` metapackage) in your base image. A missing header package is the most common reason a node comes back from a kernel update with no GPU. **[untested]**
 
@@ -332,11 +338,13 @@ ls: cannot access '/lib/modules/6.8.0-88-generic/updates/dkms/': No such file or
 $ sudo apt install linux-headers-6.8.0-88-generic && sudo dkms autoinstall -k 6.8.0-88-generic
 ```
 
-**Secure Boot** is a UEFI feature that refuses to load unsigned kernel code. Canonical's precompiled modules are signed. DKMS-built modules are signed with a local key (a **MOK**, machine owner key), which someone must enroll at the console on the next boot (`sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`). Fleets usually either use signed modules or turn Secure Boot off in the BIOS. If `modprobe nvidia` fails with `Key was rejected by service`, this is the cause.
+**Secure Boot** is a feature of UEFI (the firmware interface that replaced the classic BIOS; people still say "BIOS" for both) that refuses to load unsigned kernel code. Canonical's precompiled modules are signed. DKMS-built modules are signed with a local key (a **MOK**, machine owner key), which someone must enroll at the console on the next boot (`sudo mokutil --import /var/lib/shim-signed/mok/MOK.der`). Fleets usually either use signed modules or turn Secure Boot off in the BIOS. If `modprobe nvidia` fails with `Key was rejected by service`, this is the cause.
 
 ### A clean install from the NVIDIA repo
 
 Compute-only (headless), open modules, pinned to the 580 branch. These follow [NVIDIA's Ubuntu install guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/ubuntu.html). **[untested]**
+
+Reading the block: `echo -e "..." | sudo tee FILE` writes a file that only root may write (`sudo echo > FILE` would not work, because the redirection is done by your unprivileged shell). Files in `/etc/modprobe.d/` are options for `modprobe`; `blacklist nouveau` stops the kernel loading **nouveau**, the community-written open-source NVIDIA driver, which would otherwise grab the GPU first. `update-initramfs -u` rebuilds the **initramfs**, the small boot-time filesystem that loads early drivers, so the blacklist also applies at boot. `dpkg -i` installs a downloaded `.deb` package file directly (`apt` is the higher-level tool that downloads and resolves dependencies, see [package management](../foundations/linux-and-os.md#package-management-apt-vs-conda-vs-pip-vs-uv)); `-y` answers yes to prompts and `-V` shows the versions it picks.
 
 ```bash
 # 0. nothing else may own the GPU: blacklist nouveau (the reverse-engineered open driver)
@@ -362,7 +370,7 @@ Starting with branch 590, NVIDIA's Ubuntu packages dropped the branch number fro
 
 ### Pinning: making `apt upgrade` safe
 
-An unattended `apt upgrade` that moves a node from 580 to 620 while jobs are running is a classic outage. The new user-space libraries no longer match the loaded kernel module, and every new process fails with the NVML mismatch error until someone reboots. The pinning package is simply an apt preferences file. This is the real content of `nvidia-driver-pinning-580`, extracted from the .deb **[apt, verified]**:
+An unattended `apt upgrade` that moves a node from 580 to 620 while jobs are running is a classic outage. The new user-space libraries no longer match the loaded kernel module, and every new process fails with the NVML mismatch error until someone reboots. The pinning package is simply an apt preferences file (files in `/etc/apt/preferences.d/` tell apt which version of a package to prefer when several are available). This is the real content of `nvidia-driver-pinning-580`, extracted from the .deb **[apt, verified]**:
 
 ```
 # /etc/apt/preferences.d/nvidia-driver-pin  (from nvidia-driver-pinning-580)
@@ -383,9 +391,11 @@ Pin: version 580*
 Pin-Priority: 1000
 ```
 
-`Pin-Priority: 1000` means "prefer this version even if it means a downgrade". The pin covers every source package of the driver, including Fabric Manager and IMEX, so they all stay on the same branch. That matters because before driver 620, Fabric Manager must match the driver exactly (see below).
+`Pin-Priority: 1000` means "prefer this version even if it means a downgrade". The pin covers every source package of the driver, including Fabric Manager and IMEX (a daemon for sharing GPU memory across nodes on rack-scale systems, [below](#fabric-manager-required-on-nvswitch-systems)), so they all stay on the same branch. That matters because before driver 620, Fabric Manager must match the driver exactly (see below).
 
 Belt and braces for a fleet: also keep the driver out of unattended upgrades, and pin the kernel too, since a kernel change triggers a DKMS rebuild. **[untested]**
+
+In the block below, `dpkg-query -W -f='${Package}\n'` prints the name of every installed package, one per line, and `apt-mark hold` freezes each one at its current version. `cat <<'EOF' ... EOF` is a **heredoc**: the lines between the two `EOF` markers become the command's standard input (the quotes around `'EOF'` stop the shell from expanding `$` inside), and `| sudo tee FILE` writes them to a root-owned file.
 
 ```bash
 # hold exact versions (stricter than the branch pin)
@@ -400,6 +410,8 @@ apt-mark showhold | head
 ### Upgrading without breaking the node
 
 A driver upgrade means "nothing may hold `/dev/nvidia*` open, swap the modules, verify". The order matters. **[untested]**
+
+Step 1 is a preview of the cluster schedulers taught later. A **scheduler** (Slurm or Kubernetes) is the service that decides which jobs run on which nodes. **Draining** a node tells it "let running jobs finish, but place nothing new here"; **resuming** puts the node back in service. `scontrol update nodename=... state=drain reason=...` is Slurm's admin command for that ([Slurm: draining and resuming](../orchestration/slurm/from-zero.md#day-to-day-draining-resuming-adding-nodes)), and `kubectl drain` is the Kubernetes equivalent ([Kubernetes from zero](../orchestration/kubernetes-from-zero.md)). `hostname -s` prints this machine's short name. `lsof /dev/nvidia*` lists processes that have the GPU device files open ([lsof](../foundations/linux-and-os.md#lsof-and-ss-open-files-and-network-ports)).
 
 ```bash
 # 1. drain: tell the scheduler to stop placing jobs, wait for running ones
@@ -492,7 +504,7 @@ The two things to check in `topo -m`: every GPU pair is `NV18` (all 18 links, on
 
 ### ECC, row remapping, clocks and GPU reset
 
-These health fields are queryable in one CSV line per GPU. The acceptance script below uses exactly this query. The [NVIDIA debug chapter](accelerator/nvidia/debug.md#how-to-check-gpu-memory-row-remapping-health) explains how to read row remapping and [Xid errors](accelerator/nvidia/debug.md#xid-errors). **[untested]**
+**ECC** (error-correcting code) memory stores a few extra check bits per word, so the hardware can fix single-bit flips and at least detect multi-bit ones. A *corrected* error is silent and harmless; an *uncorrected* one means data was lost and the process using it is killed. **Row remapping** is how HBM retires a bad memory row: the GPU records the row and swaps in a spare one at the next reset. These health fields are queryable in one CSV line per GPU. The acceptance script below uses exactly this query. The [NVIDIA debug chapter](accelerator/nvidia/debug.md#how-to-check-gpu-memory-row-remapping-health) explains how to read row remapping and [Xid errors](accelerator/nvidia/debug.md#xid-errors). **[untested]**
 
 ```bash
 $ nvidia-smi --query-gpu=index,ecc.mode.current,ecc.errors.uncorrected.volatile.total,remapped_rows.pending,remapped_rows.failure,pcie.link.width.current,pcie.link.width.max,clocks_event_reasons.hw_slowdown --format=csv,noheader
@@ -505,7 +517,7 @@ Two traps. First, the PCIe *generation* drops on an idle GPU to save power, so c
 
 ### DCGM: the health daemon and diagnostics
 
-**DCGM** (Data Center GPU Manager) is NVIDIA's fleet-management layer. It runs a host engine daemon (`nv-hostengine`, packaged as the `nvidia-dcgm` service) that watches health continuously, collects metrics (exported to Prometheus via `dcgm-exporter`) and runs diagnostic suites (`dcgmi diag`). As of DCGM 4.7.1 the Ubuntu packages are split by CUDA major version: `datacenter-gpu-manager-4-cuda13`, `-cuda12`, `-cuda11`, `-cuda-all` **[apt, verified]**. The CUDA-specific part is the stress kernels the diagnostics run. **[untested]**
+**DCGM** (Data Center GPU Manager) is NVIDIA's fleet-management layer. It runs a host engine daemon (`nv-hostengine`, packaged as the `nvidia-dcgm` service) that watches health continuously, collects metrics (exported via `dcgm-exporter` to Prometheus, a widely used time-series database that polls services for numbers and feeds dashboards and alerts) and runs diagnostic suites (`dcgmi diag`). As of DCGM 4.7.1 the Ubuntu packages are split by CUDA major version: `datacenter-gpu-manager-4-cuda13`, `-cuda12`, `-cuda11`, `-cuda-all` **[apt, verified]**. The CUDA-specific part is the stress kernels the diagnostics run. **[untested]**
 
 ```bash
 $ sudo apt install -y datacenter-gpu-manager-4-cuda13
@@ -522,7 +534,7 @@ $ dcgmi diag -r 1                         # seconds: deployment/software checks
 $ dcgmi diag -r 2                         # ~minutes: + short stress, PCIe, memory
 ```
 
-Level 1 belongs in every job prolog. Level 2 belongs in acceptance and after any hardware intervention. Levels 3 and 4 (tens of minutes) are for burn-in and RMA evidence. [The debug chapter](accelerator/nvidia/debug.md#running-diagnostics) has example failure output and a Slurm script.
+Level 1 belongs in every job prolog (a **prolog** is a script the scheduler runs on each node just before a job starts; an **epilog** runs just after it ends. Slurm's are introduced in [Slurm from zero](../orchestration/slurm/from-zero.md#what-happens-from-sbatch-to-processes-on-nodes)). Level 2 belongs in acceptance and after any hardware intervention. Levels 3 and 4 (tens of minutes) are for burn-in and RMA evidence. [The debug chapter](accelerator/nvidia/debug.md#running-diagnostics) has example failure output and a Slurm script.
 
 ### Sharing one GPU: MIG and MPS
 
@@ -532,7 +544,7 @@ Training nodes use whole GPUs. Inference and RL rollout fleets often have many s
 |---|---|---|---|
 | **Time-slicing** (default) | none: shared memory space, context switches | the driver round-robins contexts | dev boxes |
 | **MPS** (Multi-Process Service) | memory not isolated, compute can be capped | a daemon merges many processes' work into one GPU context so their kernels run *concurrently* | many cooperative processes of one user, e.g. MPI ranks or a rollout worker pool |
-| **MIG** (Multi-Instance GPU, A100/H100/B200) | hardware: separate SMs, L2 slices, memory controllers | the GPU is partitioned into up to 7 instances, each of which looks like its own GPU | multi-tenant inference, guaranteed QoS |
+| **MIG** (Multi-Instance GPU, A100/H100/B200) | hardware: separate SMs, L2 slices, memory controllers | the GPU is partitioned into up to 7 instances, each of which looks like its own GPU | multi-tenant inference, guaranteed QoS (quality of service: a promised share of throughput and latency) |
 
 MIG. Each profile name is `<compute slices>g.<memory>gb`. An H100 80GB has 7 compute slices, so it can be split into seven `1g.10gb` instances. **[untested]**
 
@@ -563,14 +575,14 @@ CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=25 python worker.py &
 echo quit | nvidia-cuda-mps-control           # stop
 ```
 
-The MPS caveat: a fatal fault in one client (an illegal memory access, for example) can take down every client sharing that MPS server. MPS is for cooperating processes, not for isolating tenants. On Kubernetes, the NVIDIA device plugin and GPU Operator expose MIG and time-slicing as schedulable resources ([Kubernetes from zero](../orchestration/kubernetes-from-zero.md)).
+The MPS caveat: a fatal fault in one client (an illegal memory access, for example) can take down every client sharing that MPS server. MPS is for cooperating processes, not for isolating tenants. On Kubernetes (taught later, in [Kubernetes from zero](../orchestration/kubernetes-from-zero.md)), the NVIDIA **device plugin** (an agent on each node that tells the cluster how many GPUs, or MIG slices, the node has) and the **GPU Operator** (a bundle that installs the driver, container toolkit and device plugin on every node) expose MIG and time-slicing as schedulable resources ([device plugins](../orchestration/internals.md#exposing-gpus-device-plugins), [GPU Operator components](../orchestration/internals.md#nvidia-gpu-operator-components)).
 
 
 ## 5. Containers and the GPU
 
 ### What `--gpus all` actually does
 
-A container is a normal process with its own namespaces ([containers chapter](../foundations/containers-and-virtualization.md)). To use the GPU it needs three things the image cannot provide: the device nodes `/dev/nvidia0..7`, `/dev/nvidiactl` and `/dev/nvidia-uvm`; the host's `libcuda.so` and `libnvidia-ml.so`, which match the host's kernel module; and binaries such as `nvidia-smi`. The **NVIDIA Container Toolkit** injects all three when the container starts. It works as a hook in the OCI runtime that runs after the container's filesystem is set up but before your process starts:
+A container is a normal process with its own namespaces ([containers chapter](../foundations/containers-and-virtualization.md)). This section is the operator's view of [GPUs in containers](../foundations/containers-and-virtualization.md#6-gpus-in-containers); re-read [what a CUDA program needs from the host](../foundations/containers-and-virtualization.md#what-a-cuda-program-needs-from-the-host) and [the NVIDIA Container Toolkit](../foundations/containers-and-virtualization.md#the-nvidia-container-toolkit) if the details have faded, and [the run flags that matter for ML](../foundations/containers-and-virtualization.md#the-run-flags-that-matter-for-ml) for `docker run` options such as `--rm`, `--gpus` and `--ulimit`. To use the GPU it needs three things the image cannot provide: the device nodes `/dev/nvidia0..7`, `/dev/nvidiactl` and `/dev/nvidia-uvm`; the host's `libcuda.so` and `libnvidia-ml.so`, which match the host's kernel module; and binaries such as `nvidia-smi`. The **NVIDIA Container Toolkit** injects all three when the container starts. It works as a hook in the OCI runtime ([OCI and runc](../foundations/containers-and-virtualization.md#4-the-standards-oci-containerd-runc-and-cri)) that runs after the container's filesystem is set up but before your process starts:
 
 ![NVIDIA Container Toolkit architecture](images/nvidia-container-toolkit-architecture.png)
 
@@ -707,7 +719,7 @@ How to read a bad port:
 | `Rate: 200` on a 400G fabric | link trained at a lower speed or fewer lanes | bad cable or transceiver, usually. Reseat, then swap |
 | `link_layer: Ethernet` on a port meant for IB | firmware port type | `mlxconfig LINK_TYPE_P1` |
 
-Everything `ibstat` prints is also in sysfs as plain files, which is what scripts should read: **[untested]**
+Everything `ibstat` prints is also in sysfs (the `/sys` tree of kernel-provided files, see [/proc and /sys](../foundations/linux-and-os.md#proc-and-sys-the-kernel-as-files)) as plain files, which is what scripts should read: **[untested]**
 
 ```bash
 for p in /sys/class/infiniband/*/ports/*; do
@@ -793,7 +805,7 @@ ib_write_lat -d mlx5_0 -F 10.0.19.12         # latency: expect low single-digit 
 
 The expected result is a little below line rate. A 400 Gb/s NDR port typically gives somewhere in the high 300s ([why](../foundations/networking.md#units-reading-spec-sheets-without-getting-fooled)). In bytes: 400 Gb/s / 8 = 50 GB/s per NIC, and 400 GB/s for a node with eight. Run the test for every NIC pair (`mlx5_0` to `mlx5_0`, and so on), not just one. A single slow rail limits every collective that uses it.
 
-`--use_cuda=<gpu index>` makes perftest register GPU memory instead of host memory. That tests GPUDirect RDMA, next. It requires a perftest built with CUDA support (`./configure` from the [perftest repo](https://github.com/linux-rdma/perftest) with CUDA headers available). I have not checked whether Ubuntu's `perftest` package is built that way, so assume you have to build it.
+`--use_cuda=<gpu index>` makes perftest register GPU memory instead of host memory. That tests GPUDirect RDMA, next. It requires a perftest built with CUDA support (`./configure` from the [perftest repo](https://github.com/linux-rdma/perftest) with CUDA headers available; `./configure` is the conventional script that inspects your system and writes a Makefile, after which `make` compiles the C code, see the Make and compiling-C sections of the [toolkit](../foundations/toolkit.md#reading-c)). I have not checked whether Ubuntu's `perftest` package is built that way, so assume you have to build it.
 
 ### GPUDirect RDMA: the NIC reads GPU memory
 
@@ -802,9 +814,9 @@ Without **GPUDirect RDMA** (GDR), NCCL sending a GPU buffer to another node copi
 - **`nvidia_peermem`**, a kernel module shipped with the driver (since R470) that plugs into the RDMA core's peer-memory interface. Load it with `modprobe nvidia_peermem` and persist it in `/etc/modules-load.d/`.
 - **DMA-BUF**, the mainline Linux mechanism for sharing device memory between drivers (kernel 5.12+). It needs the open GPU kernel modules and a NIC driver and rdma-core that support it. Recent NCCL versions use it automatically when it is available, so `nvidia_peermem` is not needed on such systems.
 
-The PCIe side must also cooperate. **ACS** (Access Control Services) on PCIe switches forces peer-to-peer traffic up to the root complex, which kills GDR performance. Disable it for bare metal ([how](../network/benchmarks/README.md#disable-access-control-services)). An IOMMU in translating mode can do the same, so `iommu=pt` (passthrough) on the kernel command line is common on GPU nodes.
+The PCIe side must also cooperate. **ACS** (Access Control Services) on PCIe switches forces peer-to-peer traffic up to the root complex, which kills GDR performance. Disable it for bare metal ([how](../network/benchmarks/README.md#disable-access-control-services)). An IOMMU in translating mode can do the same, so `iommu=pt` (passthrough) on the kernel command line (the boot options the bootloader hands to Linux; you can read the current ones in `/proc/cmdline`) is common on GPU nodes. ACS and the IOMMU were introduced in [IOMMU, VFIO and PCIe passthrough](../foundations/containers-and-virtualization.md#iommu-vfio-and-pcie-passthrough).
 
-Checking that GDR is actually used. The NCCL log is the ground truth. **[untested]**
+Checking that GDR is actually used. The NCCL log is the ground truth. `NCCL_DEBUG=INFO` makes NCCL print its setup decisions and `NCCL_DEBUG_SUBSYS` limits that to some subsystems; `torchrun ...` stands for whatever launch command your job uses ([how NCCL builds its connections and how to read these lines](../foundations/networking.md#step-2-nccl-builds-its-own-connections)). **[untested]**
 
 ```bash
 $ lsmod | grep nvidia_peermem || echo "no peermem (fine if NCCL uses DMA-BUF)"
@@ -828,7 +840,7 @@ NCCL_DEBUG=VERSION torchrun --nproc_per_node 2 your_script.py 2>&1 | grep 'NCCL 
 # NCCL INFO NCCL version 2.30.7+cuda13.2                                  # what actually got loaded
 ```
 
-An `LD_LIBRARY_PATH` or `LD_PRELOAD` pointing at a system `libnccl.so.2` can make torch load a different NCCL than the one it was built with. Sometimes that is deliberate, to pick up a fix. Sometimes it is an accident that causes hangs. The `NCCL version` line settles which one you got.
+An `LD_LIBRARY_PATH` or `LD_PRELOAD` (a list of libraries the [dynamic loader](../foundations/linux-and-os.md#shared-libraries-and-ld_library_path) loads into the process before anything else, so their symbols win) pointing at a system `libnccl.so.2` can make torch load a different NCCL than the one it was built with. Sometimes that is deliberate, to pick up a fix. Sometimes it is an accident that causes hangs. The `NCCL version` line settles which one you got.
 
 ### Network plugins
 
@@ -836,11 +848,11 @@ NCCL natively speaks IB verbs (which covers RoCE) and TCP sockets. Other fabrics
 
 ### The environment variables an operator sets
 
-The full list is in [NCCL's env docs](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html). Debug variables are explained in [network debug](../network/debug/README.md#useful-nccl-debug-environment-variables) and performance variables in [network benchmarks](../network/benchmarks/README.md#performance-oriented-nccl-environment-variables). The ones that are really *node configuration* rather than tuning, and so belong in `/etc/nccl.conf` or the cluster's job environment:
+The full list is in [NCCL's env docs](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html). Debug variables are explained in [network debug](../network/debug/README.md#useful-nccl-debug-environment-variables) and performance variables in [network benchmarks](../network/benchmarks/README.md#performance-oriented-nccl-environment-variables). The ones that are really *node configuration* rather than tuning, and so belong in `/etc/nccl.conf` or the cluster's job environment (the networking chapter showed [which interface NCCL picks and why `NCCL_SOCKET_IFNAME` matters](../foundations/networking.md#which-interface-does-nccl-pick)):
 
 ```bash
 # /etc/nccl.conf  (NCCL reads KEY=VALUE lines from here; the environment overrides it)
-NCCL_SOCKET_IFNAME=enp157s0f0np0     # bootstrap/OOB interface: the frontend NIC, NOT docker0/lo
+NCCL_SOCKET_IFNAME=enp157s0f0np0     # bootstrap/OOB (out-of-band setup traffic) interface: the frontend NIC, NOT docker0/lo
 NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7   # backend NICs only; excludes the frontend mlx5_8
 NCCL_IB_GID_INDEX=3                  # RoCE only: the RoCEv2/IPv4 GID found above
 # NCCL_NET_GDR_LEVEL=PIX             # only use GDR when NIC and GPU share a PCIe switch (default heuristics are usually right)
@@ -851,7 +863,9 @@ Everything else (`NCCL_ALGO`, `NCCL_PROTO`, channel counts) is tuning. Leave it 
 
 ### nccl-tests: single node, then two, then all
 
-[nccl-tests](https://github.com/NVIDIA/nccl-tests) is the standard burn-in. [Network benchmarks](../network/benchmarks/README.md#nccl-tests) shows how to build it against the NCCL your PyTorch uses. For multi-node runs build with MPI (`make MPI=1 MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi`). The bring-up sequence: **[untested]**
+[nccl-tests](https://github.com/NVIDIA/nccl-tests) is the standard burn-in. [Network benchmarks](../network/benchmarks/README.md#nccl-tests) shows how to build it against the NCCL your PyTorch uses. For multi-node runs build with MPI (`make MPI=1 MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi`; `make VAR=value` passes a setting to the Makefile, see Make in the [toolkit](../foundations/toolkit.md#make-and-makefiles)). The bring-up sequence: **[untested]**
+
+Just enough to read the launch lines below. **MPI** (Message Passing Interface) is the older HPC standard for multi-process programs; nccl-tests uses it only to start one process per GPU on every node and tell each its rank, the job `torchrun` does for PyTorch ([launchers](../foundations/distributed-systems.md#core-vocabulary)). `mpirun -np 16 -N 8 --hostfile hosts` starts 16 processes, 8 per node, on the machines listed one per line in the file `hosts` (over SSH), and `-x VAR` copies an environment variable to all of them. `srun -N 2 --ntasks-per-node=8 --gpus-per-task=1` is Slurm's way to do the same on 2 allocated nodes, with one GPU per process; `--mpi=pmix` tells Slurm to hand MPI the rank information through the PMIx interface. Slurm and `srun` are taught in [Slurm from zero](../orchestration/slurm/from-zero.md#srun-launching-a-step). In the nccl-tests flags, `-b`/`-e` are the smallest and largest message size, `-f 2` doubles the size each step, and `-g` is GPUs per process.
 
 ```bash
 # 1. one node, NVLink only: one process driving 8 GPUs
@@ -873,7 +887,7 @@ Output, trimmed:
 # Avg bus bandwidth    : ...
 ```
 
-Read `busbw` at the large sizes and `#wrong` everywhere. A non-zero `#wrong` means **data corruption**, which is a hardware problem: fail the node. `busbw` = `algbw × 2(n−1)/n` for all-reduce. It is normalized so that it can be compared with link bandwidth regardless of `n` ([derivation](../network/benchmarks/README.md#how-the-bandwidth-is-measured)). For n=8 the factor is 2·7/8 = 1.75. What "good" looks like depends on the SKU and the NCCL version. Don't use a number from a blog post. Record the value from a node you know is good and fail nodes that fall well below it. The acceptance script below has exactly that knob. [Network README](../network/README.md#real-network-throughput) lists measured numbers for several systems.
+Read `busbw` at the large sizes and `#wrong` everywhere. A non-zero `#wrong` means **data corruption**, which is a hardware problem: fail the node. `algbw` (algorithm bandwidth) is simply message size divided by time. `busbw` = `algbw × 2(n−1)/n` for all-reduce, where `2(n−1)/n` is the per-rank traffic factor of the [ring all-reduce](../foundations/networking.md#ring-all-reduce-step-by-step) (the full derivation is in the next chapter, [algbw vs busbw](../network/collectives-internals.md#algbw-vs-busbw)). It is normalized so that it can be compared with link bandwidth regardless of `n` ([derivation](../network/benchmarks/README.md#how-the-bandwidth-is-measured)). For n=8 the factor is 2·7/8 = 1.75. What "good" looks like depends on the SKU and the NCCL version. Don't use a number from a blog post. Record the value from a node you know is good and fail nodes that fall well below it. The acceptance script below has exactly that knob. [Network README](../network/README.md#real-network-throughput) lists measured numbers for several systems.
 
 When nccl-tests hangs or is slow, work through [network debug](../network/debug/README.md) and [NCCL performance debug](../debug/nccl-performance-debug.md). Most of what you'll find is in the layers covered above: a missing `nvidia_peermem`, a port at the wrong rate, the wrong GID index, or FM not running.
 
@@ -887,6 +901,7 @@ The architecture is the same and the names differ. On AMD the kernel driver is `
 | kernel driver | `nvidia.ko` (open) via DKMS | `amdgpu` (inbox or `amdgpu-dkms`) |
 | install | `nvidia-open` / `libnvidia-compute` + pinning | `amdgpu-install --usecase=rocm` or the ROCm apt repo |
 | inventory/health CLI | `nvidia-smi` | `amd-smi` (newer) / `rocm-smi` |
+| GPU programming API | CUDA | HIP (CUDA-like C++ API; `hipcc` compiles it) |
 | device info | `nvidia-smi -q`, `deviceQuery` | `rocminfo` (look for `gfx942` = MI300X) |
 | intra-node fabric | NVLink/NVSwitch + Fabric Manager | Infinity Fabric / xGMI (no FM daemon) |
 | fleet daemon, diagnostics | DCGM, `dcgmi diag` | RDC (ROCm Data Center), RVS (ROCm Validation Suite), AMD's field health check tools |
@@ -899,7 +914,7 @@ The equivalent of the inventory step. **[untested]**
 
 ```bash
 amd-smi version                       # amdgpu driver + ROCm version
-amd-smi list                          # one line per GPU with BDF and UUID
+amd-smi list                          # one line per GPU with BDF (PCI bus:device.function address) and UUID
 rocminfo | grep -E '^\s+Name:\s+gfx' | sort | uniq -c    # "8  Name: gfx942"
 amd-smi topology                      # xGMI link matrix, like nvidia-smi topo -m
 python -c 'import torch; print(torch.__version__, torch.version.hip, torch.cuda.device_count())'
@@ -915,7 +930,7 @@ Bring a node up from the bottom of the stack to the top, and test each layer bef
 | # | Step | Gate (don't continue until) |
 |---|---|---|
 | 1 | Flash the vendor firmware bundle (BIOS, BMC, GPU VBIOS, NVSwitch, NIC) | versions match the fleet manifest |
-| 2 | BIOS: SR-IOV/IOMMU as your design needs, Above-4G decoding on, ACS off (bare metal), performance power profile | `lspci` shows all GPUs and NICs at full width |
+| 2 | BIOS: SR-IOV/IOMMU as your design needs, Above-4G decoding on (lets the BIOS map devices with large memory windows, such as GPUs, above the 4 GB address line), ACS off (bare metal), performance power profile | `lspci` shows all GPUs and NICs at full width |
 | 3 | OS image with kernel + headers pinned, nouveau blacklisted | `uname -r` = manifest |
 | 4 | GPU driver (open, pinned) | `nvidia-smi -L` lists all GPUs |
 | 5 | `nvidia-persistenced`, Fabric Manager (+ NVLSM on B200/B300) | fabric `Completed/Success`, all NVLinks active |
@@ -1287,7 +1302,7 @@ $ python3 node_accept.py --selftest
 selftest: all parser assertions passed
 
 $ python3 node_accept.py --gpus 8; echo rc=$?
-node acceptance on Ibrahims-MacBook-Pro.local (Darwin 24.6.0)
+node acceptance on my-laptop.local (Darwin 24.6.0)
 [FAIL] kernel module            nvidia.ko not loaded (/proc/driver/nvidia/version missing)
 [FAIL] nvidia-smi               not on PATH
 [SKIP] xid errors               no kernel log access (run as root)
@@ -1337,6 +1352,8 @@ NODE PASS: 12 pass, 0 fail, 0 skip
 `--min-busbw 350` is a placeholder. Set it to around 90% of the value you measure on a known-good node of the same SKU, driver and NCCL version.
 
 ### Wiring it into the scheduler
+
+Preview: this uses Slurm and Kubernetes vocabulary taught in [Slurm from zero](../orchestration/slurm/from-zero.md) and [Kubernetes from zero](../orchestration/kubernetes-from-zero.md); skim it now and come back. Just enough to follow: `slurm.conf` is Slurm's cluster-wide config file, and its `HealthCheckProgram` setting names a script every node runs periodically. A Kubernetes **DaemonSet** runs one copy of a container on every node ([DaemonSet](../orchestration/kubernetes-from-zero.md#daemonset)); an **init container** runs to completion before a pod's main container starts; **labels** are key/value tags on a node, and a **taint** marks a node so that ordinary workloads are not scheduled on it ([taints and tolerations](../orchestration/kubernetes-from-zero.md#taints-and-tolerations)).
 
 - **Slurm**: run a fast subset as the node health check (`HealthCheckProgram` in `slurm.conf`, typically every few minutes, which drains the node on a non-zero exit). Run `--dcgm-level 1` in the job prolog. Run the full version, with DCGM level 2 and nccl-tests, after reboots and repairs, before `scontrol update state=resume`. See [Slurm](../orchestration/slurm/README.md).
 - **Kubernetes**: run it as a DaemonSet or as an init container of a "node validator" pod that labels or taints the node on failure. The NVIDIA GPU Operator's own validator does a subset of this ([Kubernetes from zero](../orchestration/kubernetes-from-zero.md)).

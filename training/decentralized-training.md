@@ -4,19 +4,23 @@
 
 This chapter is about what changes when the GPUs that train one model are not in one building. It leans on several earlier chapters. Read them first if the terms are new:
 
+- [Toolkit](../foundations/toolkit.md) and [Linux and the OS](../foundations/linux-and-os.md): the shell sessions below use background jobs (`&`), redirection (`> file 2>&1`), environment variables, shell functions, `kill -9`, `sudo` and `sysctl`.
+- [Concurrency](../foundations/concurrency.md): threads and CUDA streams, for the async all-reduce and the overlap section.
 - [Networking](../foundations/networking.md): latency vs bandwidth, TCP, the bandwidth-delay product, NAT basics, why TCP is slow for HPC. This chapter only adds the wide-area parts.
 - [Distributed systems](../foundations/distributed-systems.md): partial failure, heartbeats, rendezvous, "slow vs dead", elastic training.
 - [Collectives internals](../network/collectives-internals.md): the alpha-beta model and ring all-reduce. Every bandwidth number below plugs into the formulas derived there.
 - [Parallelism derivations](model-parallelism/derivations.md): DDP communication volume (`2·b_g·Ψ` bytes per rank per step) and when DDP becomes comm-bound. This chapter starts from that result.
 - [Training arithmetic](arithmetic.md): `6Ψ` FLOPs per token and MFU.
 
-Helpful but optional: [concurrency](../foundations/concurrency.md) for async collectives, [containers](../foundations/containers-and-virtualization.md) for how contributors package workers, and [RL infrastructure](../platform/rl-infrastructure.md) for the decentralized RL case touched on at the end.
+Helpful but optional: [containers](../foundations/containers-and-virtualization.md) for how contributors package workers, and [GPU software stack](../compute/gpu-software-stack.md) for driver/CUDA version mismatches.
+
+Forward links (later chapters; you do not need them first): [inference arithmetic](../inference/arithmetic.md) for prefill vs decode (used briefly in Petals and TOPLOC), [RL infrastructure](../platform/rl-infrastructure.md) for the decentralized RL case (INTELLECT-2), and [control planes](../platform/control-planes.md) for the coordinator services.
 
 Conventions. Every number in this chapter is either computed by a script shown next to it or cited from a named paper. Scripts marked **[ran]** were executed on an Apple M4 laptop (macOS, CPU only, PyTorch 2.15, Python 3.14), and the output pasted is real. Anything that needs Linux, GPUs, or more than one machine is marked **untested**. A run on one laptop with one or two seeds is an anecdote, not a benchmark, and I say so where it matters.
 
 ## Why WAN training is different
 
-A **WAN** (wide-area network) is any network that spans buildings, cities or continents: the public internet, a leased line between two datacenters, a cloud provider's inter-region backbone. A **LAN** or datacenter **fabric** is the network inside one building, such as InfiniBand or RoCE between GPU nodes. Everything in the [parallelism chapters](model-parallelism/derivations.md) assumes a fabric. This chapter is about the WAN case.
+A **WAN** (wide-area network) is any network that spans buildings, cities or continents: the public internet, a leased line between two datacenters, a cloud provider's inter-region backbone. A **LAN** or datacenter **fabric** is the network inside one building, such as InfiniBand (IB) or RoCE between GPU nodes (both covered in [networking: HPC networking](../foundations/networking.md#hpc-networking-rdma-infiniband-roce-efa)). Everything in the [parallelism chapters](model-parallelism/derivations.md) assumes a fabric. This chapter is about the WAN case.
 
 ### The bandwidth gap, in seconds
 
@@ -58,6 +62,8 @@ link                                 1B          10B         100B
 10B: one step of 1048576 tokens on 8xH100@40% MFU =   19.9 s
 100B: one step of 1048576 tokens on 8xH100@40% MFU =  198.8 s
 ```
+
+(MFU, model FLOPs utilization, is the fraction of the GPUs' peak FLOP/s that goes into the model's `6Ψ` FLOPs per token; see [training arithmetic](arithmetic.md#mfu-and-hfu-properly).)
 
 Read the 10B column. One 8-GPU node computes a 1M-token step in about 20 s. Over a 1 Gbps link, the gradient all-reduce for that step takes 4.7 minutes. That is 14x longer than the compute, so the GPUs would sit idle about 93% of the time. Inside a node with 3.2 Tbps of NICs, the same all-reduce takes 88 ms and hides under the backward pass.
 
@@ -127,7 +133,7 @@ The step that makes local SGD work at LLM scale is to treat the averaging step a
 - **inner optimizer**: AdamW, the same hyperparameters you would use without DiLoCo. Each worker keeps its own Adam state across rounds and never communicates it.
 - **outer optimizer**: SGD with Nesterov momentum, outer learning rate 0.7, momentum 0.9.
 - **H**: around 500 inner steps in the paper.
-- Reported result: on C4 with 8 workers, it matches fully synchronous training while communicating about 500x less, and it tolerates non-IID data across workers and workers joining or leaving.
+- Reported result: on C4 (Colossal Clean Crawled Corpus, a large filtered web-text dataset) with 8 workers, it matches fully synchronous training while communicating about 500x less, and it tolerates non-IID data across workers and workers joining or leaving.
 
 ![DiLoCo: replicas train for H inner steps on different hardware, then an outer optimization step merges them](images/diloco-algorithm.png)
 
@@ -420,7 +426,7 @@ Hivemind's own lineage is useful background. "Towards Crowdsourced Training of L
 
 | Item | Value in the report |
 |---|---|
-| Model | Llama-3 style, 42 layers, hidden 4096, 32 heads, 8 KV heads, vocab 128,256 |
+| Model | Llama-3 style, 42 layers, hidden 4096, 32 heads, 8 KV heads ([GQA](../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic)), vocab 128,256 |
 | Duration | 42 days (Oct 10 to Nov 22, 2024) |
 | Nodes | 8×H100 each, started at 4 nodes, peaked at 14 (112 H100s) |
 | Inner optimizer | AdamW, lr 7.5e-5, β = (0.9, 0.95), wd 0.1, 1000 warmup steps, batch 128 × 8192 tokens |
@@ -434,8 +440,8 @@ Hivemind's own lineage is useful background. "Towards Crowdsourced Training of L
 
 The system is **PRIME** (github.com/PrimeIntellect-ai/prime). Two of its ideas recur in the rest of this chapter:
 
-- **ElasticDeviceMesh**: inside a node, ranks form a normal fixed process group for FSDP over NVLink. Across nodes, a separate *global* process group can be torn down and rebuilt when membership changes, without killing the local group. In other words: fast, rigid parallelism where the network is good, slow, elastic parallelism where it isn't. torchft's "replica group" (below) is the same idea.
-- **Heartbeats + "deathrattle"**: nodes heartbeat to a central key-value store every 2 s and are evicted after 6 s of silence. A node that exits cleanly sends a deathrattle message so it is removed immediately instead of after the timeout.
+- **ElasticDeviceMesh**: inside a node, ranks form a normal fixed process group (the set of ranks a collective runs over) for [FSDP](model-parallelism/derivations.md#zero-and-fsdp) over NVLink. Across nodes, a separate *global* process group can be torn down and rebuilt when membership changes, without killing the local group. In other words: fast, rigid parallelism where the network is good, slow, elastic parallelism where it isn't. torchft's "replica group" (below) is the same idea.
+- **Heartbeats + "deathrattle"**: nodes heartbeat to a central [key-value store](../foundations/distributed-systems.md#key-value-stores-tcpstore-and-etcd) every 2 s and are evicted after 6 s of silence. A node that exits cleanly sends a deathrattle message so it is removed immediately instead of after the timeout.
 
 ### Re-deriving INTELLECT-1's numbers
 
@@ -443,7 +449,7 @@ A habit worth building: when you read a systems report, reproduce its numbers fr
 
 - predicted inner loop 36.8 min vs reported ~38 min: matches.
 - int8 all-reduce of 10B params over 14 nodes takes 2.5 min at 1 Gbps and 5.0 min at 0.5 Gbps. The reported medians of 1.7 min (USA, faster links) to 7.8 min (global) bracket that.
-- utilization if blocking: about 94% at 1 Gbps and 88% at 0.5 Gbps. The report gives 96% to 83%. The global number is lower than the bandwidth model predicts, which points to costs the simple model leaves out, such as stragglers, the ring being limited by its slowest link, and VPN overhead (the report mentions Tailscale becoming a bottleneck on intercontinental links).
+- utilization if blocking: about 94% at 1 Gbps and 88% at 0.5 Gbps. The report gives 96% to 83%. The global number is lower than the bandwidth model predicts, which points to costs the simple model leaves out, such as stragglers, the ring being limited by its slowest link, and VPN overhead (the report mentions Tailscale becoming a bottleneck on intercontinental links). A **VPN** here is an encrypted tunnel that makes machines on different networks look like one private LAN; Tailscale is a product that sets one up automatically. Both are explained in [hole punching, relays, overlays](#hole-punching-relays-overlays) below.
 
 ```python
 >>> t_inner, t_sync = 38, 469 / 60          # minutes, global setting from the report
@@ -456,8 +462,8 @@ The reported medians reproduce the reported 83.0% global utilization almost exac
 ### After INTELLECT-1
 
 - **PCCL** ("Prime Collective Communications Library -- Technical Report", Keiblinger et al., arXiv:2505.14065): a collective library built for the public internet. It has a master process that handles membership and consensus but doesn't carry data, peers that can join and fail mid-run, and a ring order chosen from measured bandwidth. Prime Intellect's blog reports up to 45 Gbit/s across western European datacenters. I have not run it. Don't confuse it with a different PCCL, arXiv:2504.18658, which is for GPU supercomputers.
-- **INTELLECT-2** (arXiv:2505.07291): a 32B reasoning model trained with fully asynchronous **RL** across permissionless contributors. RL changes the shape of the problem. Inference workers generate rollouts and need fresh weights (distributed by a component called SHARDCAST). Their outputs must be checked because the workers are untrusted (TOPLOC, [below](#trust-and-verification)). See [RL infrastructure](../platform/rl-infrastructure.md).
-- **Nous Research Psyche / Consilience**: Nous reports pre-training a 40B model called Consilience on its Psyche network, which coordinates over the Solana blockchain and uses DisTrO-family optimizers. The sources I found are blog posts and secondary coverage. I have not seen a technical report with loss curves and comparisons. See [DeMo and DisTrO](#demo-and-distro-published-vs-claimed).
+- **INTELLECT-2** (arXiv:2505.07291): a 32B reasoning model trained with fully asynchronous **RL** across permissionless contributors. RL changes the shape of the problem. In large-scale RL, rollouts are generated by separate **inference workers**: processes running an LLM serving engine such as vLLM, which only do forward passes and sampling, while a separate trainer updates the weights. (Serving engines are taught in [serving engine internals](../inference/serving-engine-internals.md); the trainer/worker split in [RL infrastructure](../platform/rl-infrastructure.md#components-and-vocabulary).) The inference workers need fresh weights after every trainer update (distributed by a component called SHARDCAST). Their outputs must be checked because the workers are untrusted (TOPLOC, [below](#trust-and-verification)). See [RL infrastructure](../platform/rl-infrastructure.md).
+- **Nous Research Psyche / Consilience**: Nous reports pre-training a 40B model called Consilience on its Psyche network, which coordinates over the Solana blockchain (a public, replicated ledger that no single party controls, used here in place of a central coordinator) and uses DisTrO-family optimizers. The sources I found are blog posts and secondary coverage. I have not seen a technical report with loss curves and comparisons. See [DeMo and DisTrO](#demo-and-distro-published-vs-claimed).
 
 ## Compressing the communication
 
@@ -492,7 +498,7 @@ How low can you go? On the published evidence:
 
 - 16-bit pseudo-gradients: no loss (OpenDiLoCo, FP16).
 - int8 pseudo-gradients: comparable quality (INTELLECT-1, and the toy above).
-- 4-bit: Streaming DiLoCo reports that exchanging pseudo-gradients in 4-bit floating point (FP4, E3M0 according to my reading of the paper; check it before relying on that) did not hurt quality at the 1B scale.
+- 4-bit: Streaming DiLoCo reports that exchanging pseudo-gradients in 4-bit floating point (FP4, E3M0, meaning 3 exponent bits and 0 mantissa bits in the naming used for [fp8 formats](arithmetic.md#formats), according to my reading of the paper; check it before relying on that) did not hurt quality at the 1B scale.
 - Below that, you're into sparsification and transforms.
 
 ### Sparsification: top-k and error feedback
@@ -596,7 +602,7 @@ The total bytes are the same in every row. What changes is that you need a link 
 
 ### Overlap over a real collective
 
-This is the overlap mechanism, minus fragments, with a real Gloo all-reduce between two processes. `dist.all_reduce(..., async_op=True)` returns a `Work` handle immediately. Gloo moves the bytes on its own background thread while the main thread keeps running inner steps. **[ran]**
+This is the overlap mechanism, minus fragments, with a real Gloo all-reduce between two processes. **Gloo** is PyTorch's CPU collective backend, which runs over plain TCP; launching it on one machine with `init_process_group` and `mp.spawn` is shown in [collectives internals](../network/collectives-internals.md#launching-a-process-group-on-one-machine). `dist.all_reduce(..., async_op=True)` returns a `Work` handle immediately ([what "async" means for collectives](../network/collectives-internals.md#streams-and-what-async-means)). Gloo moves the bytes on its own background thread while the main thread keeps running inner steps. **[ran]**
 
 ```python
 # overlap_gloo.py -- DiLoCo outer sync over real Gloo (TCP, localhost): blocking vs overlapped with tau inner steps.
@@ -656,7 +662,7 @@ torchft's `DiLoCo` class exposes these knobs directly (see [torchft](#torchft-as
 
 ### Failure is the normal case
 
-The [distributed systems chapter](../foundations/distributed-systems.md#failure-arithmetic) shows that a job's mean time between failures is roughly one node's MTBF divided by the node count. In a datacenter, a node's MTBF is weeks. For internet contributors (spot instances, someone's workstation, a provider rebooting for maintenance) it can be hours:
+The [distributed systems chapter](../foundations/distributed-systems.md#failure-arithmetic) shows that a job's mean time between failures is roughly one node's MTBF divided by the node count. In a datacenter, a node's MTBF is weeks. For internet contributors (spot instances, which are cheap cloud machines the provider can reclaim with a minute or two of warning; someone's workstation; a provider rebooting for maintenance) it can be hours:
 
 ```python
 >>> 24 / 14                      # node MTBF 24 h, 14 nodes: hours between failures
@@ -743,14 +749,22 @@ delta = torch.stack(contrib).mean(0)        # not sum(deltas) / len(deltas)
 
 - A **Lighthouse** (a Rust server, the `torchft_lighthouse` binary) tracks heartbeats from **replica groups** and issues a quorum at each step.
 - A **Manager** inside each replica group joins the quorum, reconfigures the cross-replica process group when membership changes, and **heals** newcomers by streaming a state dict from a healthy peer (`HTTPTransport`, or a process-group-based transport).
-- Inside a replica group you can use FSDP or TP as usual. Fault tolerance applies across replica groups. This is the ElasticDeviceMesh idea again, under the name HSDP: sharded inside the group, replicated across groups.
-- Algorithms: fault-tolerant DDP, HSDP, LocalSGD, DiLoCo and Streaming DiLoCo (`torchft.local_sgd.DiLoCo` with `model_fragments`, `fragment_sync_delay`, `fragment_update_alpha`, `should_quantize`). The README marks LocalSGD and DiLoCo as **experimental**. Quantization uses Triton kernels, so it needs a GPU.
+- Inside a replica group you can use FSDP or [TP](model-parallelism/derivations.md#tensor-parallelism-megatron) as usual. Fault tolerance applies across replica groups. This is the ElasticDeviceMesh idea again, under the name [HSDP](model-parallelism/derivations.md#hsdp-hybrid-sharding): sharded inside the group, replicated across groups.
+- Algorithms: fault-tolerant DDP, HSDP, LocalSGD, DiLoCo and Streaming DiLoCo (`torchft.local_sgd.DiLoCo` with `model_fragments`, `fragment_sync_delay`, `fragment_update_alpha`, `should_quantize`). The README marks LocalSGD and DiLoCo as **experimental**. Quantization uses [Triton](../compute/accelerator/execution-model.md#writing-a-triton-kernel-fused-rmsnorm) kernels, so it needs a GPU.
 
 ![torchft architecture: one Lighthouse coordinates per-replica-group Managers; each Manager serves the ranks of its group](images/torchft-overview.png)
 
 ([source](https://github.com/pytorch/torchft))
 
 Here is a real run on the laptop. It uses two replica groups doing DiLoCo over Gloo on CPU. I `kill -9` one replica mid-run, let the survivor continue alone, then restart the dead replica and watch it heal from the survivor. **[ran]** (`pip install torchft==0.3.1` in a venv, torch 2.15)
+
+Just enough shell to follow the session below (all of it is taught in [Linux and the OS](../foundations/linux-and-os.md#2-the-shell)):
+
+- `export PATH=/tmp/dt-venv/bin:$PATH` puts the venv's programs (`torchrun`, `torchft_lighthouse`) first on the search path ([environment variables and PATH](../foundations/linux-and-os.md#environment-variables-and-path)).
+- `cmd > lh.log 2>&1 &` sends the program's normal output and its errors to `lh.log` and runs it in the background, so the shell returns immediately ([redirection](../foundations/linux-and-os.md#pipes-and-redirection), [job control](../foundations/linux-and-os.md#job-control--jobs-fg-bg-ctrl-z)).
+- `start() { ...; }` defines a shell function. `$1` and `$2` are its arguments. `REPLICA_GROUP_ID=$1 TORCHFT_LIGHTHOUSE=... torchrun ...` sets two environment variables for that one command only. [torchrun](../foundations/linux-and-os.md#how-torchrun-spawns-workers) launches the script as one rank.
+- `kill -9 $(cat pid_1)` reads the PID the script wrote to `pid_1` and sends it SIGKILL, which the process cannot catch or clean up after: a crash with no warning ([signals](../foundations/linux-and-os.md#signals)).
+- `grep '^\[replica' r0.log` prints the lines that start with `[replica`; `cut -c1-120` trims each line to 120 characters, `head -4` keeps the first four.
 
 ```python
 # ft_diloco.py -- torchft DiLoCo on CPU/Gloo. One process = one replica group.
@@ -834,7 +848,7 @@ What happened:
 - **The survivor kept training alone** (outer steps 10-18, `participants=1`). No restart and no checkpoint reload. Its all-reduce simply ran over a group of one.
 - **The newcomer healed in one step.** At its first quorum it reported `step=0, max_step=18`, fetched the state dict from replica 0 over HTTP (`GET /checkpoint/18/full` in replica 0's log), and jumped to outer step 19. The `loss=3.0532` printed at step 19 comes from the 20 inner steps it ran from random init before its first sync. Those steps were discarded when it loaded the healed state, and the next value is 0.0117.
 
-The macOS workaround at the top of the script is needed because torchft 0.3.1's HTTP transport creates a device stream whenever `torch.accelerator.is_available()` is true. On a Mac that's MPS, whose streams can't `synchronize()`, so healing failed with `RuntimeError: Backend doesn't support synchronizing streams` until I forced the CPU path. On Linux, you wouldn't need it. This is what "experimental" means in practice.
+The macOS workaround at the top of the script is needed because torchft 0.3.1's HTTP transport creates a device stream whenever `torch.accelerator.is_available()` is true. On a Mac that's MPS (Metal Performance Shaders, PyTorch's backend for Apple GPUs), whose streams ([CUDA-style streams](../foundations/concurrency.md#multiple-streams-in-pytorch)) can't `synchronize()`, so healing failed with `RuntimeError: Backend doesn't support synchronizing streams` until I forced the CPU path. On Linux, you wouldn't need it. This is what "experimental" means in practice.
 
 ## Heterogeneous hardware
 
@@ -892,7 +906,7 @@ assert abs(loss - ref_loss) < 1e-2 * abs(ref_loss), f"numerics mismatch: {loss} 
 
 **NAT** (network address translation) is the box (your home router, a cloud NAT gateway) that lets many machines with private addresses (`192.168.x.x`, `10.x.x.x`; see [private ranges](../foundations/networking.md#private-ranges)) share one public IP. When an inside machine sends a packet out, the NAT rewrites the source to `public_ip:some_port` and remembers the mapping, so replies can come back. An *unsolicited* packet arriving from outside matches no mapping and is dropped. So two contributors who are both behind NAT cannot open a connection to each other directly, even though both can reach the internet.
 
-You can see your own mapping with **STUN** (Session Traversal Utilities for NAT, RFC 8489, which updates RFC 5389). A public STUN server simply tells you which `ip:port` your packet appeared to come from. This script uses only the standard library and asks two different servers through the *same* local socket. **[ran]**
+You can see your own mapping with **STUN** (Session Traversal Utilities for NAT, RFC 8489, which updates RFC 5389; an **RFC** is one of the numbered documents that define internet protocols). A public STUN server simply tells you which `ip:port` your packet appeared to come from. This script uses only the standard library and asks two different servers through the *same* local socket. **[ran]**
 
 ```python
 # stun.py -- ask two public STUN servers (RFC 5389) how our ONE UDP socket looks from the Internet.
@@ -936,7 +950,7 @@ seen by stun.cloudflare.com : 203.0.113.7:56179
 
 ### Hole punching, relays, overlays
 
-**UDP hole punching** exploits that friendly case. Peers A and B each learn their public mapping from STUN and exchange them through a coordinator, a **rendezvous server** that both can reach. Then both send packets to each other at the same time. A's outgoing packet creates a mapping in A's NAT that admits B's packets, and vice versa. Once both mappings exist, traffic flows directly.
+**UDP hole punching** exploits that friendly case. ([UDP](../foundations/networking.md#udp) is the connectionless transport: single datagrams, no handshake, no retransmission, which is why a NAT can be tricked into accepting them.) Peers A and B each learn their public mapping from STUN and exchange them through a coordinator, a **rendezvous server** that both can reach. Then both send packets to each other at the same time. A's outgoing packet creates a mapping in A's NAT that admits B's packets, and vice versa. Once both mappings exist, traffic flows directly.
 
 ```
    A (192.168.1.5) --NAT_A 198.51.100.1:40000--\            /--NAT_B 203.0.113.9:50000-- B (10.0.0.7)
@@ -947,12 +961,14 @@ seen by stun.cloudflare.com : 203.0.113.7:56179
    4. direct UDP between A and B; build QUIC or a WireGuard tunnel on top for reliability/encryption
 ```
 
-It fails when either side has a **symmetric NAT**, which assigns a different public port for every destination. Then the port STUN reported isn't the port the peer will see, and hole punching has nothing to aim at. Carrier-grade NAT on mobile networks and some corporate firewalls behave this way. The fallback is a **relay**: both peers connect *out* to a public server, which forwards bytes between them. TURN (RFC 8656) is the standard protocol. Tailscale's DERP servers are a widely used proprietary equivalent. A relay always works, but every byte crosses it twice and it caps your bandwidth at whatever the relay has. **ICE** (RFC 8445) is the standard procedure for trying direct, then hole-punched, then relayed connections, and picking the best that works. libp2p, which Hivemind uses, implements hole punching as "DCUtR" plus relays.
+(QUIC is a reliable, encrypted transport built on UDP, the one HTTP/3 uses. WireGuard is an encrypted tunnel, described in the next paragraph.)
+
+It fails when either side has a **symmetric NAT**, which assigns a different public port for every destination. Then the port STUN reported isn't the port the peer will see, and hole punching has nothing to aim at. Carrier-grade NAT on mobile networks and some corporate firewalls behave this way. The fallback is a **relay**: both peers connect *out* to a public server, which forwards bytes between them. TURN (RFC 8656) is the standard protocol. Tailscale's DERP servers are a widely used proprietary equivalent. A relay always works, but every byte crosses it twice and it caps your bandwidth at whatever the relay has. **ICE** (RFC 8445) is the standard procedure for trying direct, then hole-punched, then relayed connections, and picking the best that works. libp2p, which Hivemind uses, implements hole punching as "DCUtR" (Direct Connection Upgrade through Relay: start relayed, then try to punch a direct path) plus relays.
 
 In practice, most decentralized training runs avoid building this themselves and use a **VPN overlay**: every node runs WireGuard (a small, fast encrypted tunnel protocol), usually managed by Tailscale or similar, which does the STUN/hole-punching/relay work and gives every node a stable private IP. Then Gloo or NCCL sockets work as if all nodes were on one LAN. INTELLECT-1 did exactly this, because Gloo needs a private network interface. The report also notes that Tailscale became a bottleneck on intercontinental links. Encryption and userspace packet processing cost CPU, and a relayed path is far slower than a direct one.
 
 ```console
-# untested here (needs two Linux hosts on a tailnet): is the path direct or relayed?
+# untested here (needs two Linux hosts on a tailnet, i.e. one Tailscale private network): is the path direct or relayed?
 $ tailscale status
 100.101.1.2   node-a   linux   -
 100.101.1.3   node-b   linux   active; direct 203.0.113.9:41641, tx 1.2GB rx 1.1GB
@@ -981,7 +997,7 @@ for gbps,rtt in [(1,0.02),(1,0.15),(10,0.15),(100,0.07)]:
 
 Between Europe and Asia (150 ms), a single default-tuned connection tops out at 0.34 Gbps whether the link is 1 or 10 Gbps. Three fixes, cheapest first:
 
-1. **Raise the socket buffer maxima** so that autotuning can grow the window to the BDP (untested here; Linux only, needs root):
+1. **Raise the socket buffer maxima** so that autotuning can grow the window to the BDP (untested here; Linux only, needs root). `sysctl` reads and writes kernel settings by name, and `sudo` runs a command as root ([users, root and sudo](../foundations/linux-and-os.md#users-root-and-sudo)). `tcp_rmem`/`tcp_wmem` are the min, default and max per-socket receive/send buffer sizes in bytes; the max is what caps the window ([networking: BDP](../foundations/networking.md#bandwidth-delay-product)):
 
 ```console
 $ sysctl net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.core.rmem_max      # look first
@@ -1001,7 +1017,7 @@ net.inet.tcp.autosndbufmax: 4194304
 kern.ipc.maxsockbuf: 8388608
 ```
 
-2. **Use a congestion control algorithm built for long fat pipes.** Classic CUBIC halves its window on every packet loss, and on a 150 ms path it takes a long time to grow back. BBR ("BBR: Congestion-Based Congestion Control", Cardwell et al., ACM Queue 2016) models the path's bandwidth and RTT instead of reacting to loss, and usually sustains much higher throughput on lossy WAN paths. (Untested here.)
+2. **Use a congestion control algorithm built for long fat pipes** ([congestion control recap](../foundations/networking.md#flow-control-and-congestion-control)). Classic loss-based algorithms cut the window on every packet loss (Reno halves it; CUBIC, the Linux default, cuts it to 70%), and on a 150 ms path it takes a long time to grow back. BBR ("BBR: Congestion-Based Congestion Control", Cardwell et al., ACM Queue 2016) models the path's bandwidth and RTT instead of reacting to loss, and usually sustains much higher throughput on lossy WAN paths. (Untested here.)
 
 ```console
 $ sysctl net.ipv4.tcp_available_congestion_control
@@ -1009,7 +1025,9 @@ net.ipv4.tcp_available_congestion_control = reno cubic bbr
 $ sudo sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr
 ```
 
-3. **Open many parallel connections.** Each gets its own window and its own congestion state. INTELLECT-1 reports a "noticeable" bandwidth increase from multiple connections between nodes. Measure it with iperf3 before and after any tuning (untested here, sketched output):
+   (`default_qdisc=fq` switches the kernel's outgoing packet queue to "fair queueing", which can space packets out evenly in time; BBR relies on that pacing.)
+
+3. **Open many parallel connections.** Each gets its own window and its own congestion state. INTELLECT-1 reports a "noticeable" bandwidth increase from multiple connections between nodes. Measure it with [iperf3](../foundations/networking.md#iperf3) before and after any tuning (untested here, sketched output):
 
 ```console
 $ iperf3 -c node-b -t 20            # one stream
@@ -1018,11 +1036,11 @@ $ iperf3 -c node-b -t 20 -P 16      # sixteen streams
 [SUM]   0.00-20.00  sec  12.1 GBytes  5.20 Gbits/sec                  receiver
 ```
 
-For Gloo specifically, I'm not aware of a documented knob for the number of TCP connections per peer. NCCL's socket transport has `NCCL_SOCKET_NTHREADS` and `NCCL_NSOCKS_PERTHREAD`. Check the [NCCL env docs](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html) for your version.
+For Gloo specifically, I'm not aware of a documented knob for the number of TCP connections per peer. NCCL's socket transport has `NCCL_SOCKET_NTHREADS` and `NCCL_NSOCKS_PERTHREAD`. See [the NCCL environment variables an operator sets](../compute/gpu-software-stack.md#the-environment-variables-an-operator-sets) and check the [NCCL env docs](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html) for your version.
 
 ### Picking the ring order
 
-A ring all-reduce runs at the speed of its slowest edge, and on the WAN the edges differ by an order of magnitude. Choosing the order of nodes around the ring matters. INTELLECT-1 measured pairwise bandwidth in the background and solved a TSP-like problem (maximize the minimum edge). Here is the brute-force version for 5 sites. **[ran]** (bandwidth numbers are illustrative)
+A ring all-reduce runs at the speed of its slowest edge, and on the WAN the edges differ by an order of magnitude. Choosing the order of nodes around the ring matters. INTELLECT-1 measured pairwise bandwidth in the background and solved a TSP-like problem (TSP, the travelling-salesman problem: find the best cyclic tour through all sites; here "best" means maximize the minimum edge). Here is the brute-force version for 5 sites. **[ran]** (bandwidth numbers are illustrative)
 
 ```python
 # ring_order.py -- a ring all-reduce runs at the speed of its slowest edge. Pick the order that maximizes that edge.
@@ -1065,9 +1083,9 @@ d=8192 tokens=1: 0.016 MB/hop; @1Gbps 0.13 ms transfer
 d=12288 tokens=1: 0.025 MB/hop; @1Gbps 0.20 ms transfer
 ```
 
-For training, a 2048-token sequence crossing a stage boundary is 34 MB, or 0.27 s at 1 Gbps. A stage holding several transformer layers computes for longer than that on a big model, so the bandwidth can be hidden. Activation traffic per stage scales with `d`, while compute per stage scales with `d²`, so larger models make pipelines *more* WAN-friendly. **SWARM Parallelism** ("SWARM Parallelism: Training Large Models Can Be Surprisingly Communication-Efficient", Ryabinin et al., arXiv:2301.11913) builds on this argument (the paper calls it the square-cube law). It forms temporary randomized pipelines between unreliable peers, rebalances stages when peers fail, and reports training a ~1B-shared-parameter model on preemptible T4 GPUs with under 200 Mb/s links.
+For training, a 2048-token sequence crossing a stage boundary is 34 MB, or 0.27 s at 1 Gbps. A stage holding several transformer layers computes for longer than that on a big model, so the bandwidth can be hidden. Activation traffic per stage scales with `d`, while compute per stage scales with `d²`, so larger models make pipelines *more* WAN-friendly. **SWARM Parallelism** ("SWARM Parallelism: Training Large Models Can Be Surprisingly Communication-Efficient", Ryabinin et al., arXiv:2301.11913) builds on this argument (the paper calls it the square-cube law). It forms temporary randomized pipelines between unreliable peers, rebalances stages when peers fail, and reports training a ~1B-shared-parameter model on preemptible T4 GPUs (cloud GPUs that can be taken away at any time, sold at a discount) with under 200 Mb/s links.
 
-For inference, generating one token sends only `d × 2` bytes per hop (16 KB at d=8192), so transfer time is negligible and the cost is **latency**: one RTT per pipeline stage per token. With 8 stages spread across a continent at 20 ms each, that's 160 ms per token before any compute. **Petals** ("Petals: Collaborative Inference and Fine-tuning of Large Models", Borzunov et al., arXiv:2209.01188) runs BLOOM-176B this way. Volunteers each serve a few blocks, clients route through a chain of servers, and the paper reports roughly one step per second for interactive generation (my recollection of the paper's headline; check it). That's slow by datacenter standards, but it serves a model that no single participant could load.
+For inference, generating one token (a **decode** step: one new token per forward pass, reusing cached keys and values of earlier tokens; see [the KV cache](../models/architectures.md#the-kv-cache), and [inference arithmetic](../inference/arithmetic.md#what-this-means-for-prefill-vs-decode) for the full treatment) sends only `d × 2` bytes per hop (16 KB at d=8192), so transfer time is negligible and the cost is **latency**: one RTT per pipeline stage per token. With 8 stages spread across a continent at 20 ms each, that's 160 ms per token before any compute. **Petals** ("Petals: Collaborative Inference and Fine-tuning of Large Models", Borzunov et al., arXiv:2209.01188) runs BLOOM-176B this way. Volunteers each serve a few blocks, clients route through a chain of servers, and the paper reports roughly one step per second for interactive generation (my recollection of the paper's headline; check it). That's slow by datacenter standards, but it serves a model that no single participant could load.
 
 ```
 Petals client generating one token through 4 volunteer servers:
@@ -1112,7 +1130,7 @@ coord median         cosine to true update +0.988   norm     97.4
 trimmed mean k=1     cosine to true update +0.992   norm     95.8
 ```
 
-One attacker out of eight turned the mean into its exact opposite. A coordinate-wise median or trimmed mean ignores it. This is the idea behind **Byzantine-robust aggregation**: Krum ("Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent", Blanchard et al., NeurIPS 2017), and BTARD ("Secure Distributed Training at Scale", Gorbunov et al., arXiv:2106.11257), which does robust aggregation inside a decentralized all-reduce. Two limits apply. Robust aggregators need the full set of updates in one place, or a protocol to emulate that, which doesn't fit a bandwidth-optimal ring. And a smart attacker sends something small and subtly wrong, not `-50×`, which robust statistics cannot tell apart from honest noise.
+One attacker out of eight turned the mean into its exact opposite. A coordinate-wise median or trimmed mean ignores it. This is the idea behind **Byzantine-robust aggregation** (a *Byzantine* participant is one that can behave arbitrarily, including lying; see [when peers are untrusted](../foundations/distributed-systems.md#when-peers-are-untrusted)): Krum ("Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent", Blanchard et al., NeurIPS 2017), and BTARD ("Secure Distributed Training at Scale", Gorbunov et al., arXiv:2106.11257), which does robust aggregation inside a decentralized all-reduce. Two limits apply. Robust aggregators need the full set of updates in one place, or a protocol to emulate that, which doesn't fit a bandwidth-optimal ring. And a smart attacker sends something small and subtly wrong, not `-50×`, which robust statistics cannot tell apart from honest noise.
 
 ### Why "just recompute and compare hashes" fails
 
@@ -1152,11 +1170,11 @@ fp16       a0e661e4d6ad     False         0.966  1.86e-03  False
 perturbed  c440b5b990db     False         0.037  2.25e+00  False
 ```
 
-The honest re-computation in a different order (`honest_b`) has a different SHA-256, so a hash check would falsely accuse an honest worker. A tolerance check on the *largest* activations accepts it (error 1e-5) and still rejects the fp16 shortcut (2e-3) and the wrong weights. The large activations are stable under reordering. The small ones are noise. The hard part is setting the tolerance across real GPU types, which this CPU toy cannot test.
+The honest re-computation in a different order (`honest_b`) has a different SHA-256 (a cryptographic hash: changing even one bit of the input changes the output completely), so a hash check would falsely accuse an honest worker. A tolerance check on the *largest* activations accepts it (error 1e-5) and still rejects the fp16 shortcut (2e-3) and the wrong weights. The large activations are stable under reordering. The small ones are noise. The hard part is setting the tolerance across real GPU types, which this CPU toy cannot test.
 
 ### TOPLOC and related work
 
-- **TOPLOC** ("TOPLOC: A Locality Sensitive Hashing Scheme for Trustless Verifiable Inference", Ong et al., arXiv:2501.16007) is built on that observation, for **inference**. The provider commits to the top-k values of intermediate activations (encoded compactly as a polynomial, about 258 bytes per 32 generated tokens for Llama-3.1-8B-Instruct according to the paper). A verifier recomputes with a single prefill pass, which is cheaper than generation because it processes all tokens in parallel, and checks within tolerance. The paper reports detecting unauthorized changes to the model, prompt or precision with no false positives or negatives in its experiments, across GPU types and algebraic reorderings. INTELLECT-2 used it to verify RL rollouts from untrusted inference workers. **What it doesn't cover**: it verifies inference (forward passes), not training updates. "100% detection" is an empirical result on the attacks the authors tried, not a security proof against an adaptive adversary.
+- **TOPLOC** ("TOPLOC: A Locality Sensitive Hashing Scheme for Trustless Verifiable Inference", Ong et al., arXiv:2501.16007) is built on that observation, for **inference**. The provider commits to the top-k values of intermediate activations (encoded compactly as a polynomial, about 258 bytes per 32 generated tokens for Llama-3.1-8B-Instruct according to the paper). A verifier recomputes with a single **prefill** pass (one forward pass over the whole prompt plus generated text at once, as opposed to generating token by token; see [the KV cache](../models/architectures.md#the-kv-cache) and, later, [inference arithmetic](../inference/arithmetic.md#what-this-means-for-prefill-vs-decode)), which is cheaper than generation because it processes all tokens in parallel, and checks within tolerance. The paper reports detecting unauthorized changes to the model, prompt or precision with no false positives or negatives in its experiments, across GPU types and algebraic reorderings. INTELLECT-2 used it to verify RL rollouts from untrusted inference workers. **What it doesn't cover**: it verifies inference (forward passes), not training updates. "100% detection" is an empirical result on the attacks the authors tried, not a security proof against an adaptive adversary.
 - **Verifying training** is harder, because a training update depends on the entire sequence of inner steps. Approaches:
   - **Proof-of-Learning** ("Proof-of-Learning: Definitions and Practice", Jia et al., arXiv:2103.05633): log intermediate checkpoints so that a verifier can spot-check segments. "Proof-of-Learning is Currently More Broken Than You Think" (Fang et al., arXiv:2208.03567) shows ways to forge such logs.
   - **Refereed delegation** ("Verde: Verification via Refereed Delegation for Machine Learning Programs", arXiv:2502.19405): if two providers disagree, binary-search their computation traces to the first diverging operation and have a referee recompute only that. It needs deterministic, reproducible operators across hardware to make "diverging" well defined. I haven't checked how far the paper gets on that.
@@ -1183,7 +1201,7 @@ My summary, with the uncertainty stated: inference verification (TOPLOC-style) h
 - [Fault tolerance](fault-tolerance/README.md) and [checkpoints](checkpoints/README.md): the datacenter versions of the elastic-membership and peer-checkpoint ideas above.
 - [RL infrastructure](../platform/rl-infrastructure.md): decentralized RL (INTELLECT-2), where inference workers are untrusted and weight broadcast replaces gradient all-reduce.
 - [Profiling and optimization](profiling-and-optimization.md): how to measure whether a sync is actually overlapped, using the trace techniques that also apply to DiLoCo rounds.
-- [Control planes and fleet management](../platform/control-planes.md): the coordinator (Lighthouse, master, KV store) is a small control-plane service with the usual availability problems.
+- [Control planes and fleet management](../platform/control-planes.md): the coordinator (Lighthouse, master, KV store) is a small control-plane service (the part of a system that decides membership and placement, as opposed to the data plane that moves the tensors) with the usual availability problems.
 
 ## Further reading
 

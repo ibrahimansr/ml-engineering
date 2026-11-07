@@ -10,8 +10,11 @@ Read these first if the systems side is unfamiliar; the chapter defines each sys
 - [Networking](../foundations/networking.md) - bandwidth vs latency, RDMA and NICs, needed for disaggregation and expert-parallel communication.
 - [Distributed Systems](../foundations/distributed-systems.md) - collectives (all-reduce, all-to-all), load balancing and routing across replicas.
 - [Model Architectures](../models/architectures.md) - GQA, MLA and MoE, whose shapes determine KV cache layout and the attention kernels discussed here.
+- [GPU execution model](../compute/accelerator/execution-model.md) and [Writing GPU kernels](../compute/accelerator/writing-kernels.md) - SMs, CTAs (thread blocks), tensor cores and FlashAttention-style tiling, used in the attention-kernel and CUDA-graph sections.
+- [Profiling and optimization](../training/profiling-and-optimization.md) - [Nsight Systems with NVTX](../training/profiling-and-optimization.md#nsight-systems-with-nvtx-ranges), [CPU-launch-bound loops](../training/profiling-and-optimization.md#cpu-launch-bound-loops), [torch.compile](../training/profiling-and-optimization.md#torchcompile) and [CUDA graphs](../training/profiling-and-optimization.md#cuda-graphs), which the engine-loop and compilation sections build on.
+- [Inference Internals I](arithmetic.md) - the previous chapter: rooflines, KV sizing and quantization.
 
-This chapter is about what happens inside a modern LLM serving engine - vLLM, SGLang, TensorRT-LLM and their relatives - at the level of the data structures, the scheduler loop and the kernels. It assumes you have read the [Inference](README.md) chapter for the vocabulary (prefill, decode, TTFT, ITL, continuous batching, speculative decoding) and [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md) for rooflines, KV cache sizing, quantization and capacity planning. Neither is repeated here.
+This chapter is about what happens inside a modern LLM serving engine - vLLM, SGLang, TensorRT-LLM and their relatives - at the level of the data structures, the scheduler loop and the kernels. It assumes [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md) for the vocabulary (prefill, decode, TTFT, TPOT/ITL, SLO, goodput) and for rooflines, KV cache sizing, quantization and capacity planning; none of that is repeated here. Continuous batching and speculative decoding are introduced in their own sections below. Links to the [Inference overview](README.md) point to an optional, lighter introduction; nothing here depends on having read it.
 
 A note on accuracy: these engines change monthly. Where this chapter describes a specific engine's implementation it describes the design as publicly documented in its source, docs or design blogs around 2025-2026. Flag names and defaults drift - check the version you run. Where something is a recollection rather than a verified fact, it says so.
 
@@ -41,7 +44,7 @@ All outputs shown were pasted from runs on an Apple M4 laptop with PyTorch 2.15.
 
 ### The pipeline
 
-Every engine has the same five logical stages, regardless of how they are mapped onto processes:
+Every engine has the same six logical stages, regardless of how they are mapped onto processes:
 
 ```
 HTTP/gRPC  ->  tokenizer  ->  scheduler  ->  model runner  ->  sampler  ->  detokenizer  ->  stream to client
@@ -56,6 +59,8 @@ The original vLLM architecture: a centralized scheduler driving workers that eac
 ![vLLM system overview](images/vllm-system-overview.png)
 
 ([source](https://arxiv.org/abs/2309.06180))
+
+The first stage is the network front end. Clients send requests over HTTP ([taught in Networking](../foundations/networking.md#http11-from-raw-sockets)), almost always in the OpenAI-compatible JSON format shown in [Serving LLMs in Practice](serving-hands-on.md#the-openai-compatible-api-and-streaming). gRPC is the alternative: an RPC (remote procedure call) framework from Google that sends binary Protocol Buffers messages over HTTP/2 instead of JSON text; it is compared with HTTP/JSON in [Control Planes](../platform/control-planes.md). For this chapter it only matters that this stage parses bytes into a request object on the CPU.
 
 Only the model runner and the sampler run on the GPU. Everything else is CPU work, and in a naive implementation all of it is on the critical path of every decode step.
 
@@ -129,7 +134,7 @@ CPU 2.0 ms/step -> GPU idle  30% of wall time
 CPU 4.0 ms/step -> GPU idle  46% of wall time
 ```
 
-Long prompts also have a tokenization cost: fast (Rust) tokenizers are linear in input length but still take on the order of milliseconds for 100k-token prompts, and chat-template rendering in Jinja is pure Python. Python's GIL (Global Interpreter Lock: only one thread of a Python process executes Python code at a time) means that if that runs in the same process as the scheduler loop it stalls every running request.
+Long prompts also have a tokenization cost: fast (Rust) tokenizers are linear in input length but still take on the order of milliseconds for 100k-token prompts, and chat-template rendering in Jinja is pure Python. (A chat template is a small program shipped with the model, in the Jinja text-templating language, that turns a list of `{"role", "content"}` messages into the single prompt string with the model's special tokens.) Python's GIL (Global Interpreter Lock: only one thread of a Python process executes Python code at a time) means that if that runs in the same process as the scheduler loop it stalls every running request.
 
 ### The fix: separate processes, persistent state, async scheduling
 
@@ -141,7 +146,7 @@ The engines converged on three structural changes.
 
 **Async / overlapped scheduling.** GPU kernel launches are asynchronous: the CPU enqueues work on a *stream* (an ordered GPU work queue) and returns immediately; it only blocks at a *sync*, e.g. when it reads a GPU tensor's value back. The fundamental serialization is that step `n+1` needs the token sampled at step `n`. But the scheduler does not need the token's *value* to plan step `n+1` - it only needs to know that each running request will have exactly one more token (absent spec decode and stop conditions). So the scheduler can plan step `n+1` while the GPU executes step `n`, and the sampled token ids are fed into step `n+1`'s `input_ids` buffer on the GPU directly. SGLang calls this the overlap scheduler ("zero-overhead batch scheduler", introduced in v0.4, late 2024); vLLM V1 added it as `--async-scheduling`; TensorRT-LLM's PyTorch backend has an overlap scheduler too. The cost is one step of lag in detecting termination: a request that hit EOS at step `n` has already been scheduled for step `n+1`, which wastes one slot and its KV write, and must be discarded on output.
 
-The sketch below is not runnable on its own, but the effect is easy to reproduce. In this simulation a worker thread plays the GPU (kernels are enqueued and run asynchronously, and reading a result blocks), and the CPU spends 2 ms per step on scheduling and output processing:
+The engine-loop sketch at the end of this subsection is not runnable on its own, but the effect is easy to reproduce. In this simulation a worker thread plays the GPU (kernels are enqueued and run asynchronously, and reading a result blocks), and the CPU spends 2 ms per step on scheduling and output processing:
 
 ```python
 # overlap.py - serial vs overlapped engine loop; a worker thread plays the GPU
@@ -693,7 +698,7 @@ Throughput is the same 1,130 tok/s in the three continuous rows because the syst
 
 - **FCFS** is the default in most engines. Preemption victims are taken from the *back* of the running queue (most recently admitted), so older requests make progress - otherwise you get livelock (the system stays busy but makes no progress) where two long requests repeatedly evict each other.
 - **Priority scheduling** (vLLM `--scheduling-policy priority`, per-request `priority`) orders both admission and preemption by priority, then arrival.
-- **Cache-aware ordering.** SGLang can reorder the waiting queue by longest prefix match (LPM) so requests sharing a cached prefix run back to back before it is evicted - the SGLang paper shows this approximates a DFS over the radix tree. Pure LPM can starve requests with no cache hit; it degrades to FCFS when the queue is short and has a fallback when it is long.
+- **Cache-aware ordering.** SGLang can reorder the waiting queue by longest prefix match (LPM) so requests sharing a cached prefix run back to back before it is evicted - the SGLang paper shows this approximates a DFS (depth-first search: finish everything under one branch before moving to the next) over the radix tree, a structure introduced in [RadixAttention](#radixattention-sglang) below. Pure LPM can starve requests with no cache hit; it degrades to FCFS when the queue is short and has a fallback when it is long.
 - **Fairness across tenants** (e.g. virtual token counters as in "Fairness in Serving Large Language Models", Sheng et al., arXiv 2401.00588 (id unverified)) is mostly not in open-source engines' cores; it is done in routers or gateways.
 
 Priority scheduling is a two-key sort. Admission takes the smallest `(priority, arrival)` first, and preemption evicts the largest:
@@ -818,7 +823,7 @@ Output of `python step_cost.py`:
 64 decodes +  8192 prefill tokens: step  268.1 ms
 ```
 
-Up to ~64 extra tokens cost nothing: the 8.3 ms step is pure memory time. Past ~150 tokens (the ridge point at 50% MFU, half the spec-sheet ridge of 295) every token adds ~32 µs. That is the arithmetic behind picking a chunk budget: 512 tokens costs ~11 ms of extra ITL per step, 2,048 costs ~61 ms.
+Up to ~64 extra tokens cost nothing: the 8.3 ms step is pure memory time (7.3 ms of weight-plus-KV reads plus the 1 ms overhead). The knee is where compute at 50% MFU overtakes those reads: about 225 tokens in the step, i.e. ~160 prefill tokens on top of the 64 decodes. (The weights-only ridge at 50% MFU is ~148 tokens, half the spec-sheet ridge of 295; the KV reads push the knee higher.) Past it, every token adds ~32 µs. That is the arithmetic behind picking a chunk budget: 512 tokens costs ~11 ms of extra ITL per step, 2,048 costs ~61 ms.
 
 ### Sarathi and Sarathi-Serve
 
@@ -880,9 +885,9 @@ Mooncake's KV pool uses the same idea - each block's key hashes its own tokens a
 
 ([source](https://arxiv.org/abs/2407.00079))
 
-`extra_keys` carry anything that changes KV for identical token ids: LoRA adapter id, multimodal input hashes (image placeholder tokens are identical across images), and an optional per-tenant cache salt for isolation. A global dict maps `hash -> physical block`. On admission the scheduler walks the request's block hashes until the first miss; the hit blocks get `ref_count += 1` and the request starts with `num_computed_tokens = hits * block_size`.
+`extra_keys` carry anything that changes KV for identical token ids: LoRA adapter id (LoRA fine-tunes a model by adding a small low-rank update `B @ A` to each weight matrix; an engine can serve many such adapters on one base model, and each adapter produces different K and V for the same tokens), multimodal input hashes (image placeholder tokens are identical across images), and an optional per-tenant cache salt for isolation. A global dict maps `hash -> physical block`. On admission the scheduler walks the request's block hashes until the first miss; the hit blocks get `ref_count += 1` and the request starts with `num_computed_tokens = hits * block_size`.
 
-Eviction: blocks with `ref_count == 0` are not freed but placed in a free queue *while keeping their hash*. Allocation takes from the queue head; a block taken from the queue that still has a hash is evicted (hash removed). Freed blocks are appended so that least recently used goes first; vLLM V1 also appends a finished request's blocks in reverse order so the tail of a prefix (least likely to be shared) is evicted before its head. Everything is O(1) per block with a doubly linked list, which is why V1 enables prefix caching by default - overhead at 0% hit rate is small.
+Eviction: blocks with `ref_count == 0` are not freed but placed in a free queue *while keeping their hash*. Allocation takes from the queue head; a block taken from the queue that still has a hash is evicted (hash removed). Freed blocks are appended so that the least recently used (LRU) goes first; vLLM V1 also appends a finished request's blocks in reverse order so the tail of a prefix (least likely to be shared) is evicted before its head. Everything is O(1) per block with a doubly linked list, which is why V1 enables prefix caching by default - overhead at 0% hit rate is small.
 
 Two details that bite:
 
@@ -1174,7 +1179,7 @@ decode batch 64: 512 CTAs on 132 SMs -> 100% of SMs busy
 
 ### Split-KV (FlashDecoding)
 
-FlashDecoding (Dao, Haziza, Massa, Sizov, "Flash-Decoding for long-context inference", blog, October 2023) adds a parallel dimension over the KV sequence: split KV into `S` chunks, each CTA computes an unnormalized partial output and its log-sum-exp, then a small reduction kernel merges them:
+FlashDecoding (Dao, Haziza, Massa, Sizov, "Flash-Decoding for long-context inference", blog, October 2023) adds a parallel dimension over the KV sequence: split KV into `S` chunks, each CTA computes its chunk's partial output (softmax-normalized over that chunk only) and the chunk's log-sum-exp, then a small reduction kernel merges them:
 
 ```python
 # partials from S splits for one (seq, head): o_s (S, D), lse_s (S,)
@@ -1262,7 +1267,7 @@ unpacked 10.74 GB, packed 1.34 GB per sequence per step (8x)
 
 FlashInfer (Ye et al., "FlashInfer: Efficient and Customizable Attention Engine for LLM Inference Serving", arXiv 2501.01005) is the kernel library behind SGLang and one of vLLM's backends. Ideas worth knowing:
 
-- **Block-sparse/paged KV as a unified format.** Paged KV, ragged KV and tree masks are all expressed as block-sparse matrices (BSR), so one kernel family handles every layout.
+- **Block-sparse/paged KV as a unified format.** Paged KV, ragged KV and tree masks are all expressed as block-sparse matrices in BSR (Block Sparse Row) format - only the non-empty blocks are stored, plus a per-row list of their column indices, which is exactly a block table - so one kernel family handles every layout.
 - **Plan/run split.** A CPU-side `plan()` computes work partitioning (how to split KV across CTAs for load balance across ragged sequence lengths) once per batch shape; `run()` is then CUDA-graph-capturable because it only reads the plan from fixed buffers. This is how dynamic, load-balanced split-KV is reconciled with static graphs.
 - **JIT templates** (kernels compiled Just-In-Time at runtime for the exact variant requested) for attention variants (custom masks, logits soft-cap, sliding window, sink tokens) instead of hand-written kernels per variant.
 
@@ -1553,7 +1558,7 @@ Run this on your model's forward (with a representative input) whenever you add 
 
 ## Speculative decoding
 
-The [overview](README.md#speculative-decoding) has the intuition. Here: the math, the variants, and the serving-system consequences.
+The idea in one paragraph (the [overview](README.md#speculative-decoding) has a longer version): a cheap *draft* (a small model, or extra heads on the target) proposes the next `k` tokens one at a time. The large *target* model then scores all `k` positions in a single forward pass. That pass is a mini-prefill of `k+1` tokens, so while decode is memory-bound it costs about the same as one ordinary decode step. The longest prefix of drafts the target agrees with is kept, plus one token from the target itself, so each expensive step emits between 1 and `k+1` tokens instead of exactly 1. Here: the math, the variants, and the serving-system consequences.
 
 Each line is one iteration: green tokens are draft proposals the target accepted, red the rejected one, blue the target's correction:
 
@@ -1838,7 +1843,7 @@ With short contexts, speculation stops paying at `B ≈ 128` and is a 30% slowdo
 | Method | Draft source | Cost `c` | Notes |
 |-|-|-|-|
 | Separate draft model | small LM, same tokenizer | 0.05-0.2 | needs its own KV cache and scheduling; drafts autoregressively |
-| n-gram / prompt lookup | match last n tokens in the context, copy what followed | ~0 (CPU) | great for code editing, RAG, summarization; useless for open-ended generation. ([prompt-lookup-decoding](https://github.com/apoorvumang/prompt-lookup-decoding); suffix-tree variants such as SuffixDecoding, arXiv 2411.04975 (id unverified)) |
+| n-gram / prompt lookup | match last n tokens in the context, copy what followed | ~0 (CPU) | great for code editing, RAG (retrieval-augmented generation: retrieved documents are pasted into the prompt), summarization; useless for open-ended generation. ([prompt-lookup-decoding](https://github.com/apoorvumang/prompt-lookup-decoding); suffix-tree variants such as SuffixDecoding, arXiv 2411.04975 (id unverified)) |
 | Medusa | extra decoding heads on the last hidden state, each predicting position `t+i` | small | heads predict independently, so tree candidates + tree attention are used to recover joint plausibility. Cai et al., arXiv 2401.10774 |
 | EAGLE | a one-layer autoregressive head over the target's top-layer *features* plus shifted token embeddings | small | features are more predictable than tokens; EAGLE (Li et al., arXiv 2401.15077), EAGLE-2 dynamic draft trees using draft confidence (arXiv 2406.16858), EAGLE-3 fuses low/mid/high-layer features and trains with on-policy "training-time test" (arXiv 2503.01840) |
 | MTP heads | multi-token-prediction modules trained with the model | small | Gloeckle et al., arXiv 2404.19737; DeepSeek-V3 (arXiv 2412.19437) trains one sequential MTP module and reports 85-90% acceptance for the second token, ~1.8x TPS when used for speculation (numbers as reported in the paper) |
@@ -1905,7 +1910,7 @@ The step started with KV for positions 0-29 and verified `k + 1 = 5` tokens at p
 
 ## Serving-time parallelism
 
-Training-side background is in [Model Parallelism](../training/model-parallelism/README.md) and [the overview's notes](README.md#model-parallelism). Inference differs because the decode step is tiny and latency-sensitive.
+Training-side background is in [Parallelism From First Principles](../training/model-parallelism/derivations.md) (TP, PP and EP with their communication costs) and [the overview's notes](README.md#model-parallelism). Inference differs because the decode step is tiny and latency-sensitive.
 
 ### Tensor parallelism
 
@@ -1945,6 +1950,7 @@ The message is `B x h`, tiny at decode, while each GPU reads only `1/P` of the w
 L, h = 80, 8192
 for B in (1, 64, 256):
     msg = B * h * 2                                    # (B, h) bf16
+    # 1.75 = 2(N-1)/N: a ring all-reduce over N=8 GPUs sends 1.75x the message per GPU
     print(f"B={B:3d}: {2*L} all-reduces/step of {msg/2**20:.3f} MiB; "
           f"bandwidth time at 450 GB/s {msg*1.75/450e9*1e6:5.2f} us vs ~15-25 us fixed latency each")
 ```
@@ -2041,7 +2047,7 @@ DeepEP (DeepSeek, open-sourced February 2025; GitHub, no paper) provides two ker
 
 Overlap is done with **two-batch overlap (TBO)**: split the step's batch into two micro-batches and interleave so that micro-batch A's attention/expert compute runs while B's dispatch/combine is in flight. SGLang and vLLM both implement TBO / dual-batch overlap for DeepEP deployments. **EPLB** (expert-parallel load balancer) periodically replicates hot experts and re-places them using observed routing statistics so no rank becomes the straggler that sets the all-to-all latency.
 
-Why splitting the batch in two nearly hides the communication. Run the micro-batches on two resources, the GPU's SMs and the NIC: per layer, micro-batch A's dispatch/combine travels while B computes, and the other way round. A per-layer schedule with an assumed 20 ms of compute and the 17.6 ms of all-to-all from [Internals I](arithmetic.md#ep-communication-volume):
+Why splitting the batch in two nearly hides the communication. Run the micro-batches on two resources, the GPU's SMs and the NIC: per layer, micro-batch A's dispatch/combine travels while B computes, and the other way round. A per-layer schedule with an assumed 20 ms of compute and the 17.6 ms of all-to-all from [Internals I](arithmetic.md#ep-communication-volume) (that estimate uses DeepSeek's ~88 sequences per GPU; `ep_comm.py` above assumed 128, hence its 25.5 ms):
 
 ```python
 # tbo.py - two-batch overlap: per layer, one micro-batch computes while the other communicates
@@ -2102,7 +2108,7 @@ A colocated GPU alternates between a 129 ms burst of compute and a long stretch 
 - Splitwise (Patel et al., arXiv 2311.18677): phase splitting, including running the phases on different hardware generations.
 - Mooncake (Qin et al., arXiv 2407.00079): Kimi's production system; KV-cache-centric, with a distributed KV pool over CPU DRAM and SSD, and a scheduler that routes by cache location.
 
-Implementations: vLLM (KV connector API with NIXL, LMCache, Mooncake connectors), SGLang (PD disaggregation with Mooncake/NIXL transfer backends), NVIDIA Dynamo, llm-d. These move fast; the docs of the version you use are authoritative.
+Implementations: vLLM (KV connector API with NIXL, LMCache, Mooncake connectors; these are libraries that move KV blocks between GPUs, hosts and storage, NIXL being NVIDIA's transfer library over NVLink/RDMA), SGLang (PD disaggregation with Mooncake/NIXL transfer backends), NVIDIA Dynamo, llm-d. These move fast; the docs of the version you use are authoritative.
 
 ### KV transfer cost
 
@@ -2197,12 +2203,12 @@ Chunked prefill in a colocated engine is the baseline to beat. Measure goodput a
 
 ## Structured decoding
 
-The [overview](README.md#guided-text-generation) covers what it is for. Internals:
+Structured (constrained) decoding forces the output to match a format, such as a regex or a JSON Schema, by setting the logit of every token that would break the format to `-inf` before sampling; the [overview](README.md#guided-text-generation) covers what it is for. Internals:
 
 ### Grammar to automaton
 
 - **Regex** compiles to a DFA over characters. Outlines (Willard & Louf, "Efficient Guided Generation for Large Language Models", arXiv 2307.09702) lifts the DFA to the token level: for each DFA state, precompute the set of vocabulary tokens whose full character sequence is a valid walk from that state, giving an index `state -> allowed tokens` and `(state, token) -> next state`. Per-step cost is a lookup.
-- **JSON Schema** is converted to a grammar; for schemas with bounded nesting this can be a regex/DFA, but general JSON (and any recursive structure) needs a **context-free grammar**, i.e. a pushdown automaton (PDA). The token mask now depends on the stack, not just the state, so it cannot be fully precomputed.
+- **JSON Schema** (a JSON document that describes the allowed shape of other JSON documents: which keys, which value types, which are required, e.g. `{"type": "object", "properties": {"age": {"type": "integer"}}}`) is converted to a grammar; for schemas with bounded nesting this can be a regex/DFA, but general JSON (and any recursive structure) needs a **context-free grammar**, i.e. a pushdown automaton (PDA). The token mask now depends on the stack, not just the state, so it cannot be fully precomputed.
 
 A **DFA** (deterministic finite automaton) is a set of states plus a transition table `(state, character) -> next state`, so it remembers only "which state am I in". That is enough for a fixed JSON shape, but not for arbitrary nesting, where what may come next depends on how many brackets are open. A **PDA** (pushdown automaton) adds a stack to remember that:
 
@@ -2232,7 +2238,7 @@ Output of `python pda.py`:
 
 `"[0"` and `"[[[0]],[0"` end in the same character, yet only the stack tells you that the second needs two more `]` before it may end.
 
-A regex compiled into an FSM that masks invalid tokens at each step (SGLang paper):
+A regex compiled into an FSM (finite-state machine; here, a DFA) that masks invalid tokens at each step (SGLang paper):
 
 ![regex compiled to an FSM guiding decoding](images/sglang-regex-fsm.png)
 
@@ -2415,7 +2421,7 @@ XGrammar (Dong et al., "XGrammar: Flexible and Efficient Structured Generation E
 - **Overlap** of mask generation with the GPU forward pass.
 - **Grammar compilation caching**: compiling a JSON schema to the PDA plus mask cache costs from milliseconds to seconds; engines cache compiled grammars keyed by schema so the cost is paid once per distinct schema. First-request latency with a new schema is the cost to watch.
 
-Other backends with different tradeoffs: llguidance (Microsoft; lazy, Earley-parser-based, low compile cost), Outlines-core, lm-format-enforcer - all four are pluggable in vLLM (see the overview).
+Other backends with different tradeoffs: llguidance (Microsoft; lazy, built on an Earley parser - a classic algorithm that parses any context-free grammar incrementally, one input symbol at a time - with low compile cost), Outlines-core, lm-format-enforcer - all four are pluggable in vLLM (see the overview).
 
 ### Interactions
 
@@ -2464,7 +2470,7 @@ Naive top-p: softmax, sort the `V`-wide row (`V = 128,256` for Llama-3), cumsum,
 Techniques in use:
 
 - **Exponential-race sampling instead of multinomial.** `argmax(probs / E)` with `E ~ Exp(1)` i.i.d. is an exact sample from `probs` (equivalent to the Gumbel-max trick on logits). It is a single elementwise op plus an argmax with no cumsum and no sync. vLLM's sampler uses this form.
-- **Top-k via partial selection** (`torch.topk` / radix select) rather than full sort; for small `k` this is far cheaper.
+- **Top-k via partial selection** (`torch.topk` / radix select, which finds the k-th largest value by bucketing on its bits, a few bits per pass, without sorting) rather than full sort; for small `k` this is far cheaper.
 - **Sorting-free top-p/top-k via rejection sampling.** FlashInfer's sampling kernels sample a candidate, compute the probability mass of tokens with probability greater than the candidate's in one pass, and if the candidate is outside the nucleus raise a pivot and resample - an iterative, sort-free procedure that converges in a few rounds (FlashInfer blog, "Sorting-Free GPU Kernels for LLM Sampling", 2025; details from memory). vLLM and SGLang can use these kernels.
 - **Min-p** is cheap: one max reduction and a threshold.
 
@@ -2678,7 +2684,7 @@ The LoRA FLOPs are small (`~2 * 41.9M` per token vs `~2 * 8e9`, i.e. ~0.5%) but 
 
 ## Observability
 
-The [metrics section of the overview](README.md#key-inference-performance-metrics) defines TTFT, ITL and throughput from the client side. From the engine side, export these (names are vLLM's Prometheus names - Prometheus being the standard metrics scraper that polls an HTTP `/metrics` endpoint; they have been renamed between versions, e.g. `gpu_cache_usage_perc` -> `kv_cache_usage_perc` and `time_per_output_token_seconds` -> `inter_token_latency_seconds` - check `/metrics` on your build; SGLang and TRT-LLM export equivalents):
+[Internals I](arithmetic.md#definitions) defines TTFT, TPOT/ITL and goodput from the client side (the [overview's metrics section](README.md#key-inference-performance-metrics) is a lighter version). From the engine side, export these (names are vLLM's Prometheus names - Prometheus being the standard metrics scraper that polls an HTTP `/metrics` endpoint; they have been renamed between versions, e.g. `gpu_cache_usage_perc` -> `kv_cache_usage_perc` and `time_per_output_token_seconds` -> `inter_token_latency_seconds` - check `/metrics` on your build; SGLang and TRT-LLM export equivalents):
 
 | Metric | What it tells you | Act when |
 |-|-|-|
@@ -2697,7 +2703,7 @@ The [metrics section of the overview](README.md#key-inference-performance-metric
 
 What engine metrics cannot tell you, and what to add:
 
-- **GPU idle time between steps** (CPU overhead): from `nsys` or from comparing step wall time to the sum of kernel times; a cheap proxy is `DCGM_FI_PROF_SM_ACTIVE` vs observed tokens/s.
+- **GPU idle time between steps** (CPU overhead): from `nsys` ([Nsight Systems with NVTX ranges](../training/profiling-and-optimization.md#nsight-systems-with-nvtx-ranges)) or from comparing step wall time to the sum of kernel times; a cheap proxy is `DCGM_FI_PROF_SM_ACTIVE` vs observed tokens/s.
 - **Achieved HBM bandwidth during decode** (`DCGM_FI_PROF_DRAM_ACTIVE`; DCGM is NVIDIA's GPU telemetry daemon that exports hardware counters): if decode is far below the roofline from [Internals I](arithmetic.md), the problem is overhead or small-batch kernels, not hardware.
 - **Grammar compile time and mask time** per request for structured output, since these show up as unexplained TTFT and ITL.
 - **Per-tenant / per-adapter** breakdowns for multi-LoRA and priority scheduling - aggregate p99 hides the tenant who is starving.
@@ -2709,6 +2715,8 @@ The engine exposes these as plain text at `/metrics`. Scraping by hand is the fa
 ```bash
 $ curl -s localhost:8000/metrics | grep -E 'num_requests_(running|waiting)|kv_cache_usage|preemptions'
 ```
+
+Just enough of the Prometheus text format to read that output (it is the same format as the [DCGM exporter](../orchestration/internals.md#gpu-signals-dcgm-exporter) uses). Each non-comment line is one sample: `metric_name{label="value",...} number`. The `{...}` part is optional and holds **labels**, key-value tags that distinguish series with the same name (here, which model). Lines starting with `#` are comments, including `# HELP` (description) and `# TYPE` (kind). There are three kinds you will meet. A **counter** only ever goes up (names end in `_total`), so its meaning is in its rate of change or in a ratio with another counter. A **gauge** is a current value that can go up or down (queue length, cache use). A **histogram** is exported as many counters, one per bucket (`..._bucket{le="0.5"}` = number of observations at or below 0.5), plus `_sum` and `_count`, from which a monitoring system estimates percentiles. A Prometheus server **scrapes** (fetches) `/metrics` every few seconds and stores each series as a time series. The [observability section of Control Planes](../platform/control-planes.md#metrics-with-prometheus) instruments a Python service from scratch.
 
 The derived numbers you act on are ratios of counters. The parser below works on any Prometheus text exposition. `SAMPLE` is made-up illustrative input in that format, not output from a real server:
 

@@ -15,10 +15,13 @@ I've been compiling this information mostly for myself so that I could quickly f
 
 ## Table of Contents
 
-New to systems? Read Part 1 in order first - every later chapter links back to it. Each chapter starts with a **Prerequisites** list, so you can also jump straight to a topic and follow the links backwards.
+New to systems? Read Part 1 in order first - every later chapter links back to it. The new chapters are written to be read in the order listed: nothing is used before it is taught or defined. Each chapter starts with a **Prerequisites** list, so you can also jump straight to a topic and follow the links backwards.
+
+Entries marked *(reference)* are Stas Bekman's original chapters: practical notes written for experienced engineers. Read them after the matching from-zero chapters, or use them as lookup material.
 
 **Part 1. Foundations** - systems from zero
 
+1. **[The Working Toolkit](./foundations/toolkit.md)** - terminal basics, running the book's code, git, JSON/YAML/TOML, regex, Make, reading C
 1. **[Computer Architecture](./foundations/computer-architecture.md)** - number formats, CPUs, memory hierarchy, PCIe, what a GPU is
 1. **[Linux and Operating Systems](./foundations/linux-and-os.md)** - shell, processes, memory, filesystems, ssh, systemd, CUDA versions
 1. **[Concurrency and Parallelism](./foundations/concurrency.md)** - threads, processes, the GIL, asyncio, DataLoader internals, CUDA streams
@@ -40,25 +43,25 @@ New to systems? Read Part 1 in order first - every later chapter links back to i
 
 **Part 4. Hardware and Kernels**
 
-1. **[Compute](compute)** - accelerators, CPUs, CPU memory
+1. **[Compute](compute)** - accelerators, CPUs, CPU memory *(reference)*
 1. **[GPU Execution Model](compute/accelerator/execution-model.md)** - SMs, warps, memory hierarchy, tensor cores, rooflines, FlashAttention, torch.compile
 1. **[Writing GPU Kernels](compute/accelerator/writing-kernels.md)** - CUDA C++ and Triton, from vector add to tensor-core GEMM and FlashAttention
 1. **[The GPU Node Software Stack](compute/gpu-software-stack.md)** - drivers, CUDA, NCCL, RDMA and node bring-up
-1. **[Storage](storage)** - local, distributed and shared file systems
-1. **[Network](network)** - intra- and inter-node networking
+1. **[Storage](storage)** - local, distributed and shared file systems *(reference)*
+1. **[Network](network)** - intra- and inter-node networking *(reference)*
 1. **[Collective Communication Internals](network/collectives-internals.md)** - ring/tree algorithms, NCCL internals, cost models
 
 **Part 5. Orchestration**
 
 1. **[Orchestration Systems](orchestration)** - overview
 1. **[Slurm From Zero](orchestration/slurm/from-zero.md)** - architecture, jobs, multi-node PyTorch, preemption, admin basics
-1. **[SLURM](orchestration/slurm)** - cheatsheets, admin, performance, launchers
+1. **[SLURM](orchestration/slurm)** - cheatsheets, admin, performance, launchers *(reference)*
 1. **[Kubernetes From Zero](orchestration/kubernetes-from-zero.md)** - objects, controllers, operators, GPU workloads
 1. **[Orchestration Internals](orchestration/internals.md)** - gang scheduling, topology, elastic launch, failure arithmetic
 
 **Part 6. Training**
 
-1. **[Training](training)** - model training-related guides
+1. **[Training](training)** - model training-related guides *(reference)*
 1. **[Training Arithmetic and Numerics](training/arithmetic.md)** - FLOPs, memory, mixed precision, FP8, optimizers
 1. **[Parallelism From First Principles](training/model-parallelism/derivations.md)** - DDP, ZeRO/FSDP, TP, SP/CP, PP, EP, composing them
 1. **[Profiling and Optimizing Training](training/profiling-and-optimization.md)** - hands-on bottleneck hunting
@@ -66,7 +69,7 @@ New to systems? Read Part 1 in order first - every later chapter links back to i
 
 **Part 7. Inference**
 
-1. **[Inference](inference)** - model inference insights
+1. **[Inference](inference)** - model inference insights *(reference)*
 1. **[Inference Arithmetic](inference/arithmetic.md)** - rooflines, KV cache sizing, quantization, capacity planning
 1. **[Inside a Serving Engine](inference/serving-engine-internals.md)** - paged attention, scheduling, speculative decoding, disaggregation
 1. **[Serving LLMs in Practice](inference/serving-hands-on.md)** - vLLM/SGLang, load testing, gateways, multi-node serving

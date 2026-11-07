@@ -17,6 +17,8 @@ Conventions:
   # opentelemetry-sdk 1.45.2, PostgreSQL 15.14 and Redis 8.2.2 from Homebrew
   ```
 
+  (Virtual environments are covered in [the toolkit chapter](../foundations/toolkit.md#venv-the-built-in-way).) What the packages are, briefly; each is explained properly where it is first used. `fastapi` is a Python web framework: you write a function, mark it with the URL it answers, and it handles the HTTP and JSON (section 9). `uvicorn` is the server process that runs a FastAPI app. `httpx` is an HTTP client, like `requests` but with an `asyncio` version. `prometheus_client` exports metrics, `opentelemetry-sdk` records traces (both in section 11). `psycopg` is the Python driver for the Postgres database and `redis` the client for the Redis server (both in section 6). FastAPI and httpx were already used in [Serving LLMs in Practice](../inference/serving-hands-on.md#a-mock-server-you-can-run-anywhere).
+
 - Output under a script is real output from running it, unless the block says **untested** (things that need Linux, a GPU, a real cluster, or tools not installed here, such as `etcd`).
 - Simulations are seeded, so you get the same numbers. Several end with `assert`s that fail if you break the property the section is about.
 
@@ -24,11 +26,16 @@ Conventions:
 
 Read these first, or keep them open. This chapter links to them instead of repeating them:
 
-- [Distributed Systems](../foundations/distributed-systems.md): partial failure, heartbeats and "slow vs dead", leases and fencing tokens, Raft, idempotency keys, retries with backoff and jitter. This chapter applies those ideas to a fleet; it does not re-derive them.
-- [Concurrency](../foundations/concurrency.md): processes, threads, the GIL, `asyncio`, producer/consumer and backpressure.
-- [Containers and Virtualization](../foundations/containers-and-virtualization.md): what the data plane actually runs (containers, Firecracker microVMs, snapshots, the jailer).
-- [Networking](../foundations/networking.md): TCP, HTTP, what a timeout means on the wire.
-- Helpful but optional: [Orchestration internals](../orchestration/internals.md) (gang scheduling, topology, SLURM and Kubernetes schedulers) and [Kubernetes from zero](../orchestration/kubernetes-from-zero.md).
+- [The working toolkit](../foundations/toolkit.md): virtual environments, JSON and [jq](../foundations/toolkit.md#jq-json-on-the-command-line) (used to query this chapter's logs), YAML (the Prometheus rules file).
+- [Linux and the OS](../foundations/linux-and-os.md): [signals](../foundations/linux-and-os.md#signals) (SIGTERM, SIGKILL, SIGSTOP/SIGCONT drive the failure scenarios), [cgroups](../foundations/linux-and-os.md#cgroups-limits-for-groups-of-processes), the shell.
+- [Distributed Systems](../foundations/distributed-systems.md): partial failure, heartbeats and "slow vs dead", leases and fencing tokens, Raft, idempotency keys, retries with backoff and jitter, SLOs. This chapter applies those ideas to a fleet; it does not re-derive them.
+- [Concurrency](../foundations/concurrency.md): processes, threads, the GIL, `asyncio`, condition variables, producer/consumer and backpressure.
+- [Containers and Virtualization](../foundations/containers-and-virtualization.md): what the data plane actually runs (containers, Firecracker microVMs, snapshots, the jailer, tap devices, vsock).
+- [Networking](../foundations/networking.md): TCP, HTTP, TLS, gRPC, what a timeout means on the wire.
+- [Kubernetes from zero](../orchestration/kubernetes-from-zero.md): the reference control plane. REST verbs and status codes, `resourceVersion` and 409 Conflict, watches, taints, affinity, priority and preemption, `kubectl drain`.
+- [Orchestration internals](../orchestration/internals.md): gang scheduling, topology, fairness, automatic draining, Prometheus and PromQL for GPU fleets.
+- [Inference Internals I](../inference/arithmetic.md#littles-law) (Little's law), [Inference Internals II](../inference/serving-engine-internals.md#observability) (the Prometheus text format) and [Serving LLMs in Practice](../inference/serving-hands-on.md) (FastAPI, httpx, Server-Sent Events, `histogram_quantile`).
+- Forward link: [RL infrastructure](rl-infrastructure.md) is the main client of the fleets described here.
 
 
 ## 1. Control plane vs data plane
@@ -245,6 +252,8 @@ Here is what happens between a client asking for a sandbox and the sandbox being
      GET/watch ─────────► phase=Ready
 ```
 
+Reading the diagram: `202` is the HTTP status "Accepted: I have recorded your request and will finish it later" (the full table is in [Errors and status codes](#errors-and-status-codes)). `INSERT` and `UPDATE` are database writes that add or change a row, in SQL (introduced in [State stores](#postgres-a-relational-database-that-can-be-a-control-plane-store)). `rv` is the object's resource version, a counter bumped on every write. `CAS bind` is a compare-and-swap write, explained in [Optimistic concurrency](#optimistic-concurrency-with-resource-versions). The tap device, jailer and vsock are the Firecracker pieces from [Containers and Virtualization](../foundations/containers-and-virtualization.md#8-microvms).
+
 The time from create to Ready is the number users feel. A rough budget for a microVM sandbox platform looks like this (the boot and restore figures come from the Firecracker paper and [Containers and Virtualization](../foundations/containers-and-virtualization.md#8-microvms); the rest are typical targets, not measurements):
 
 ```python
@@ -356,7 +365,7 @@ Two practical rules. First, **record why a workload is unschedulable**: "0/64 no
 
 ### Bin-packing policies and fragmentation
 
-Placement is a form of **bin-packing**: fit items (workloads) into bins (nodes) with fixed capacity. Offline bin-packing (all items known up front) is NP-hard. Online bin-packing (items arrive one at a time, and also *leave*) is what a fleet does, and simple greedy rules work well:
+Placement is a form of **bin-packing**: fit items (workloads) into bins (nodes) with fixed capacity. Offline bin-packing (all items known up front) is NP-hard (no known algorithm finds the optimal packing for every input in time polynomial in its size). Online bin-packing (items arrive one at a time, and also *leave*) is what a fleet does, and simple greedy rules work well:
 
 - **First-fit**: take the first node in a fixed order that has room.
 - **Best-fit**: take the node with the *least* room left over after placing. Keeps big holes intact for big requests.
@@ -609,9 +618,9 @@ $ curl -s -X PUT localhost:8700/v1/nodes/gpu-c -H 'content-type: application/jso
 {"lease_s":2.0}
 ```
 
-(Output from the mini control plane; the second identical `PUT` returns the same thing and changes nothing.)
+(Output from the mini control plane; the second identical `PUT` returns the same thing and changes nothing.) In the `curl` line, `-X PUT` picks the HTTP method, `-H` adds a request header (here saying the body is JSON), `-d` supplies the request body, and `-s` hides the progress meter. `PUT` means "create or replace the object at this URL", so repeating it is harmless; `POST` means "create a new one", so repeating it makes two. The verbs were introduced in [Kubernetes from zero](../orchestration/kubernetes-from-zero.md#the-components).
 
-The hard part in production is not the request, it's **trust**. A node that can register can receive workloads, including other tenants' secrets and model weights. Real systems bootstrap identity in one of three ways: a short-lived **bootstrap token** baked into the machine image that is exchanged for a per-node TLS client certificate (Kubernetes' TLS bootstrapping), the cloud provider's **instance identity document** signed by the provider, or a **TPM**-backed attestation on bare metal. After that, every agent request is authenticated with mutual TLS, and the API server authorizes it so that a node can only read and update *its own* assignments (Kubernetes' Node authorizer does exactly this). On a marketplace that aggregates other people's machines, assume a registered node can lie about everything it reports, and verify hardware claims (GPU model, count, bandwidth) with your own benchmark before trusting them; see [When peers are untrusted](../foundations/distributed-systems.md#when-peers-are-untrusted).
+The hard part in production is not the request, it's **trust**. A node that can register can receive workloads, including other tenants' secrets and model weights. Real systems bootstrap identity in one of three ways: a short-lived **bootstrap token** baked into the machine image that is exchanged for a per-node TLS client certificate (Kubernetes' TLS bootstrapping), the cloud provider's **instance identity document** signed by the provider, or a **TPM**-backed attestation on bare metal (a TPM, Trusted Platform Module, is a tamper-resistant chip on the motherboard that can sign a statement of which firmware and OS booted). After that, every agent request is authenticated with mutual TLS ([TLS basics](../foundations/networking.md#tls-basics); in mutual TLS the client presents a certificate too), and the API server authorizes it so that a node can only read and update *its own* assignments (Kubernetes' Node authorizer does exactly this). On a marketplace that aggregates other people's machines, assume a registered node can lie about everything it reports, and verify hardware claims (GPU model, count, bandwidth) with your own benchmark before trusting them; see [When peers are untrusted](../foundations/distributed-systems.md#when-peers-are-untrusted).
 
 ### Heartbeats and leases
 
@@ -657,7 +666,7 @@ time-to-recovered sandbox: cold boot 65.1s, snapshot restore 45.4s -- detection 
 
 "The agent process is alive" is not the same as "the node can run work". A node with a dead GPU, a full disk or a broken network will heartbeat happily forever. So agents report **conditions** in addition to liveness: a small set of named, typed, timestamped health facts, which the scheduler and controllers use as filters. Kubernetes nodes have `Ready`, `MemoryPressure`, `DiskPressure`, `PIDPressure` and `NetworkUnavailable`, and tools like the node-problem-detector add more (kernel deadlocks, GPU Xid errors).
 
-A health report from a GPU sandbox node might look like this. The checks are Linux commands, so this block is **untested** here; the JSON shape is the point:
+A health report from a GPU sandbox node might look like this. The checks are Linux commands, so this block is **untested** here; the JSON shape is the point. `check NAME COMMAND...` is a small shell function ([the shell](../foundations/linux-and-os.md#2-the-shell)): `shift` drops the name from the argument list, `"$@"` runs the remaining arguments as a command, and the command's exit status (0 = success) becomes the condition's `True`/`False`:
 
 ```bash
 # health.sh -- run by the agent every 30 s; each check becomes one condition (untested: needs Linux + NVIDIA GPU)
@@ -746,6 +755,8 @@ On Kubernetes (**untested** here; standard commands):
 ```bash
 kubectl cordon gpu-node-17                      # spec.unschedulable=true: no new pods
 kubectl drain gpu-node-17 --ignore-daemonsets --delete-emptydir-data --timeout=10m
+#   --ignore-daemonsets: skip DaemonSet pods (their controller would recreate them on this node anyway)
+#   --delete-emptydir-data: allow evicting pods with emptyDir volumes (that scratch data is lost)
 #   evicts pods through the Eviction API, which honors PodDisruptionBudgets
 #   ("at most 1 of my 3 replicas may be down at once")
 kubectl uncordon gpu-node-17                    # after repair and a passing health check
@@ -783,7 +794,9 @@ if d.epoch != s["epoch"]:
     raise HTTPException(409, f"stale epoch {d.epoch} < {s['epoch']}")
 ```
 
-And this is what it did in the scenario run, filtered from the structured log with `jq`. Sandbox `sbx-83e197` was placed on `cpu-b` with epoch 1. The scenario froze `cpu-b` with SIGSTOP, the control plane moved the sandbox to `gpu-c` with epoch 2, and when `cpu-b` woke up it tried to report its (stale) result:
+(`raise HTTPException(409, ...)` is how the FastAPI web framework, introduced in [section 9](#long-running-operations-watches-and-pagination), turns a Python exception into an HTTP error response, here `409 Conflict`. `STALE.labels("complete").inc()` adds 1 to a Prometheus counter, covered in [Metrics with Prometheus](#metrics-with-prometheus).)
+
+And this is what it did in the scenario run, filtered from the structured log with `jq` ([jq: JSON on the command line](../foundations/toolkit.md#jq-json-on-the-command-line)). The scenario freezes a node's agent with SIGSTOP and later resumes it with SIGCONT ([signals](../foundations/linux-and-os.md#signals)). Sandbox `sbx-83e197` was placed on `cpu-b` with epoch 1. The scenario froze `cpu-b` with SIGSTOP, the control plane moved the sandbox to `gpu-c` with epoch 2, and when `cpu-b` woke up it tried to report its (stale) result:
 
 ```console
 $ jq -c 'select(.sbx == "sbx-83e197") | {t, ev, node, epoch, http}' /tmp/minicp.log
@@ -823,13 +836,15 @@ The margin (here 25% of the lease) has to cover clock *rate* differences and the
 {"t": 12.61, "ev": "placed", "sbx": "sbx-8d141b", "node": "cpu-a", "epoch": 2}
 ```
 
-Self-fencing is in tension with static stability (keep running when the control plane is down). You have to pick per workload type. For sandboxes doing RL rollouts, where a duplicate is cheap and a stale result is fenced anyway, many platforms prefer *keep running* and rely on fencing. For a workload that holds an exclusive role (the one writer of a checkpoint, the primary of a database, the one replica allowed to publish weights), self-fence. Hardware-level fencing exists too: HA clusters use **STONITH** ("shoot the other node in the head"), power-cycling a suspected node through its BMC before taking over its work, which turns "maybe dead" into "certainly dead". On a GPU fleet, `ipmitool chassis power off` through the BMC is the same tool.
+Self-fencing is in tension with static stability (keep running when the control plane is down). You have to pick per workload type. For sandboxes doing RL rollouts, where a duplicate is cheap and a stale result is fenced anyway, many platforms prefer *keep running* and rely on fencing. For a workload that holds an exclusive role (the one writer of a checkpoint, the primary of a database, the one replica allowed to publish weights), self-fence. Hardware-level fencing exists too: HA (high-availability) clusters use **STONITH** ("shoot the other node in the head"), power-cycling a suspected node through its BMC (baseboard management controller: a small separate computer on the server's board, with its own network port, that can power the machine on and off even when the OS is hung) before taking over its work, which turns "maybe dead" into "certainly dead". On a GPU fleet, `ipmitool chassis power off` through the BMC is the same tool.
 
 ### Split brain in the control plane itself
 
 The control plane's own singletons have the same problem. If you run three scheduler replicas for availability, only one should place work at a time; if two do, they make conflicting decisions from the same view. That is **split brain**: two parts of a system each believing they are the leader.
 
-The usual design is **leader election through a lease in the state store**. Kubernetes' scheduler and controller-manager run with `--leader-elect`: the replicas race to acquire a `Lease` object in etcd, the winner renews it every few seconds, and the others wait for it to expire. Here is the same thing in Redis, run against a local `redis-server` **[venv]**:
+The usual design is **leader election through a lease in the state store**. Kubernetes' scheduler and controller-manager run with `--leader-elect`: the replicas race to acquire a `Lease` object in etcd, the winner renews it every few seconds, and the others wait for it to expire. Here is the same thing in Redis, run against a local `redis-server` listening on port 6399 **[venv]**.
+
+Just enough Redis to read it (more in [the Redis section](#redis-fast-mostly-in-memory-weaker-guarantees) below). Redis is a server that holds a dictionary of string keys in memory and executes one command at a time, so each command is atomic. The commands used here: `SET key value NX PX 300` stores the value only if the key does Not eXist, and makes it expire after 300 milliseconds; it returns success or nothing. `GET key` reads it. `PEXPIRE key ms` resets a key's expiry. `INCR key` adds 1 to a counter and returns the new value, atomically. Redis can also run a short script in **Lua** (a small embedded scripting language) on the server, as one atomic step; inside the script `KEYS[1]` and `ARGV[1]` are the arguments passed in and `redis.call(...)` runs a Redis command. In the Python client, `r.set(..., nx=True, px=ttl)` is `SET ... NX PX`, and `register_script` returns a Python function that runs the Lua script. `RENEW` below means "extend the lease only if I still hold it", which needs the check and the extend to happen without anything in between:
 
 ```python
 # redis_lease.py -- a leader lease in Redis: SET NX PX to acquire, a Lua check-and-extend to renew,
@@ -915,19 +930,46 @@ $ etcdctl lease grant 10                               # -> lease 694d... grante
 $ etcdctl put --lease=694d... /nodes/gpu-c/alive 1     # key disappears 10 s after the last keepalive
 ```
 
-Its limits are as important as its features. etcd keeps its whole dataset in a memory-mapped B-tree with a default storage quota of 2 GiB (`--quota-backend-bytes`; the docs suggest 8 GiB as a practical maximum), limits a request to about 1.5 MiB, and its write throughput is bounded by fsync latency on the leader's disk and one network round trip to a majority. It is a store for *metadata*: thousands to low millions of small objects. Don't put logs, metrics, rollout data or large blobs in it. Kubernetes' documented scalability envelope (about 5,000 nodes and 150,000 pods per cluster) is set largely by etcd and the API server's watch caches.
+Its limits are as important as its features. etcd keeps its whole dataset in a memory-mapped B-tree (a sorted tree index whose wide nodes map onto disk pages) with a default storage quota of 2 GiB (`--quota-backend-bytes`; the docs suggest 8 GiB as a practical maximum), limits a request to about 1.5 MiB, and its write throughput is bounded by fsync latency on the leader's disk and one network round trip to a majority. It is a store for *metadata*: thousands to low millions of small objects. Don't put logs, metrics, rollout data or large blobs in it. Kubernetes' documented scalability envelope (about 5,000 nodes and 150,000 pods per cluster) is set largely by etcd and the API server's watch caches.
 
 ### Postgres: a relational database that can be a control plane store
 
-**Postgres** is a perfectly good state store for most control planes and often the better choice for a small team: you already know SQL, you get transactions across many objects, secondary indexes ("all sandboxes of tenant X in phase Pending"), and mature backups and tooling. Replicate it with synchronous streaming replication for durability, or use a managed service.
+**Postgres** (PostgreSQL) is a perfectly good state store for most control planes and often the better choice for a small team: SQL is widely known, you get transactions across many objects, secondary indexes ("all sandboxes of tenant X in phase Pending"), and mature backups and tooling. Replicate it with synchronous streaming replication for durability, or use a managed service.
+
+**Just enough SQL.** A relational database stores **tables**: named columns with types, and rows. You talk to it in **SQL**, a language of statements sent as strings. Python's standard library includes **SQLite**, a SQL database that lives in one file (or in memory), which is enough to learn the handful of statements this chapter uses:
+
+```python
+# sql_basics.py -- just enough SQL for this chapter, on SQLite (a SQL database in one file; stdlib sqlite3)
+import sqlite3
+db = sqlite3.connect(":memory:", isolation_level=None)   # None: we write BEGIN/COMMIT ourselves
+db.execute("CREATE TABLE sbx (id TEXT PRIMARY KEY, node TEXT, cpu INTEGER, rv INTEGER)")  # a table: named, typed columns
+db.execute("INSERT INTO sbx VALUES ('sbx-1', NULL, 2, 1)")                # add a row (NULL = no value)
+db.execute("INSERT INTO sbx (id, cpu, rv) VALUES (?, ?, ?)", ("sbx-2", 4, 1))  # ? = placeholder, filled safely
+print(db.execute("SELECT id, cpu FROM sbx WHERE node IS NULL").fetchall())    # read rows matching a condition
+n = db.execute("UPDATE sbx SET node='n7', rv=rv+1 WHERE id='sbx-1' AND rv=1").rowcount  # change matching rows
+print("rows updated:", n)
+db.execute("BEGIN")                                     # a transaction: everything until COMMIT happens, or nothing
+db.execute("DELETE FROM sbx WHERE id='sbx-2'")
+db.execute("ROLLBACK")                                  # ... changed our mind: undo it all
+print(db.execute("SELECT node IS NULL AS pending, count(*), sum(cpu) FROM sbx GROUP BY pending").fetchall())
+```
+
+```console
+$ python3 sql_basics.py
+[('sbx-1', 2), ('sbx-2', 4)]
+rows updated: 1
+[(0, 1, 2), (1, 1, 4)]
+```
+
+`PRIMARY KEY` means the column is unique and indexed. `WHERE` filters rows for `SELECT`, `UPDATE` and `DELETE`. `rowcount` tells you how many rows an `UPDATE` changed, which is how you detect that a conditional write lost a race (0 rows). A **transaction** groups statements between `BEGIN` and `COMMIT` so they take effect together or, on `ROLLBACK` or a crash, not at all. `GROUP BY` collapses rows with the same value into one, and `count(*)` / `sum(...)` / `max(...)` aggregate over each group. Always pass values through placeholders (`?` in sqlite3, `%s` in psycopg), never by pasting them into the SQL string.
 
 What Postgres gives you for each requirement:
 
-- **CAS**: `UPDATE ... WHERE id = $1 AND version = $2` and check the row count (next section).
-- **Work queue**: `SELECT ... FOR UPDATE SKIP LOCKED` (since 9.5) lets many workers claim distinct rows without blocking each other. This is the standard way to build a reliable queue on Postgres.
-- **Notifications**: `LISTEN`/`NOTIFY` for "something changed, go look" (fire-and-forget, so treat it as a hint and re-read state), or logical replication for a real change stream.
+- **CAS**: `UPDATE ... WHERE id = $1 AND version = $2` (`$1`, `$2` are Postgres's numbered placeholders) and check the row count (next section).
+- **Work queue**: `SELECT ... FOR UPDATE SKIP LOCKED` (since 9.5) lets many workers claim distinct rows without blocking each other. `FOR UPDATE` locks the selected rows until the transaction ends, so no other transaction can change them; `SKIP LOCKED` makes other workers skip rows somebody else has locked instead of waiting for them. This is the standard way to build a reliable queue on Postgres.
+- **Notifications**: `LISTEN`/`NOTIFY` for "something changed, go look" (fire-and-forget, so treat it as a hint and re-read state), or logical replication (Postgres streaming every committed row change to a subscriber) for a real change stream.
 
-A queue of placement work, claimed by 4 concurrent workers, against a throwaway Postgres 15 started from Homebrew with `initdb -D /tmp/pgdata && pg_ctl -D /tmp/pgdata -o "-p 5499 -k /tmp" start` **[venv]**:
+A queue of placement work, claimed by 4 concurrent workers, against a throwaway Postgres 15 started from Homebrew with `initdb -D /tmp/pgdata && pg_ctl -D /tmp/pgdata -o "-p 5499 -k /tmp" start` (`initdb` creates an empty database directory, `pg_ctl ... start` starts the server on port 5499 with its socket file in `/tmp`) **[venv]**. Postgres-specific pieces in the code: `psycopg.connect(DSN)` opens a connection described by the DSN string; `with c.transaction():` wraps a block in `BEGIN`/`COMMIT` (or `ROLLBACK` on an exception); `serial` is an auto-incrementing integer, `timestamptz` a timestamp; `generate_series(1, 200)` produces the numbers 1..200 as rows; `now() + interval '30 seconds'` is time arithmetic; and `UPDATE ... RETURNING id, sandbox` returns the rows it changed, so a worker claims a row and learns which one in a single statement:
 
 ```python
 # pg_queue.py -- Postgres as the work queue: 4 workers claim placement work with FOR UPDATE SKIP LOCKED
@@ -1001,7 +1043,7 @@ Two arithmetic checks before choosing. Every acknowledged write in a replicated 
 
 ### Optimistic concurrency with resource versions
 
-Two schedulers read the same pending sandbox, both pick a node, both write. Without protection, the second write silently overwrites the first, and both nodes may start the sandbox. The fix that every control plane uses is **optimistic concurrency control**: every object carries a **resource version** that changes on every write, and every update says "only apply this if the version is still the one I read". If it isn't, the write fails with a conflict, and the writer re-reads and decides again. It is "optimistic" because it takes no lock; it assumes conflicts are rare and detects them at write time.
+Two schedulers read the same pending sandbox, both pick a node, both write. Without protection, the second write silently overwrites the first, and both nodes may start the sandbox. The fix that every control plane uses is **optimistic concurrency control**: every object carries a **resource version** that changes on every write, and every update says "only apply this if the version is still the one I read". If it isn't, the write fails with a conflict, and the writer re-reads and decides again. It is "optimistic" because it takes no lock; it assumes conflicts are rare and detects them at write time. The demo uses SQLite (see [Just enough SQL](#postgres-a-relational-database-that-can-be-a-control-plane-store)); the whole trick is the `AND rv=?` in the `UPDATE` and checking `rowcount`:
 
 ```python
 # cas.py -- optimistic concurrency: two schedulers race to bind the same sandbox
@@ -1036,7 +1078,7 @@ use_cas=False: sched-0 bind->node-0 read rv=7: OK; sched-1 bind->node-1 read rv=
 use_cas=True: sched-0 bind->node-0 read rv=7: CONFLICT (re-read, retry); sched-1 bind->node-1 read rv=7: OK | final: ('node-1', 8)
 ```
 
-Without CAS, both schedulers got "OK", the version advanced twice, and the final row says `node-0`, so `node-1`'s agent may be running a sandbox the store doesn't know about. With CAS, exactly one won and the other got a conflict. In Kubernetes every object has `metadata.resourceVersion`, every update must carry it, and a stale one gets HTTP `409 Conflict`; client-go's `retry.RetryOnConflict` is the re-read-and-retry loop. The same pattern on Postgres is the `WHERE ... AND rv = ?` above, and on etcd it is a txn on `mod_revision`.
+Without CAS, both schedulers got "OK", the version advanced twice, and the final row says `node-0`, so `node-1`'s agent may be running a sandbox the store doesn't know about. With CAS, exactly one won and the other got a conflict. In Kubernetes every object has `metadata.resourceVersion`, every update must carry it, and a stale one gets HTTP `409 Conflict`; client-go's (the official Go client library for Kubernetes) `retry.RetryOnConflict` is the re-read-and-retry loop. The same pattern on Postgres is the `WHERE ... AND rv = ?` above, and on etcd it is a txn on `mod_revision`.
 
 Two details matter in practice. Retry on conflict by **re-reading and re-deciding**, never by blindly re-sending the same write with the new version (that just reintroduces the lost update). And keep objects small and split by writer: if status and spec live in one object that both the user and the agent write, they conflict constantly. Kubernetes separates the `status` subresource for this reason.
 
@@ -1044,7 +1086,7 @@ Two details matter in practice. Retry on conflict by **re-reading and re-decidin
 
 A client sends "create sandbox", the network drops the reply, the client retries, and now there are two sandboxes. The fix is an **idempotency key**: the client generates a unique ID for each *logical* operation, sends it with every retry, and the server returns the original result for a key it has seen. The mechanism and its subtleties (one key per operation, not per attempt; store the key with the side effect, atomically) are covered with a runnable demo in [distributed systems: idempotency](../foundations/distributed-systems.md#idempotency).
 
-In an API it is a header, as in the mini control plane, where the scenario POSTs every create twice:
+In an API it is a header, as in the mini control plane, where the scenario POSTs every create twice. (Preview of FastAPI, introduced in [section 9](#long-running-operations-watches-and-pagination): `@app.post(path, status_code=201)` registers the function as the handler for HTTP `POST` requests to that path; `req: SandboxReq` tells FastAPI to parse and type-check the JSON body into that Pydantic model (a class whose annotated fields declare the expected shape; see [Versioning](#versioning-and-compatibility)); `Header(...)` fills `idempotency_key` from the `Idempotency-Key` request header, with `...` meaning "required".)
 
 ```python
 @app.post("/v1/sandboxes", status_code=201)
@@ -1053,13 +1095,13 @@ async def create(req: SandboxReq, idempotency_key: str = Header(...)):
         return view(idem[idempotency_key])
 ```
 
-Production details: keep keys for a bounded time (Stripe documents 24 hours) and scope them per tenant; reject a reused key that comes with a *different* body (`422`), since that is a client bug; and if the original request is still in flight when the retry arrives, return `409` and let the client retry later, rather than doing the work twice. Brandur Leach's "Implementing Stripe-like Idempotency Keys in Postgres" is the detailed reference. For APIs that create resources with client-chosen names (`PUT /v1/sandboxes/{name}`), the name *is* the idempotency key, which is one reason Kubernetes makes names client-chosen.
+Production details (status codes as in [the table in section 9](#errors-and-status-codes)): keep keys for a bounded time (Stripe documents 24 hours) and scope them per tenant; reject a reused key that comes with a *different* body (`422`), since that is a client bug; and if the original request is still in flight when the retry arrives, return `409` and let the client retry later, rather than doing the work twice. Brandur Leach's "Implementing Stripe-like Idempotency Keys in Postgres" is the detailed reference. For APIs that create resources with client-chosen names (`PUT /v1/sandboxes/{name}`), the name *is* the idempotency key, which is one reason Kubernetes makes names client-chosen.
 
 ### At-least-once delivery, dedup and the outbox
 
 A control plane writes to its store and also has to tell other systems: publish "sandbox created" to a queue, call the billing service, notify the scheduler. That is two writes to two systems, and there is no transaction across them. If you write the database then publish, a crash in between loses the event. If you publish then write, a crash in between announces something that never happened. This is the **dual-write problem**.
 
-The **transactional outbox** fixes it. In the same database transaction as the state change, insert the event into an `outbox` table. A separate **relay** loop reads unpublished outbox rows, publishes them, and marks them published. A crash in the relay just means it publishes some rows again, so delivery is **at-least-once**, and consumers **dedup** on the event's sequence number. Combined, the effect is exactly-once *processing*:
+The **transactional outbox** fixes it. In the same database transaction as the state change, insert the event into an `outbox` table. A separate **relay** loop reads unpublished outbox rows, publishes them, and marks them published. A crash in the relay just means it publishes some rows again, so delivery is **at-least-once**, and consumers **dedup** on the event's sequence number. Combined, the effect is exactly-once *processing*. (In the code, `BEGIN IMMEDIATE` is SQLite's way of starting a transaction that takes the write lock at once, and `AUTOINCREMENT` gives each outbox row the next sequence number.)
 
 ```python
 # outbox.py -- write state + idempotency record + outgoing event in ONE transaction, publish later
@@ -1119,7 +1161,7 @@ Five creates (each retried once, replayed from the idempotency table), nine deli
 
 ### Little's law
 
-Before any queueing design, one formula. **Little's law**: the average number of items in a system `L` equals the arrival rate `λ` times the average time each item spends inside `W`. It holds for any stable system regardless of distributions, which makes it the most useful sanity check in capacity planning:
+Before any queueing design, one formula, already met (with a simulation) in [Inference Internals I](../inference/arithmetic.md#littles-law). **Little's law**: the average number of items in a system `L` equals the arrival rate `λ` times the average time each item spends inside `W`. It holds for any stable system regardless of distributions, which makes it the most useful sanity check in capacity planning:
 
 ```console
 $ python3 -c "
@@ -1232,7 +1274,7 @@ Also: retry at **one layer** only. If the SDK retries 3 times, the API server re
 
 ### REST vs gRPC
 
-The API is the contract between your control plane and everything that uses it: SDKs, the CLI, the RL trainer, other services, your own node agents. Two styles dominate.
+The API is the contract between your control plane and everything that uses it: SDKs, the CLI, the RL trainer, other services, your own node agents. Two styles dominate: REST (objects at URLs, acted on with HTTP verbs and JSON bodies, as in [Kubernetes from zero](../orchestration/kubernetes-from-zero.md#the-components)) and gRPC (remote procedure calls over HTTP/2, from [Networking](../foundations/networking.md#osi-vs-tcpip)). In the streaming row below, **long-poll** means the server holds a request open until there is something new; **chunked** responses ([HTTP/1.1 from raw sockets](../foundations/networking.md#http11-from-raw-sockets)) and **Server-Sent Events** (SSE, `data: ...` lines in one long response, used by [OpenAI-style streaming](../inference/serving-hands-on.md#the-openai-compatible-api-and-streaming)) send a response in pieces; **WebSockets** upgrade an HTTP connection into a two-way message channel.
 
 | | REST/JSON over HTTP | gRPC (Protobuf over HTTP/2) |
 |---|---|---|
@@ -1273,7 +1315,7 @@ message ControlMessage {
 message Assignment { string id = 1; int64 epoch = 2; int32 cpu = 3; int64 mem_mib = 4; int32 gpus = 5; string image = 6; }
 ```
 
-Field numbers are the compatibility contract in Protobuf: never reuse or renumber one, add new fields with new numbers, and old clients will skip what they don't know.
+Reading a `.proto` file: a `message` is a record type (like a dataclass) whose fields have a type (`string`, `int32`, `int64`, another message), a name, and a **field number** after `=`. The number is not a default value; it is the tag that identifies the field in the binary encoding. `repeated` makes a field a list, `map<K, V>` a dictionary, and `oneof` says exactly one of the listed fields is set. A `service` lists remote functions: `rpc Connect(stream AgentMessage) returns (stream ControlMessage)` is one call in which both sides keep sending messages for as long as the connection lives (bidirectional streaming). A code generator turns the file into client and server classes for each language. Field numbers are the compatibility contract in Protobuf: never reuse or renumber one, add new fields with new numbers, and old clients will skip what they don't know.
 
 ### Long-running operations, watches and pagination
 
@@ -1283,7 +1325,15 @@ Three patterns come up in every infrastructure API. Google's API Improvement Pro
 - **Watches.** Clients (and your own controllers) want "tell me when it changes" without polling. Every list response includes the current `resource_version`; a watch request says "send every change after version N". If N is too old (history compacted), the server returns `410 Gone`, and the client re-lists and re-watches. This list-then-watch loop is exactly what Kubernetes informers do.
 - **Pagination.** Never return unbounded lists. Return a page plus an **opaque** `next_page_token` that encodes where to resume (here, the last key seen), not a page number, because page numbers shift when items are inserted.
 
-All three in one FastAPI app **[venv]**:
+All three in one FastAPI app **[venv]**. Just enough FastAPI to read it (it was used without much explanation in [Serving LLMs in Practice](../inference/serving-hands-on.md#a-mock-server-you-can-run-anywhere)):
+
+- `app = FastAPI()` creates the application; `@app.get(path)` / `@app.post(path)` register the function below as the handler for that HTTP method and path. `{op_id}` in a path is captured into the parameter of the same name.
+- Other function parameters with simple types become **query parameters** (`?cpu=2&limit=5`), converted and validated from their type hints; `Query(2, le=100)` sets a default of 2 and a maximum of 100. A parameter typed as a Pydantic model would be read from the JSON body instead.
+- Whatever the handler returns (dict, list) is sent back as JSON with status 200, or the `status_code=` given in the decorator. `raise HTTPException(404, "...")` returns that status with body `{"detail": "..."}`.
+- `StreamingResponse(gen())` sends the body piece by piece as the async generator `gen()` yields it, instead of all at once.
+- `uvicorn.run(app, port=...)` starts the HTTP server that runs the app on an asyncio event loop. Handlers written as `async def` all run on that one loop.
+
+Two other pieces: `asyncio.Condition` is the asyncio version of a [condition variable](../foundations/concurrency.md#condition-variables) (`wait_for(pred)` sleeps until another task calls `notify_all()` and `pred()` is true), and the watch stream is **NDJSON**, newline-delimited JSON, one object per line. `base64.urlsafe_b64encode` turns bytes into URL-safe text, which makes the page token opaque to clients.
 
 ```python
 # api.py -- infra API patterns: long-running operations, watch from a resourceVersion, pagination
@@ -1344,7 +1394,7 @@ if __name__ == "__main__":
     import uvicorn; uvicorn.run(app, port=8701, log_level="warning")
 ```
 
-Driving it with `curl`:
+Driving it with `curl`, from a script `api_demo.sh` (the server runs in the background, started with a trailing `&`). `-N` turns off curl's output buffering so streamed lines appear as they arrive, `--max-time 1.5` makes curl hang up after 1.5 s, and `VAR=$(...)` stores a command's output in a shell variable:
 
 ```bash
 for i in 1 2 3; do curl -s -X POST 'localhost:8701/v1/sandboxes?cpu=2'; echo; done
@@ -1390,7 +1440,7 @@ Infrastructure APIs live for years, and their clients (old SDKs pinned in someon
 - When you need a breaking change, serve `v1` and `v2` from the same storage and convert at the edge (Kubernetes stores one version and converts to whatever the client asked for).
 - Version the **agent protocol** too, and make the control plane support at least the previous agent version, because a fleet upgrade takes days and some nodes will be offline for all of it.
 
-With Pydantic models, "add an optional field with a default" is the only safe move, and it is easy to check:
+**Pydantic** is the library FastAPI uses for request and response bodies: you declare the shape of the data as a class with type-annotated fields, and `Model.model_validate(some_dict)` checks and converts a dict into an instance, raising a validation error (which FastAPI turns into `422`) if a required field is missing or has the wrong type. `model_dump()` goes the other way, back to a dict. With Pydantic models, "add an optional field with a default" is the only safe move, and it is easy to check:
 
 ```python
 # compat.py -- an old client and a new server, and the reverse
@@ -1436,7 +1486,7 @@ The last row is the one people get wrong. A timeout tells you nothing about whet
 
 ### Latency: where the quorum lives
 
-Spreading a control plane across regions buys survival of a regional outage, at the price of a cross-region round trip on every write. With a Raft-replicated store, a write commits when a majority of replicas have it on disk, so commit latency is set by the leader's distance to the *nearest majority*:
+Spreading a control plane across regions buys survival of a regional outage, at the price of a cross-region round trip on every write. With a Raft-replicated store, a write commits when a majority of replicas have it on disk, so commit latency is set by the leader's distance to the *nearest majority*. In the script, an **AZ** (availability zone) is one of the separate data centers inside a cloud region, a few milliseconds apart; the **WAL** (write-ahead log) is the file each replica appends and fsyncs before acknowledging a write; and `AppendEntries` is the Raft message that carries new log entries from the leader to the followers:
 
 ```python
 # multiregion.py -- what a quorum write costs, depending on where the replicas live
@@ -1495,7 +1545,7 @@ $ python3 cells.py
 
 ### Heterogeneous hardware and many providers
 
-A compute marketplace, or any fleet that buys capacity from several clouds and neoclouds, adds two more problems.
+A compute marketplace, or any fleet that buys capacity from several clouds and neoclouds (GPU-focused cloud providers such as CoreWeave or Lambda), adds two more problems.
 
 **Normalization.** Every provider names hardware differently ("gpu_8x_h100_sxm5", "H100.80GB.PCIe", "8xH100-80G-IB"), and the differences that matter (SXM vs PCIe, NVLink vs none, InfiniBand vs Ethernet, 80 vs 94 GB) are often hidden in the name or not stated at all. Map every offering into one catalog of **normalized labels** that the scheduler filters on (`gpu=H100-SXM`, `gpus=8`, `ib=true`), and verify the labels with your own benchmark when a node joins, since provider metadata can be wrong. See [compute/accelerator](../compute/accelerator/README.md) for what the differences mean.
 
@@ -1554,14 +1604,14 @@ Without the breaker, every one of the 60 requests first tried the cheapest provi
 
 ### SLIs, SLOs and error budgets
 
-An **SLI** (service level indicator) is a measured number about what users experience: the fraction of creates that reach Ready within 5 s, the fraction of API requests that succeed. An **SLO** (objective) is a target for it over a window: 99.9% over 30 days. The **error budget** is what the SLO allows to fail: 0.1%. The budget is a decision tool. While budget remains, ship features; when it is burning fast, stop and fix reliability. (Google's *Site Reliability Engineering* book and *The Site Reliability Workbook* are the standard references.)
+The vocabulary was introduced in [Availability, SLOs and nines](../foundations/distributed-systems.md#availability-slos-and-nines); here it is applied to a fleet. An **SLI** (service level indicator) is a measured number about what users experience: the fraction of creates that reach Ready within 5 s, the fraction of API requests that succeed. An **SLO** (objective) is a target for it over a window: 99.9% over 30 days. The **error budget** is what the SLO allows to fail: 0.1%. The budget is a decision tool. While budget remains, ship features; when it is burning fast, stop and fix reliability. (Google's *Site Reliability Engineering* book and *The Site Reliability Workbook* are the standard references.)
 
 Pick SLIs that are what users of a fleet actually feel:
 
 | SLI | Good event | Why |
 |---|---|---|
 | create-to-Ready latency | Ready within 5 s (or your budget) | the number users feel most |
-| API availability | non-5xx responses | can they talk to you at all |
+| API availability | non-5xx responses (5xx = any status 500-599, a server-side failure) | can they talk to you at all |
 | scheduling success | placed within 30 s, of requests that *can* fit | excludes "you asked for 1,000 GPUs" |
 | unplanned interruption | sandboxes that ran to completion without being killed by the platform | the data plane's reliability |
 | reschedule time | work from a dead node running again within N s | the lease and recovery path |
@@ -1597,13 +1647,15 @@ A 99.9% SLO allows 43 minutes of full outage a month. Paging when 2% of the budg
 
 ### Metrics with Prometheus
 
-**Prometheus** scrapes `/metrics` endpoints over HTTP every 15-60 s and stores time series. Instrument with three types:
+**Prometheus** scrapes `/metrics` endpoints over HTTP every 15-60 s and stores time series. The text format it scrapes was explained in [Inference Internals II: Observability](../inference/serving-engine-internals.md#observability), and a PromQL alert rule for a training fleet appeared in [Orchestration internals](../orchestration/internals.md#observability). Instrument with three types:
 
 - **Counters** only go up (`cp_placements_total`); you query their rate.
 - **Gauges** go up and down (`cp_nodes{state="NotReady"}`).
 - **Histograms** count observations into buckets (`cp_time_to_ready_seconds_bucket{le="2.0"}`), so you can compute percentiles across many replicas. Pick bucket boundaries around your SLO threshold, since percentiles between buckets are interpolated.
 
-Name things `<namespace>_<what>_<unit>`, put the unit in the name (`_seconds`, `_bytes`, `_total` for counters), and keep label cardinality low: a label per node is fine for 1,000 nodes, a label per sandbox ID will take down your Prometheus. The mini control plane exports these; the queries and alerts you would put on top look like this (PromQL and rule syntax per the Prometheus docs; **untested** here because Prometheus isn't running):
+Name things `<namespace>_<what>_<unit>`, put the unit in the name (`_seconds`, `_bytes`, `_total` for counters), and keep label cardinality low: a label per node is fine for 1,000 nodes, a label per sandbox ID will take down your Prometheus. In Python, the `prometheus_client` library does the bookkeeping: `Counter(name, help, [label names])`, `Gauge(...)` and `Histogram(..., buckets=...)` create metrics, `.inc()`, `.set(v)` and `.observe(v)` update them, `.labels("x")` picks the series for one label value, and `generate_latest()` renders everything in the text format for the `/metrics` handler (see `minicp.py`).
+
+The mini control plane exports these. The queries and alerts you would put on top are written in **PromQL**, Prometheus's query language. Just enough to read the rules file below: `rate(c[5m])` is the per-second increase of counter `c`, averaged over the last 5 minutes. `sum(...)` adds series together, and `sum by (le) (...)` adds them while keeping the `le` (bucket upper bound) label apart. `histogram_quantile(0.99, ...)` estimates the 99th percentile from per-bucket rates. `x{le="2.0"}` selects the series whose label matches. In the YAML file (format in [the toolkit chapter](../foundations/toolkit.md#yaml)), a `record:` rule stores an expression's result as a new, cheaper-to-query series under that name, and an `alert:` rule fires when `expr` is true, after it has stayed true for the `for:` duration if one is given; `labels` route the alert (page vs ticket) and `annotations` are the text a human sees. Syntax per the Prometheus docs; **untested** here because Prometheus isn't running:
 
 ```yaml
 # rules.yml -- recording + alerting rules for the mini control plane
@@ -1632,7 +1684,7 @@ groups:
 
 ### Structured logs
 
-**Structured logs** are log lines that are data: one JSON object per line with fixed field names, instead of prose. You can filter, join and count them with `jq` locally or a log store (Loki, Elasticsearch, BigQuery) at scale. The fields that make them useful in a control plane are IDs: request ID, sandbox ID, node, tenant, epoch, trace ID. Set the request ID once at the edge and let every log line in that request inherit it, which in `asyncio` code means a `contextvars.ContextVar`:
+**Structured logs** are log lines that are data: one JSON object per line with fixed field names, instead of prose. You can filter, join and count them with `jq` locally or a log store (Loki, Elasticsearch, BigQuery) at scale. The fields that make them useful in a control plane are IDs: request ID, sandbox ID, node, tenant, epoch, trace ID. Set the request ID once at the edge and let every log line in that request inherit it, which in `asyncio` code means a `contextvars.ContextVar`. `contextvars` is a standard-library module: a `ContextVar` behaves like a global variable, except that each asyncio task sees its own value, so two requests handled concurrently on one event loop don't overwrite each other's ID (a plain global would be shared by both):
 
 ```python
 # slog.py -- structured logs with a request id carried through async code by contextvars
@@ -1693,7 +1745,7 @@ The first query shows `cpu-b` going NotReady twice and self-fencing once, and `g
 
 ### Tracing
 
-A **trace** is the tree of timed operations (**spans**) that served one request, across processes. Metrics tell you *that* p99 create-to-Ready got worse; a trace of a slow request tells you *which step*. The standard is **OpenTelemetry**: libraries create spans, and context (a trace ID and parent span ID) travels between processes in the W3C `traceparent` header, so the API server, scheduler and node agent spans join into one trace. With the OpenTelemetry SDK **[venv]**:
+A **trace** is the tree of timed operations (**spans**) that served one request, across processes. Metrics tell you *that* p99 create-to-Ready got worse; a trace of a slow request tells you *which step*. The standard is **OpenTelemetry**: libraries create spans, and context (a trace ID and parent span ID) travels between processes in the W3C `traceparent` header, so the API server, scheduler and node agent spans join into one trace. With the OpenTelemetry SDK **[venv]**. The setup lines are boilerplate: a `TracerProvider` creates spans, a span processor hands each finished span to an **exporter**, and the exporter sends it somewhere (here, a list in memory; in production, over OTLP, OpenTelemetry's wire protocol, to a collector and a trace viewer such as Jaeger or Tempo). Each `with tr.start_as_current_span(name):` times its block, and spans opened inside it become its children:
 
 ```python
 # trace_demo.py -- one sandbox create as a trace: which step ate the time?
@@ -1776,7 +1828,7 @@ etcdctl endpoint status -w table; etcdctl endpoint health
 git log --since=6h --oneline deploy/ ; kubectl rollout history deploy/scheduler
 ```
 
-(**Untested**, illustrative: the endpoints are this chapter's, the `etcdctl` and `kubectl` commands are standard.) Afterwards, write a **blameless postmortem**: timeline, impact (in SLO terms), root cause and contributing factors, and action items that change the system, not "be more careful". The best action items make the failure impossible or automatically mitigated: a fencing check, a rate limit, a validation, a canary.
+(**Untested**, illustrative: the endpoints are this chapter's, the `etcdctl` and `kubectl` commands are standard. `$CP` holds the control plane's base URL, the `jq` filters are the forms from [the toolkit chapter](../foundations/toolkit.md#jq-json-on-the-command-line), and `sort | uniq -c` counts identical lines.) Afterwards, write a **blameless postmortem**: timeline, impact (in SLO terms), root cause and contributing factors, and action items that change the system, not "be more careful". The best action items make the failure impossible or automatically mitigated: a fencing check, a rate limit, a validation, a canary.
 
 The most valuable debugging habit for control planes: **you can reconstruct any incident if you log every state transition with its IDs and version**. Write that log from day one.
 
@@ -1785,7 +1837,7 @@ The most valuable debugging habit for control planes: **you can reconstruct any 
 
 ### Find the hot path
 
-A control plane's work is small per event and enormous in count, so its performance problems are almost always **algorithmic** (something is O(N) per event that should be O(1)) or **contention** (everything serializes on one lock or one store key), rarely raw CPU speed. Profile first ([profiling and optimization](../training/profiling-and-optimization.md) covers the tools; `py-spy top --pid` on a live Python control plane is the fastest look). The usual hot paths:
+A control plane's work is small per event and enormous in count, so its performance problems are almost always **algorithmic** (something is O(N) per event that should be O(1)) or **contention** (everything serializes on one lock or one store key), rarely raw CPU speed. Profile first ([profiling and optimization](../training/profiling-and-optimization.md) covers the tools; `py-spy top --pid` on a live Python control plane is the fastest look; py-spy was introduced in [py-spy on all ranks](../foundations/distributed-systems.md#py-spy-on-all-ranks)). The usual hot paths:
 
 - the scheduler's inner loop (filter and score, per pending item, per node),
 - serializing and deserializing objects (JSON encoding of big status objects on every list and watch),
@@ -1902,10 +1954,12 @@ Most production control planes and node agents are written in **Go** (Kubernetes
 | Memory per agent | 30-100 MB for a FastAPI process | ~10-30 MB | a few MB |
 | Ecosystem for this job | FastAPI, asyncio, httpx | client-go, controller-runtime, gRPC, the whole Kubernetes ecosystem | tokio, tonic (gRPC), rust-vmm crates |
 
+Terms in the table: a **goroutine** is a function running concurrently under Go's own scheduler, much lighter than an OS thread (start one with `go f()`), and a **channel** is a typed queue goroutines use to pass values to each other. **tokio** is Rust's most common async runtime, the counterpart of asyncio. `Send` and `Sync` are Rust marker traits that say a type may be moved to, or shared between, threads; the compiler refuses to share anything that lacks them. **client-go** and **controller-runtime** are the Go libraries Kubernetes controllers are built from; **tonic** is a Rust gRPC library.
+
 The practical consequences:
 
 - **Node agents** run on every machine, sit next to the workload, and must never be the reason a node is slow or out of memory. A small static binary with predictable memory is a big operational win. For microVM platforms the data-plane pieces (VMM, jailer, vsock agents) are commonly Rust, to share code with Firecracker and to keep the attack surface small.
-- **Controllers** are usually Go because the Kubernetes libraries are Go: `client-go` informers give you the list-then-watch cache, work queues with rate limiting and dedup, and leader election out of the box. Writing a controller is then mostly writing the `Reconcile` function:
+- **Controllers** are usually Go because the Kubernetes libraries are Go: `client-go` informers give you the list-then-watch cache, work queues with rate limiting and dedup, and leader election out of the box. Writing a controller is then mostly writing the `Reconcile` function. Just enough Go to read it: `func (r *SandboxReconciler) Reconcile(...)` defines a method on the type `SandboxReconciler`, with `r` playing the role of `self` (the `*` means `r` is a pointer to it). Parameters are written `name Type`, and the method returns two values, a result and an `error`: Go has no exceptions, so failures come back as an ordinary return value that is `nil` on success. `var sbx fleetv1.Sandbox` declares an empty object; `&sbx` passes its address so `r.Get` can fill it in. `if err := ...; err != nil { ... }` makes the call and checks its error in one line. `ctx` carries the request's deadline and cancellation. `//` starts a comment:
 
   ```go
   // the controller-runtime shape (untested sketch)
@@ -1940,7 +1994,9 @@ One file, `minicp.py`, about 300 lines **[venv]**, with three modes: `server` (t
 | fencing with a per-assignment epoch, on status and results | `epoch`, `complete`, `STALE` | [Fencing tokens](#fencing-tokens-in-a-control-plane) |
 | agent self-fencing when it can't renew | `agent_self_fenced` | [Self-fencing](#self-fencing-at-the-node) |
 | Prometheus `/metrics`, JSON logs | `PLACED`, `READY`, ..., `log()` | [Operating](#11-operating-the-control-plane) |
-| fault injection | `/debug/partition/{node}`, SIGSTOP/SIGCONT/SIGKILL | |
+| fault injection | `/debug/partition/{node}`, SIGSTOP/SIGCONT/SIGKILL | [Signals](../foundations/linux-and-os.md#signals) |
+
+Library pieces not met earlier in this chapter: FastAPI's `lifespan` takes an async context manager whose code before `yield` runs when the server starts (here, launching the scheduler loop as a background task) and whose code after `yield` runs at shutdown. In the agent, `httpx.AsyncClient(base_url=..., timeout=1.0)` is a reusable asyncio HTTP client (`await c.post(path, json=...)` sends a JSON body), and `r.raise_for_status()` raises an exception for any 4xx or 5xx response, so a partition (503) and a timeout both land in the `except httpx.HTTPError` branch. The [load generator in Serving LLMs in Practice](../inference/serving-hands-on.md#writing-a-load-generator) uses the same client.
 
 ### The code
 

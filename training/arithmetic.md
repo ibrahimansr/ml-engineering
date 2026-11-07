@@ -4,12 +4,17 @@
 
 This chapter assumes you know the math of transformers and backprop. It does not assume any systems background, but a few foundation chapters make the memory and precision sections easier:
 
+- [Toolkit](../foundations/toolkit.md#running-the-books-code) - running commands in a terminal and creating a Python virtual environment, which is all the "Running the code" section needs.
 - [Computer architecture](../foundations/computer-architecture.md) - what accelerator memory, memory bandwidth and on-chip compute units are. This chapter's FLOP and MFU numbers are measured against them.
 - [Linux and OS](../foundations/linux-and-os.md) - virtual memory and pages. You need these for the PyTorch caching allocator and `expandable_segments` section.
 - [Concurrency](../foundations/concurrency.md) - asynchronous work queues and why a buffer freed on one queue cannot immediately be reused by another. This is the "stream" behaviour of the allocator.
 - [Distributed systems](../foundations/distributed-systems.md) - data parallelism, sharding and collective operations (all-reduce and friends). They show up in the memory and batch-size sections.
 - [Transformer architectures](../models/architectures.md) - GQA, SwiGLU, RMSNorm, MoE. All the FLOP and activation formulas below are written for these variants.
+- [Accelerator execution model](../compute/accelerator/execution-model.md) - [tensor cores](../compute/accelerator/execution-model.md#tensor-cores), the [roofline](../compute/accelerator/execution-model.md#roofline-per-op) and [FlashAttention](../compute/accelerator/execution-model.md#flashattention), which the MFU, recomputation and precision sections lean on.
 - [GPU software stack](../compute/gpu-software-stack.md) - what CUDA, cuBLAS and the driver are, if those names mean nothing yet.
+- [Collective communication internals](../network/collectives-internals.md) - the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model) and [ring all-reduce](../network/collectives-internals.md#ring-all-reduce), behind the bf16 reduction and FSDP memory discussions.
+
+Forward links (later chapters, not needed to follow this one): [Inference arithmetic](../inference/arithmetic.md) applies the same counting to serving a model.
 
 This chapter goes below the rules of thumb in [Software Tune Up For The Best Performance](performance/README.md), [Tensor Precision / Data Types](dtype.md), [Selecting Training Hyper-Parameters](hparams.md) and [Instabilities](instabilities/README.md). It derives the constants those chapters quote and shows where they break. How the work is split across devices is covered in [Model Parallelism: Derivations](model-parallelism/derivations.md). What happens inside a single GPU kernel is covered in [Accelerator Execution Model](../compute/accelerator/execution-model.md). How to measure where time goes on a real run is in [Profiling and optimization](profiling-and-optimization.md). None of these topics is repeated here.
 
@@ -21,7 +26,7 @@ Every Python block in this chapter is a complete file. They were run on macOS (A
 
 ```bash
 python3 -m venv /tmp/arith-venv
-/tmp/arith-venv/bin/pip install torch numpy
+/tmp/arith-venv/bin/pip install torch numpy sympy   # sympy only for megatron_check.py
 mkdir -p /tmp/arith-code && cd /tmp/arith-code
 # save each block below under the file name in its first comment, then:
 /tmp/arith-venv/bin/python count_flops.py
@@ -233,7 +238,7 @@ FLOP/token = 6*N' + 6*L*s*h             # causal, masked half skipped
 
 Both constants are in use, and reported MFU numbers are not comparable unless you know which one was used:
 
-- **12**: PaLM appendix B (`6N + 12*L*H*Q*T`), Chinchilla appendix F (which counts both attention matmuls over the full `s x s`), and the Megatron-LM paper's equation 3. Expanding Megatron's no-recompute form `72*b*s*L*h^2*(1 + s/(6h) + V/(12*L*h))` gives exactly `6*12*L*h^2 + 12*L*s*h + 6*h*V` per token for a 4h-MLP, MHA model (the symbolic check is below). With activation recomputation the paper uses 96 instead of 72 and `V/(16*L*h)`, which keeps the logit term at `6*h*V`, i.e. the LM head is not recomputed.
+- **12**: PaLM appendix B (`6N + 12*L*H*Q*T`, in PaLM's notation `H` heads of dimension `Q`, so `H*Q = h`, and `T = s`), Chinchilla appendix F (which counts both attention matmuls over the full `s x s`), and the Megatron-LM paper's equation 3. Expanding Megatron's no-recompute form `72*b*s*L*h^2*(1 + s/(6h) + V/(12*L*h))` gives exactly `6*12*L*h^2 + 12*L*s*h + 6*h*V` per token for a 4h-MLP, MHA model (the symbolic check is below). With activation recomputation the paper uses 96 instead of 72 and `V/(16*L*h)`, which keeps the logit term at `6*h*V`, i.e. the LM head is not recomputed.
 - **6**: Kaplan et al. (arXiv:2001.08361), table 1, gives `C_forward = 2N + 2*n_layer*n_ctx*d_attn`, which is `6*L*s*h` for training. Numerically this equals "both attention matmuls with a causal discount". The table labels the row as the masking operation, so I am not certain this was the authors' reasoning.
 
 ```python
@@ -257,9 +262,9 @@ The 12 convention describes the math of full attention. The 6 convention is clos
 
 ### Do kernels skip the causal half?
 
-- FlashAttention-2 and -3 skip every key/value tile that lies entirely above the diagonal and apply the mask only on diagonal tiles. Executed work is therefore `~0.5*s^2` plus one diagonal band of tiles. The repo's own benchmark script counts causal FLOPs as `4*b*s^2*a*d / 2`.
+- FlashAttention-2 and -3 skip every key/value tile that lies entirely above the diagonal and apply the mask only on diagonal tiles. Executed work is therefore `~0.5*s^2` plus one diagonal band of tiles. The FlashAttention repository's own benchmark script counts causal FLOPs as `4*b*s^2*a*d / 2`.
 - PyTorch SDPA with `is_causal=True` skips the masked tiles when it dispatches to the flash, cuDNN or memory-efficient backends.
-- FlexAttention skips the blocks that its `BlockMask` marks as empty.
+- FlexAttention (PyTorch's `torch.nn.attention.flex_attention`, which compiles an attention kernel from a user-written Python mask/score function) skips the blocks that its `BlockMask` marks as empty.
 - The eager "materialize `S`, add `-inf` mask, softmax" path does the full `s^2` work.
 - Document masking for packed sequences, where each packed document attends only to itself, cuts executed attention FLOPs further: to `sum_i(s_i^2)/2` instead of `s^2/2`. A 128k window packed with 2k-token documents executes 64x fewer attention FLOPs than the causal estimate. Use the masked count if you want MFU to reflect real work.
 
@@ -302,7 +307,7 @@ causal 8.590e+09  doc-masked 1.342e+08  ratio 64x
 
 ### GQA
 
-GQA (grouped-query attention: several query heads share one K/V head) shrinks only the K and V projections, from `4*h*h` to `4*g*h*h`. The attention core is unchanged. Each of the `a` query heads still takes a dot product against `s` keys of dimension `d`, so scores plus `attn*V` remain `4*s*a*d = 4*s*h` regardless of `k`. GQA is a memory and KV-bandwidth optimization, not a FLOP optimization. For Llama-3-8B, going from MHA to `k=8` removes 0.050 GFLOP of forward work per token per layer: 8.1% of the MHA layer's forward FLOPs at `s = 8192`, or 8.8% measured against the GQA layer (the `breakdown.py` output above).
+GQA (grouped-query attention: several query heads share one K/V head) shrinks only the K and V projections, from `4*h*h` to `4*g*h*h`. The attention core is unchanged. Each of the `a` query heads still takes a dot product against `s` keys of dimension `d`, so scores plus `attn*V` remain `4*s*a*d = 4*s*h` regardless of `k`. GQA is a memory and KV-bandwidth optimization, not a FLOP optimization: it shrinks the [KV cache](../models/architectures.md#the-kv-cache), the stored keys and values that text generation re-reads for every new token (sized for serving in [Inference arithmetic](../inference/arithmetic.md#kv-cache-sizing)). For Llama-3-8B, going from MHA to `k=8` removes 0.050 GFLOP of forward work per token per layer: 8.1% of the MHA layer's forward FLOPs at `s = 8192`, or 8.8% measured against the GQA layer (the `breakdown.py` output above).
 
 The same thing measured with `FlopCounterMode` on the tiny model, plus the cost of full activation recomputation (re-running every block's forward during backward, [explained below](#what-recomputation-adds)):
 
@@ -368,7 +373,7 @@ router 3.7 MFLOP, experts 705 MFLOP, router share 0.52%
 
 The router share at these shapes is 0.5% of the MoE MLP, smaller still once attention and the shared expert are included.
 
-The gap between MFU and HFU is larger for MoE than for dense models. Capacity-factor padding (with `C > 1` each expert's buffer is padded to `C * tokens/E`) executes FLOPs on padding. Dropped tokens execute fewer FLOPs than the model math implies. Grouped GEMMs (one kernel launch that runs many small matmuls of different sizes) on small, uneven per-expert batches run well below the dense matmul peak. Only `6*N_active` belongs in the MFU numerator.
+The gap between MFU and HFU (hardware FLOPs utilization: everything the GPU actually executed, defined properly [in the next section](#mfu-and-hfu-properly)) is larger for MoE than for dense models. Capacity-factor padding (with `C > 1` each expert's buffer is padded to `C * tokens/E`) executes FLOPs on padding. Dropped tokens execute fewer FLOPs than the model math implies. Grouped GEMMs (one kernel launch that runs many small matmuls of different sizes) on small, uneven per-expert batches run well below the dense matmul peak. Only `6*N_active` belongs in the MFU numerator.
 
 ### Worked numbers at `s = 8192`
 
@@ -483,7 +488,7 @@ Llama-3-70B: 40% MFU needs 822 tok/s/GPU
 example: 6.5M tok/s on 1024 GPUs, 8B -> MFU 37.2%
 ```
 
-The denominator has two choices, and they mean different things. The spec peak (989) measures distance from a number no kernel reaches. The [maximum achievable matmul FLOPS](../compute/accelerator/README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) for H100 SXM is 853 bf16 TFLOPS in this repo's measurements (86.2% of spec), and MFU against that number measures distance from what your matmuls could realistically do. Report MFU against the spec peak, since that is the convention, and use the MAMF ratio internally to tell how much is left to gain.
+The denominator has two choices, and they mean different things. The spec peak (989) measures distance from a number no kernel reaches. The [maximum achievable matmul FLOPS](../compute/accelerator/README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) for H100 SXM is 853 bf16 TFLOPS in this repo's measurements (86.2% of spec), and MFU against that number measures distance from what your matmuls could realistically do. Report MFU against the spec peak, since that is the convention, and use the ratio to maximum achievable matmul FLOPS (MAMF) internally to tell how much is left to gain.
 
 You can practise the whole measurement loop on a CPU: measure the achievable matmul rate, time a training step, divide the counted FLOPs by the step time.
 
@@ -546,7 +551,7 @@ DeepSeek-V3: bf16 peak 34.6%, fp8 peak 17.3%
 
 
 - **Llama 2 7B** (arXiv:2307.09288): 184,320 A100-80GB GPU-hours for 2T tokens, `N = 6.74B`, `s = 4096`. `6*N*D / (hours * 3600 * 312e12) = 39.1%`. With the 12-convention attention term the figure is 45.3%. That is the same run quoted at two MFUs depending only on convention.
-- **DeepSeek-V3** (arXiv:2412.19437): 2.664M H800 GPU-hours for pre-training on 14.8T tokens, 37B active. `6 * 37e9 * 14.8e12 = 3.29e24` FLOP, which is 34.6% of a 989 TF bf16 peak or 17.3% of the 1979 TF FP8 peak. The attention FLOPs (MLA, 61 layers) are excluded, which understates the figure. Also, the H800's reduced interconnect bandwidth makes communication a different bottleneck than on an H100. Treat this as a lower bound with roughly ±20% uncertainty that comes from the convention alone.
+- **DeepSeek-V3** (arXiv:2412.19437): 2.664M H800 GPU-hours (the H800 is the export variant of the H100: same compute, reduced NVLink bandwidth) for pre-training on 14.8T tokens, 37B active. `6 * 37e9 * 14.8e12 = 3.29e24` FLOP, which is 34.6% of a 989 TF bf16 peak or 17.3% of the 1979 TF FP8 peak. The attention FLOPs (MLA, 61 layers) are excluded, which understates the figure. Also, the H800's reduced interconnect bandwidth makes communication a different bottleneck than on an H100. Treat this as a lower bound with roughly ±20% uncertainty that comes from the convention alone.
 
 ## Activation memory
 
@@ -784,9 +789,9 @@ With full recompute, the resident cost is `2sbh*L`: 2.0 GiB for the 8B model and
 
 The LM head adds `s*V*(2 + 4)` bytes for bf16 logits plus their fp32 upcast: 5.87 GiB at `s = 8192`, for both models. That is independent of `h` and larger than the entire checkpointed residual stream of the 8B model. Chunked or fused cross-entropy (Liger kernel; "Cut Your Losses in Large-Vocabulary Language Models", arXiv:2411.09009) never materializes the full `(s, V)` tensor.
 
-With pipeline parallelism under 1F1B (PP: consecutive groups of layers live on different GPUs and micro-batches flow through them like an assembly line), stage 1 holds activations for `p` in-flight micro-batches of `L/p` layers each, i.e. about one full model's worth. The derivation, and a simulator that prints the in-flight count, are in [Model Parallelism: Derivations](model-parallelism/derivations.md#pipeline-parallelism).
+With pipeline parallelism (PP: consecutive groups of layers live on different GPUs and micro-batches flow through them like an assembly line) under the 1F1B schedule (one-forward-one-backward: once the pipeline is full, each stage alternates one micro-batch's forward with another's backward), stage 1 of `p` pipeline stages holds activations for `p` in-flight micro-batches of `L/p` layers each, i.e. about one full model's worth. The derivation, and a simulator that prints the in-flight count, are in [Model Parallelism: Derivations](model-parallelism/derivations.md#pipeline-parallelism).
 
-FP8 linears in Transformer Engine save their inputs in FP8, which halves the "linear input" terms (QKV input, out-proj input, gate/up input, down input). DeepSeek-V3 goes further: it caches some activations in FP8 and recomputes SwiGLU.
+FP8 linears in Transformer Engine (TE: NVIDIA's library of drop-in PyTorch layers that run their matmuls in FP8; [mechanics below](#transformer-engine-mechanics)) save their inputs in FP8, which halves the "linear input" terms (QKV input, out-proj input, gate/up input, down input). DeepSeek-V3 goes further: it caches some activations in FP8 and recomputes SwiGLU.
 
 ## Total memory and the caching allocator
 
@@ -830,7 +835,7 @@ The 70B model does not fit even fully sharded on one 8-GPU node (141 GB of state
 
 ### Everything else
 
-- **Temporary buffers**: the all-gather destination buffer for each FSDP unit (an all-gather is the collective in which every GPU ends up holding the concatenation of everyone's shards), the reduce-scatter source buffer (the inverse: inputs are summed and each GPU receives one shard of the sum), fp32 upcasts of bf16 gradients for reduction, cuBLAS workspaces (cuBLAS is NVIDIA's matmul library, and it requests scratch space per call), the logits pair above, and fused-optimizer temporaries if you use a non-foreach optimizer.
+- **Temporary buffers**: the all-gather destination buffer for each FSDP unit (an all-gather is the collective in which every GPU ends up holding the concatenation of everyone's shards), the reduce-scatter source buffer (the inverse: inputs are summed and each GPU receives one shard of the sum), fp32 upcasts of bf16 gradients for reduction, cuBLAS workspaces (cuBLAS is NVIDIA's matmul library, and it requests scratch space per call), the logits pair above, and optimizer temporaries: PyTorch's default `foreach` AdamW implementation batches the update over a whole list of parameters at once and allocates intermediates the size of that list, while `fused=True` does the update in one kernel and avoids most of them.
 - **CUDA context and kernel images**: 0.5-2 GiB before you allocate anything. The CUDA context is the per-process driver state, including the loaded GPU kernel binaries; a kernel is a single function launched on the GPU. See [Preloaded CUDA kernels memory usage](performance/README.md#preloaded-cuda-kernels-memory-usage).
 - **NCCL** (NVIDIA's library for collectives between GPUs): 1-2 GiB of communicator buffers, more with many process groups. See [`torch.distributed` memory usage](performance/README.md#torchdistributed-memory-usage).
 - **Fragmentation**: memory the allocator has reserved from the driver but cannot hand out for the request at hand. It typically costs from a few percent to tens of percent. The mechanism follows.
@@ -990,7 +995,7 @@ Under the approach-3 fit, being 2x off in either direction costs 0.007 nats, and
 
 ### Why everyone overtrains
 
-Chinchilla minimizes training compute for a target loss. A deployed model also spends `2*N` FLOP per token it serves. Total lifetime cost is `6*N*D_train + 2*N*D_serve`. Once `D_serve` is comparable to `D_train`, the minimum shifts to a smaller `N` trained on more tokens (Sardana and Frankle, "Beyond Chinchilla-Optimal", arXiv:2401.00448). Serving 1T tokens costs 1.4e22 FLOP on a 7B model and 5.3e22 on a 26.5B model (output above). That difference alone, 3.9e22, is 46% of the 8.4e22 training budget. Llama-3-8B was trained on ~15T tokens, about 1,870 tokens per parameter, over 90x past Chinchilla. Loss keeps improving log-linearly far past 20x, just less per FLOP.
+Chinchilla minimizes training compute for a target loss. *Serving* (or *inference*) means running the trained model to answer requests: a forward pass only, no backward. A deployed model therefore spends `2*N` FLOP per token it serves. Total lifetime cost is `6*N*D_train + 2*N*D_serve`. Once `D_serve` is comparable to `D_train`, the minimum shifts to a smaller `N` trained on more tokens (Sardana and Frankle, "Beyond Chinchilla-Optimal", arXiv:2401.00448). Serving 1T tokens costs 1.4e22 FLOP on a 7B model and 5.3e22 on a 26.5B model (output above). That difference alone, 3.9e22, is 46% of the 8.4e22 training budget. Llama-3-8B was trained on ~15T tokens, about 1,870 tokens per parameter, over 90x past Chinchilla. Loss keeps improving log-linearly far past 20x, just less per FLOP.
 
 The trade-off, computed on the Chinchilla approach-3 fit: hold the loss fixed at the compute-optimal value from above and search over model sizes for the cheapest total of training plus serving FLOPs:
 
@@ -1115,7 +1120,7 @@ bf16(0.999) = 1.0   0.999*bf16(1.0) in bf16 = 1.0
 
 - **fp16 underflows in backward.** A gradient element below 6e-8 flushes to zero, and gradients of ~1e-8 are routine in large models. Squaring is worse: any `g < 2^-12 = 2.4e-4` has `g^2` below the smallest fp16 subnormal. That is why fp16 Adam states are unusable without scaling.
 - **bf16 loses integers above 256.** The spacing is 2 at 256, 32 at 4096 and 64 at 8192. `bf16(8191) = 8192` and `bf16(4097) = 4096`. Position ids stored in bf16 are therefore wrong by up to 16 positions below 8192 (half the spacing of 32), and RoPE angles computed as `position * inv_freq` in bf16 are off by tens of radians for the highest frequencies, i.e. meaningless. Compute positions and angles in fp32 and cast `cos`/`sin` afterwards.
-- **bf16 cannot represent typical Adam `β2`.** `bf16(0.999) = 1.0`. Even with an fp32 multiplier, `0.999 * v` rounds back to `v`, because a 0.1% change is below bf16's half-spacing of 0.39%.
+- **bf16 cannot represent typical Adam `β2`.** `bf16(0.999) = 1.0`. Even with an fp32 multiplier, `0.999 * v` rounds back to `v`, because a 0.1% change is below bf16's half-spacing there (just under 1.0 the spacing is 2^-8 ≈ 0.39%, so half a spacing is about 0.2%).
 
 ### Loss scaling (fp16 only)
 
@@ -1266,7 +1271,7 @@ float32   var by E[x^2]-E[x]^2 =  9.155e-05   (true 1.035e-04)
 bfloat16  var by E[x^2]-E[x]^2 =  0.000e+00   (true 1.035e-04)
 ```
 
-A bf16 running sum stops growing at 256, because `256 + 1` rounds back to 256. That is the mechanism behind every "long reduction must be fp32" rule. The variance computed as `E[x^2] - E[x]^2` in bf16 is exactly zero (catastrophic cancellation: two nearly equal large numbers subtracted), and even fp32 is 12% off, which is why norm kernels use Welford's algorithm or subtract the mean first.
+A bf16 running sum stops growing at 256, because `256 + 1` rounds back to 256. That is the mechanism behind every "long reduction must be fp32" rule. The variance computed as `E[x^2] - E[x]^2` in bf16 is exactly zero (catastrophic cancellation: two nearly equal large numbers subtracted), and even fp32 is 12% off, which is why norm kernels use Welford's algorithm (a one-pass update of the running mean and of the running sum of squared deviations from it, which never subtracts two large numbers) or subtract the mean first.
 
 `torch.autocast` encodes most of this on CUDA: `matmul`, `linear`, `conv` and `bmm` run in bf16, while `softmax`, `log_softmax`, `layer_norm`, `exp`, `pow`, `sum` and the losses are on the CUDA "autocast to float32" list in the [autocast docs](https://docs.pytorch.org/docs/stable/amp.html#cuda-ops-that-can-autocast-to-float32). **The CPU list is different.** Measured on CPU with torch 2.15:
 
@@ -1290,7 +1295,7 @@ $ python autocast_dtypes.py
 {'matmul': 'bfloat16', 'linear': 'bfloat16', 'softmax': 'bfloat16', 'log_softmax': 'bfloat16', 'layer_norm': 'bfloat16', 'cross_entropy': 'float32', 'exp': 'bfloat16', 'pow': 'bfloat16', 'sum': 'bfloat16'}
 ```
 
-On CPU only `cross_entropy` was upcast; softmax, layer_norm, exp, pow and sum stayed in bf16. Don't assume a numerics bug you reproduce on CPU behaves the same on GPU, and vice versa. A hand-written RMSNorm with `x * torch.rsqrt(x.pow(2).mean(-1))` under CUDA autocast will do the `pow` and `mean` in fp32, but if `x` arrives in bf16, the cast happens after `pow`. That is the reason for HuggingFace's explicit `.float()`, and the activation cost measured earlier.
+On CPU only `cross_entropy` was upcast; softmax, layer_norm, exp, pow and sum stayed in bf16. Don't assume a numerics bug you reproduce on CPU behaves the same on GPU, and vice versa. A hand-written RMSNorm with `x * torch.rsqrt(x.pow(2).mean(-1))` under CUDA autocast does the `pow` (and therefore the `mean` of its fp32 output) in fp32, but only because autocast is active and `pow` is on its CUDA list. Outside autocast, or on CPU where `pow` stayed bf16 above, a bf16 `x` is squared and averaged in bf16. That is the reason for HuggingFace's explicit `.float()`, and the activation cost measured earlier.
 
 ### Stochastic rounding
 
@@ -1330,7 +1335,7 @@ x = 1.0009766  RNE -> 1.0000000  mean SR -> 1.0009735
  3e-06   0.0230    0.0200   0.0229
 ```
 
-The first line checks unbiasedness: `1 + 2^-10` lies between bf16 neighbours 1.0 and 1.0078; round-to-nearest always gives 1.0, while the mean of a million stochastic roundings recovers the true value to 3e-6. The table is a bf16 weight at 0.02 receiving 1000 constant updates of size `lr`. Round-to-nearest stalls as soon as `lr` drops below about half the spacing at the weight's magnitude, which is exactly what happens during LR decay. SR tracks fp32 in expectation, with variance about `ulp^2/4` per step. That is why pure-bf16 training (no fp32 master weights) needs SR or Kahan summation ("Revisiting BFloat16 Training", arXiv:2010.06192). NVIDIA tensor cores do not stochastically round matmul outputs. Recent PTX ISA versions expose an `.rs` rounding mode for some down-conversions on Blackwell, which NVFP4 training recipes use for gradients. I have not verified which conversions support it on which architectures.
+The first line checks unbiasedness: `1 + 2^-10` lies between bf16 neighbours 1.0 and 1.0078; round-to-nearest always gives 1.0, while the mean of a million stochastic roundings recovers the true value to 3e-6. The table is a bf16 weight at 0.02 receiving 1000 constant updates of size `lr`. Round-to-nearest stalls as soon as `lr` drops below about half the spacing at the weight's magnitude, which is exactly what happens during LR decay. SR tracks fp32 in expectation, with variance about `ulp^2/4` per step (ulp, "unit in the last place", is the spacing between adjacent representable values at that magnitude). That is why pure-bf16 training (no fp32 master weights) needs SR or Kahan summation (keeping a second low-precision variable that holds the rounding error of each add and feeds it back into the next one) ("Revisiting BFloat16 Training", arXiv:2010.06192). NVIDIA tensor cores do not stochastically round matmul outputs. Recent PTX ISA versions expose an `.rs` rounding mode for some down-conversions on Blackwell, which NVFP4 training recipes use for gradients (NVFP4 is NVIDIA's 4-bit floating-point format on Blackwell: E2M1 values with an FP8 scale per block of 16 elements). I have not verified which conversions support it on which architectures.
 
 ## FP8 training
 
@@ -1410,7 +1415,7 @@ One scale per tensor means a single outlier channel sets the scale for millions 
 
 - **DeepSeek-V3** (arXiv:2412.19437): activations get one scale per `1x128` tile (per token, per 128 channels), and weights get one scale per `128x128` block, all computed online (current scaling). Because scales vary along the contraction dimension `K`, the GEMM cannot apply them in a single epilogue (the post-processing step a matmul kernel runs on its output tile). Partial sums are dequantized every 128 elements of `K`. The paper also notes that Hopper's FP8 tensor core accumulation keeps only ~14 bits of precision, so DeepSeek promotes partial sums to fp32 on the CUDA cores (the GPU's general-purpose arithmetic units) at that same 128-element interval. This both corrects the accumulation and applies the scales.
 - **Transposes**: backward needs `dW = X^T dY` and `dX = dY W^T`, which contract over different dimensions than forward. A `1x128` activation tiling along channels becomes the wrong axis for `X^T`, so the activation has to be re-quantized along tokens (`128x1`). Blockwise and MX recipes therefore keep two quantized copies, row-wise and column-wise, or re-quantize in backward.
-- **MXFP8** (OCP Microscaling, native on Blackwell tensor cores): an E8M0 scale (a pure power of two) per block of 32 elements along `K`. The scale is applied inside the tensor core, so there is no promotion trick and no epilogue cost. The overhead is 8 bits per 32 elements, 0.25 bits per element. Because E8M0 can only represent powers of two, rounding the scale up or down decides whether the block maximum saturates. NVIDIA's MXFP8 pre-training study ("Recipes for Pre-training LLMs with MXFP8", arXiv:2506.08027, id unverified) reports rounding the scale up and using E4M3 for all tensors, gradients included. I have not verified the details.
+- **MXFP8** (OCP Microscaling, a block-scaled format family standardized by the Open Compute Project; native on Blackwell tensor cores): an E8M0 scale (a pure power of two) per block of 32 elements along `K`. The scale is applied inside the tensor core, so there is no promotion trick and no epilogue cost. The overhead is 8 bits per 32 elements, 0.25 bits per element. Because E8M0 can only represent powers of two, rounding the scale up or down decides whether the block maximum saturates. NVIDIA's MXFP8 pre-training study ("Recipes for Pre-training LLMs with MXFP8", arXiv:2506.08027 reports rounding the scale up and using E4M3 for all tensors, gradients included. I have not verified the details.
 
 All three granularities, emulated with PyTorch's real `float8_e4m3fn` dtype (casts run on CPU):
 
@@ -1739,11 +1744,11 @@ On a momentum matrix with condition number 159, five bf16 iterations bring all s
 
 Cost per step for a square `m x m` matrix is `5 * (4m^3 + 2m^3) = 30*m^3` FLOP, which is `30m` per parameter. The forward-plus-backward pass costs `6*T` per parameter per step, where `T` is tokens per step. The overhead ratio is `5m/T`: 0.51% for `m = 4096` with a 4M-token batch, and 0.26% for `m = 8192` with 16M tokens. The FLOPs are cheap. The communication is not: NS needs the full matrix, so under ZeRO or FSDP sharding each matrix has to be gathered onto one rank (or the work spread across ranks round-robin). Embeddings, the LM head, norms and biases stay on AdamW. Moonlight scales the update by `0.2*sqrt(max(m, n))` so its RMS matches AdamW's, which lets AdamW's LR and weight decay transfer.
 
-Muon is Shampoo without accumulation. For `G = UΣV^T`, `(GG^T)^(-1/4) G (G^TG)^(-1/4) = U V^T` (checked above to 5e-14). This observation appears in Bernstein and Newhouse, "Old Optimizer, New Norm" (arXiv:2409.20325, id unverified).
+Muon is Shampoo without accumulation. For `G = UΣV^T`, `(GG^T)^(-1/4) G (G^TG)^(-1/4) = U V^T` (checked above to 5e-14). This observation appears in Bernstein and Newhouse, "Old Optimizer, New Norm" (arXiv:2409.20325.
 
 ### Shampoo
 
-Shampoo (Gupta et al., arXiv:1802.09568) keeps `L = Σ G G^T` (`m x m`) and `R = Σ G^T G` (`n x n`) and updates with `L^(-1/4) G R^(-1/4)`. The inverse 4th roots require an eigendecomposition, `O(m^3 + n^3)`, which is amortized by recomputing only every `k` steps. Production versions such as Distributed Shampoo (arXiv:2309.06497) block large matrices into `B x B` tiles and graft the step size onto Adam's. Per `B x B` block they store `L`, `R` and their two inverse roots, 4 fp32 matrices of `B^2` each, which is **16 bytes per parameter** on top of the grafting state.
+Shampoo (Gupta et al., arXiv:1802.09568) keeps `L = Σ G G^T` (`m x m`) and `R = Σ G^T G` (`n x n`) and updates with `L^(-1/4) G R^(-1/4)`. The inverse 4th roots require an eigendecomposition, `O(m^3 + n^3)`, which is amortized by recomputing only every `k` steps. Production versions such as Distributed Shampoo (arXiv:2309.06497) block large matrices into `B x B` tiles and graft the step size onto Adam's (grafting: take the update's direction from Shampoo but rescale it to the norm Adam's update would have had, so Adam's LR schedule carries over). Per `B x B` block they store `L`, `R` and their two inverse roots, 4 fp32 matrices of `B^2` each, which is **16 bytes per parameter** on top of the grafting state.
 
 ```python
 # shampoo_step.py
@@ -1776,6 +1781,8 @@ state per block: L, R, L^-1/4, R^-1/4 in fp32 = 16 bytes/param
 The roots cost 30x more than applying them at this block size, which is why they are recomputed only every `k` steps. A single step without accumulation gives singular values near 1 (`U V^T`, the Muon update); the smallest are pulled below 1 by the damping epsilon.
 
 ### Optimizer-state memory
+
+Two optimizers in the table are not covered elsewhere in this chapter. *8-bit Adam* (from the `bitsandbytes` library, "bnb") stores Adam's `m` and `v` as 8-bit integers with one fp32 scale per block of elements. *Adafactor* stores the second moment of an `m x n` matrix as a row vector and a column vector (`m + n` numbers) whose outer product approximates `v`, and optionally drops momentum (`β1 = 0`).
 
 | Optimizer | bytes/param (states only) | Llama-3-8B | Llama-3-70B |
 | :-------- | ------------------------: | ---------: | ----------: |
@@ -1828,7 +1835,7 @@ B_noise  = tr(Σ) / |G|^2          # Σ = per-example gradient covariance, G = t
 B_crit   = E_min / S_min ≈ B_noise
 ```
 
-Intuitively, `B_noise` is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below `B_crit`, doubling `B` halves the number of steps at constant data (perfect data parallelism). Above it, doubling `B` doubles the data needed for almost no reduction in steps. `B_crit` grows as the loss falls, which is the justification for batch-size ramps ([Global Batch Size Ramp Up](hparams.md#global-batch-size-ramp-up)). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit `B_crit(L) ≈ B*/L^(1/α_B)` with `B* ≈ 2e8` tokens and `α_B ≈ 0.21`. That fit is specific to their data and tokenizer. More recent work ("How Does Critical Batch Size Scale in Pre-training?", arXiv:2410.21676, id unverified) finds `B_crit` tracks data size more than model size.
+Intuitively, `B_noise` is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below `B_crit`, doubling `B` halves the number of steps at constant data (perfect data parallelism). Above it, doubling `B` doubles the data needed for almost no reduction in steps. `B_crit` grows as the loss falls, which is the justification for batch-size ramps ([Global Batch Size Ramp Up](hparams.md#global-batch-size-ramp-up)). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit `B_crit(L) ≈ B*/L^(1/α_B)` with `B* ≈ 2e8` tokens and `α_B ≈ 0.21`. That fit is specific to their data and tokenizer. More recent work ("How Does Critical Batch Size Scale in Pre-training?", arXiv:2410.21676 finds `B_crit` tracks data size more than model size.
 
 You can measure it for free using two batch sizes you already have, the per-micro-batch gradient and the accumulated or all-reduced one, because `E|G_B|^2 = |G|^2 + tr(Σ)/B` (McCandlish appendix A). Here it is on a linear regression where the true noise scale can be computed exactly from all per-example gradients:
 
@@ -1910,7 +1917,7 @@ step  99999: WSD 1-sqrt 7.50e-09  WSD linear 1.50e-08  cosine 3.00e-05
 
 At step 80k the cosine schedule is already at 19% of peak while WSD is still at peak: WSD spends far more of the run at high LR, which is why its stable-phase loss looks worse and its post-cooldown loss catches up.
 
-The "river valley" interpretation (high LR moves along the valley floor, decay descends into it; Wen et al., arXiv:2410.05192, id unverified) explains why the cooldown recovers the loss so fast.
+The "river valley" interpretation (high LR moves along the valley floor, decay descends into it; Wen et al., arXiv:2410.05192 explains why the cooldown recovers the loss so fast.
 
 ### muP essentials
 
@@ -1923,7 +1930,7 @@ Under standard parametrization, the optimal LR shrinks as width grows, so small-
 | output / unembedding | `1/fan_in^2` (or multiply logits by `1/width`; zero init is common) | `∝ 1/fan_in` |
 | attention logits | scale by `1/d` instead of `1/sqrt(d)` | - |
 
-Why hidden matrices get `1/fan_in`: Adam's update is entry-wise `O(lr)`, and a rank-1-ish update to an `n x n` matrix changes its output by `O(n*lr)`, so `lr ∝ 1/n` keeps the output change `O(1)`. Depth transfer needs separate residual-branch scaling (Tensor Programs VI, arXiv:2310.02244; CompleteP, arXiv:2505.01618, id unverified). μP transfers LR, init and some other hyperparameters across width at fixed data and batch size. It does not transfer the batch size or schedule length.
+Why hidden matrices get `1/fan_in`: Adam's update is entry-wise `O(lr)`, and a rank-1-ish update to an `n x n` matrix changes its output by `O(n*lr)`, so `lr ∝ 1/n` keeps the output change `O(1)`. Depth transfer needs separate residual-branch scaling (Tensor Programs VI, arXiv:2310.02244; CompleteP, arXiv:2505.01618. μP transfers LR, init and some other hyperparameters across width at fixed data and batch size. It does not transfer the batch size or schedule length.
 
 The table as a function: tune at `base_width`, then read off per-layer settings for any width. In PyTorch you implement the LR column with one optimizer parameter group per row.
 
@@ -2054,7 +2061,7 @@ weight growth 16x: max |logit| raw   1562.7 | with QK-norm  4.22 (bound sqrt(d) 
 ```
 
 
-Alternatives: logit soft-capping, `cap * tanh(z/cap)` (Gemma 2, arXiv:2408.00118, with caps of 50 on attention logits and 30 on final logits, as I recall). It bounds the logits but saturates their gradient, and needs kernel support (FlashAttention-2 added it). QK-clip (Kimi K2, arXiv:2507.20534, id unverified) rescales `W_q` and `W_k` after the optimizer step whenever a head's max logit exceeds a threshold. It was motivated by Muon's tendency to grow these weights faster than AdamW does.
+Alternatives: logit soft-capping, `cap * tanh(z/cap)` (Gemma 2, arXiv:2408.00118, with caps of 50 on attention logits and 30 on final logits, as I recall). It bounds the logits but saturates their gradient, and needs kernel support (FlashAttention-2 added it). QK-clip (Kimi K2, arXiv:2507.20534 rescales `W_q` and `W_k` after the optimizer step whenever a head's max logit exceeds a threshold. It was motivated by Muon's tendency to grow these weights faster than AdamW does.
 
 ### Monitoring them cheaply
 
@@ -2085,14 +2092,14 @@ $ python entropy.py
 max logit per head: [4.8, 4.7, 4.8, 309.8]  mean entropy: [4.76, 4.77, 4.76, 0.07]
 ```
 
-The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.08 nats against 4.8. Log per-head max logit, mean entropy, the output `log Z`, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near `lr`. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see [Instabilities](instabilities/README.md) and [Numerical instabilities](instabilities/README.md#numerical-instabilities).
+The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output `log Z`, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near `lr`. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see [Instabilities](instabilities/README.md) and [Numerical instabilities](instabilities/README.md#numerical-instabilities).
 
 ## You can now read
 
 - [Model Parallelism: Derivations](model-parallelism/derivations.md) - how the FLOPs and bytes computed here are split across GPUs, with runnable collective demos.
 - [Profiling and optimization](profiling-and-optimization.md) - measuring where the step time goes, to compare against the MFU arithmetic here.
 - [Inference arithmetic](../inference/arithmetic.md) - the same counting applied to prefill and decode.
-- [Decentralized training](decentralized-training.md) - what changes when `β` is a WAN link instead of InfiniBand.
+- [Decentralized training](decentralized-training.md) - what changes when `β`, the per-byte link cost of the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model), is a WAN link instead of InfiniBand.
 
 ## Further reading
 

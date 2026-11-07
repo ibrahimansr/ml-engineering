@@ -2,7 +2,10 @@
 
 ## Prerequisites
 
-- [Computer Architecture](computer-architecture.md) - memory, pages and what a CPU does are used throughout.
+- [The toolkit](toolkit.md) - opening a terminal, Python virtual environments (venv/conda/uv), git, and the JSON/YAML/TOML config formats. This chapter's section 2 then goes deeper on the shell itself.
+- [Computer Architecture](computer-architecture.md) - memory, pages, NUMA, DMA and pinned memory, and what a CPU does are used throughout.
+
+Forward links (later chapters that teach things this one only uses by name): [Concurrency](concurrency.md) (threads, the DataLoader), [Networking](networking.md) (sockets, ports, how `torchrun` and NCCL connect), [Containers](containers-and-virtualization.md) (Docker in depth), [Storage and Data](storage-and-data.md) (network filesystems), [GPU software stack](../compute/gpu-software-stack.md) (drivers, CUDA, NCCL), [Slurm from zero](../orchestration/slurm/from-zero.md) and [Kubernetes from zero](../orchestration/kubernetes-from-zero.md).
 
 You know backprop, you know what `loss.backward()` does, and you can write a training loop in your sleep. But the first time you `ssh` into a GPU cluster you meet a different world: your job dies with `exit code 137`, a checkpoint you "saved" is zero bytes after a node crash, the DataLoader eats 200GB of RAM, `nvidia-smi` says CUDA 12.4 while `torch` says 12.1, and SLURM "sent SIGUSR1" to something. None of this is ML. It is the operating system.
 
@@ -13,19 +16,26 @@ All commands assume a modern Ubuntu (22.04 or 24.04) server. Most work on any re
 Where a block is labelled, the label tells you how much to trust it:
 
 - **(real output, macOS)**: run while writing this chapter on an Apple Silicon Mac, Python 3.14.
-- **(real output, Linux container)**: run inside a Debian 13 container (`python:3.12-slim`, kernel shared with Docker Desktop's Linux VM, aarch64). That is real Linux, but it is a small VM, not a GPU server, and you are root inside it.
-- **untested**: needs a real Linux host, root, systemd, SLURM or GPUs. The commands follow the documented interfaces but were not executed for this chapter.
+- **(real output, Linux container)**: run inside a Debian 13 container (`python:3.12-slim`, kernel shared with Docker Desktop's Linux VM, aarch64, which is Linux's name for ARM64). A container is a packaged, isolated Linux environment; the glossary below says just enough, and section 6 explains how it works. That is real Linux, but it is a small VM, not a GPU server, and you are root inside it.
+- **untested**: needs a real Linux host, root, systemd (the program that starts and supervises background services on most Linux systems; section 8), SLURM or GPUs. The commands follow the documented interfaces but were not executed for this chapter.
 
-Every Python file in this chapter is self-contained: save it and run it with `python3 file.py`. Each section ends with a short **Try this** list. Doing even half of those exercises on a real machine teaches more than rereading the section.
+Almost every Python file in this chapter is self-contained: save it and run it with `python3 file.py`. The exceptions are labelled: a few blocks are sketches with placeholder functions, and some scripts only work on Linux. Each section ends with a short **Try this** list. Doing even half of those exercises on a real machine teaches more than rereading the section.
 
 Conventions used below:
 
-```bash
-$ command typed by a regular user
-# command typed by root (or prefixed with sudo)
-```
+- As in [the toolkit](toolkit.md#how-to-read-this-books-labels), a line starting with `$ ` is a command you type (without the `$ `), and the lines after it are its output. Blocks with no `$ ` lines are lists of commands (or a file's contents).
+- A `#` starts a comment, never a prompt. Commands that need root are written with `sudo` in front.
 
-When a line starts with `$` or `#` inside a code block, don't type the prompt itself.
+**Cluster and GPU words used before their chapters.** This chapter is about the OS, but its examples come from GPU clusters, so it names tools that later chapters teach properly. Just enough to follow along:
+
+- **Cluster, node, login node.** A cluster is many machines (**nodes**) sharing storage and a network. You `ssh` into a shared **login node** to edit code and submit work; the training runs on **compute nodes**, each typically with 8 GPUs.
+- **SLURM** (also written Slurm) is the **job scheduler** most GPU clusters use: you ask for resources ("2 nodes, 8 GPUs each, 24 hours") and it runs your script when they are free. A **job** is one such request. `sbatch job.slurm` submits a batch script; lines in that script starting with `#SBATCH` are not comments to Slurm but resource requests (e.g. `#SBATCH --nodes=2`); `srun cmd` starts `cmd` once per **task** (process) of the job, on the job's nodes; `scancel` cancels a job; `slurmd`/`slurmstepd` are Slurm's own daemons (background service programs) on each node; `SLURM_*` environment variables tell each task where it is (e.g. `SLURM_PROCID` is the task's index). Taught in [Slurm from zero](../orchestration/slurm/from-zero.md).
+- **Ranks and `torchrun`.** Distributed training runs one Python process per GPU; each process is a **rank**, numbered `0 .. WORLD_SIZE-1` (`LOCAL_RANK` is the number within one node). `torchrun` is PyTorch's launcher: it starts those processes and gives each its `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, plus `MASTER_ADDR`/`MASTER_PORT` (the host and TCP port where ranks meet to find each other, the **rendezvous**; a **port** is a number from 0 to 65535 that picks out one listening program on a machine). This chapter explains how torchrun spawns processes in [section 4](#how-torchrun-spawns-workers); how the ranks connect is in [Networking](networking.md#how-pytorch-distributed-bootstraps), and why one stuck rank hangs all of them is in [Concurrency](concurrency.md#a-distributed-hang-is-a-deadlock-across-machines).
+- **NCCL** ("nickel") is NVIDIA's library that moves data between GPUs for distributed training. Its main operation is the **all-reduce**: sum a tensor (e.g. the gradients) across all ranks and give every rank the result. A **collective** is any such operation that all ranks must call together, which is why one stuck rank hangs everyone; a **barrier** is the simplest collective ("wait until every rank gets here"). `NCCL_*` environment variables (e.g. `NCCL_DEBUG=INFO` for verbose logs, `NCCL_SOCKET_IFNAME` to choose a network interface) configure it. See [Concurrency](concurrency.md#a-distributed-hang-is-a-deadlock-across-machines) (the first proper definitions), [Networking](networking.md#collective-communication-an-intuitive-introduction) and [GPU software stack](../compute/gpu-software-stack.md).
+- **CUDA** is NVIDIA's GPU programming platform: a kernel driver, user-space libraries and a compiler. Section 7 untangles its "versions". `CUDA_VISIBLE_DEVICES=0,1` restricts a process to GPUs 0 and 1. A GPU **kernel** is one function run on the GPU, not to be confused with the OS kernel below.
+- **InfiniBand / RDMA.** The fast network between GPU nodes; RDMA lets a network card read and write memory directly. See [Networking](networking.md#hpc-networking-rdma-infiniband-roce-efa).
+- **Docker / containers / Kubernetes.** A **container** runs a program with its own packaged filesystem (OS libraries, Python, your code); **Docker** is the common tool for building and running them, and an **image** is the packaged filesystem it starts from. **Kubernetes** (k8s) is a system that runs containers across a cluster; its unit of work is a **pod** (one or more containers scheduled together). Section 6 shows what a container is made of; Docker is taught in [Containers](containers-and-virtualization.md#3-docker-from-zero) and Kubernetes in [Kubernetes from zero](../orchestration/kubernetes-from-zero.md).
+- **NFS, Lustre, GPFS** are network filesystems: directories that look local but live on servers shared by the whole cluster. Explained in section 3 ([Local vs network filesystems](#local-vs-network-filesystems)).
 
 
 ## 1. What an operating system actually does
@@ -55,7 +65,7 @@ The **kernel** is the one program that is allowed to touch the hardware directly
 
 "Linux" strictly means the kernel. Ubuntu is a *distribution*: the Linux kernel plus a large set of user programs (`bash`, `ls`, `apt`, `systemd`, ...), most of them from the GNU project.
 
-You can ask the kernel who it is, and talk to it almost directly, from Python. `os.write` is a thin wrapper around the `write` system call (explained two sections down), with none of `print`'s buffering in between:
+You can ask the kernel who it is, and talk to it almost directly, from Python. `os.write` is a thin wrapper around the `write` system call (explained two sections down), with none of `print`'s buffering in between. Its first argument, `1`, is a **file descriptor**, the number a program uses for an open file; 1 is always the program's standard output, i.e. the terminal unless redirected (both explained in [section 2](#pipes-and-redirection)):
 
 ```python
 # kernel_hello.py
@@ -108,7 +118,7 @@ def burn_user(n=3_000_000):          # pure computation: never leaves user mode
     return s
 
 def burn_sys(n=300_000):             # each iteration is a syscall: user -> kernel -> user
-    fd = os.open("/dev/null", os.O_WRONLY)
+    fd = os.open("/dev/null", os.O_WRONLY)   # /dev/null: a special file that discards whatever is written
     for _ in range(n):
         os.write(fd, b"x")
     os.close(fd)
@@ -144,7 +154,7 @@ There are a few hundred syscalls. The ones you will see constantly:
 | `futex` | the building block for locks; a hung process is often sitting in `futex` |
 | `fsync` | force data to stable storage |
 
-You can watch every syscall a program makes with `strace`. Install it with `sudo apt install strace`.
+You can watch every syscall a program makes with `strace`. Install it with `sudo apt install strace`. Below, `-f` also traces child processes, `-e trace=openat,write` shows only those two syscalls, and `2>&1` is needed because strace prints its trace to the error stream:
 
 ```bash
 $ strace -f -e trace=openat,write python -c 'print("hi")' 2>&1 | tail -5
@@ -192,7 +202,7 @@ Key takeaway: **when something is slow or stuck and Python gives you no clue, th
 1. Run `user_vs_sys.py` above. Change `burn_sys` to write 64KiB per call instead of 1 byte and keep the total bytes the same. What happens to `sys` time, and why? (Hint: the cost is per call, not per byte, until the bytes get large.)
 2. On a Linux box, run `strace -c -f python -c 'import torch'` once from a local disk venv and once from a venv on NFS or Lustre. Compare the `seconds` column for `openat` and `newfstatat`.
 3. Run `strace -e trace=write python -c 'print("a"); print("b")'` twice: once with the output going to the terminal and once with `| cat`. Count the `write` calls each time. You have just seen line buffering versus block buffering (covered in the pipes section).
-4. Read `man 2 syscalls` and find three syscalls you've never heard of. Look one up in `man 2 <name>`.
+4. Read `man 2 syscalls` (the `2` picks section 2 of the manual, system calls) and find three syscalls you've never heard of. Look one up in `man 2 <name>`.
 
 
 ## 2. The shell
@@ -224,7 +234,7 @@ Help is always nearby: `man ls`, `ls --help`, or `tldr ls` (if installed, gives 
 
 ```bash
 pwd                         # where am I?
-cd /scratch/$USER           # go somewhere; `cd` alone goes home, `cd -` goes back
+cd /scratch/$USER           # go somewhere (/scratch: a cluster's big shared work area); `cd` alone goes home, `cd -` goes back
 ls -la                      # list including hidden (dot) files
 ls -lhtr                    # sorted by time, newest last - great for "which checkpoint is latest"
 mkdir -p runs/exp1/logs     # -p: create parents, no error if exists
@@ -242,10 +252,10 @@ tail -f train.log           # follow a log as it grows - you'll use this daily
 # all checkpoints older than 7 days
 find /scratch/$USER -name "*.pt" -mtime +7
 
-# files bigger than 10GB
+# files bigger than 10GB; -exec runs ls -lh on them, with {} replaced by the found names
 find . -type f -size +10G -exec ls -lh {} +
 
-# where is libcudart on this system?
+# where is libcudart on this system? (2>/dev/null throws away the "Permission denied" errors)
 find / -name "libcudart.so*" 2>/dev/null
 ```
 
@@ -262,7 +272,7 @@ If available, `rg` (ripgrep) is a much faster `grep -r`.
 
 ### Just enough awk and sed
 
-`awk` splits each line into whitespace-separated fields `$1, $2, ...`. `sed` edits streams of text. You need maybe five idioms:
+`awk` splits each line into whitespace-separated fields `$1, $2, ...`. Its program, in single quotes, is `{ ... }` run on every line, optionally followed by `END { ... }` run once after the last line; variables like `s` and `n` start at 0. `sed` edits streams of text: `s/old/new/` substitutes the first match on each line, `-i` edits the file in place (on macOS write `sed -i ''`), and `-n '100,120p'` prints only those lines. You need maybe five idioms:
 
 ```bash
 # log line: "step 1200 loss 2.314 lr 3e-4"
@@ -271,7 +281,7 @@ grep "^step" train.log | awk '{s+=$4; n++} END {print s/n}'  # mean loss
 
 nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | awk '{s+=$1} END {print s " MiB"}'
 
-sed -i 's/lr: 3e-4/lr: 1e-4/' config.yaml               # in-place replace
+sed -i 's/lr: 3e-4/lr: 1e-4/' config.yaml               # in-place replace (in a YAML config file)
 sed -n '100,120p' train.log                              # print lines 100-120
 ```
 
@@ -282,11 +292,11 @@ $ df -h /scratch           # how full is the filesystem?
 Filesystem              Size  Used Avail Use% Mounted on
 10.0.0.5@tcp:/scratch   2.0P  1.7P  300T  85% /scratch
 
-$ du -sh /scratch/$USER/* | sort -h | tail     # what's using my space?
+$ du -sh /scratch/$USER/* | sort -h | tail     # what's using my space? (sort -h understands sizes like 120G)
 120G    /scratch/me/datasets
 1.4T    /scratch/me/checkpoints
 
-$ df -i /home               # inodes - you can run out of these with free space left!
+$ df -i /home               # inodes (one per file; see section 3) - you can run out of these with free space left!
 ```
 
 `du` walks every file, so on a network filesystem with millions of files it can take hours and hammer the metadata server. Many clusters provide a quota tool instead (`lfs quota` on Lustre, or a site-specific command) - prefer that.
@@ -318,7 +328,7 @@ Why does order matter? `2>&1` means "make fd 2 point wherever fd 1 points *right
 A **pipe** `a | b` connects a's stdout to b's stdin. Both run concurrently; the kernel buffers between them (64KiB by default on Linux). This is how you compose small tools:
 
 ```bash
-ps aux | grep python | grep -v grep | wc -l     # count python processes
+ps aux | grep python | grep -v grep | wc -l     # count python processes (ps aux lists every process; section 4)
 ```
 
 A common surprise: when stdout is a pipe or file instead of a terminal, Python buffers its output in blocks instead of lines, so `tail -f` shows nothing for minutes. The block size depends on the Python version and the platform (it is derived from `io.DEFAULT_BUFFER_SIZE`, which went from 8KiB in 3.12 to 128KiB in 3.14, and from the file's reported block size). I measured it on macOS by writing N bytes into a pipe and checking what the reader saw before the writer exited. Python 3.12 still held 9,000 bytes back. Python 3.14 still held 100,000. A slow training loop that logs one short line per step can sit on minutes of output. Fix with `python -u` or `PYTHONUNBUFFERED=1`, or `print(..., flush=True)`.
@@ -362,7 +372,7 @@ ValueError
 1
 ```
 
-When a process is killed by a signal, the shell reports `128 + signal number`. Memorize these - they show up in SLURM and Kubernetes job reports:
+When a process is killed by a **signal** (a small numbered notification the kernel delivers to a process, such as "interrupt" for Ctrl-C or "kill"; [section 4](#signals) covers them, and the other causes in this table), the shell reports `128 + signal number`. Memorize these - they show up in SLURM and Kubernetes job reports:
 
 | Exit code | Meaning | Typical ML cause |
 |---|---|---|
@@ -409,7 +419,7 @@ $ type python          # also reveals aliases and shell functions
 
 Environment variables you'll meet constantly in ML: `CUDA_VISIBLE_DEVICES`, `NCCL_DEBUG`, `NCCL_SOCKET_IFNAME`, `MASTER_ADDR`, `MASTER_PORT`, `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, `HF_HOME`, `OMP_NUM_THREADS`, `PYTHONPATH`, `LD_LIBRARY_PATH`, and the whole `SLURM_*` family.
 
-Shell startup files: interactive login shells read `~/.bash_profile` (or `~/.profile`), interactive non-login shells read `~/.bashrc`. On Ubuntu the default `~/.profile` sources `~/.bashrc`. Put your `export`s and aliases in `~/.bashrc`. Note that SLURM batch scripts are non-interactive and, depending on how they're invoked, may not read `~/.bashrc` - don't rely on it for anything a job needs; set it in the job script.
+Shell startup files: interactive login shells read `~/.bash_profile` (or `~/.profile`), interactive non-login shells read `~/.bashrc`. On Ubuntu the default `~/.profile` sources `~/.bashrc` (runs it inside the same shell, the way `source .venv/bin/activate` does). Put your `export`s and aliases (short names for longer commands, e.g. `alias ll='ls -l'`) in `~/.bashrc`. Note that SLURM batch scripts are non-interactive and, depending on how they're invoked, may not read `~/.bashrc` - don't rely on it for anything a job needs; set it in the job script.
 
 ### Quoting: the source of many bugs
 
@@ -421,13 +431,13 @@ mkdir $name         # creates TWO dirs: "my" and "run"
 mkdir "$name"       # creates one dir "my run"
 echo '$HOME'        # single quotes: literal, prints $HOME
 echo "$HOME"        # double quotes: expands, no word splitting
-rm -rf $DIR/        # if DIR is unset/empty, this is `rm -rf /`. Quote and guard:
-rm -rf "${DIR:?DIR is unset}/"
+rm -rf $DIR/        # (-f: never ask) if DIR is unset/empty, this is `rm -rf /`. Quote and guard:
+rm -rf "${DIR:?DIR is unset}/"   # ${VAR:?msg} aborts with msg if VAR is unset or empty
 ```
 
 Rule: **always double-quote variable expansions** unless you specifically want splitting.
 
-The most ML-relevant quoting trap is *when* expansion happens. In a SLURM script:
+The most ML-relevant quoting trap is *when* expansion happens. In a SLURM script (`srun` runs the quoted command once per task of the job, possibly on other nodes, and Slurm gives each task its own `SLURM_PROCID`; `bash -c "..."` starts a new shell that runs the quoted text as a command; a backslash before `$` stops the *current* shell from expanding it):
 
 ```bash
 srun bash -c "python train.py --rank $SLURM_PROCID"    # expanded NOW, on the batch node -> same value everywhere
@@ -455,7 +465,7 @@ done
 N_GPUS=$(nvidia-smi -L | wc -l)            # command substitution
 echo "found $N_GPUS GPUs; half is $((N_GPUS / 2))"   # arithmetic
 
-if [[ -f "$OUT_DIR/done" ]]; then
+if [[ -f "$OUT_DIR/done" ]]; then            # [[ -f path ]]: true if the file exists
     echo "already finished"
 fi
 
@@ -484,13 +494,13 @@ $ ssh-keygen -q -t ed25519 -N '' -C me@laptop -f k     # -N '' = no passphrase (
 $ ls -l k k.pub
 -rw-------  1 me  staff  399 Nov  5 16:17 k
 -rw-r--r--  1 me  staff   91 Nov  5 16:17 k.pub
-$ cut -c1-40 k.pub
+$ cut -c1-40 k.pub                                     # first 40 characters of each line
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL1n
 $ ssh-keygen -lf k.pub                                 # fingerprint, to compare with what admins see
 256 SHA256:2orcwx7lG5ari1U5saV32F20IZL11Cs3mQX8+uINr74 me@laptop (ED25519)
 ```
 
-(real output, macOS; username changed.) Note the permissions: `ssh-keygen` made the private key `600`. sshd is strict about this. If `~/.ssh` on the *server* is group-writable, or `authorized_keys` is writable by anyone but you, sshd silently ignores your key and falls back to asking for a password. Fix with `chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys`. This is the number one cause of "I copied my key but it still asks for a password". A shared cluster with `umask 002` (see the permissions section) creates exactly this situation.
+(real output, macOS; username changed.) Note the permissions: `ssh-keygen` made the private key `600` (`-rw-------`: only you can read or write it; the three-digit form is explained in [Permissions](#permissions-ownership-umask)). sshd, the ssh server program, is strict about this. If `~/.ssh` on the *server* is group-writable, or `authorized_keys` is writable by anyone but you, sshd silently ignores your key and falls back to asking for a password. Fix with `chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys`. This is the number one cause of "I copied my key but it still asks for a password". A shared cluster with `umask 002` (see the permissions section) creates exactly this situation.
 
 Use a passphrase on real keys and let **ssh-agent** remember the decrypted key for the session, so you type the passphrase once: `ssh-add ~/.ssh/id_ed25519`, then `ssh-add -l` to list loaded keys. On macOS, `AddKeysToAgent yes` plus `UseKeychain yes` in the config does this automatically.
 
@@ -535,10 +545,10 @@ proxyjump cluster
 
 **Agent forwarding caveat.** `ssh -A` / `ForwardAgent yes` lets the remote machine use your laptop's agent, for example to `git clone` from GitHub on the cluster with your laptop key. But anyone with root on that remote machine (or who can become your user there) can use your agent socket to log in *as you* anywhere your key works, for as long as you're connected. On a shared login node you don't control, that is a real risk. Prefer `ProxyJump` for hopping between hosts. For git on the cluster, use a separate deploy key or an HTTPS token that can only touch the one repo.
 
-Port forwarding, e.g. to view TensorBoard running on a compute node in your laptop's browser:
+Port forwarding, e.g. to view TensorBoard (a web dashboard of training curves, served on port 6006) running on a compute node in your laptop's browser:
 
 ```bash
-ssh -L 6006:localhost:6006 gpu-017      # then open http://localhost:6006 locally
+ssh -L 6006:localhost:6006 gpu-017      # localhost = "this machine"; then open http://localhost:6006 on your laptop
 ```
 
 Copying files:
@@ -612,7 +622,7 @@ Unix's central design idea: many things are accessed through the same `open`/`re
 
 That's why `cat /proc/cpuinfo` works, and why `fuser -v /dev/nvidia*` can tell you which processes have a GPU open.
 
-Why design it this way? One small interface means every tool composes with every other tool. `cat`, `grep`, `tail -f` and `dd` work on devices, pipes and kernel state without knowing they're not ordinary files. The program holds an integer **file descriptor** and calls `read`/`write`; the kernel routes each call to the right driver. Python sees the same thing:
+Why design it this way? One small interface means every tool composes with every other tool. `cat`, `grep`, `tail -f` and `dd` (a raw byte-copying tool) work on devices, pipes and kernel state without knowing they're not ordinary files. The program holds an integer **file descriptor** and calls `read`/`write`; the kernel routes each call to the right driver. Python sees the same thing:
 
 ```python
 # everything_is_a_file.py
@@ -654,7 +664,7 @@ fd  8  TCP socket     -> socket
 b'through the kernel' <- read from a pipe
 ```
 
-The numbers start at 3 because 0, 1 and 2 are already stdin, stdout and stderr. (fd 7 is the pipe's write end.) On Linux you can list a process's descriptors as symlinks:
+The numbers start at 3 because 0, 1 and 2 are already stdin, stdout and stderr. (fd 7 is the pipe's write end.) On Linux you can list a process's descriptors as symlinks (small files that point at another path, shown as `name -> target`; [Inodes, names and links](#inodes-names-and-links) below):
 
 ```bash
 $ ls -l /proc/self/fd
@@ -686,7 +696,7 @@ Consequences that matter:
 
 - **Filesystems have a fixed or limited number of inodes** (or, on Lustre-like systems, metadata capacity). A dataset of 50 million small JPEGs can exhaust inodes while `df -h` says 40% free - check `df -i`. This is one reason large-scale training data is packed into shards (WebDataset tar files, Arrow, Parquet, etc.).
 - **`mv` within the same filesystem is instant**: it only rewrites a directory entry. Across filesystems it's a full copy plus delete. And a `rename` within one filesystem is *atomic* - the foundation of safe checkpoint writing (see fsync below).
-- **Deleting a file that's still open doesn't free the space.** The inode lives until the last name *and* the last open file descriptor are gone. If `df` says full but `du` can't find the files, a process is holding deleted files open: `lsof +L1` lists them.
+- **Deleting a file that's still open doesn't free the space.** The inode lives until the last name *and* the last open file descriptor are gone. If `df` says full but `du` can't find the files, a process is holding deleted files open: `lsof +L1` lists them (`lsof` lists open files; `+L1` restricts it to files with no name left).
 
 **Links:**
 
@@ -731,7 +741,7 @@ $ umask 002       # new files 664, dirs 775 - group-writable
 
 Shared team directories: set `umask 002` in `~/.bashrc` and set the **setgid** bit on the shared directory (`chmod g+s /data/team`) so that new files inherit the directory's group rather than your personal group. Forgetting this is the classic "my teammate can't overwrite the checkpoint I wrote" problem.
 
-Network filesystems may have their own ACL or ID-mapping rules; `ls -l` may not tell the whole story there (`getfacl` shows POSIX ACLs).
+Network filesystems may have their own ACL (access control list, explained just below) or ID-mapping rules; `ls -l` may not tell the whole story there (`getfacl` shows POSIX ACLs, POSIX being the Unix standard that Linux follows).
 
 ### Permissions on shared clusters: groups, setgid, ACLs, sticky bit, quotas
 
@@ -743,7 +753,7 @@ On your laptop you're the only user, so permissions rarely bite. On a cluster, h
 - **ACLs** (access control lists). Per-user or per-group permission entries beyond the single owner/group/other triple. A **default ACL** on a directory is inherited by everything created inside it, and it overrides umask for those entries.
 - **The sticky bit** (`t` in `drwxrwxrwt`, as on `/tmp`). Everyone can create files in the directory, but only a file's owner can delete or rename it.
 
-Here is the whole story in one script: two teammates and an outsider, run as root in a Linux container:
+Here is the whole story in one script: two teammates and an outsider, run as root in a Linux container. The admin commands in it: `groupadd NAME` creates a group; `useradd -m -G GROUP NAME` creates a user (with a home directory) who is a member of `GROUP`; `chgrp GROUP PATH` changes a file's group; `su USER -c 'cmd'` runs `cmd` as that user; `setfacl -m u:carol:rx PATH` adds an ACL entry giving user carol read and execute; `getfacl` prints a file's ACL:
 
 ```bash
 groupadd mlteam; useradd -m -G mlteam alice; useradd -m -G mlteam bob; useradd -m carol
@@ -847,14 +857,15 @@ nproc                                 # CPUs available to *this process* (respec
 
 # per-process: /proc/<PID>/
 cat /proc/$$/status | grep -E "VmRSS|Threads"    # $$ = this shell's PID
-tr '\0' '\n' < /proc/12345/environ   # environment of process 12345 (yours only)
+tr '\0' '\n' < /proc/12345/environ   # environment of process 12345 (yours only); entries are separated
+                                      # by zero bytes, and tr translates them to newlines
 tr '\0' ' '  < /proc/12345/cmdline   # its full command line
 ls -l /proc/12345/fd                  # its open files
 ls -l /proc/12345/cwd                 # its working directory
 
 # /sys: devices and kernel tunables
 ls /sys/class/net/                    # network interfaces (useful for NCCL_SOCKET_IFNAME)
-cat /sys/class/net/ib0/mtu
+cat /sys/class/net/ib0/mtu            # MTU: largest packet the interface sends
 ls /sys/bus/pci/devices/              # PCI devices; GPUs live here
 cat /sys/kernel/mm/transparent_hugepage/enabled
 ```
@@ -873,7 +884,7 @@ sudo sysctl -w vm.swappiness=10
 Two consequences:
 
 - Files you put in `/dev/shm` consume RAM and vanish on reboot. Great for a small hot dataset; dangerous if you forget it's there.
-- Docker gives containers only a **64MB** `/dev/shm` by default. DataLoader with `num_workers > 0` then dies with `Bus error` (SIGBUS, exit 135) or `RuntimeError: DataLoader worker (pid X) is killed by signal: Bus error`. Fix: `docker run --shm-size=32g ...` or `--ipc=host`.
+- Docker gives containers only a **64MB** `/dev/shm` by default. DataLoader with `num_workers > 0` then dies with `Bus error` (SIGBUS, exit 135) or `RuntimeError: DataLoader worker (pid X) is killed by signal: Bus error`. Fix: `docker run --shm-size=32g ...` or `--ipc=host` (`docker run` starts a container; these two flags give it a bigger `/dev/shm` or the host's own. Section 6 explains what a container is).
 
 ```bash
 $ df -h /dev/shm
@@ -912,7 +923,7 @@ Network filesystems also cache on the client, but with weaker and FS-specific co
 
 ### fsync and durability: why checkpoints get lost
 
-When `write()` returns, your data is in the page cache in RAM, *not on disk*. The kernel flushes dirty pages to storage in the background, typically within ~30 seconds (governed by `vm.dirty_expire_centisecs` and related settings). If the node loses power or the kernel panics before that, the data is gone - and the file may exist with the right name but be truncated or zero-filled.
+When `write()` returns, your data is in the page cache in RAM, *not on disk*. The kernel flushes dirty pages (cached pages that were modified but not yet written to disk) to storage in the background, typically within ~30 seconds (governed by `vm.dirty_expire_centisecs` and related settings). If the node loses power or the kernel panics before that, the data is gone - and the file may exist with the right name but be truncated or zero-filled.
 
 `fsync(fd)` blocks until the file's data and metadata have reached stable storage (as far as the device honours it). `close()` does **not** imply `fsync()`.
 
@@ -939,7 +950,7 @@ Why each step:
 - `fsync` on the file makes the bytes durable; `fsync` on the directory makes the new name durable.
 - Also write a "latest" marker or a final `done` file *after* everything else is synced, and have the resume logic trust only complete checkpoints.
 
-On parallel/network filesystems (Lustre, GPFS, NFS, object-store FUSE mounts) the semantics of `fsync` and `rename` vary; some FUSE mounts for object stores don't support atomic rename at all. Check your filesystem's documentation. Also note `fsync` on a multi-GB file can take seconds - that's the honest cost of durability, and it's why [frequent checkpoint saving](../training/fault-tolerance/README.md#frequent-checkpoint-saving) needs a fast filesystem.
+On parallel/network filesystems (Lustre, GPFS, NFS, object-store FUSE mounts, i.e. cloud storage buckets such as S3 made to look like a directory) the semantics of `fsync` and `rename` vary; some FUSE mounts for object stores don't support atomic rename at all. Check your filesystem's documentation. Also note `fsync` on a multi-GB file can take seconds - that's the honest cost of durability, and it's why [frequent checkpoint saving](../training/fault-tolerance/README.md#frequent-checkpoint-saving) needs a fast filesystem.
 
 ### Local vs network filesystems
 
@@ -1025,7 +1036,7 @@ top                                 # live view; press 1 for per-CPU, M sort by 
 htop                                # nicer top (apt install htop); F5 tree view, F4 filter
 ```
 
-In `top`, the load average (`load average: 95.2, 90.1, 88.0`) is the average number of runnable (or uninterruptible-waiting) tasks over 1/5/15 minutes. Compare it to the number of cores; a load far above the core count means oversubscription (e.g. too many DataLoader workers times too many OpenMP threads).
+In `top`, the load average (`load average: 95.2, 90.1, 88.0`) is the average number of runnable (or uninterruptible-waiting) tasks over 1/5/15 minutes. Compare it to the number of cores; a load far above the core count means oversubscription (e.g. too many DataLoader workers times too many OpenMP threads; OpenMP is the threading library behind PyTorch's and NumPy's multi-core CPU math).
 
 The `S` / `STAT` column is the process state:
 
@@ -1126,7 +1137,7 @@ The book's SLURM chapter has a section on [zombies](../orchestration/slurm/users
 
 ### Signals
 
-A **signal** is a small asynchronous notification sent to a process by the kernel or another process. Each has a default action (terminate, ignore, core dump, stop), and a process can install a **handler** to do something else - except for `SIGKILL` and `SIGSTOP`, which cannot be caught or ignored.
+A **signal** is a small asynchronous notification sent to a process by the kernel or another process. Each has a default action (terminate, ignore, core dump - terminate and write the process's memory to a "core" file for later debugging - or stop), and a process can install a **handler** to do something else - except for `SIGKILL` and `SIGSTOP`, which cannot be caught or ignored.
 
 | Signal | # (x86-64) | Default | Who sends it, typically | Can catch? |
 |---|---|---|---|---|
@@ -1156,6 +1167,7 @@ pkill -f train.py      # by command-line pattern - careful, it matches broadly
 Catching signals in Python:
 
 ```python
+# a sketch: start, max_steps, train_step and save_checkpoint stand for your own training code
 import signal, sys
 
 stop_requested = False
@@ -1176,10 +1188,10 @@ for step in range(start, max_steps):
 
 Two subtleties: Python runs signal handlers only in the main thread, between bytecode instructions - so if the main thread is blocked inside a long C call (e.g. a collective that's hung), the handler is delayed until it returns. And in distributed training, each rank must agree to stop at the same step, otherwise some ranks wait forever in a collective; usually you set the flag on every rank (signal sent to all) or all-reduce the flag.
 
-**How SLURM uses signals.** By default, when a job hits its time limit (or is cancelled or preempted), SLURM sends `SIGTERM` to the job's processes, waits `KillWait` seconds (cluster config; 30s by default), then sends `SIGKILL`. 30 seconds is rarely enough to checkpoint a large model. So you ask for an earlier warning:
+**How SLURM uses signals.** By default, when a job hits its time limit (or is cancelled or preempted, i.e. the scheduler takes its nodes back for higher-priority work), SLURM sends `SIGTERM` to the job's processes, waits `KillWait` seconds (cluster config; 30s by default), then sends `SIGKILL`. 30 seconds is rarely enough to checkpoint a large model. So you ask for an earlier warning, with a `#SBATCH` line in the job script (to bash it's a comment; Slurm reads it as an option, here `--signal`):
 
 ```bash
-#SBATCH --signal=USR1@600        # send SIGUSR1 to job steps 600s (approx.) before time limit
+#SBATCH --signal=USR1@600        # send SIGUSR1 to job steps (each srun launch is a step) 600s (approx.) before time limit
 #SBATCH --signal=B:USR1@600      # B: send it only to the batch shell script instead
 ```
 
@@ -1205,11 +1217,11 @@ kill -TERM -- -4010           # negative PID: signal the whole process group 401
 setsid python train.py        # start in a new session, detached from the terminal
 ```
 
-Signalling a group is how you clean up a launcher and all its children at once. SLURM tracks job processes with cgroups (next section) rather than process groups, so even processes that escape their group are found and killed when the job ends.
+Signalling a group is how you clean up a launcher and all its children at once. SLURM tracks job processes with cgroups ([section 6](#cgroups-limits-for-groups-of-processes)) rather than process groups, so even processes that escape their group are found and killed when the job ends.
 
 ### How torchrun spawns workers
 
-`torchrun` (alias of `python -m torch.distributed.run`) is an ordinary process that acts as a per-node "agent":
+`torchrun` (alias of `python -m torch.distributed.run`) is an ordinary process that acts as a per-node "agent". (Ranks, `MASTER_ADDR` and rendezvous are defined in the glossary at the top of this chapter; the network side of rendezvous is in [Networking](networking.md#how-pytorch-distributed-bootstraps) and [Distributed systems](distributed-systems.md#rendezvous).)
 
 1. It parses `--nnodes`, `--nproc-per-node`, `--rdzv-endpoint`, etc. and performs a rendezvous with the agents on other nodes to agree on ranks.
 2. It launches `nproc-per-node` worker processes (as subprocesses running your script), each with a different environment: `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, `LOCAL_WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT`, among others.
@@ -1254,7 +1266,7 @@ ML-relevant limits:
 
 - **open files (`-n`)**: a soft default of 1024 is common. Many DataLoader workers, many shards open at once, NCCL sockets, and PyTorch's `file_system` tensor-sharing strategy can all exceed it: `OSError: [Errno 24] Too many open files`. Raise it in the job script.
 - **max locked memory (`-l`)**: limits pinned memory. RDMA / InfiniBand and some NCCL configurations need this to be `unlimited`; otherwise you'll get errors about registering memory. Admins usually set this cluster-wide (`/etc/security/limits.conf`, and SLURM's `PropagateResourceLimits` determines whether your login shell's limits are propagated to jobs).
-- **core file size (`-c`)**: 0 disables core dumps; raise it if you want to `gdb` a crash post-mortem.
+- **core file size (`-c`)**: 0 disables core dumps; raise it if you want to `gdb` (the standard debugger for compiled programs; [section 9](#gdb-basics)) a crash post-mortem.
 
 Hard limits can only be raised by root.
 
@@ -1350,6 +1362,8 @@ When a process touches a virtual page that has no physical page behind it, the C
 
 Consequence: `malloc(100GB)` or `np.empty(...)` "succeeds" instantly and uses no RAM until you write to it. This is also how `mmap`-based loading (e.g. `safetensors`, `np.load(mmap_mode="r")`, Arrow datasets) works: the file is mapped into the address space and pages are read from disk only when touched, then live in the page cache shared by all processes mapping the same file.
 
+`/usr/bin/time -v` (GNU `time`, a separate program from the shell's built-in `time`; `-v` adds memory and fault counts) shows both kinds for a whole program:
+
 ```bash
 /usr/bin/time -v python -c 'import torch' 2>&1 | grep -E "Maximum resident|page faults"
         Maximum resident set size (kbytes): 412000
@@ -1408,7 +1422,7 @@ $ sudo dmesg -T | grep -i -E "killed process|out of memory"
 
 On clusters, the limit is usually per job via cgroups (see below), not the whole machine. The kernel log then says `Memory cgroup out of memory`, and SLURM typically prints something like `slurmstepd: error: Detected 1 oom_kill event in StepId=12345.0. Some of your processes may have been killed by the cgroup out-of-memory handler.` (exact wording varies by version). Ask for more with `#SBATCH --mem=...`.
 
-You can reproduce a cgroup OOM kill safely in a container capped at 512MiB:
+You can reproduce a cgroup OOM kill safely in a container capped at 512MiB. Just enough Docker to read the command below (section 6 and the [Containers](containers-and-virtualization.md#3-docker-from-zero) chapter explain it properly): `docker run IMAGE CMD` starts a container from the image `python:3.12-slim` (a small Debian Linux with Python) and runs `CMD` inside it; `--rm` deletes the container when it exits; `--memory 512m` sets its cgroup memory limit; `--memory-swap 512m` caps memory plus swap at the same value; and `-v $PWD:/w` makes your current directory visible inside the container at `/w`, so it can run `/w/oom.py`:
 
 ```python
 # oom.py
@@ -1453,7 +1467,7 @@ for x, y in loader:
 
 ### Huge pages
 
-With 4KiB pages, 1TB of RAM is 268 million pages. The CPU caches address translations in a small **TLB**; when a workload touches memory randomly over a huge range, TLB misses add up. **Huge pages** (2MiB or 1GiB on x86-64) cut the number of translations by 512x or 262144x.
+With 4KiB pages, 1TiB of RAM is 268 million pages (1TB decimal is about 244 million). The CPU caches address translations in a small **TLB**; when a workload touches memory randomly over a huge range, TLB misses add up. **Huge pages** (2MiB or 1GiB on x86-64) cut the number of translations by 512x or 262144x.
 
 - **Transparent Huge Pages (THP)**: the kernel automatically uses 2MiB pages where it can.
 
@@ -1583,7 +1597,7 @@ At any moment there are far more threads than cores. The kernel's scheduler (CFS
 
 Practical consequence: if 8 training ranks each spawn 8 DataLoader workers, each of which spawns `nproc` OpenMP threads for NumPy/torch CPU ops, you can have thousands of runnable threads fighting over 96 cores, and everything slows down. Set `OMP_NUM_THREADS` sensibly (`torchrun` sets it to 1 by default and prints a warning about it), and see [How many CPU cores do you need for DataLoader work](../compute/cpu/README.md#how-many-cpu-cores-do-you-need-for-dataloader-work).
 
-Oversubscription doesn't make anything faster. Every process gets a proportionally smaller slice of a core, plus extra context switches. Demonstrate it by pinning a container to 2 cores and running 2, 4 and 8 CPU-bound processes:
+Oversubscription doesn't make anything faster. Every process gets a proportionally smaller slice of a core, plus extra context switches (the kernel taking one thread off a core and putting another on, which costs time and cache contents). Demonstrate it by pinning a container to 2 cores and running 2, 4 and 8 CPU-bound processes. (In the `docker run` below, `--cpuset-cpus 0-1` lets the container use only CPUs 0 and 1, `-v $PWD:/w` shares the current directory as `/w`, and `-w /w` starts in it.)
 
 ```python
 # oversubscribe.py
@@ -1620,7 +1634,7 @@ $ docker run --rm --cpuset-cpus 0-1 -v $PWD:/w -w /w python:3.12-slim python ove
 Priority for normal processes is the **nice** value, -20 (highest) to 19 (lowest), default 0. Regular users can only lower their priority.
 
 ```bash
-nice -n 19 tar czf backup.tgz checkpoints/   # be nice while the training job runs
+nice -n 19 tar czf backup.tgz checkpoints/   # be nice while the training job runs (tar czf: create a gzip-compressed archive file)
 renice -n 10 -p 4321
 ionice -c3 rsync -a src/ dst/                # also lower I/O priority (idle class)
 ```
@@ -1693,7 +1707,7 @@ $ docker run --rm --cpus 2 python:3.12-slim sh -c \
 200000 100000
 ```
 
-(real output, Linux container.) `cpu.max` says "200,000µs of CPU time per 100,000µs period", which is 2 CPUs' worth, yet both Python calls report 10. A DataLoader or thread pool sized from `cpu_count()` starts 10 workers that get throttled to 2 cores' worth of time. Kubernetes CPU limits work exactly this way. On Kubernetes, size pools from `cpu.max` (or an environment variable you set from the pod spec). SLURM usually uses cpusets, which affinity *does* see. Python 3.13 added `os.process_cpu_count()`, but as far as I know it also reflects affinity only, not quotas. Python 3.13 also added the `PYTHON_CPU_COUNT` environment variable (and `-X cpu_count=N`) to override what both functions report. That's a cheap fix when you can't change the library that sizes its own pool.
+(real output, Linux container.) `cpu.max` says "200,000µs of CPU time per 100,000µs period", which is 2 CPUs' worth, yet both Python calls report 10. A DataLoader or thread pool sized from `cpu_count()` starts 10 workers that get throttled to 2 cores' worth of time. Kubernetes CPU limits work exactly this way. On Kubernetes, size pools from `cpu.max` (or an environment variable you set from the pod spec - the YAML description of a pod; see [Kubernetes from zero](../orchestration/kubernetes-from-zero.md#core-objects)). SLURM usually uses cpusets, which affinity *does* see. Python 3.13 added `os.process_cpu_count()`, but as far as I know it also reflects affinity only, not quotas. Python 3.13 also added the `PYTHON_CPU_COUNT` environment variable (and `-X cpu_count=N`) to override what both functions report. That's a cheap fix when you can't change the library that sizes its own pool.
 
 ### Namespaces + cgroups = containers
 
@@ -1709,7 +1723,7 @@ A **namespace** gives a group of processes its own private view of some global r
 | `user` | user/group ID mapping (root inside, unprivileged outside) |
 | `cgroup`, `time` | the cgroup tree view, clocks |
 
-A **container** is nothing more than an ordinary Linux process running in a set of namespaces, constrained by cgroups, with a filesystem image mounted as its root. There's no hypervisor and no separate kernel: **containers share the host kernel** - and therefore the host's NVIDIA kernel driver. That single fact explains most GPU-container behaviour.
+A **container** is nothing more than an ordinary Linux process running in a set of namespaces, constrained by cgroups, with a filesystem image mounted as its root. There's no hypervisor (the software layer that runs virtual machines, each with its own kernel) and no separate kernel: **containers share the host kernel** - and therefore the host's NVIDIA kernel driver. That single fact explains most GPU-container behaviour.
 
 ```bash
 lsns                               # list namespaces on this machine
@@ -1733,11 +1747,12 @@ docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
 - `--gpus all`: the toolkit injects `/dev/nvidia*` devices and the host's user-space driver libraries (`libcuda.so`, `libnvidia-ml.so`) into the container. The image brings its own CUDA runtime/toolkit; the host brings the driver.
 - `--ipc=host` (or `--shm-size=...`): fixes the 64MB `/dev/shm` problem for DataLoader.
 - `--ulimit memlock=-1`: unlimited pinned memory.
-- `-v host:container`: bind-mount host directories; the container's filesystem is otherwise throwaway.
+- `-v host:container`: bind-mount host directories; the container's filesystem is otherwise throwaway. `-w` sets the starting directory inside the container.
+- `-it`: interactive, attached to your terminal; `--rm`: delete the container when it exits. `nvcr.io/nvidia/pytorch:24.05-py3` is the image: NVIDIA's PyTorch image from its registry `nvcr.io`, version tag `24.05-py3`.
 
 The PID 1 gotcha: inside a container your program may be PID 1, and the kernel doesn't apply default "terminate" actions to PID 1 for signals it hasn't installed a handler for. So `docker stop` sends `SIGTERM`, your Python script (which has no SIGTERM handler) ignores it, and after 10 seconds Docker sends `SIGKILL`. Use `docker run --init` (adds a tiny init process that forwards signals and reaps zombies) or install a SIGTERM handler.
 
-Docker generally isn't available on shared HPC clusters, because access to the Docker daemon is effectively root on the host. **Apptainer** (formerly Singularity) is the HPC alternative: no daemon, runs as your own user, images are single `.sif` files that sit happily on a shared filesystem, and it uses the host network and filesystems by default.
+Docker generally isn't available on shared HPC (high-performance computing, i.e. traditional supercomputer-style) clusters, because access to the Docker daemon is effectively root on the host. **Apptainer** (formerly Singularity) is the HPC alternative: no daemon, runs as your own user, images are single `.sif` files that sit happily on a shared filesystem, and it uses the host network and filesystems by default.
 
 ```bash
 apptainer pull pytorch.sif docker://nvcr.io/nvidia/pytorch:24.05-py3   # convert a Docker image
@@ -1754,7 +1769,7 @@ apptainer exec --nv --bind /scratch:/scratch pytorch.sif python train.py
 2. Run `python3 -c 'import os; print(os.cpu_count(), len(os.sched_getaffinity(0)))'` inside an `srun` job step, on a login node, and in a Kubernetes pod with a CPU limit. Then `cat /sys/fs/cgroup/cpu.max` in each. Which number should a DataLoader use?
 3. Inside a SLURM job, read `cat /proc/self/cgroup` and find your job's `memory.max` and `cpuset.cpus.effective` under `/sys/fs/cgroup` (untested; paths are site-specific).
 4. On a machine where you have root: `sudo unshare --pid --fork --mount-proc bash`, then `ps aux` and `echo $$`. Leave the namespace and find the same bash in the host's `ps` with a different PID.
-5. Run `docker run --rm alpine sleep 60` and, from the host (Linux), find the `sleep` with `ps -ef | grep 'sleep 60'`. A container's process is visible on the host as an ordinary process.
+5. Run `docker run --rm alpine sleep 60` (`alpine` is a tiny Linux image) and, from the host (Linux), find the `sleep` with `ps -ef | grep 'sleep 60'`. A container's process is visible on the host as an ordinary process.
 
 
 ## 7. Users, software and libraries
@@ -1822,7 +1837,7 @@ python3 is /opt/homebrew/bin/python3
 
 ### Environment modules (Lmod)
 
-Shared clusters can't let every user `apt install` their own CUDA, compilers and MPI. Admins install many versions side by side (`/opt/cuda-12.1`, `/opt/cuda-12.4`, ...), and **environment modules** let each user pick versions per shell. A **modulefile** is a small script describing which environment variables to set. `module load` applies it to your current shell and `module unload` reverses it exactly. The two common implementations are Lmod (modulefiles in Lua, most HPC sites) and the older Tcl "Environment Modules"; the commands are the same.
+Shared clusters can't let every user `apt install` their own CUDA, compilers and MPI (the classic HPC library for message passing between processes). Admins install many versions side by side (`/opt/cuda-12.1`, `/opt/cuda-12.4`, ...), and **environment modules** let each user pick versions per shell. A **modulefile** is a small script describing which environment variables to set. `module load` applies it to your current shell and `module unload` reverses it exactly. The two common implementations are Lmod (modulefiles in Lua, a small scripting language; below, each line is just a function call such as `setenv(name, value)`; most HPC sites) and the older Tcl "Environment Modules"; the commands are the same.
 
 A minimal Lmod modulefile:
 
@@ -1886,7 +1901,7 @@ How modules interact with your ML stack:
 
 ### Shared libraries and LD_LIBRARY_PATH
 
-Most compiled code doesn't contain all of its dependencies. It references **shared libraries** (`.so` files) that the dynamic loader (`ld.so`) finds and maps into the process at startup (or at `dlopen()` time).
+Most compiled code doesn't contain all of its dependencies. It references **shared libraries** (`.so` files) that the dynamic loader (`ld.so`) finds and maps into the process at startup (or at `dlopen()` time). `ldd FILE` lists the shared libraries a binary needs and which file each one resolves to; below, the `$(...)` asks Python where torch's `libtorch_cuda.so` is:
 
 ```bash
 $ ldd $(python -c 'import torch, os; print(os.path.join(os.path.dirname(torch.__file__), "lib", "libtorch_cuda.so"))') | head
@@ -1916,7 +1931,7 @@ A common one: `ImportError: /lib/x86_64-linux-gnu/libstdc++.so.6: version 'GLIBC
 |---|---|---|---|
 | **Kernel driver** | `nvidia.ko` kernel module | host OS (apt / NVIDIA installer); shared by containers | `cat /proc/driver/nvidia/version`, `nvidia-smi` top line "Driver Version" |
 | **User-space driver** | `libcuda.so`, `libnvidia-ml.so` | installed with the driver, must exactly match the kernel module | (same version as above) |
-| **CUDA runtime + libs** | `libcudart`, cuBLAS, cuDNN, NCCL | bundled in PyTorch wheels / conda / container image | `python -c 'import torch; print(torch.version.cuda)'` |
+| **CUDA runtime + libs** | `libcudart`, cuBLAS (matmuls), cuDNN (convolutions, attention), NCCL | bundled in PyTorch wheels / conda / container image | `python -c 'import torch; print(torch.version.cuda)'` |
 | **CUDA toolkit** | `nvcc` compiler, headers | `/usr/local/cuda`, conda, `module load cuda` | `nvcc --version` |
 
 And the confusing one: **the "CUDA Version: 12.4" in the top-right of `nvidia-smi` is not an installed CUDA. It is the newest CUDA runtime version that this driver supports.**
@@ -1932,9 +1947,9 @@ Cuda compilation tools, release 11.8, V11.8.89
 
 All three numbers differ, and this setup is *fine* for running PyTorch. The rules:
 
-1. **Runtime <= driver's supported version.** A newer driver runs older runtimes (backward compatible). A runtime newer than the driver supports fails with errors like `CUDA driver version is insufficient for CUDA runtime version` or `torch.cuda.is_available()` returning `False` with a warning about an old driver. Within a major version (CUDA 11+), "minor version compatibility" lets a newer minor runtime run on an older driver of the same major, with limitations (e.g. features needing PTX JIT). Fix: upgrade the driver (admin) or install a PyTorch build for an older CUDA (`cu118`, `cu121`, ...).
+1. **Runtime <= driver's supported version.** A newer driver runs older runtimes (backward compatible). A runtime newer than the driver supports fails with errors like `CUDA driver version is insufficient for CUDA runtime version` or `torch.cuda.is_available()` returning `False` with a warning about an old driver. Within a major version (CUDA 11+), "minor version compatibility" lets a newer minor runtime run on an older driver of the same major, with limitations (e.g. features needing PTX JIT: PTX is NVIDIA's portable GPU assembly, which the driver compiles "just in time" for your GPU). Fix: upgrade the driver (admin) or install a PyTorch build for an older CUDA (`cu118`, `cu121`, ...).
 2. **When compiling CUDA extensions** (flash-attention, apex, custom kernels), `nvcc`'s major version must match `torch.version.cuda`'s major version, and PyTorch's build tooling checks this and errors out on a mismatch. Fix: `module load` / install a matching toolkit, or point `CUDA_HOME` at it.
-3. **`Failed to initialize NVML: Driver/library version mismatch`**: the user-space driver libraries (updated by an `apt upgrade`) no longer match the loaded kernel module (still the old one in memory). Fix: reboot, or reload the module (admin). This one is purely a driver-installation issue, nothing to do with your Python env.
+3. **`Failed to initialize NVML: Driver/library version mismatch`** (NVML is the driver's management library that `nvidia-smi` uses): the user-space driver libraries (updated by an `apt upgrade`) no longer match the loaded kernel module (still the old one in memory). Fix: reboot, or reload the module (admin). This one is purely a driver-installation issue, nothing to do with your Python env.
 4. In containers: the image's CUDA runtime must be supported by the *host's* driver, since the kernel driver is shared. A `cuda:12.6` image on a host with a 12.2-era driver may fail (or work under the compatibility rules with forward-compat packages) - check NVIDIA's compatibility tables.
 
 A one-shot script that prints every version in one place. Paste its output into any "CUDA doesn't work" bug report (untested here: needs an NVIDIA GPU):
@@ -1997,7 +2012,7 @@ Mar 03 08:00:12 gpu-017 systemd[1]: Started nvidia-persistenced.service - NVIDIA
 
 ### Writing a service: a unit file
 
-When you run your own long-lived process on a machine you control (an inference server, a metrics exporter, a data-prep daemon on a cloud VM), write a **unit file** instead of starting it in tmux. systemd then starts it at boot, restarts it when it crashes, captures its logs, applies resource limits, and stops it cleanly. That is most of what "production" means for a single machine.
+When you run your own long-lived process on a machine you control (an inference server, a metrics exporter, a data-prep daemon on a cloud VM), write a **unit file** instead of starting it in tmux. systemd then starts it at boot, restarts it when it crashes, captures its logs, applies resource limits, and stops it cleanly. That is most of what "production" means for a single machine. (A `.target` in the file below is a named milestone of boot, such as "network is up" or "normal multi-user operation", that units can order themselves around.) Unit files use the INI format: `[Section]` headers followed by `Key=value` lines, and `#` comment lines (TOML, from [the toolkit](toolkit.md#toml), is a stricter descendant of INI).
 
 ```ini
 # /etc/systemd/system/model-server.service
@@ -2062,7 +2077,7 @@ $ sudo systemctl stop model-server             # SIGTERM -> your handler -> clea
 Things beginners trip on:
 
 - **Forgot `daemon-reload`.** systemd keeps the parsed unit in memory, so edits have no effect until you reload. `systemctl status` warns about this.
-- **The environment is empty.** Services don't read `.bashrc`, don't see your `module load`s, and get a minimal `PATH`. Use absolute paths in `ExecStart` (the venv's `python`, not `python`), and put variables in `Environment=` or `EnvironmentFile=`. It's the same lesson as cron.
+- **The environment is empty.** Services don't read `.bashrc`, don't see your `module load`s, and get a minimal `PATH`. Use absolute paths in `ExecStart` (the venv's `python`, not `python`), and put variables in `Environment=` or `EnvironmentFile=`. The same trap applies to [cron](#cron), below.
 - **Restart loops.** If the service crashes immediately, systemd gives up after 5 starts in 10 seconds by default (`StartLimitBurst`, `StartLimitIntervalSec`) and the status says `start-limit-hit`. Read the journal, fix the bug, then run `systemctl reset-failed model-server`.
 - **No root?** On machines with user lingering enabled, put the file in `~/.config/systemd/user/`, drop `User=`/`Group=`, and use `systemctl --user ...` and `journalctl --user -u ...`. Run `loginctl enable-linger $USER` (may need an admin) so it keeps running after you log out.
 - **Quick one-offs** don't need a file: `systemd-run --user --unit=prep -p MemoryMax=20G python prep.py` runs a command as a transient service, with logs and limits. `systemd-run --scope` is the same idea for commands attached to your terminal.
@@ -2085,7 +2100,7 @@ sudo dmesg -T | grep -i -E "oom|killed process"
 sudo dmesg -T | grep -i -E "nfs|lustre|lnet"   # network FS trouble
 ```
 
-The kernel log is where hardware and driver problems appear that your program never sees: GPU **Xid** errors (`NVRM: Xid (PCI:0000:3b:00): 79, GPU has fallen off the bus`), ECC errors, PCIe errors, OOM kills, network filesystem timeouts, NIC link flaps. When a job dies mysteriously, `dmesg` on the node is the second place to look (after your own stderr). Interpreting Xids is covered in [Troubleshooting NVIDIA GPUs](../compute/accelerator/nvidia/debug.md#xid-errors).
+The kernel log is where hardware and driver problems appear that your program never sees: GPU **Xid** errors (`NVRM: Xid (PCI:0000:3b:00): 79, GPU has fallen off the bus`), ECC errors (memory bit-flips caught by error-correcting memory), PCIe errors, OOM kills, network filesystem timeouts, NIC link flaps. When a job dies mysteriously, `dmesg` on the node is the second place to look (after your own stderr). Interpreting Xids is covered in [Troubleshooting NVIDIA GPUs](../compute/accelerator/nvidia/debug.md#xid-errors).
 
 Plain-text logs also still live in `/var/log/` (`syslog`, `kern.log`, sometimes `slurm/`).
 
@@ -2261,12 +2276,12 @@ Thread 4033 (active): "MainThread"
 
 py-spy dump --pid 4033 --native      # include C/C++ frames
 py-spy top --pid 4033                # live "top" for Python functions
-py-spy record -o profile.svg --pid 4033 --duration 30   # flamegraph
+py-spy record -o profile.svg --pid 4033 --duration 30   # flamegraph: a chart of where time went, by call stack
 ```
 
-Dump every rank on a node: `pgrep -f train.py | xargs -I{} py-spy dump --pid {}`. If rank 3 is in `all_reduce` while all others are in `barrier`, you've found your desync.
+Dump every rank on a node: `pgrep -f train.py | xargs -I{} py-spy dump --pid {}` (`xargs -I{}` runs the command once per input line, with `{}` replaced by that line). If rank 3 is in `all_reduce` while all others are in `barrier`, you've found your desync.
 
-Permissions: on Ubuntu, `kernel.yama.ptrace_scope=1` by default, which only allows tracing your own *descendant* processes. So `py-spy dump --pid` on a process you didn't start from this shell needs `sudo`, or an admin setting `ptrace_scope=0`; in Docker add `--cap-add=SYS_PTRACE`. The same applies to `strace -p` and `gdb -p`.
+Permissions: these tools use `ptrace`, the kernel interface that lets one process inspect another. On Ubuntu, `kernel.yama.ptrace_scope=1` by default, which only allows tracing your own *descendant* processes. So `py-spy dump --pid` on a process you didn't start from this shell needs `sudo`, or an admin setting `ptrace_scope=0`; in Docker add `--cap-add=SYS_PTRACE`. The same applies to `strace -p` and `gdb -p`.
 
 The book's [Diagnosing Hangings and Deadlocks](../debug/pytorch.md#diagnosing-crashes-hangs-and-tracing-execution) and [torch-distributed-hanging-solutions](../debug/torch-distributed-hanging-solutions.md) build on this.
 
@@ -2302,7 +2317,7 @@ ss -ltnp                            # listening TCP sockets and their processes
 
 ### gdb basics
 
-When a C/C++/CUDA extension segfaults or hangs below Python, `gdb` shows native stacks.
+When a C/C++/CUDA extension segfaults or hangs below Python, `gdb` shows native stacks. Lines starting with `(gdb)` are typed at gdb's own prompt, after it has started; `bt` means "backtrace", the C equivalent of a Python traceback.
 
 ```bash
 gdb -p 4033                         # attach to a live process (pauses it!)
@@ -2323,12 +2338,12 @@ Also handy for Python-level crashes: `python -X faulthandler train.py` (or `PYTH
 ### A triage checklist for "my job died"
 
 1. Read the end of stderr / the SLURM `.out` file. Python traceback? Done.
-2. Exit code: 137? Check `dmesg`/SLURM for OOM. 143? Time limit or preemption (`sacct -j JOBID --format=JobID,State,ExitCode,Elapsed,MaxRSS`). 135? `/dev/shm`. 139? Native crash - faulthandler/gdb.
-3. `dmesg -T` on the node for Xid, ECC, NFS/Lustre errors.
+2. Exit code: 137? Check `dmesg`/SLURM for OOM. 143? Time limit or preemption (`sacct` queries Slurm's record of finished jobs: `sacct -j JOBID --format=JobID,State,ExitCode,Elapsed,MaxRSS`). 135? `/dev/shm`. 139? Native crash - faulthandler/gdb.
+3. `dmesg -T` on the node for Xid, ECC (memory bit-flips detected by error-correcting memory), NFS/Lustre errors.
 4. Hung rather than dead? `py-spy dump` every rank, then `strace -p` the odd one out.
 5. Check for leftovers before relaunching: `nvidia-smi`, `fuser -v /dev/nvidia*`, `lsof -i :$MASTER_PORT`.
 
-Write the checklist down as a script once and run it on the node every time. Each probe is optional, so a missing tool or missing permission produces a note rather than an abort:
+Write the checklist down as a script once and run it on the node every time. Each probe is optional, so a missing tool or missing permission produces a note rather than an abort. Bash pieces not seen before: `"$@"` is all the arguments passed to the `try` function, so `try free -h` runs `free -h`; `command -v X` succeeds only if `X` is installed; `[[ -n "$x" ]]` is true if `x` is non-empty; `/proc/[0-9]*/stat` is a wildcard over every process's `stat` file; and `read -r pid comm state _ < "$f"` splits the file's first line into words and stores the first three in variables:
 
 ```bash
 #!/bin/bash
@@ -2410,6 +2425,8 @@ Here's what happens when you submit a 2-node job, with every OS concept from thi
 9. When the job ends, SLURM kills everything left in the cgroup, so **orphaned** DataLoader workers don't hold the GPUs for the next user.
 
 The batch script that sets most of this up, with each line tied to a concept from this chapter (untested: needs a SLURM cluster; module names, partitions and paths are site-specific):
+
+Just enough Slurm to read it (taught properly in [Slurm from zero](../orchestration/slurm/from-zero.md)): each `#SBATCH --option` line is a resource request that `sbatch` reads before running the script, which then runs once on the first node of the job. `srun` launches the job's tasks (here 2 nodes x 8 = 16 processes), and in each one Slurm sets `SLURM_PROCID` (global task index, used as `RANK`), `SLURM_LOCALID` (index within the node, used as `LOCAL_RANK`) and `SLURM_NTASKS` (total task count, used as `WORLD_SIZE`). `SLURM_JOB_NODELIST` is the job's nodes in compressed form (e.g. `gpu-[017-018]`), and `scontrol show hostnames` expands it to one name per line, so `head -n 1` picks the first node as the rendezvous host. `--kill-on-bad-exit=1` tells `srun` to kill all tasks if any one fails, so a crashed rank doesn't leave the others hanging in a collective.
 
 ```bash
 #!/bin/bash

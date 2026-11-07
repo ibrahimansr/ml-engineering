@@ -10,9 +10,14 @@ This chapter assumes no systems background beyond what these foundation chapters
 - [Networking](../foundations/networking.md): explains NICs, switches, fat trees, InfiniBand/RoCE and RDMA, which you need for the topology and pod-networking sections.
 - [Distributed systems](../foundations/distributed-systems.md): explains failure detection, heartbeats, rendezvous, key-value stores and MTBF reasoning, which the launcher and fault-tolerance sections build on.
 - [Containers and virtualization](../foundations/containers-and-virtualization.md): explains images, namespaces and container runtimes, which every Kubernetes section assumes.
-- [Kubernetes and Helm from zero](kubernetes-from-zero.md): explains pods, Jobs, Services, controllers and `kubectl`. This chapter does not re-teach Kubernetes basics; it starts where that chapter stops.
+- [Storage and data](../foundations/storage-and-data.md): explains parallel filesystems, object storage and [async checkpointing](../foundations/storage-and-data.md#async-checkpointing), which the checkpoint-cost and weight-loading arithmetic uses.
+- [GPU software stack](../compute/gpu-software-stack.md): explains the driver, the NVIDIA container toolkit, [DCGM](../compute/gpu-software-stack.md#dcgm-the-health-daemon-and-diagnostics), Xid errors, row remapping and MIG, which the GPU Operator, health-check and observability sections rely on.
+- [Collectives internals](../network/collectives-internals.md): explains NCCL, bus bandwidth and [NCCL timeouts and hangs](../network/collectives-internals.md#timeouts-and-hangs), which the RDMA, failure and straggler sections rely on.
+- [Slurm from zero](slurm/from-zero.md): explains jobs, steps, partitions, QoS, fair share, `sbatch`/`srun` and the daemons. The Slurm half of this chapter starts where that chapter stops.
+- [Kubernetes from zero](kubernetes-from-zero.md): explains pods, Jobs, Services, controllers, CRDs and operators, JobSet, LeaderWorkerSet and `kubectl`. This chapter does not re-teach Kubernetes basics; it starts where that chapter stops.
+- Forward links (later chapters; not needed first): [model parallelism derivations](../training/model-parallelism/derivations.md) for tensor/pipeline/expert parallelism, [inference arithmetic](../inference/arithmetic.md) and [serving engine internals](../inference/serving-engine-internals.md) for the KV cache, prefill/decode and continuous batching behind the inference section, [serving hands-on](../inference/serving-hands-on.md), and [RL infrastructure](../platform/rl-infrastructure.md).
 
-This chapter covers what happens inside the scheduler, the launcher and the health-check loop when you run a multi-node ML job, and why those internals decide how much of your GPU time turns into training steps or served tokens. The day-to-day SLURM commands are covered in [SLURM for users](slurm/users.md) and [SLURM administration](slurm/admin.md), and the recovery recipes (job arrays, signals, kill switches) are in [Fault Tolerance](../training/fault-tolerance/README.md). None of that is repeated here.
+This chapter covers what happens inside the scheduler, the launcher and the health-check loop when you run a multi-node ML job, and why those internals decide how much of your GPU time turns into training steps or served tokens. The day-to-day SLURM commands are covered in [Slurm from zero](slurm/from-zero.md), [SLURM for users](slurm/users.md) and [SLURM administration](slurm/admin.md), and the recovery recipes (job arrays, signals, kill switches) are in [Fault Tolerance](../training/fault-tolerance/README.md). None of that is repeated here.
 
 A warning about how current this is: the Kubernetes side of this chapter describes projects that ship a new minor release every few weeks, such as Kueue, JobSet, LeaderWorkerSet, KAI Scheduler, Slinky, the NVIDIA DRA driver and the GPU Operator. Where a claim depends on a specific version it is marked as such. Check the upstream docs before you build on any API field named here.
 
@@ -136,7 +141,7 @@ Going from the first hour to the second, B's demand rises from 10 to 60, and the
 
 ## How SLURM implements each of these
 
-[Slurm](https://slurm.schedmd.com/) is the batch scheduler most HPC and many ML clusters run. Its central controller daemon is `slurmctld`; every compute node runs `slurmd`, which starts and tracks job processes; and `slurmdbd` stores accounting data. A **job** is a resource allocation, and a **job step** is a set of processes launched inside it with `srun`. The [users chapter](slurm/users.md) covers the commands; this section covers what the controller does with your request.
+[Slurm](https://slurm.schedmd.com/) is the batch scheduler most HPC and many ML clusters run. Its central controller daemon is `slurmctld`; every compute node runs `slurmd`, which starts and tracks job processes; and `slurmdbd` stores accounting data. A **job** is a resource allocation, and a **job step** is a set of processes launched inside it with `srun`. [Slurm from zero](slurm/from-zero.md#what-happens-from-sbatch-to-processes-on-nodes) walks through the whole submit-to-run path and the [users chapter](slurm/users.md) covers more commands; this section covers what the controller does with your request.
 
 ### The life of a multi-node training job
 
@@ -302,7 +307,7 @@ There are two limitations for ML. First, the tree has no concept of NVLink domai
 
 ### Topology: `topology/block`
 
-`topology/block` was added in 23.11 and redesigned in 24.05, according to SchedMD's SLUG'24 material. It models flat groups of nodes with fast connectivity between them. The motivating case is the NVL72 rack, where 18 nodes share one NVLink domain:
+`topology/block` was added in 23.11 and redesigned in 24.05, according to SchedMD's SLUG'24 material (SLUG is the annual Slurm User Group meeting; SchedMD is the company that develops Slurm). It models flat groups of nodes with fast connectivity between them. The motivating case is the NVL72 rack, where 18 nodes share one NVLink domain:
 
 ```
 # topology.conf for block topology
@@ -546,7 +551,7 @@ The handler only sets a flag because a signal can arrive in the middle of anythi
 
 ## Kubernetes for ML
 
-The [Kubernetes chapter](kubernetes/README.md) gives the practical case against k8s for interactive training, and [Kubernetes and Helm from zero](kubernetes-from-zero.md) teaches the objects themselves. This section explains why the case against exists and which add-ons close each gap.
+The [Kubernetes chapter](kubernetes/README.md) gives the practical case against k8s for interactive training, and [Kubernetes from zero](kubernetes-from-zero.md) teaches the objects themselves. This section explains why the case against exists and which add-ons close each gap.
 
 Kubernetes is built around **controllers**: programs that watch the desired state you wrote into the API server (a "spec") and keep acting until the actual state matches. That design is great for services ("keep 5 replicas running") and awkward for batch training ("start all 64 at once, and if one dies, kill the other 63"). Almost every add-on below exists to teach the controllers and the scheduler that second sentence.
 
@@ -591,7 +596,7 @@ spec:
 
 ### Exposing GPUs: Dynamic Resource Allocation (DRA)
 
-DRA reached GA in Kubernetes v1.34, with the `resource.k8s.io/v1` API on by default. It was alpha with structured parameters in v1.30 and beta in v1.32 ([KEP-4381](https://www.kubernetes.dev/resources/keps/4381/)). Here is how it works:
+DRA reached GA in Kubernetes v1.34, with the `resource.k8s.io/v1` API on by default. It was alpha with structured parameters in v1.30 and beta in v1.32 ([KEP-4381](https://www.kubernetes.dev/resources/keps/4381/)). (Kubernetes features move through three maturity stages: **alpha**, off by default and liable to change; **beta**, usually on by default with the API mostly settled; and **GA**, general availability, a stable API. A **KEP**, Kubernetes Enhancement Proposal, is the numbered design document each feature is tracked under.) Here is how it works:
 
 - A DRA driver on each node publishes **ResourceSlices**: lists of devices with typed attributes such as product name, memory, PCIe root and NVLink clique.
 - Admins define **DeviceClasses**, for example "any H100".
@@ -664,7 +669,7 @@ An **operator** is a controller plus CRDs that automates running some piece of s
 | MIG manager | Applies MIG (Multi-Instance GPU, which splits one GPU into isolated smaller GPUs) partition layouts from a node label |
 | Validator | Runs CUDA sample workloads to gate the node as ready |
 
-Installing it is a Helm chart (Helm is the Kubernetes package manager; see [Kubernetes and Helm from zero](kubernetes-from-zero.md)). The commands below follow NVIDIA's install docs; **untested**, and the pod list is a sketch:
+Installing it is a Helm chart. Helm is the Kubernetes package manager (not covered in [Kubernetes from zero](kubernetes-from-zero.md)): a **chart** is a bundle of manifest templates plus default settings, `helm repo add` registers where charts are downloaded from, and `helm install` fills the templates in with your settings and applies the resulting objects to the cluster as one named "release" that can later be upgraded or uninstalled. The commands below follow NVIDIA's install docs; **untested**, and the pod list is a sketch:
 
 ```
 $ helm repo add nvidia https://helm.ngc.nvidia.com/nvidia && helm repo update
@@ -768,7 +773,7 @@ Upstream Kubernetes has been working on native gang scheduling: a `Workload` API
 | Preemption | Within a ClusterQueue and across a cohort to reclaim lent quota | `preempt` and `reclaim` actions | Priority and reclaim, plus consolidation to reduce fragmentation |
 | Ecosystem fit | Kubernetes SIG project; integrates with Job, JobSet, LWS, RayJob, Kubeflow trainer, plain pods | CNCF project; long history in HPC and AI shops; its own `vcjob` CRD plus integrations | NVIDIA stack (DRA ComputeDomains, Dynamo/Grove); GPU sharing (fractions) |
 
-(DRF, dominant resource fairness, is a fair-share policy that equalizes each tenant's share of whichever resource it uses most.)
+(DRF, dominant resource fairness, is a fair-share policy that equalizes each tenant's share of whichever resource it uses most. A Kubernetes **SIG**, special interest group, is one of the upstream working groups that own parts of the project, such as SIG Scheduling or SIG Apps; a "SIG project" is maintained by one of them.)
 
 How to choose:
 
@@ -986,7 +991,7 @@ example.com/topology-rack      = r0712
 kubernetes.io/hostname         = gpu0712-03
 ```
 
-Someone has to populate these labels. On clouds the provider may set them (GKE, for example, exposes `cloud.google.com/gce-topology-*` labels). I'm not certain of the exact names on every provider, so check your provider's docs. On bare metal, tools such as NVIDIA's [Topograph](https://github.com/NVIDIA/topograph) read the fabric (UFM, `ibnetdiscover`, cloud topology APIs) and write either k8s node labels or a Slurm `topology.conf`. GFD's `nvidia.com/gpu.clique` label identifies the NVLink domain on GB200-class systems. I believe that label name is correct, but haven't verified it.
+Someone has to populate these labels. On clouds the provider may set them (GKE, for example, exposes `cloud.google.com/gce-topology-*` labels). I'm not certain of the exact names on every provider, so check your provider's docs. On bare metal, tools such as NVIDIA's [Topograph](https://github.com/NVIDIA/topograph) read the fabric (UFM, `ibnetdiscover`, which is the `infiniband-diags` command that walks an InfiniBand fabric and prints every switch and link, or cloud topology APIs) and write either k8s node labels or a Slurm `topology.conf`. GFD's `nvidia.com/gpu.clique` label identifies the NVLink domain on GB200-class systems. I believe that label name is correct, but haven't verified it.
 
 By hand, from a rack map, it's a loop over `kubectl label` (**untested**; `racks.tsv` is a file you'd generate from your inventory system):
 
@@ -1415,7 +1420,7 @@ The agent's monitor loop polls the worker processes every `monitor_interval` sec
 2. If `remaining_restarts > 0`, the agent **kills all its local workers** (SIGTERM, then SIGKILL after a grace period), decrements `remaining_restarts` and **re-enters the rendezvous** as a new round.
 3. The other nodes' agents notice that `num_nodes_waiting > 0` (someone is in the wait list for a new round). They stop their healthy workers and rejoin **without** decrementing their own restart count, because a membership change is not counted as a failure.
 4. A new round closes, ranks are reassigned, and all workers start again from `main()`. **Your code has to load the latest checkpoint.** torchrun restarts processes; it doesn't restore state.
-5. When `remaining_restarts` reaches 0 on any agent, that agent exits with the failure, and its error file (if you used `@record`) contains the traceback of the first failing worker.
+5. When `remaining_restarts` reaches 0 on any agent, that agent exits with the failure, and its error file (if you decorated your `main` with `@record` from `torch.distributed.elastic.multiprocessing.errors`, which writes the worker's exception to a file the agent reads) contains the traceback of the first failing worker.
 
 Here is steps 1-4 for real: a toy job that checkpoints every 2 steps and has rank 1 die at step 3 on the first attempt **[ran]**:
 
@@ -1477,7 +1482,7 @@ $ echo $?
 0
 ```
 
-The agent saw rank 1 exit with code 1, sent SIGTERM to the healthy rank 0, started attempt 1, and both new workers resumed from the step-2 checkpoint. Step 3's work was lost and redone, which is the "rework" term in the [checkpoint arithmetic](#optimal-checkpoint-interval-youngdaly). The final `w[0] = -0.9` equals 6 steps of `0.1 * (1 + 2) / 2 = 0.15`, the same as a run that never crashed, so the resume is correct.
+The two lines starting `W1105` and `E1105` are the agent's own log messages, in the glog format PyTorch uses: severity letter (`W` warning, `E` error), month and day (`1105` = November 5), time, process ID, then source file and line. The agent saw rank 1 exit with code 1, sent SIGTERM to the healthy rank 0, started attempt 1, and both new workers resumed from the step-2 checkpoint. Step 3's work was lost and redone, which is the "rework" term in the [checkpoint arithmetic](#optimal-checkpoint-interval-youngdaly). The final `w[0] = -0.9` equals 6 steps of `0.1 * (1 + 2) / 2 = 0.15`, the same as a run that never crashed, so the resume is correct.
 
 A finding from writing this, which I have not root-caused: with a plain `dist.init_process_group("gloo")` (letting it read the env vars), attempt 1 **hung** in `init_process_group` on this Mac with PyTorch 2.15. One rank got through init and the other never did, with both `--standalone` and an explicit c10d endpoint, three runs out of three. Namespacing the store keys per attempt with `PrefixStore`, as above, fixed it every time, which suggests the new attempt was reading keys left in the agent's store by the crashed attempt. It may be macOS- or version-specific. The lesson that does generalize: **test your restart path**, not just your training loop, before you depend on `--max-restarts`. On macOS, `--standalone` without `--local-addr=127.0.0.1` also failed to rendezvous at all (repeated IPv6 reverse-lookup warnings), which is a laptop quirk, not something you'll see on Linux clusters.
 
@@ -1709,7 +1714,7 @@ if __name__ == "__main__":
   tau =    4 x opt =  4434 s -> 75.61%
 ```
 
-The simulation (seed 0, 40 runs per row, 10 s on the laptop) matches the exact formula within its standard error at every size, and the first-order formula is about 1 point pessimistic at 2048 nodes. The sweep confirms the flatness claim: 1.5x the optimum costs 0.7 points of goodput, while 4x costs nearly 10. The point of having the simulator is the next step, which the formula can't do: make `next_failure()` correlated (for example, one rack PDU taking out 18 nodes at once) or make `R` depend on whether a hot spare was available, and see how much the answer moves.
+The simulation (seed 0, 40 runs per row, 10 s on the laptop) matches the exact formula within its standard error at every size, and the first-order formula is about 1 point pessimistic at 2048 nodes. The sweep confirms the flatness claim: 1.5x the optimum costs 0.7 points of goodput, while 4x costs nearly 10. The point of having the simulator is the next step, which the formula can't do: make `next_failure()` correlated (for example, one rack PDU, the power distribution unit that feeds a rack, taking out 18 nodes at once) or make `R` depend on whether a hot spare was available, and see how much the answer moves.
 
 ### Async and in-memory checkpointing
 
@@ -1725,7 +1730,7 @@ print(B / 16384 / 25e9 * 1e3)  # ~14 ms device-to-host per GPU at an assumed 25 
 
 The storage write is seconds to minutes. The per-GPU device-to-host copy (GPU memory to CPU RAM over PCIe, into pinned host memory, which is memory locked in place so the GPU can copy into it directly) is milliseconds. **Async checkpointing** makes `C` equal to the copy time. The training step continues while a background thread or process writes the host copy to storage. PyTorch's `torch.distributed.checkpoint.async_save` (DCP) does this. The constraints are:
 
-- Host memory: `346 MB * 8 = 2.8 GB` per 8-GPU node in this example, which is fine. For small-DP-degree setups where each GPU holds tens of GB of optimizer state, pinned host buffers can become the limit.
+- Host memory: `346 MB * 8 = 2.8 GB` per 8-GPU node in this example, which is fine. When the data-parallel degree (the number of model replicas the optimizer state is sharded across) is small, each GPU holds tens of GB of optimizer state, and pinned host buffers can become the limit.
 - The next checkpoint can't start until the previous upload has finished, so `tau` has to be longer than the time to write one checkpoint to storage.
 - The write is not durable until the upload finishes. A failure during the upload means you fall back to the checkpoint before it. Keep at least 2 checkpoints (see [Frequent checkpoint saving](../training/fault-tolerance/README.md#frequent-checkpoint-saving)).
 
@@ -1773,7 +1778,7 @@ state 1.07 GB | sync save 0.84s | async: blocked 0.11s, total 1.95s | snapshot i
 
 The blocking part is 0.07-0.11 s (a memory copy at roughly 10-15 GB/s), against 0.8-2.4 s for the synchronous save to the local SSD. The run-to-run spread in the sync numbers is filesystem caching, which is exactly why you measure `C` on the real cluster storage rather than trusting a laptop. On GPUs the staging copy goes over PCIe instead of RAM-to-RAM, which is the 14 ms per GPU estimated above.
 
-**In-memory / peer checkpointing** goes a step further: each rank also stores its shard in the host RAM of a **different** node (a buddy in another failure domain, i.e. a set of components that can fail together, such as one rack or one power feed). If a node dies, its replacement fetches the shard from the buddy over the network, rather than everyone reading from the parallel filesystem. The restart then loads at network speed. Gemini (SOSP'23) and several in-house systems describe this approach. Persistent checkpoints still get written to storage, less often. This only helps if your restart path can use a peer copy, and if a replacement node joins quickly, which means hot spares.
+**In-memory / peer checkpointing** goes a step further: each rank also stores its shard in the host RAM of a **different** node (a buddy in another failure domain, i.e. a set of components that can fail together, such as one rack or one power feed). If a node dies, its replacement fetches the shard from the buddy over the network, rather than everyone reading from the parallel filesystem. The restart then loads at network speed. Gemini (SOSP'23, the ACM Symposium on Operating Systems Principles) and several in-house systems describe this approach. Persistent checkpoints still get written to storage, less often. This only helps if your restart path can use a peer copy, and if a replacement node joins quickly, which means hot spares.
 
 The buddy assignment itself is simple, and the one rule that matters is "never in the same failure domain" (**[ran]** as plain Python):
 
@@ -1816,7 +1821,7 @@ NEED=64
 # run the quick check on every node; keep the first 64 that pass
 GOOD=$(srun --ntasks-per-node=1 bash -c './node_ok.sh && hostname -s' 2>/dev/null | sort | head -n $NEED)
 [ "$(echo "$GOOD" | wc -l)" -eq "$NEED" ] || { echo "not enough healthy nodes"; exit 1; }
-NODELIST=$(echo "$GOOD" | paste -sd,)
+NODELIST=$(echo "$GOOD" | paste -sd,)   # join the lines with commas: a,b,c
 srun --nodes=$NEED --nodelist="$NODELIST" --ntasks-per-node=1 bash -c '... torchrun ...'
 ```
 
@@ -1965,7 +1970,7 @@ vllm:num_requests_waiting{model_name="..."} 4.0
 vllm:kv_cache_usage_perc{model_name="..."} 0.83
 ```
 
-Use a scaler that can read Prometheus (the standard time-series metrics system on k8s) metrics, such as [KEDA](https://keda.sh/) or the HPA with a custom metrics adapter, targeting something like "average waiting requests per replica < 2" or "KV-cache use < 0.8". The exact thresholds depend on your traffic. Load-test to find the knee of the latency curve; don't copy numbers from elsewhere. Scale-down needs a long stabilization window, because a cold start costs far more than a few minutes of an idle replica.
+Use a scaler that can read Prometheus (the standard time-series metrics system on k8s) metrics, such as [KEDA](https://keda.sh/) (an add-on that scales Deployments from external metrics, including down to zero) or the HPA with a custom metrics adapter, targeting something like "average waiting requests per replica < 2" or "KV-cache use < 0.8". The exact thresholds depend on your traffic. Load-test to find the knee of the latency curve; don't copy numbers from elsewhere. Scale-down needs a long stabilization window, because a cold start costs far more than a few minutes of an idle replica.
 
 A KEDA `ScaledObject` for that rule (**untested**; the Prometheus address, the Deployment name and the threshold are placeholders):
 
@@ -2085,7 +2090,7 @@ The `.complete` marker and the rename matter: two replicas on the same node can 
 
 ### Multi-node inference replicas
 
-When one replica spans nodes (for example a 600B+ MoE with wide expert parallelism, or disaggregated prefill and decode pools), the replica has the same gang and topology requirements as a training job, inside a service that autoscales:
+When one replica spans nodes (for example a 600B+ MoE with wide expert parallelism, or disaggregated prefill and decode pools: separate groups of GPUs for processing the prompt and for generating tokens one at a time, a split explained in [inference arithmetic](../inference/arithmetic.md)), the replica has the same gang and topology requirements as a training job, inside a service that autoscales:
 
 - Use **LeaderWorkerSet** (or KAI/Grove hierarchical PodGroups for disaggregated setups) so the group is scheduled, restarted and rolled together.
 - Keep a replica inside one NVLink domain if TP or EP spans the nodes. Express that with TAS required topology on the group.
@@ -2202,7 +2207,7 @@ mlx5_1/1: tx   0.00 GB/s rx   0.00 GB/s ERRORS {'symbol_error': 7}
 
 One caveat for real hardware: on some NICs the classic 32-bit counters saturate, and the 64-bit values live in `hw_counters` or need `perfquery -x`; check which your driver exposes.
 
-Export these with node-exporter's infiniband collector or a vendor tool (UFM, or the Network Operator's exporters), and correlate with the switch side: a port's error counters at the switch point to the cable, not the host. The [network debug chapter](../network/debug/README.md) has the debugging workflow. NCCL itself can emit per-collective timings through its profiler plugin interface and through the PyTorch flight recorder. The flight recorder is cheap enough to leave on for large runs.
+Export these with node-exporter's infiniband collector (node-exporter is Prometheus's standard per-host metrics agent) or a vendor tool (UFM, or the Network Operator's exporters), and correlate with the switch side: a port's error counters at the switch point to the cable, not the host. The [network debug chapter](../network/debug/README.md) has the debugging workflow. NCCL itself can emit per-collective timings through its profiler plugin interface and through the PyTorch flight recorder. The flight recorder is cheap enough to leave on for large runs.
 
 ### Job-level signals
 
@@ -2259,7 +2264,7 @@ $ GLOO_SOCKET_IFNAME=lo0 torchrun --nnodes=1 --rdzv-backend=c10d --rdzv-endpoint
 
 Rank 1 is the slow one (4.2 ms of data wait against 2.4), yet rank 0 shows **more** time in the collective (6.9 ms against 3.9), because it arrives at the all-reduce first and waits for rank 1. That inversion is the subject of the next section.
 
-The "no progress" alert as a Prometheus rule, assuming your exporter publishes the heartbeat as a gauge called `train_last_step_timestamp_seconds` (a name made up for this example) **untested**:
+The "no progress" alert as a Prometheus rule, assuming your exporter publishes the heartbeat as a gauge called `train_last_step_timestamp_seconds` (a name made up for this example). `expr` is a query in PromQL, Prometheus's query language: `time()` is the current Unix time, `max by (job_name) (...)` takes the maximum over all series (here, all ranks) that share a `job_name` label, and `for: 2m` means the condition must stay true for 2 minutes before the alert fires (**untested**):
 
 ```yaml
 groups:
@@ -2340,4 +2345,4 @@ When a straggler is confirmed, it's a drain-and-requeue event just like a crash:
 - PyTorch: [torchrun / elastic](https://pytorch.org/docs/stable/elastic/run.html), [rendezvous](https://pytorch.org/docs/stable/elastic/rendezvous.html), [Distributed Checkpoint async_save](https://pytorch.org/docs/stable/distributed.checkpoint.html), [flight recorder](https://pytorch.org/tutorials/prototype/flight_recorder_tutorial.html)
 - Inference: [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension), [llm-d](https://github.com/llm-d/llm-d), [KEDA](https://keda.sh/)
 - Gemini: "Fast Failure Recovery in Distributed Training with In-Memory Checkpoints", SOSP 2023
-- In this book: [SLURM for users](slurm/users.md), [SLURM administration](slurm/admin.md), [launchers](slurm/launchers/), [Kubernetes gotchas](kubernetes/README.md), [Kubernetes and Helm from zero](kubernetes-from-zero.md), [Fault Tolerance](../training/fault-tolerance/README.md), [NVIDIA GPU troubleshooting](../compute/accelerator/nvidia/debug.md), [hanging and deadlocks](../debug/torch-distributed-hanging-solutions.md), [Inference](../inference/README.md), [Networking](../network/README.md), [Distributed systems](../foundations/distributed-systems.md)
+- In this book: [SLURM for users](slurm/users.md), [SLURM administration](slurm/admin.md), [launchers](slurm/launchers/), [Kubernetes gotchas](kubernetes/README.md), [Slurm from zero](slurm/from-zero.md), [Kubernetes from zero](kubernetes-from-zero.md), [Fault Tolerance](../training/fault-tolerance/README.md), [NVIDIA GPU troubleshooting](../compute/accelerator/nvidia/debug.md), [hanging and deadlocks](../debug/torch-distributed-hanging-solutions.md), [Inference](../inference/README.md), [Networking](../network/README.md), [Distributed systems](../foundations/distributed-systems.md)

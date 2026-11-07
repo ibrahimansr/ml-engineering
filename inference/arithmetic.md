@@ -8,10 +8,11 @@ This chapter assumes you know transformer math and PyTorch, and nothing about th
 - [Networking](../foundations/networking.md) - links, latency vs bandwidth, what an interconnect is. Needed for the tensor-parallel and expert-parallel communication sections.
 - [Distributed systems](../foundations/distributed-systems.md) - collectives (all-reduce, all-to-all), sharding, load balancing. Needed for the TP and MoE sections.
 - [Model architectures](../models/architectures.md) - MHA, GQA, MQA, MLA, sliding-window attention and MoE, whose KV cache and FLOPs we size here.
+- Helpful: [GPU execution model](../compute/accelerator/execution-model.md) - tensor cores and the [per-op roofline](../compute/accelerator/execution-model.md#roofline-per-op), which this chapter re-derives briefly; [Collective communication internals](../network/collectives-internals.md) - the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model) and [busbw](../network/collectives-internals.md#algbw-vs-busbw) used in the TP communication section; [Training arithmetic](../training/arithmetic.md) - the `2N` FLOPs-per-token forward-pass count.
 
 You do not need the Linux, concurrency or beyond-transformers chapters for this one.
 
-This chapter does the arithmetic the [inference overview](README.md) only gestures at: why decode is memory-bound, how big the KV cache really is, what the lower bound on per-token latency is, what tensor parallelism costs, what MoE and quantization do to bytes and FLOPs, and how to size a deployment against an SLO. How a serving engine actually schedules work - PagedAttention, continuous batching, chunked prefill, speculative decoding, prefix caching - is in the sibling chapter [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md).
+This chapter does the arithmetic the [inference overview](README.md) only gestures at: why decode is memory-bound, how big the KV cache really is, what the lower bound on per-token latency is, what tensor parallelism costs, what MoE and quantization do to bytes and FLOPs, and how to size a deployment against an SLO (service-level objective: a latency or throughput target you promise users, such as "p99 time to first token under 2 s"). How a serving engine actually schedules work - PagedAttention, continuous batching, chunked prefill, speculative decoding, prefix caching - is in the sibling chapter [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md).
 
 Every number below comes with the arithmetic that produced it; all non-trivial calculations were checked with Python. Numbers labelled **bound** are theoretical roofline limits, not measurements. Real systems are slower than every bound here. The only measured numbers used are ones the repo already publishes (matmul ceilings and all-reduce latencies) and ones from cited papers.
 
@@ -107,6 +108,8 @@ Ridge points from the table above:
 | MI300X | `1300/5.3 = 245` | `2610/5.3 = 492` |
 
 Note H200 has the *lowest* ridge: same compute as H100, 43% more bandwidth. It is the most "decode-friendly" of the four per FLOP, which is the whole point of that SKU.
+
+Notation used from here on: **W*x*A*y*** means *x*-bit weights and *y*-bit activations (W16A16 is plain BF16, W8A8 is FP8 or INT8 for both, W4A16 is 4-bit weights with BF16 activations); **bpw** is bits per weight *including* the per-group scale metadata (INT4 with one 16-bit scale and one 16-bit zero point per 128 weights is `4 + 32/128 = 4.25` bpw); **TC** is tensor core; **NVFP4** is NVIDIA's 4-bit floating-point format on Blackwell (4.5 bpw). All of these are built from scratch in [Quantization internals](#quantization-internals); for now only the byte counts matter.
 
 The roofline is just "whichever of the two speed limits you hit first". Plot attainable FLOP/s against arithmetic intensity on log-log axes and you get a sloped line, `AI * bandwidth` (memory-bound), meeting a flat roof, `peak_FLOPS` (compute-bound), at the ridge point. A kernel sits somewhere on that curve. If it sits on the slope, faster math units won't help it: only fewer bytes or more reuse per byte will. The calculator below reproduces this section's tables and the crossover table in the next subsection:
 
@@ -404,7 +407,7 @@ decode  256 tokens: 674 ms total, 2.63 ms/token (memory-bound, B=1)
 
 Output tokens are ~230x more expensive in wall-clock time than prompt tokens at `B=1`, which is why API prices charge more for output and why every decode optimization is about raising `B` or cutting bytes. (This ignores TP communication and attention FLOPs, both added in later sections.)
 
-The two phases want different hardware, different parallelism and different batch sizes, which is the motivation for prefill/decode disaggregation ([Splitwise, arXiv:2311.18677](https://arxiv.org/abs/2311.18677); [DistServe, arXiv:2401.09670](https://arxiv.org/abs/2401.09670); [Mooncake, arXiv:2407.00079](https://arxiv.org/abs/2407.00079)).
+The two phases want different hardware, different parallelism and different batch sizes, which is the motivation for prefill/decode disaggregation, running the two phases on separate pools of GPUs and shipping the KV cache between them ([Splitwise, arXiv:2311.18677](https://arxiv.org/abs/2311.18677); [DistServe, arXiv:2401.09670](https://arxiv.org/abs/2401.09670); [Mooncake, arXiv:2407.00079](https://arxiv.org/abs/2407.00079)).
 
 
 
@@ -855,7 +858,7 @@ t_comm      = n_allreduce * t_allreduce(msg_bytes)
 t_allreduce(m) ≈ alpha + m * 2*(P-1)/P / busbw
 ```
 
-`alpha` is the fixed per-call latency; `busbw` is the bus bandwidth NCCL reports. For decode-sized messages `alpha` dominates completely: the repo measures an 8-byte all-reduce on 8x H200 at 15.2 µs, and everything up to 256 KiB at 15-22 µs ([source](../network/benchmarks/README.md#latency)). Pure bandwidth time for 16 KiB at 450 GB/s is `16384 * 1.75 / 450e9 = 0.06 µs` - the link is idle 99.7% of the call. A faster link does nothing for decode TP; fewer or cheaper calls do.
+`alpha` is the fixed per-call latency; `busbw` is the bus bandwidth NCCL reports (defined and derived in [algbw vs busbw](../network/collectives-internals.md#algbw-vs-busbw); the alpha-beta model itself is [the alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). For decode-sized messages `alpha` dominates completely: the repo measures an 8-byte all-reduce on 8x H200 at 15.2 µs, and everything up to 256 KiB at 15-22 µs ([source](../network/benchmarks/README.md#latency)). Pure bandwidth time for 16 KiB at 450 GB/s is `16384 * 1.75 / 450e9 = 0.06 µs` - the link is idle 99.7% of the call. A faster link does nothing for decode TP; fewer or cheaper calls do.
 
 Consequences:
 
@@ -913,7 +916,7 @@ t_comm / t_compute = [2 * T*h*b_a * 2(P-1)/P / busbw] / [2 * N_layer * T / (P * 
                    = h * b_a * (2(P-1)/P) * P * F / (busbw * N_layer)      # with b_a = 2
 ```
 
-For Llama-3-70B (`N_layer = 855.6M`), `P=8`, `F = 1535` TFLOPS (H100 FP8 MAMF): the ratio is 1.71 at `busbw = 240 GB/s`, 1.14 at 360 GB/s, 0.86 at 480 GB/s. The `busbw` values are **assumptions** (the repo reports 32 MiB as roughly the half-peak point on 8x H200, and NVLS all-reduce peaking near 480 GB/s on NVLink 4); measure yours. Either way, TP=8 FP8 prefill on H100 spends about as long communicating as computing unless the all-reduce is overlapped with compute. The ratio scales with `F / busbw`, so it gets *worse* as tensor cores get faster relative to NVLink.
+For Llama-3-70B (`N_layer = 855.6M`), `P=8`, `F = 1535` TFLOPS (H100 FP8 MAMF): the ratio is 1.71 at `busbw = 240 GB/s`, 1.14 at 360 GB/s, 0.86 at 480 GB/s. The `busbw` values are **assumptions** (the repo reports 32 MiB as roughly the half-peak point on 8x H200, and NVLS (NVLink SHARP: the NVSwitch chips perform the reduction themselves, so the data crosses each link fewer times) all-reduce peaking near 480 GB/s on NVLink 4); measure yours. Either way, TP=8 FP8 prefill on H100 spends about as long communicating as computing unless the all-reduce is overlapped with compute. The ratio scales with `F / busbw`, so it gets *worse* as tensor cores get faster relative to NVLink.
 
 
 
@@ -1211,7 +1214,7 @@ per-channel  scales= 4096  weight err 0.0085  output err 0.0094  err on normal c
 
 The dequantization multiply happens once per output element, not once per weight. Because `s` is constant along the reduction dimension `K`, `X @ (q * s) = (X @ q) * s`, so an INT8 GEMM accumulates integers and applies the scale in its **epilogue** (the last stage of a matmul kernel, which writes the output tile). That property decides which granularities are cheap at runtime ([FP8 section](#fp8-e4m3-and-its-scaling-granularities)).
 
-Weight-only INT4 goes further: 16 levels, so a per-channel scale is too coarse and the scales vary *along* `K` in groups of `G` (typically 128). Two 4-bit values are packed per byte. This is the layout GPTQ/AWQ checkpoints use, up to the exact bit order, which is kernel-specific:
+Weight-only INT4 goes further: 16 levels, so a per-channel scale is too coarse and the scales vary *along* `K` in groups of `G` (typically 128). Two 4-bit values are packed per byte. This is the layout GPTQ/AWQ checkpoints (the two most common INT4 methods, [covered below](#weight-only-int4-gptq-vs-awq)) use, up to the exact bit order, which is kernel-specific:
 
 ```python
 # quant_int4.py - asymmetric INT4 group quantization, nibble packing, error vs group size
@@ -1442,7 +1445,7 @@ Taking `ALU_rate` as FP32 TFLOPS / 2 (one instruction per lane per clock; FMA co
 | H200 SXM | 33.5T | 3.7 |
 | B200 SXM | `80/2 = 40T` | 2.7 |
 
-This is a rough model (it ignores instruction issue limits, conversion instructions that run below full rate, and scale application), but the trend is the point: every generation adds HBM bandwidth faster than CUDA-core throughput, so the dequantization budget shrinks. A naive unpack (shift, mask, int-to-float, subtract zero, multiply scale) is 4-5 instructions per element and already dequant-bound on H200. Production kernels use bit tricks (e.g. `lop3` plus magic-number float construction, two elements per instruction) to get `c` near 1. [QServe (arXiv:2405.04532)](https://arxiv.org/abs/2405.04532) measures 20-90% runtime overhead from dequantization in existing INT4 kernels and is built around keeping CUDA-core work off the critical path. Native low-precision tensor cores (FP8 on Hopper, FP4 on Blackwell) remove `t_deq` entirely, which is the real reason NVFP4/MXFP4 matter on B200: block scales are applied inside the tensor core.
+This is a rough model (it ignores instruction issue limits, conversion instructions that run below full rate, and scale application), but the trend is the point: every generation adds HBM bandwidth faster than CUDA-core throughput, so the dequantization budget shrinks. A naive unpack (shift, mask, int-to-float, subtract zero, multiply scale) is 4-5 instructions per element and already dequant-bound on H200. Production kernels use bit tricks (e.g. `lop3`, a PTX instruction that computes any bitwise function of three registers in one go, plus magic-number float construction, two elements per instruction) to get `c` near 1. [QServe (arXiv:2405.04532)](https://arxiv.org/abs/2405.04532) measures 20-90% runtime overhead from dequantization in existing INT4 kernels and is built around keeping CUDA-core work off the critical path. Native low-precision tensor cores (FP8 on Hopper, FP4 on Blackwell) remove `t_deq` entirely, which is the real reason NVFP4/MXFP4 matter on B200: block scales are applied inside the tensor core.
 
 The budget table, as code. Plug in other GPUs, or `bpw = 4.5` for G=64:
 
@@ -1576,7 +1579,7 @@ Tensor-wise vs row-wise scaling as used for Llama 3 405B FP8 inference:
 
 ### W8A8 INT8 and SmoothQuant
 
-INT8 weights and activations run on INT8 tensor cores at the same rate as FP8 on Hopper (1979 TOPS) and on Ampere at 2x BF16. The problem is activations: a few channels have magnitudes ~100x the rest ([LLM.int8(), arXiv:2208.07339](https://arxiv.org/abs/2208.07339)), which wrecks per-tensor INT8. [SmoothQuant (arXiv:2211.10438)](https://arxiv.org/abs/2211.10438) migrates that difficulty into the weights with an exact rescaling:
+INT8 weights and activations run on INT8 tensor cores at the same rate as FP8 on Hopper (1979 TOPS, tera integer operations per second) and on Ampere at 2x BF16. The problem is activations: a few channels have magnitudes ~100x the rest ([LLM.int8(), arXiv:2208.07339](https://arxiv.org/abs/2208.07339)), which wrecks per-tensor INT8. [SmoothQuant (arXiv:2211.10438)](https://arxiv.org/abs/2211.10438) migrates that difficulty into the weights with an exact rescaling:
 
 ```
 Y = (X diag(s)^-1) (diag(s) W),    s_j = max|X_j|^alpha / max|W_j|^(1 - alpha)
@@ -1682,7 +1685,7 @@ Quantizing keys per-token lets each token's outlier channels set its scale, whic
 
 Both use an E2M1 element (values ±{0, 0.5, 1, 1.5, 2, 3, 4, 6}) with a block scale; see [fp4 formats](../training/dtype.md#fp4-formats).
 
-- **MXFP4** ([OCP microscaling, arXiv:2310.10537](https://arxiv.org/abs/2310.10537)): block 32, E8M0 (power-of-two) scale -> 4.25 bits/weight. Power-of-two scales waste up to one binade of the E2M1 range per block.
+- **MXFP4** ([OCP microscaling, arXiv:2310.10537](https://arxiv.org/abs/2310.10537)): block 32, E8M0 (power-of-two) scale -> 4.25 bits/weight. Power-of-two scales waste up to one binade (the span between two consecutive powers of two) of the E2M1 range per block.
 - **NVFP4**: block 16, E4M3 scale, plus an FP32 per-tensor scale -> 4.5 bits/weight. Finer blocks and a fractional scale give lower quantization error at +6% bytes. NVIDIA reports pretraining in NVFP4 in [arXiv:2509.25149](https://arxiv.org/abs/2509.25149).
 
 Both formats simulated on Gaussian data, with symmetric INT4 at matched bits per weight for comparison:
@@ -1808,7 +1811,7 @@ A measured version of this curve - Llama 3 405B decode, FP8 vs BF16, sweeping ba
 
 ### Little's law
 
-For any stable system, `L = λ * W`: mean number of items in the system equals arrival rate times mean time in the system. No distributional assumptions. For serving:
+For any stable system, `L = λ * W`: mean number of items in the system equals arrival rate times mean time in the system. No distributional assumptions. For serving, with QPS (queries, i.e. requests, per second) as the arrival rate:
 
 ```
 concurrent_requests = QPS * E2E_latency
@@ -1852,7 +1855,7 @@ decode batch = 13.1 * 256 * 0.025 = 84 sequences
 
 ### Worked sizing example
 
-**Requirement**: Llama-3-70B, 100 QPS Poisson arrivals, 2,048 prompt tokens, 256 output tokens, SLO mean TPOT <= 25 ms and mean TTFT <= 500 ms. Hardware 8x H100 SXM nodes, TP=8, FP8 weights and FP8 KV, prefill and decode colocated on the same replica. $2.00/GPU-hour.
+**Requirement**: Llama-3-70B, 100 QPS Poisson arrivals (requests arrive independently at random, so the gaps between them are exponentially distributed with mean 1/QPS; this is what `random.expovariate(lam)` generated above), 2,048 prompt tokens, 256 output tokens, SLO mean TPOT <= 25 ms and mean TTFT <= 500 ms. Hardware 8x H100 SXM nodes, TP=8, FP8 weights and FP8 KV, prefill and decode colocated on the same replica. $2.00/GPU-hour.
 
 **Per-request prefill time** (on one TP=8 replica):
 
@@ -1873,7 +1876,7 @@ B     = λ * n_out * TPOT                        # Little's law, solved by fixed
 TTFT  ≈ t_p + ρ_p * t_p / (2 (1 - ρ_p)) + t_d(B)   # prefill + M/D/1 queue wait + current step
 ```
 
-The M/D/1 term (Poisson arrivals, deterministic service) is a mean; it says nothing about p99. Real chunked-prefill engines piggyback prompt tokens onto decode steps and share the weight read, so they do better than strict time-sharing; that makes this an upper bound on TPOT given the roofline.
+The M/D/1 term is a mean. M/D/1 is queueing-theory shorthand for a single server (`1`) with Poisson, "memoryless" arrivals (`M`) and a fixed, deterministic service time (`D`, here `t_p`); its textbook mean wait is `ρ t_p / (2(1 - ρ))`, which is the middle term above. It is a mean; it says nothing about p99. Real chunked-prefill engines piggyback prompt tokens onto decode steps and share the weight read, so they do better than strict time-sharing; that makes this an upper bound on TPOT given the roofline.
 
 Solving per replica (the KV column is `B * 2176 tokens * 160 KiB`, the mean resident context from Little's law):
 

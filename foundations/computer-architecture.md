@@ -2,7 +2,9 @@
 
 ## Prerequisites
 
-None. This is the first chapter of the book; it assumes only that you can read Python.
+- [The toolkit](toolkit.md) - running commands in a terminal, setting up a Python environment for the examples, and especially *reading C* (pointers, arrays, structs, compiling with `clang`/`gcc`): several experiments in this chapter are short C programs.
+
+Apart from that, it assumes only Python, PyTorch and the math of deep learning. Forward links: the [Linux and OS](linux-and-os.md) chapter (the OS side of pages, processes and `/sys`), [Concurrency](concurrency.md) (threads), [Networking](networking.md) (NICs, RDMA, InfiniBand), and the [GPU execution model](../compute/accelerator/execution-model.md).
 
 This chapter is for the reader who can write a transformer from scratch in PyTorch but has never had to think about what happens beneath `tensor.cuda()`. It starts from bits and ends at the point where the rest of this book's hardware chapters - [compute](../compute/), [storage](../storage/README.md), [network](../network/README.md) - and the [GPU execution model](../compute/accelerator/execution-model.md) chapter should read as natural continuations rather than a wall of acronyms.
 
@@ -25,9 +27,21 @@ The chapter is organized bottom-up:
 13. [You can now read](#you-can-now-read)
 14. [Further reading](#further-reading)
 
-A note on numbers: every hardware number in this chapter is either a published spec (stated as such), a derivation with the arithmetic shown, or an order-of-magnitude figure explicitly marked as approximate. Real hardware varies by SKU, firmware, BIOS settings and the phase of the moon, so treat the approximate figures as "the right power of ten", not as something to put in a capacity plan.
+A note on numbers: every hardware number in this chapter is either a published spec (stated as such), a derivation with the arithmetic shown, or an order-of-magnitude figure explicitly marked as approximate. Real hardware varies by SKU (the exact product model), firmware, BIOS settings (the machine's low-level firmware configuration) and the phase of the moon, so treat the approximate figures as "the right power of ten", not as something to put in a capacity plan.
 
 A note on code: nearly every section has something to run. Pure-Python examples need only `python3` plus `numpy`; examples marked **[torch]** need `pip install torch numpy` in a virtualenv (e.g. `python3 -m venv /tmp/venv && /tmp/venv/bin/pip install torch numpy`); C examples need any C compiler (`clang` on macOS via `xcode-select --install`, `gcc` on Linux). Outputs pasted below come from one run on an Apple M4 laptop (4 performance + 6 efficiency cores, 16 GiB unified memory, macOS 15) **while it was busy with other jobs**, so treat absolute numbers as anecdotes and look at the ratios. Commands marked **untested** need Linux and/or an NVIDIA GPU and were not run while writing this chapter - they follow documented tools, but verify on your machine.
+
+In `console` blocks, a line starting with `$` is a command typed at a terminal prompt (don't type the `$`); the lines after it are that command's output. Commands like `lscpu`, `numactl`, `taskset`, `lspci` and files under `/sys` and `/proc` are Linux tools for inspecting hardware: each is explained where it's used, and the [Linux and OS](linux-and-os.md) chapter right after this one covers the OS side properly. `sudo` in front of a command means "run it as the administrator (root)"; on a shared cluster you usually can't.
+
+**Names used before they are explained.** This chapter refers to some hardware and software by name before reaching the section (or later chapter) that explains it. Just enough to keep reading:
+
+- **GPU, H100, SXM, HGX.** The GPU is the accelerator that runs your tensors' math. The **H100** is NVIDIA's datacenter GPU launched in 2022 and serves as this chapter's running example; **SXM** is its socketed-module form factor (as opposed to a plug-in PCIe card), and **HGX** is NVIDIA's 8-GPU board design. All of it is explained in [The GPU](#the-gpu).
+- **HBM** is the GPU's own memory (high bandwidth memory); an **SM** (streaming multiprocessor) is one of the GPU's ~100+ cores; **tensor cores** are its matrix-multiply units. Both are explained in [The pieces](#the-pieces).
+- **CUDA** is NVIDIA's platform for programming its GPUs (a driver, a runtime library and a C++ dialect). A **kernel** in GPU-speak is one function launched on the GPU, e.g. one matmul; `cudaMemcpy` is CUDA's function that copies memory between CPU and GPU. Explained in [The host/device split](#the-hostdevice-split). (The *operating-system kernel* is a different thing: the core program of the OS that manages hardware for all other programs - see [Linux and OS](linux-and-os.md#the-kernel-and-why-it-exists).)
+- **PCIe, NVLink, NVSwitch** are the links that connect GPUs to the CPU and to each other - explained in [Buses and interconnects](#buses-and-interconnects).
+- **NIC** (network interface card) is the device that connects a machine to the network. **InfiniBand** and **RoCE** are the network technologies GPU clusters use between machines, and **RDMA** (remote direct memory access) lets one machine's NIC read or write another machine's memory without involving either CPU. **TCP** is the ordinary internet protocol. All are taught in [Networking](networking.md#hpc-networking-rdma-infiniband-roce-efa).
+- **Rank, all-reduce, NCCL, `torchrun`.** Distributed training runs one process per GPU; each process is a **rank**, numbered from 0. A **collective** is an operation every rank must call together; the **all-reduce** is the collective that sums a buffer (e.g. the gradients) across all ranks and leaves the sum on every one, and data-parallel training does one every step. **NCCL** ("nickel") is NVIDIA's library that performs such collectives between GPUs, and **`torchrun`** is PyTorch's launcher that starts one training process per GPU. First defined properly in [Concurrency](concurrency.md#a-distributed-hang-is-a-deadlock-across-machines), introduced in [Networking](networking.md#collective-communication-an-intuitive-introduction), derived in [collectives internals](../network/collectives-internals.md).
+- **Slurm** is the job scheduler most GPU clusters use to hand out machines; **containers** (e.g. Docker) package a program with its libraries; both restrict a process to some CPUs and memory with a Linux mechanism called **cgroups**. **Kubernetes** is the other common way to run work on a cluster: it schedules containers across many machines. See [cgroups](linux-and-os.md#cgroups-limits-for-groups-of-processes), [Slurm from zero](../orchestration/slurm/from-zero.md), [Docker from zero](containers-and-virtualization.md#3-docker-from-zero) and [Kubernetes from zero](../orchestration/kubernetes-from-zero.md).
 
 
 
@@ -41,7 +55,7 @@ Eight bits make a **byte**, the smallest unit most hardware can address. A byte 
 
 Bit patterns are usually written in **hexadecimal** (base 16), because one hex digit is exactly 4 bits: `0xFF = 1111 1111 = 255`, `0x3F80_0000` is a 32-bit pattern you'll meet below.
 
-Multi-byte values have a byte order, **endianness**. x86 and (in practice) ARM servers are *little-endian*: the least significant byte sits at the lowest address. You will rarely care, except when parsing binary file formats by hand.
+Multi-byte values have a byte order, **endianness**. x86 and (in practice) ARM servers (the two main CPU families, introduced in [The CPU](#the-cpu)) are *little-endian*: the least significant byte sits at the lowest address. You will rarely care, except when parsing binary file formats by hand.
 
 You can look at all of this from Python. The point of the snippet is that bytes have no inherent meaning: the same byte is 255 or -1, and the same 4 bytes are an integer or a float, depending only on how you choose to read them.
 
@@ -154,7 +168,7 @@ E2M1  S EE M                                4 bits
 
 Notes on the table:
 
-- **E4M3** as used on NVIDIA/OCP hardware (sometimes called `E4M3FN`) breaks IEEE convention: it has no infinities and only uses the all-ones pattern for NaN, which is how it reaches 448 instead of 240. E5M2 keeps IEEE-style inf/NaN.
+- **E4M3** as used on NVIDIA/OCP (Open Compute Project, an industry standards group) hardware (sometimes called `E4M3FN`) breaks IEEE convention: it has no infinities and only uses the all-ones pattern for NaN, which is how it reaches 448 instead of 240. E5M2 keeps IEEE-style inf/NaN.
 - **tf32** is not a storage format. It's what NVIDIA tensor cores use internally when you let them multiply fp32 inputs: the inputs are rounded to a 10-bit mantissa, the accumulation is in fp32. Tensors in memory remain 32 bits wide.
 - fp4 values are so coarse (E2M1 can represent exactly `0, 0.5, 1, 1.5, 2, 3, 4, 6` and their negatives) that they are only usable with **block scaling**: a small block of values (e.g. 16 or 32 elements) shares a higher-precision scale factor. The MX formats (MXFP8, MXFP6, MXFP4) and NVIDIA's NVFP4 are such schemes. The same idea is increasingly applied to fp8.
 
@@ -295,23 +309,23 @@ The gap grows with each prefix: 2.4% at kilo, 10% at tera.
 
 Who uses what, in practice:
 
-- **Disks** are sold in decimal. A "1 TB" NVMe is `10**12 / 2**30 = 931 GiB`, which is what `df -h` will show you (it prints binary units but labels them `G`, not `Gi`).
-- **DRAM and HBM capacity** is physically binary (DRAM dies come in power-of-two-ish densities) but often *printed* as GB. An "80GB" H100 has about 80GiB physically; `nvidia-smi` reports 81559MiB available, which is `81559 * 2**20 / 10**9 = 85.5` decimal GB. See the [accelerator memory section](../compute/accelerator/README.md#accelerator-memory-size-and-speed) for how messy this gets.
+- **Disks** are sold in decimal. A "1 TB" NVMe (a fast SSD; see [Storage devices](#storage-devices)) is `10**12 / 2**30 = 931 GiB`, which is what `df -h` (the disk-space command) will show you (it prints binary units but labels them `G`, not `Gi`).
+- **DRAM (the computer's ordinary main memory, its RAM) and HBM capacity** is physically binary (DRAM dies come in power-of-two-ish densities) but often *printed* as GB. An "80GB" H100 has about 80GiB physically; `nvidia-smi` (NVIDIA's command-line GPU status tool) reports 81559MiB available, which is `81559 * 2**20 / 10**9 = 85.5` decimal GB. See the [accelerator memory section](../compute/accelerator/README.md#accelerator-memory-size-and-speed) for how messy this gets.
 - **Bandwidth** (memory, PCIe, NVLink, network) is almost always decimal: 1 GBps = `10**9` bytes/s.
-- **Software tools** are inconsistent. Python's `torch.cuda.memory_allocated()` returns bytes; you choose. `free -g` is GiB. `ls -lh` is binary with a misleading `G`.
+- **Software tools** are inconsistent. (`df` reports disk space, `free` reports RAM, `ls -lh` lists files with sizes; all are terminal commands.) Python's `torch.cuda.memory_allocated()` returns bytes; you choose. `free -g` is GiB. `ls -lh` is binary with a misleading `G`.
 
 **Bits vs bytes per second.** Network and serial-link speeds are quoted in **bits** per second (lowercase b): Gbps or Gb/s. Memory and storage are in **bytes** per second (uppercase B): GBps or GB/s. Divide bits by 8:
 
 - a 400 Gbps NIC moves at most `400 / 8 = 50` GBps
 - 8 such NICs per node is `8 * 50 = 400` GBps - which is less than the 450 GBps unidirectional NVLink bandwidth of a single H100. That one comparison explains a great deal of [model parallelism](../model-parallelism/) design.
 
-**Transfers vs bytes.** Serial links (PCIe, DRAM pins) are quoted in **GT/s** (gigatransfers per second) per lane or per pin. One transfer is one bit per lane, minus **encoding overhead**: PCIe 3-5 use 128b/130b encoding (1.5% overhead), PCIe 6 uses a FLIT scheme with about 5.5% overhead. So "PCIe 5 is 32 GT/s" means `32 * 128/130 / 8 = 3.94` GBps per lane per direction. The [buses section](#buses-and-interconnects) does the full table.
+**Transfers vs bytes.** Serial links (PCIe, DRAM pins) are quoted in **GT/s** (gigatransfers per second) per lane or per pin. One transfer is one bit per lane, minus **encoding overhead**: PCIe 3-5 use 128b/130b encoding (1.5% overhead), PCIe 6 uses a FLIT scheme (fixed-size packets with built-in error correction) with about 5.5% overhead. So "PCIe 5 is 32 GT/s" means `32 * 128/130 / 8 = 3.94` GBps per lane per direction. The [buses section](#buses-and-interconnects) does the full table.
 
 **Unidirectional vs bidirectional.** Many links are full-duplex: they carry the full rate in each direction at once. Marketing often quotes the sum of both directions. NVLink 4 is "900 GBps" bidirectional, 450 GBps each way. If you're sending a tensor from GPU A to GPU B, the number that matters is 450. See [Unidirectional vs Bidirectional](../network/README.md#unidirectional-vs-bidirectional-duplex).
 
 **FLOPs vs FLOPS.** FLOPs (lowercase s) is a count of floating point operations; FLOPS (or FLOP/s) is a rate. A multiply-add counts as 2 FLOPs. See [MACs vs FLOP vs FLOPS vs FLOP/s](../training/performance/README.md#macs-vs-flop-vs-flops-vs-flops).
 
-**Dense vs sparse FLOPS.** Accelerator spec sheets often lead with a "with sparsity" number that is 2x the dense one, valid only for 2:4 structured-sparse matrices that ordinary training doesn't produce. Always use the dense number.
+**Dense vs sparse FLOPS.** Accelerator spec sheets often lead with a "with sparsity" number that is 2x the dense one, valid only for 2:4 structured-sparse matrices (exactly 2 of every 4 consecutive values are zero) that ordinary training doesn't produce. Always use the dense number.
 
 The checklist before trusting any bandwidth or capacity calculation: bits or bytes? decimal or binary? one direction or both? dense or sparse? spec or measured?
 
@@ -365,7 +379,7 @@ The CPU is driven by a **clock**: an oscillator ticking at, say, 3 GHz, i.e. one
 
 Why not just raise the clock? Dynamic power scales roughly with `capacitance * voltage**2 * frequency`, and higher frequency needs higher voltage, so power grows much faster than linearly with clock. Clocks hit a power/heat wall around 2005 at 3-5 GHz and have barely moved since. Every performance gain after that came from doing *more per cycle* and from *more cores* - which is the story of the rest of this section, and ultimately why GPUs won ML.
 
-You can see real instructions in two minutes. Here is a C function compiled for this ARM64 laptop, next to the Python bytecode for the same addition:
+You can see real instructions in two minutes. Here is a C function compiled for this ARM64 laptop, next to the Python bytecode for the same addition. (C refresher: `long` is a 64-bit integer, `const float *x` is a pointer to the first of several floats, and `x[1]` reads the float one element after it - see the reading-C part of [the toolkit](toolkit.md#reading-c). `clang -O2 -S -o - add.c` means "compile with optimizations, stop at assembly, print it to the screen" instead of producing a program.)
 
 ```c
 // add.c
@@ -426,13 +440,15 @@ Pipelines stall on **hazards**: an instruction that needs the result of the prev
 
 ### Superscalar and out-of-order execution
 
-A modern core has several execution units (multiple integer ALUs, multiple vector units, multiple load/store ports) and can issue several independent instructions per cycle - it's **superscalar**. Current server cores can decode and retire roughly 4-8 instructions per cycle in the best case.
+A modern core has several execution units (multiple integer ALUs, i.e. arithmetic logic units; multiple vector units; multiple load/store ports) and can issue several independent instructions per cycle - it's **superscalar**. Current server cores can decode and retire (finish and commit the result of) roughly 4-8 instructions per cycle in the best case.
 
 To find enough independent instructions, the core executes **out of order**: it looks ahead through a window of a few hundred upcoming instructions, runs whichever ones have their inputs ready, and retires results in the original order so the program can't tell. When one load is waiting on slow memory, the core keeps running unrelated instructions behind it. A large fraction of a CPU core's transistors exist purely to do this bookkeeping.
 
 The metric for how well this works is **IPC** (instructions per cycle). Well-behaved numeric code may hit 2-4; code that constantly waits on memory can drop below 0.5.
 
-You can watch out-of-order, superscalar execution help or fail to help with a ten-line experiment. Summing an array with one accumulator makes every addition wait for the one before it (a **dependency chain**): a floating-point add takes a few cycles of latency, so the core sits idle between them no matter how many adders it has. Four independent accumulators give the core four chains to interleave:
+You can watch out-of-order, superscalar execution help or fail to help with a ten-line experiment. Summing an array with one accumulator makes every addition wait for the one before it (a **dependency chain**): a floating-point add takes a few cycles of latency, so the core sits idle between them no matter how many adders it has. Four independent accumulators give the core four chains to interleave.
+
+How to read the C programs in this chapter (they all share this skeleton): `#include` lines import library headers, like Python imports; `#define N (1 << 24)` is a named constant; `now()` is a small helper that returns the current time in seconds as a `double`, the C equivalent of `time.perf_counter()`; `malloc(N * sizeof(float))` allocates a raw buffer of N floats (like `np.empty(N, dtype=np.float32)`, and just as uninitialized); `main` is where the program starts; `printf` is formatted printing, with `%.2f` meaning "a float with 2 decimals" and `%zu`/`%d`/`%p` meaning an unsigned size, an int and a pointer. The `console` block below each program shows the two commands: `clang -O2 -o ilp ilp.c` compiles the source into an executable called `ilp`, and `./ilp` runs it. If anything else is unfamiliar, the reading-C part of [the toolkit](toolkit.md#reading-c) covers it.
 
 ```c
 // ilp.c - one dependency chain vs four independent ones. Same number of adds.
@@ -465,9 +481,9 @@ $ clang -O2 -o ilp ilp.c && ./ilp
 
 Three things to take away:
 
-- **3-4x faster with identical arithmetic**, purely from exposing independent work. The compiler won't do this for you for floats (without `-ffast-math`), because reordering float additions changes the result.
+- **3-4x faster with identical arithmetic**, purely from exposing independent work. The compiler won't do this for you for floats (without `-ffast-math`, a compiler flag that permits such reordering), because reordering float additions changes the result.
 - **It does change the result**: 15.4037 vs 16.4197. The exact sum of `1/i` for `i` up to `2**24` is 17.2127 (computed in Python with fp64). Both fp32 answers are wrong, because once the running sum is around 15, adding terms smaller than ~1e-6 rounds to no change at all (fp32's epsilon at 15 is ~1e-6). Four partial sums each stay smaller, so they lose less. This is the same reason [reductions in fp32 across GPUs aren't bitwise reproducible](distributed-systems.md) when the reduction order changes.
-- GPUs and BLAS libraries apply the same trick at massive scale: a matmul kernel keeps many independent accumulators in registers per thread.
+- GPUs and BLAS libraries (the standard linear-algebra libraries that numpy and PyTorch call for matmuls) apply the same trick at massive scale: a matmul kernel keeps many independent accumulators in registers per thread.
 
 ### Branch prediction
 
@@ -475,7 +491,7 @@ With a 15-20 stage pipeline, waiting for every `if` to resolve would waste ~15-2
 
 ML relevance: mostly indirect. Data-dependent branching inside an inner loop (e.g. per-element `if` in a tokenizer or a custom data filter) can run several times slower on random data than on sorted data. And it's one reason GPU-style hardware, which has essentially no branch prediction, wants branch-free code.
 
-The classic demonstration: the same loop over the same numbers, once shuffled and once sorted. With sorted data the branch `v[i] >= 128` is false for the first half and true for the second, so the predictor is almost always right. With random data it's a coin flip.
+The classic demonstration: the same loop over the same numbers, once shuffled and once sorted. With sorted data the branch `v[i] >= 128` is false for the first half and true for the second, so the predictor is almost always right. With random data it's a coin flip. (New C here: `qsort(w, N, sizeof(int), cmp)` is the C library's sort, which takes a comparison function `cmp` the way Python's `sorted` takes `key`; `srand(0)` seeds the random generator and `rand() % 256` draws an integer in 0..255; `__asm__ volatile("")` inserts an empty assembly statement, explained after the output.)
 
 ```c
 // branch.c
@@ -538,7 +554,7 @@ That 7.2 TFLOPS is an upper bound that real code rarely approaches - and some In
 
 **AMX** (Advanced Matrix Extensions, Intel Xeon since Sapphire Rapids) goes beyond vectors: it adds eight 1 KiB **tile** registers (16 rows of 64 bytes) and a matrix-multiply unit that multiplies tiles of bf16 or int8. Intel quotes 1024 bf16 operations per cycle per core. The same arithmetic as above, `1024 * 2.0e9 * 56 = 115` TFLOPS bf16, is a theoretical ceiling that I'd expect real kernels to land well below. It's the same idea as GPU tensor cores (a dedicated matrix unit), and it's why recent CPUs can do respectable small-batch inference, but it's still about an order of magnitude below a single H100's 989 dense bf16 TFLOPS.
 
-You almost never write SIMD yourself. numpy, PyTorch's CPU kernels, and oneDNN do. What you need to know is that a loop in pure Python executes perhaps tens of millions of simple operations per second, while the same loop vectorized via numpy can be 100x faster - partly because it skips the interpreter, partly because of SIMD.
+You almost never write SIMD yourself. numpy, PyTorch's CPU kernels, and oneDNN (Intel's library of CPU deep-learning kernels) do. What you need to know is that a loop in pure Python executes perhaps tens of millions of simple operations per second, while the same loop vectorized via numpy can be 100x faster - partly because it skips the interpreter, partly because of SIMD.
 
 ### Cores and hardware threads
 
@@ -546,7 +562,7 @@ A **core** is a complete copy of the above: pipeline, execution units, registers
 
 **Simultaneous multithreading** (SMT; Intel calls it **Hyper-Threading**) lets one core hold the state of two instruction streams (two **hardware threads**) at once. When one stream is stalled waiting on memory, the other uses the idle execution units. It's a cheap way to fill pipeline bubbles, not a second core: two threads share one core's execution units and caches. For compute-bound SIMD code, the second hardware thread adds roughly nothing, sometimes less than nothing. For stall-heavy code (pointer chasing, I/O) it helps.
 
-The trap: the OS, `nproc`, `os.cpu_count()` and `htop` count **hardware threads**, not cores. A machine showing 224 "CPUs" may have 2 sockets x 56 cores x 2 threads. Check:
+The trap: the OS, `nproc` (a command that prints the CPU count), `os.cpu_count()` and `htop` (an interactive process viewer) count **hardware threads**, not cores. A machine showing 224 "CPUs" may have 2 sockets x 56 cores x 2 threads. Check with `lscpu`, which prints the CPU layout on Linux (here filtered with `grep -E`, from the toolkit's regex section):
 
 ```bash
 lscpu | grep -E "^(Socket|Core|Thread|CPU\(s\)|NUMA node)"
@@ -562,7 +578,7 @@ Socket(s):             2
 NUMA node(s):          2
 ```
 
-On a Linux box, the cache sizes and which hardware threads share a core are in `/sys` (**untested** here, Linux-only):
+On a Linux box, the cache sizes and which hardware threads share a core are in `/sys`, a directory of read-only "files" the kernel fills with hardware information (**untested** here, Linux-only). `grep . FILES` prints every non-empty line of each file, prefixed with the file name; `index*` is a wildcard matching `index0`, `index1`, ...; a PU ("processing unit") is a hardware thread:
 
 ```console
 $ lscpu -e=CPU,CORE,SOCKET,NODE | head -4       # CPU 0 and CPU 112 sharing CORE 0 = SMT siblings
@@ -580,7 +596,7 @@ $ grep . /sys/devices/system/cpu/cpu0/cache/index*/size
 $ lstopo-no-graphics --no-io       # from the hwloc package: the whole tree, sockets -> caches -> cores -> PUs
 ```
 
-(The sizes shown are illustrative of a recent Xeon, not from a real run.) On a Mac the equivalent is `sysctl`; here is the laptop these examples ran on - note it has *heterogeneous* cores, 4 performance ("perflevel0") and 6 efficiency ("perflevel1"), and no SMT:
+(The sizes shown are illustrative of a recent Xeon, not from a real run.) On a Mac the equivalent is `sysctl`, which prints named hardware and kernel settings (a `\` at the end of a line continues the command on the next line); here is the laptop these examples ran on - note it has *heterogeneous* cores, 4 performance ("perflevel0") and 6 efficiency ("perflevel1"), and no SMT:
 
 ```console
 $ sysctl hw.perflevel0.physicalcpu hw.perflevel1.physicalcpu hw.perflevel0.l1dcachesize \
@@ -604,17 +620,17 @@ $ python3 -c "import os; print(os.cpu_count())"
 10
 ```
 
-`os.cpu_count()` says 10, which hides that 6 of those cores are much slower. On Linux, the number your process may *actually* use can be smaller than `os.cpu_count()` - containers and Slurm restrict it with cgroups and CPU affinity - so size worker pools with `len(os.sched_getaffinity(0))` (Linux-only), not `os.cpu_count()`.
+`os.cpu_count()` says 10, which hides that 6 of those cores are much slower. On Linux, the number your process may *actually* use can be smaller than `os.cpu_count()` - containers and Slurm restrict it with cgroups and CPU affinity (a per-process list of the CPUs it may run on; both are explained in [Linux and OS](linux-and-os.md#cpu-affinity-and-taskset)) - so size worker pools with `len(os.sched_getaffinity(0))` (Linux-only), not `os.cpu_count()`.
 
 When the [CPU chapter](../compute/cpu/README.md#how-many-cpu-cores-do-you-need-for-dataloader-work) tells you to budget one core per `DataLoader` worker, it means physical cores.
 
 ### Try this
 
-1. Compile `add.c` with `-O0` instead of `-O2` and diff the assembly. Count the extra loads and stores: at `-O0` the compiler spills every variable to the stack.
+1. Compile `add.c` with `-O0` instead of `-O2` and diff the assembly (save each with `-o O0.s` / `-o O2.s` instead of `-o -`, then `diff O0.s O2.s` prints the lines that differ). Count the extra loads and stores: at `-O0` the compiler spills every variable to the stack.
 2. In `ilp.c`, try 2, 8 and 16 accumulators. Where does the speedup stop? On most cores it flattens at roughly `fadd latency * number of FP add pipes` independent chains; estimate both numbers from your measurement.
 3. In `branch.c`, replace the `if` with the branch-free `s += v[i] * (v[i] >= 128);` and remove the `asm`. Now does sorting matter?
 4. Run `python3 -c "import numpy; numpy.show_config()"` and find which SIMD extensions your numpy build detected (look for "SIMD Extensions" / "found").
-5. On a Linux server, compare `nproc`, `os.cpu_count()` and `len(os.sched_getaffinity(0))` inside and outside a `taskset -c 0-3 python3 ...` invocation (**untested** here).
+5. On a Linux server, compare `nproc`, `os.cpu_count()` and `len(os.sched_getaffinity(0))` inside and outside a `taskset -c 0-3 python3 ...` invocation (`taskset -c 0-3 cmd` runs `cmd` restricted to CPUs 0-3; **untested** here).
 
 
 
@@ -678,10 +694,12 @@ This is an updated version of the classic table attributed to Jeff Dean and Pete
 Notes:
 
 - The GPU HBM latency row is the one I'm least sure of. Published microbenchmarks of recent NVIDIA datacenter GPUs put a global-memory miss in the hundreds of nanoseconds (several hundred to ~1000 cycles at ~1.5-2 GHz). The important point is that it's *worse* than CPU DRAM latency, not better - GPUs are fast because of bandwidth and parallelism, not latency.
-- The kernel launch and `cudaMemcpy` rows are a large part of why small-batch inference and tiny ops are slow, and why CUDA Graphs and kernel fusion exist. Details are in the [execution model chapter](../compute/accelerator/execution-model.md).
+- The kernel launch and `cudaMemcpy` rows are a large part of why small-batch inference and tiny ops are slow, and why CUDA Graphs (replaying a recorded sequence of launches as one) and kernel fusion (merging several small kernels into one) exist. Details are in the [execution model chapter](../compute/accelerator/execution-model.md).
 - The coast-to-coast row is bounded by physics: light in fiber travels at ~200,000 km/s, so ~4,000 km takes ~20 ms one way, ~40 ms round trip at the very least; real routes are longer.
 
 Don't take the table on faith: you can measure the memory rows of it on your own machine in about 30 lines of C. The trick is **pointer chasing**: build a random cycle through a buffer where each element stores the address of the next one. Each load's address depends on the previous load's result, so the out-of-order core *cannot* overlap them, and the time per step is the true load-to-use latency of whichever level of the hierarchy the buffer fits in.
+
+C details in this one: `size_t` is an unsigned 64-bit integer used for sizes; `aligned_alloc(LINE, bytes)` is `malloc` that also guarantees the buffer starts on a cache-line boundary; `void *` is "an address of anything" and `void **` is "an address of a slot that holds an address". So `*(void **)(buf + k * LINE) = ...` stores an address into node `k`, and the timed loop `p = (void **)*p` means "load the address stored where `p` points, and go there" - Python's `node = node.next` for a linked list.
 
 ```c
 // chase.c - measure load-to-use latency by pointer chasing a random cycle.
@@ -722,7 +740,7 @@ $ clang -O2 -o chase chase.c && ./chase          # Apple M4, performance core
    262144 KiB   111.0 ns/load   (0x13bf96580)
 ```
 
-You can read the hierarchy straight off it: ~0.9 ns while the buffer fits in the 128 KiB L1 data cache of an M4 performance core (`sysctl hw.perflevel0.l1dcachesize` reports 131072), a jump once it spills to the 16 MiB shared L2, and a plateau around 100-110 ns once it's DRAM-sized - the "1.5 minutes" row in the table. The steps between 256 KiB and 16 MiB are a mix of L2 latency and TLB misses (at 16 KiB pages, a 4 MiB buffer is 256 pages, and every random access may need a fresh translation); separating the two needs hardware counters, which I didn't use. On x86 Linux, set `LINE = 64`, compile with `gcc -O2`, and pin to one core with `taskset -c 2 ./chase` (**untested** here); expect the same shape with different breakpoints.
+You can read the hierarchy straight off it: ~0.9 ns while the buffer fits in the 128 KiB L1 data cache of an M4 performance core (`sysctl hw.perflevel0.l1dcachesize` reports 131072), a jump once it spills to the 16 MiB shared L2, and a plateau around 100-110 ns once it's DRAM-sized - the "1.5 minutes" row in the table. The steps between 256 KiB and 16 MiB are a mix of L2 latency and TLB misses (the TLB is a small cache of address translations for memory **pages**, explained in [Virtual memory](#virtual-memory-at-the-hardware-level) below; at 16 KiB pages, a 4 MiB buffer is 256 pages, and every random access may need a fresh translation); separating the two needs hardware counters (event counts such as cache and TLB misses, which the CPU keeps and profilers like `perf` read), which I didn't use. On x86 Linux, set `LINE = 64`, compile with `gcc -O2`, and pin to one core with `taskset -c 2 ./chase` (**untested** here); expect the same shape with different breakpoints.
 
 ### Cache lines and locality
 
@@ -737,7 +755,7 @@ On top of caching, a **hardware prefetcher** watches the access pattern and, if 
 
 Caches also keep the cores coherent: if core 0 writes a line that core 5 has cached, core 5's copy is invalidated. Two threads writing different variables that happen to sit in the same 64-byte line will ping-pong that line between cores (**false sharing**) - a classic way for a multi-threaded data pipeline to scale negatively.
 
-False sharing is easy to provoke. Two threads each increment *their own* counter; the only thing that changes between runs is whether the two counters sit in the same cache line:
+False sharing is easy to provoke. Two threads each increment *their own* counter; the only thing that changes between runs is whether the two counters sit in the same cache line. (`pthread_create(&a, NULL, bump, arg)` starts a new **thread** - a second flow of execution inside the same process, sharing its memory - running `bump(arg)`, like `threading.Thread(target=bump, args=(arg,)).start()` in Python; `pthread_join` waits for it to finish, like `.join()`. `volatile` tells the compiler to really perform every read and write of the counter instead of keeping it in a register. Threads are covered properly in [Concurrency](concurrency.md#programs-processes-and-threads).)
 
 ```c
 // false_sharing.c - two threads, two different counters. Only their distance in memory changes.
@@ -874,7 +892,7 @@ The size at which you get half the peak bandwidth is `latency * bandwidth = 10e-
 - collective communication libraries bucket small gradients into large messages,
 - [network benchmarks](../network/README.md#real-network-throughput) report bandwidth as a function of message size and small messages never reach the headline number.
 
-**Little's law** ties the two together. To sustain bandwidth B over a path with latency L, you need `B * L` bytes **in flight** at all times:
+**Little's law** ties the two together. To sustain bandwidth B over a path with latency L, you need `B * L` bytes **in flight** at all times (DDR5 below is the current generation of DRAM, detailed in [NUMA](#numa)):
 
 ```
 DDR5 socket:   300 GBps  * 100 ns = 30 KB in flight  = ~470 outstanding 64-byte cache lines
@@ -932,8 +950,8 @@ A second run while the machine was loaded by other jobs gave 2-10x lower numbers
 
 ### Try this
 
-1. Change `lat` in `eff_bw.py` to 2 us (a fast RDMA message) and `bw` to 50e9 (one 400 Gbps NIC). What's the half-bandwidth message size now? Compare with the default bucket size of PyTorch DDP (`bucket_cap_mb=25`).
-2. Modify the memcpy loop to use 2, 4 and 8 threads (each copying its own slice with `np.copyto`, which releases the GIL). Does the 256 MiB row scale? At what thread count does it flatten?
+1. Change `lat` in `eff_bw.py` to 2 us (a fast RDMA message; see the glossary at the top) and `bw` to 50e9 (one 400 Gbps NIC). What's the half-bandwidth message size now? Compare with the default bucket size of PyTorch DDP (`DistributedDataParallel`, which all-reduces gradients in buckets of `bucket_cap_mb=25` MB).
+2. Modify the memcpy loop to use 2, 4 and 8 threads (each copying its own slice with `np.copyto`, which releases the GIL - Python's global interpreter lock, which normally lets only one thread run Python code at a time; see [the concurrency chapter](concurrency.md#the-gil)). Does the 256 MiB row scale? At what thread count does it flatten?
 3. Use Little's law: if one core can have ~20 outstanding 64-byte misses and DRAM latency is 100 ns, what's the max bandwidth one core can pull? Compare with your measurement.
 
 
@@ -958,7 +976,7 @@ import mmap, resource, time, numpy as np
 page = mmap.PAGESIZE
 print("page size:", page, "bytes")
 
-def faults(): return resource.getrusage(resource.RUSAGE_SELF).ru_minflt
+def faults(): return resource.getrusage(resource.RUSAGE_SELF).ru_minflt   # "minor" faults: no disk read needed
 def rss_mib(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20   # macOS reports bytes; Linux KiB (use / 2**10)
 
 n = 256 << 20                                 # 256 MiB
@@ -985,7 +1003,7 @@ expected faults n/page = 16384; 12 ms total, 704 ns per fault
 second pass (already mapped): 0.1 ms
 ```
 
-`np.empty` of 256 MiB costs one fault and no memory. Touching one byte per page costs exactly one fault per page (16384 of them), ~0.7 us each, and resident memory (**RSS**, resident set size: physical memory actually backing the process) grows by 256 MiB. The second pass over the same pages is ~100x faster because the translations now exist. This is why the first iteration of a training loop, or the first read of a freshly allocated buffer, is slow, and why "virtual memory size" in `top` means almost nothing. The OS side of this (overcommit, the OOM killer, `mmap` of files) is in [the Linux chapter](linux-and-os.md).
+`np.empty` of 256 MiB costs one fault and no memory. Touching one byte per page costs exactly one fault per page (16384 of them), ~0.7 us each, and resident memory (**RSS**, resident set size: physical memory actually backing the process) grows by 256 MiB. The second pass over the same pages is ~100x faster because the translations now exist. This is why the first iteration of a training loop, or the first read of a freshly allocated buffer, is slow, and why "virtual memory size" in `top` (the live process list) means almost nothing. The OS side of this (overcommit, the OOM killer, `mmap` of files) is in [the Linux chapter](linux-and-os.md).
 
 ### Huge pages and TLB reach
 
@@ -1000,7 +1018,7 @@ A TLB has a limited number of entries - on the order of 64 in the first-level da
 
 8 MiB is tiny compared to a multi-GiB working set like a dataset buffer, an embedding table being looked up at random, or a CPU-offloaded optimizer state. Every random access then pays a TLB miss on top of a cache miss. **Huge pages** (2 MiB, or 1 GiB on x86-64) cut the number of translations by 512x or 262144x. Linux can use them automatically (**transparent huge pages**, THP) or explicitly (`hugetlbfs`); the policy side is in the [Linux chapter](linux-and-os.md).
 
-Checking THP and huge-page usage on a Linux box (**untested** here, Linux-only; the bracketed word is the active setting):
+Checking THP and huge-page usage on a Linux box (**untested** here, Linux-only; the bracketed word is the active setting). `cat` prints a file and `grep PATTERN file` prints only its matching lines; `/proc/meminfo` is a file the kernel fills with memory statistics; `$(pgrep -f train.py | head -1)` is replaced by the process ID of the first running process whose command line contains `train.py`:
 
 ```console
 $ cat /sys/kernel/mm/transparent_hugepage/enabled
@@ -1014,13 +1032,13 @@ $ grep AnonHugePages /proc/$(pgrep -f train.py | head -1)/smaps_rollup   # THP u
 
 ### Why this matters for GPUs: pinned memory
 
-Devices like GPUs, NICs and NVMe drives copy memory using **DMA** (next sections), and DMA engines work with *physical* addresses (via an IOMMU, which is a TLB for devices). That creates a problem: the OS is free to move or swap out a virtual page at any moment, so a device can't safely DMA from an ordinary page.
+Devices like GPUs, NICs and NVMe drives copy memory using **DMA** (next sections), and DMA engines work with *physical* addresses (via an IOMMU, which is a TLB for devices). That creates a problem: the OS is free to move or swap out (write to disk to free RAM; see [Swap](linux-and-os.md#swap)) a virtual page at any moment, so a device can't safely DMA from an ordinary page.
 
 The solution is **pinned** (page-locked) memory: pages the OS promises not to move. When you call `tensor.cuda()` on an ordinary ("pageable") CPU tensor, the CUDA driver first copies it into an internal pinned staging buffer and only then DMAs it to the GPU - two copies, and the call is synchronous. With `pin_memory=True` in the `DataLoader` the batch is placed in pinned memory up front, the copy is a single DMA, and `.to("cuda", non_blocking=True)` can overlap with compute. See [Pinned memory and non-blocking device copy](../training/performance/README.md#pinned-memory-and-non-blocking-device-copy).
 
 Pinned memory is a finite resource: pinning tens of GiB reduces what the OS can manage and can starve the rest of the system.
 
-Measuring the difference yourself takes a dozen lines. **[GPU]**, **untested** (no NVIDIA GPU on the machine writing this):
+Measuring the difference yourself takes a dozen lines. **[GPU]**, **untested** (no NVIDIA GPU on the machine writing this). Preview of two GPU tools explained in [The host/device split](#the-hostdevice-split): GPU work is queued and runs asynchronously, so `torch.cuda.synchronize()` waits until the GPU has finished everything queued, and a `torch.cuda.Event` pair records GPU-side timestamps around queued work:
 
 ```python
 # pinned_vs_pageable.py
@@ -1049,7 +1067,7 @@ What to expect: with `pinned=True`, the call returns almost immediately (the cop
 
 1. In `pages.py`, replace `np.empty` with `np.zeros`. Does the fault count change at allocation time? (Most allocators get zeroed pages from the OS lazily, so `np.zeros` for big arrays often costs no more than `np.empty`.)
 2. Touch every 4096th byte instead of every `page`th byte on this Mac. Does the fault count go up 4x? Why not?
-3. On Linux, run `perf stat -e dTLB-load-misses,page-faults python3 pages.py` (**untested** here) and compare with `madvise`-backed huge pages enabled vs disabled.
+3. On Linux, run `perf stat -e dTLB-load-misses,page-faults python3 pages.py` (`perf stat` runs a command and reports hardware event counters; **untested** here) and compare with `madvise`-backed huge pages (the `[madvise]` THP mode shown above, where only memory a program explicitly asks for gets huge pages) enabled vs disabled.
 4. Allocate a 1 GiB pinned tensor in a loop until it fails, on a machine where that's safe. What fails first and with what error? (Do this on your own machine, not a shared node.)
 
 
@@ -1083,13 +1101,13 @@ How much bandwidth does a socket's memory have? DDR channel arithmetic: a DDR5 c
 | 12 channels DDR5-4800            | 12 * 4800e6 * 8 B      | 461 GBps        |
 | 12 channels DDR5-6400            | 12 * 6400e6 * 8 B      | 614 GBps        |
 
-These are spec ceilings, and only if every channel is populated - a server with half its DIMM slots empty has half the bandwidth. Compare with the 3,350 GBps of a single H100's HBM: one GPU has roughly 5-10x the memory bandwidth of a whole CPU socket.
+These are spec ceilings, and only if every channel is populated - a server with half its DIMM slots (memory-stick slots) empty has half the bandwidth. Compare with the 3,350 GBps of a single H100's HBM: one GPU has roughly 5-10x the memory bandwidth of a whole CPU socket.
 
 ### Why NUMA matters for ML
 
 Each GPU and each NIC hangs off the PCIe lanes of one particular socket. Consider a `DataLoader` worker that runs on socket 1, builds a batch in socket 1's memory, and the training process for GPU 0 (attached to socket 0) copies it to the GPU. The DMA has to pull the bytes across the inter-socket link. Run all eight ranks this way and the socket link becomes a shared bottleneck, plus the cores pay remote latency for every cache miss in the data pipeline.
 
-The fix is **affinity**: pin each rank's process, its dataloader workers and its memory allocations to the socket its GPU is attached to. To find out which that is:
+The fix is **affinity**: pin each rank's process (in distributed training a **rank** is one of the training processes, normally one per GPU), its dataloader workers and its memory allocations to the socket its GPU is attached to. To find out which that is:
 
 ```bash
 nvidia-smi topo -m          # the "CPU Affinity" and "NUMA Affinity" columns per GPU
@@ -1099,7 +1117,7 @@ lscpu | grep NUMA           # which CPU ids belong to which NUMA node
 cat /sys/bus/pci/devices/0000:18:00.0/numa_node
 ```
 
-How to apply it - `numactl`, `os.sched_setaffinity`, `pynvml`, `srun` - is in [NUMA affinity](../training/performance/README.md#numa-affinity).
+How to apply it - `numactl`, `os.sched_setaffinity`, `pynvml`, `srun` (Slurm's command for launching processes) - is in [NUMA affinity](../training/performance/README.md#numa-affinity).
 
 The two-line version of "apply it", for one rank whose GPU sits on NUMA node 0 (**untested** here, Linux-only):
 
@@ -1134,7 +1152,7 @@ Each generation roughly doubles the per-lane rate:
 | PCIe 3     | 8 GT/s        | 128b/130b  | 0.98                        | 3.9              | 15.8              |
 | PCIe 4     | 16 GT/s       | 128b/130b  | 1.97                        | 7.9              | 31.5              |
 | PCIe 5     | 32 GT/s       | 128b/130b  | 3.94                        | 15.8             | 63.0              |
-| PCIe 6     | 64 GT/s       | PAM4 + FLIT (242/256) | 7.56             | 30.3             | 121               |
+| PCIe 6     | 64 GT/s       | PAM4 (4 voltage levels, 2 bits per signal symbol) + FLIT (242/256) | 7.56             | 30.3             | 121               |
 
 Arithmetic for PCIe 5 x16: `32e9 transfers/s * 128/130 * 16 lanes / 8 bits = 63.0` GBps in each direction, 126 GBps both ways combined. These are raw link rates after line encoding; packet headers and protocol overhead take more, so measured throughput is lower - the [PCIe section of the network chapter](../network/README.md#pcie) reports 55.4 GBps measured host-to-device on PCIe 5 x16, i.e. 88% of the spec.
 
@@ -1142,7 +1160,7 @@ A PCIe link runs at the *lowest* common generation and width of the two ends. A 
 
 ```bash
 nvidia-smi --query-gpu=index,pcie.link.gen.current,pcie.link.width.current --format=csv
-sudo lspci -vv | grep -E "LnkCap|LnkSta"   # capability vs actual status, every device
+sudo lspci -vv | grep -E "LnkCap|LnkSta"   # lspci lists PCIe devices; capability vs actual status, every device
 ```
 
 (GPUs may downshift link generation when idle to save power, so check under load.)
@@ -1151,11 +1169,11 @@ sudo lspci -vv | grep -E "LnkCap|LnkSta"   # capability vs actual status, every 
 
 ### DMA
 
-If the CPU had to move every byte to a device by executing load and store instructions, a 63 GBps link would occupy dozens of cores. Instead, devices do **DMA** (direct memory access): the CPU writes a small descriptor ("copy n bytes from physical address A to device address B") and the device's own **DMA engine** performs the transfer across PCIe while the CPU does other things, then raises an interrupt or sets a completion flag. NVIDIA GPUs have dedicated DMA engines called **copy engines**, which is why a host-to-device copy can run concurrently with a kernel.
+If the CPU had to move every byte to a device by executing load and store instructions, a 63 GBps link would occupy dozens of cores. Instead, devices do **DMA** (direct memory access): the CPU writes a small descriptor ("copy n bytes from physical address A to device address B") and the device's own **DMA engine** performs the transfer across PCIe while the CPU does other things, then raises an interrupt (a hardware signal that makes the CPU pause and run OS code) or sets a completion flag. NVIDIA GPUs have dedicated DMA engines called **copy engines**, which is why a host-to-device copy can run concurrently with a kernel.
 
 DMA is why [pinned memory](#why-this-matters-for-gpus-pinned-memory) is needed, and why "zero-copy" designs are possible at all.
 
-The CUDA `deviceQuery` sample (from NVIDIA's `cuda-samples` repo) reports how many copy engines a GPU has, in a line like `Concurrent copy and kernel execution: Yes with 2 copy engine(s)` (the count varies by GPU). You can see copy engines at work from PyTorch by issuing a copy on a second stream while a matmul runs on the default one. **[GPU]**, **untested**:
+The CUDA `deviceQuery` sample (from NVIDIA's `cuda-samples` repo) reports how many copy engines a GPU has, in a line like `Concurrent copy and kernel execution: Yes with 2 copy engine(s)` (the count varies by GPU). You can see copy engines at work from PyTorch by issuing a copy on a second stream while a matmul runs on the default one. (A **stream** is a queue of GPU work that runs in order; work in different streams may run at the same time. Streams are explained in [The host/device split](#the-hostdevice-split).) **[GPU]**, **untested**:
 
 ```python
 # overlap.py - a host->device copy on a side stream overlaps with compute on the default stream.
@@ -1191,7 +1209,7 @@ By default, data moving between a GPU and anything else goes through host memory
 
 What's bypassed is host memory and the CPU's involvement in the data movement; the bytes still travel over PCIe, so the path benefits a lot from the GPU and the NIC/NVMe being under the **same PCIe switch** (traffic never reaches the root complex). This is why GPU servers pair each GPU with a NIC on the same switch, and why `nvidia-smi topo -m` labels pairs as `PIX` (same switch), `PXB`, `PHB` (through the host bridge), `NODE` or `SYS` (across sockets) - the further down that list, the worse.
 
-How to check whether GPUDirect paths are actually in use on a node (**untested** here; module and tool names as of CUDA 12.x / recent NCCL):
+How to check whether GPUDirect paths are actually in use on a node (**untested** here; module and tool names as of CUDA 12.x / recent NCCL). *Preview:* this block uses tools taught later - `lsmod` lists loaded kernel modules (drivers), `NCCL_DEBUG=INFO` makes NCCL log which transport it chose, and `torchrun --nproc-per-node 8 script.py` starts 8 copies of a script, one per GPU (see the glossary at the top, [Concurrency](concurrency.md#a-distributed-hang-is-a-deadlock-across-machines), [Networking](networking.md#how-pytorch-distributed-bootstraps) and [GPU software stack](../compute/gpu-software-stack.md)). `allreduce_test.py` stands for any script that does an all-reduce. Skim it now and come back:
 
 ```console
 $ nvidia-smi topo -m | head -3                  # look at the GPU<->NIC entries: PIX/PXB good, SYS bad
@@ -1204,9 +1222,9 @@ $ /usr/local/cuda/gds/tools/gdscheck -p         # GPUDirect Storage: which files
 
 ### NVLink and NVSwitch
 
-PCIe is a general-purpose standard and, as the table above shows, a GPU's PCIe 5 x16 link gives ~63 GBps per direction. Training with tensor parallelism needs GPUs to exchange activations every layer, so NVIDIA built a dedicated GPU-to-GPU link, **NVLink**. An H100 has 18 NVLink 4 links totaling 450 GBps per direction, ~7x its PCIe bandwidth. An **NVSwitch** is a switch chip for NVLink: in an 8-GPU HGX board, every GPU connects to the NVSwitches, so any GPU can talk to any other at full NVLink bandwidth simultaneously. In rack-scale systems (GB200 NVL72) NVSwitch extends the same fabric across a whole rack of GPUs. AMD's equivalent is Infinity Fabric; the open-standard effort is UALink. All the numbers are in [NVLink](../network/README.md#nvlink).
+PCIe is a general-purpose standard and, as the table above shows, a GPU's PCIe 5 x16 link gives ~63 GBps per direction. Training with tensor parallelism (splitting each layer's weight matrices across several GPUs, so each computes part of every matmul) needs GPUs to exchange activations every layer, so NVIDIA built a dedicated GPU-to-GPU link, **NVLink**. An H100 has 18 NVLink 4 links totaling 450 GBps per direction, ~7x its PCIe bandwidth. An **NVSwitch** is a switch chip for NVLink: in an 8-GPU HGX board, every GPU connects to the NVSwitches, so any GPU can talk to any other at full NVLink bandwidth simultaneously. In rack-scale systems (GB200 NVL72) NVSwitch extends the same fabric across a whole rack of GPUs. AMD's equivalent is Infinity Fabric; the open-standard effort is UALink. All the numbers are in [NVLink](../network/README.md#nvlink).
 
-Why this matters, in one calculation: the lower bound for a ring all-reduce of 7B parameters' worth of bf16 gradients across 8 GPUs, over each kind of link. In a ring all-reduce each GPU sends (and receives) `2 * (N - 1) / N` times the buffer size - derived in [collectives internals](../network/collectives-internals.md).
+Why this matters, in one calculation: the lower bound for a ring all-reduce of 7B parameters' worth of bf16 gradients across 8 GPUs, over each kind of link. In a ring all-reduce the GPUs are arranged in a circle and each passes chunks of the buffer to its neighbour, adding as it goes; each GPU sends (and receives) `2 * (N - 1) / N` times the buffer size - derived in [collectives internals](../network/collectives-internals.md).
 
 ```python
 # allreduce_links.py
@@ -1258,7 +1276,7 @@ Storage is the bottom of the hierarchy: persistent (survives power loss), huge, 
 | SATA SSD   | NAND flash, behind a disk-era protocol        | SATA III (6 Gbps)     | ~550 MBps (cap: 600)  | ~tens of thousands - ~100K | ~100 us        |
 | NVMe SSD   | NAND flash, native PCIe                       | PCIe Gen4/Gen5 x4     | ~7 / ~14 GBps         | ~1M+ (high queue depth)  | ~50-100 us      |
 
-These are typical datasheet-class figures for current drives, rounded; individual models vary a lot, especially for random writes and for sustained writes after the drive's fast cache fills.
+SATA and SAS are the older cable interfaces designed for hard disks; NVMe drives plug straight into PCIe. These are typical datasheet-class figures for current drives, rounded; individual models vary a lot, especially for random writes and for sustained writes after the drive's fast cache fills.
 
 Derivations worth knowing:
 
@@ -1274,7 +1292,7 @@ Two separate metrics, the storage version of [latency vs bandwidth](#bandwidth-v
 - **Throughput**: bytes per second - matters for big sequential reads (a large shard, a checkpoint).
 - They're related by block size: `throughput = IOPS * block_size`. 1M IOPS of 4 KiB blocks is `1e6 * 4096 = 4.1` GBps. A drive can be IOPS-limited for small blocks and throughput-limited for large ones.
 
-Measured on this laptop's internal SSD, single-threaded (queue depth 1), with the OS page cache bypassed so we see the drive and not RAM:
+Measured on this laptop's internal SSD, single-threaded (queue depth 1), with the OS page cache (the operating system's in-RAM copy of recently read file data; [Linux and the OS](linux-and-os.md#the-page-cache-why-the-second-read-is-fast) covers it) bypassed so we see the drive and not RAM:
 
 ```python
 # iops.py - the same 1 GiB file read two ways: small random blocks vs big sequential ones.
@@ -1282,6 +1300,7 @@ Measured on this laptop's internal SSD, single-threaded (queue depth 1), with th
 # e.g. an mmap-allocated one with os.preadv) or drop caches first (sync; echo 3 | sudo tee /proc/sys/vm/drop_caches).
 import os, random, time, fcntl
 path, size = "/tmp/ca/iops.bin", 1 << 30
+os.makedirs(os.path.dirname(path), exist_ok=True)
 if not os.path.exists(path):
     with open(path, "wb") as f:
         for _ in range(size >> 24): f.write(os.urandom(1 << 24))
@@ -1312,7 +1331,7 @@ random  1024 KiB x   1000:     1,501 IOPS    1.57 GBps    666.3 us/op
 
 - Random 4 KiB: ~5K IOPS, ~0.02 GBps, ~200 us per read. That's the latency regime: at QD 1 the drive sits idle between requests.
 - Sequential 4 KiB is ~5x faster per op even with the cache bypassed - the drive and OS read ahead.
-- 1 MiB reads, random or sequential, both reach ~1.5 GBps: at that block size the cost is transfer, not seeking, so "random" stops mattering. **This is why datasets are packed into large shards** (WebDataset tars, Arrow/Parquet files, pre-tokenized `.bin` files): turning millions of small random reads into fewer large ones.
+- 1 MiB reads, random or sequential, both reach ~1.5 GBps: at that block size the cost is transfer, not seeking, so "random" stops mattering. **This is why datasets are packed into large shards** (WebDataset tars - a tar file is one archive holding many files back to back - Arrow/Parquet files, pre-tokenized `.bin` files): turning millions of small random reads into fewer large ones.
 
 ### Queue depth
 
@@ -1354,7 +1373,7 @@ QD  16:    85,262 IOPS   implied latency QD/IOPS =  187.7 us
 QD  64:    94,366 IOPS   implied latency QD/IOPS =  678.2 us
 ```
 
-12x more IOPS from QD 1 to QD 64 on a laptop SSD, with the same drive and the same data. The per-request latency goes *up* as the queue deepens (requests wait behind each other), but total throughput goes up much more. Past some depth the drive is saturated and extra depth only adds latency. The same experiment with `fio --rw=randread --bs=4k --iodepth=N --ioengine=libaio --direct=1` (Linux) is the standard way to characterize a drive.
+12x more IOPS from QD 1 to QD 64 on a laptop SSD, with the same drive and the same data. The per-request latency goes *up* as the queue deepens (requests wait behind each other), but total throughput goes up much more. Past some depth the drive is saturated and extra depth only adds latency. The same experiment with `fio --rw=randread --bs=4k --iodepth=N --ioengine=libaio --direct=1` (Linux) is the standard way to characterize a drive (`fio` is a storage benchmark tool; [storage](../storage/README.md#fio) shows how to use it).
 
 ### Try this
 
@@ -1381,7 +1400,7 @@ A matmul is the opposite: billions of identical, independent multiply-adds with 
 
 And instead of avoiding memory stalls with caches and speculation, it **tolerates** them: when one group of threads waits on memory, the hardware instantly switches to another group that's ready. With enough groups, there's always someone ready to compute. This is the "keep many requests in flight" principle from the [random gather experiment](#experiment-why-a-strided-loop-is-slow) and [Little's law](#bandwidth-vs-latency), turned into a whole chip.
 
-That is a GPU. It was built for graphics (millions of pixels, same shader program on each), and turned out to be exactly what neural networks need.
+That is a GPU. It was built for graphics (millions of pixels, same shader program - a small function that computes one pixel - on each), and turned out to be exactly what neural networks need.
 
 You can see the latency/throughput split on any machine with a GPU, including a Mac (PyTorch's `mps` device is the Apple GPU). Time one elementwise multiply at growing sizes on CPU and GPU: **[torch]**
 
@@ -1441,6 +1460,8 @@ One of the H100's 132 SMs:
 
 ([source](https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/))
 
+The "L1 / shared memory" row is one on-chip SRAM per SM, split between an ordinary L1 cache and **shared memory**: a small scratchpad that the kernel's code manages explicitly (it loads tiles of data into it and reuses them many times), shared by the threads running on that SM. Not to be confused with the OS's shared memory between processes.
+
 Note the register file: ~33 MiB of registers, more than the L2 cache. That's the storage for the state of tens of thousands of resident threads, which is what makes zero-cost switching between them possible.
 
 Threads execute in groups of 32 called **warps**: one instruction is issued for all 32 threads at once (NVIDIA calls this **SIMT**, single instruction multiple threads - SIMD with a per-thread programming model). An SM holds up to 64 warps (2048 threads) resident at once on H100, and picks a ready warp to issue from every cycle. If threads in a warp take different sides of an `if`, both sides run with half the threads masked off (**divergence**) - the GPU's version of branch misprediction cost.
@@ -1477,7 +1498,7 @@ HBM3 per-pin rate: 5.23 Gbps on a 5120-bit bus
 
 The FP32 figure implies the 1.98 GHz boost clock exactly. The bf16 figure comes out to a clean 4096 FLOPs per clock per SM (1024 per tensor core) only at ~1.83 GHz, which suggests the tensor-core number is quoted at a lower clock than the FP32 one; I haven't found NVIDIA stating this explicitly, so treat that as an inference. Either way, tensor cores are ~15x the general-purpose lanes.
 
-On a real GPU, PyTorch reports the basic properties directly (**[GPU]**, **untested**; field names as of PyTorch 2.x):
+On a real GPU, PyTorch reports the basic properties directly (**[GPU]**, **untested**; field names as of PyTorch 2.x). The **compute capability** is NVIDIA's version number for a GPU generation's feature set (9.0 is Hopper, the H100's generation):
 
 ```python
 import torch
@@ -1513,7 +1534,7 @@ print(f"matmul finished after {(time.perf_counter()-t)*1e3:.2f} ms")
 The host/device split also means two different failure modes for "the GPU is slow":
 
 1. **The GPU is busy, but busy waiting on memory or doing small work** - a kernel efficiency problem. See the [roofline](#arithmetic-intensity-and-the-roofline-model).
-2. **The GPU is idle, waiting for the CPU** - launch overhead from many tiny kernels, the dataloader not keeping up, synchronizations. That's a host-side problem, which no GPU upgrade fixes. With a kernel launch costing a few microseconds on the CPU, a model that runs thousands of tiny kernels per step can be entirely CPU-bound; this is what CUDA Graphs and `torch.compile` attack.
+2. **The GPU is idle, waiting for the CPU** - launch overhead from many tiny kernels, the dataloader not keeping up, synchronizations. That's a host-side problem, which no GPU upgrade fixes. With a kernel launch costing a few microseconds on the CPU, a model that runs thousands of tiny kernels per step can be entirely CPU-bound; this is what CUDA Graphs (record a sequence of kernel launches once, then replay all of it with a single launch) and `torch.compile` (fuse many small ops into fewer kernels) attack.
 
 The [execution model chapter](../compute/accelerator/execution-model.md) takes all of this - kernels, grids, blocks, warps, occupancy, streams - to the next level of detail.
 
@@ -1614,7 +1635,7 @@ memory time  = 1.01e8 / 3.35e12  =  30 us
 lower bound  = max(139, 30)      = 139 us
 ```
 
-In general for an `n x n x n` bf16 matmul the intensity is `2n**3 / (6n**2) = n / 3`, so it crosses the H100's ridge at about `n = 3 * 295 = 885`. Big matmuls are compute-bound and can approach peak; that's why training with large batch x sequence dimensions gets high [MFU](../training/performance/README.md#mfu-vs-hfu). (The "minimum bytes" assumes perfect on-chip reuse; real kernels re-read some tiles, but well-tuned ones get close - that reuse is exactly what tiling into shared memory and registers achieves.)
+In general for an `n x n x n` bf16 matmul the intensity is `2n**3 / (6n**2) = n / 3`, so it crosses the H100's ridge at about `n = 3 * 295 = 885`. Big matmuls are compute-bound and can approach peak; that's why training with large batch x sequence dimensions gets high [MFU](../training/performance/README.md#mfu-vs-hfu) (model FLOPs utilization: achieved FLOPS as a fraction of the hardware peak). (The "minimum bytes" assumes perfect on-chip reuse; real kernels re-read some tiles, but well-tuned ones get close - that reuse is exactly what tiling into shared memory (the per-SM scratchpad from [The pieces](#the-pieces)) and registers achieves.)
 
 ### Worked example 2: an elementwise op
 
@@ -1637,7 +1658,7 @@ At batch size 1, generating one token multiplies each weight matrix by a single 
 time per token >= 16e9 / 3.35e12 = 4.8 ms   ->  at most ~209 tokens/s on one H100
 ```
 
-(ignoring the KV cache, which adds more bytes). Batching B requests reuses each weight B times, raising intensity ~B-fold, which is why inference servers batch aggressively and why decode throughput scales with batch size until the KV cache memory runs out. Quantizing weights to 8 or 4 bits speeds up decode almost proportionally for the same reason - fewer bytes - even if the arithmetic is done in bf16.
+(ignoring the KV cache, which adds more bytes; the **KV cache** is the attention keys and values of all previous tokens, stored so they aren't recomputed, and read again at every decode step). Batching B requests reuses each weight B times, raising intensity ~B-fold, which is why inference servers batch aggressively and why decode throughput scales with batch size until the KV cache memory runs out. Quantizing weights to 8 or 4 bits speeds up decode almost proportionally for the same reason - fewer bytes - even if the arithmetic is done in bf16.
 
 Note the batch-256 row: with the KV cache ignored, decode approaches the ridge only at batch sizes in the hundreds. Add the KV cache bytes (which are *not* shared across the batch) and the intensity drops again - the full version of this calculation is in [inference arithmetic](../inference/arithmetic.md).
 
@@ -1683,7 +1704,7 @@ Achieved FLOPS climb 100x from `n = 64` to `n = 4096` and flatten around 2-3 TFL
 1. Using `roofline.py`, find the decode batch size at which an 8B bf16 model becomes compute-bound on an H100 (ignoring KV cache). Then redo it for int4 weights (0.5 bytes/param) with bf16 compute.
 2. Compute the arithmetic intensity of a LayerNorm over a `(B, T, C)` bf16 tensor (read once, write once, ~8 FLOPs per element). Memory- or compute-bound?
 3. Compute the intensity of a `(B*T, C) @ (C, 4C)` MLP matmul for `C = 4096` as a function of `B*T`. At what token count per micro-batch does it cross the H100 ridge? (Bytes: read both inputs and write the output once.)
-4. Run `roofline_measure.py` with `dtype=torch.float16` (on MPS/CUDA). How much does the ceiling move?
+4. Run `roofline_measure.py` in float16 (on MPS/CUDA): add `dtype=torch.float16` to both `torch.randn` calls and change the `4` in `byts` to `2`. How much does the ceiling move?
 5. Add a memory-bound op to the measurement (`a + b` on `(n, n)` tensors) and plot both on log-log axes. Where does each sit relative to the ridge?
 
 
@@ -1716,7 +1737,8 @@ Putting it all together, here is a simplified typical 8-GPU HGX-style training n
                          |    per GPU on H100)         |
                          +-----------------------------+
 
- NICs (e.g. 8x 400 Gbps = 8x 50 GBps) -> cluster backend network (InfiniBand / RoCE)
+ NICs (e.g. 8x 400 Gbps = 8x 50 GBps) -> cluster backend network (InfiniBand / RoCE), used only for GPU traffic
+ Frontend NIC -> the ordinary network for logins, storage and the internet
  Each GPU (G0-G7) has its own HBM (80-288 GB, 3-8 TBps).
 ```
 
@@ -1769,6 +1791,8 @@ Follow one training batch on a conventional setup:
 6. pinned buffer --copy engine DMA over PCIe--> GPU HBM             [~55 GBps]
 7. kernels read it from HBM                                         [3,350 GBps]
 ```
+
+(Step 4's "shared memory" is the operating system's: a region of host RAM that two processes both map, explained in [Linux and the OS](linux-and-os.md#shared-memory). It is unrelated to the GPU's on-chip shared memory.)
 
 Things that go wrong along this path, each of which you can now name:
 

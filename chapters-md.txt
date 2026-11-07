@@ -1,5 +1,6 @@
 README.md
 
+foundations/toolkit.md
 foundations/computer-architecture.md
 foundations/linux-and-os.md
 foundations/concurrency.md

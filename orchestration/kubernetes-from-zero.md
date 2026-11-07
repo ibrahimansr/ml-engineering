@@ -5,10 +5,14 @@
 This chapter assumes you know ML well and systems not at all. Read these first, or keep them open next to this one:
 
 - [Linux and the OS](../foundations/linux-and-os.md): processes, signals, cgroups, namespaces and the OOM killer. Kubernetes is mostly a distributed manager for those primitives.
-- YAML: not assumed. [YAML in 15 minutes](#yaml-in-15-minutes) below covers everything this chapter uses.
+- [Toolkit](../foundations/toolkit.md): YAML and JSON as formats, plus the shell and git basics the commands assume. The Kubernetes-specific YAML rules are in [YAML for Kubernetes](#yaml-for-kubernetes) below.
 - [Containers and virtualization](../foundations/containers-and-virtualization.md): images, registries and container runtimes. A pod is a group of containers, so you need to know what a container is.
 - [Networking](../foundations/networking.md): IP addresses, ports, DNS, NAT and load balancing, which the Service and NetworkPolicy sections rely on.
-- [Distributed systems](../foundations/distributed-systems.md): consensus, leases and eventual consistency, which explain why the control plane is built around etcd and watches.
+- [Distributed systems](../foundations/distributed-systems.md): consensus, leases and eventual consistency, which explain why the control plane is built around etcd and watches, and the [rank/world-size vocabulary](../foundations/distributed-systems.md#core-vocabulary) used by the training examples.
+- [Storage and data](../foundations/storage-and-data.md): block vs file vs object storage, which the PersistentVolume section relies on.
+- [GPU software stack](../compute/gpu-software-stack.md): the driver, CUDA and NVIDIA container toolkit layers under the device plugin, and `nvidia-smi`/Xid/DCGM for the GPU debugging table.
+- [Slurm from zero](slurm/from-zero.md): the batch-scheduler view (jobs, gang allocation, fair share, preemption) that this chapter contrasts Kubernetes with. Its [Slurm vs Kubernetes](slurm/from-zero.md#slurm-vs-kubernetes) section is the short version of the comparison.
+- Forward links (later chapters; not needed to follow this one): [Orchestration internals](internals.md), [inference arithmetic](../inference/arithmetic.md), [serving hands-on](../inference/serving-hands-on.md), [model parallelism derivations](../training/model-parallelism/derivations.md) and [RL infrastructure](../platform/rl-infrastructure.md).
 
 What this chapter covers: how Kubernetes works inside (desired state, controllers, the API server, etcd, the scheduler, the kubelet), every core object with a complete YAML file, scheduling controls, how to extend Kubernetes with your own resource types and operators, how GPUs get into containers, how to run training and inference on GPU nodes, and how to debug a pod that won't run.
 
@@ -34,7 +38,7 @@ Google's internal answer was Borg ("Large-scale cluster management at Google wit
 
 Kubernetes (k8s, an abbreviation where 8 counts the letters between k and s) is a **database of desired state plus a set of programs that keep the real world matching it**. You write down "I want 3 copies of this container, each with 1 CPU and 2 GiB of RAM, reachable under the name `web`". Kubernetes stores that record, then other components start containers, move them when machines fail, and update the network so `web` resolves to wherever they are.
 
-It isn't a batch job scheduler in the HPC sense. Its default scheduler places one pod at a time, has no queue, no fair-share accounting and no "start these 64 pods together or none of them". That is why ML clusters bolt on Kueue, Volcano, KAI or JobSet, and why many training shops still use SLURM (see [SLURM for users](slurm/users.md)). The trade-off:
+It isn't a batch job scheduler in the HPC sense. Its default scheduler places one pod at a time, has no queue, no fair-share accounting and no "start these 64 pods together or none of them". That is why ML clusters bolt on Kueue, Volcano, KAI or JobSet, and why many training shops still use SLURM (see [Slurm from zero](slurm/from-zero.md), the previous chapter). The trade-off:
 
 | | SLURM | Kubernetes |
 |---|---|---|
@@ -175,98 +179,50 @@ def update_with_retry(read, write, mutate, tries=5):
     raise RuntimeError("gave up after conflicts")
 ```
 
-## YAML in 15 minutes
+## YAML for Kubernetes
 
-Every Kubernetes object in this chapter is written in **YAML**, a text format for nested data (the same kind of data as a Python dict of lists of dicts). Kubernetes reads it, converts it to JSON and sends it to the API server, so anything you write in YAML maps one-to-one onto JSON. You only need a small part of the language.
+Every Kubernetes object in this chapter is written in **YAML**. The format itself (mappings, lists, indentation, inline `{}`/`[]` style, multi-line strings with `|` and `>`, and the unquoted-value traps) is taught in [the toolkit chapter](../foundations/toolkit.md#yaml); read that first if `key: value` and `- item` aren't familiar yet. This section covers only what's specific to Kubernetes manifests. Kubernetes converts the YAML to JSON before sending it to the API server, so a manifest is just a nested dict with a fixed top-level layout. The snippets below need `pip install pyyaml`.
 
-Everything below runs with `pip install pyyaml`. `yaml.safe_load` turns YAML text into Python objects, which is the quickest way to check what a file really means.
+### Reading a manifest
 
-### Mappings, lists and scalars
+Every manifest in this chapter reads the same way: the top-level keys `apiVersion`, `kind`, `metadata` and `spec` form a mapping; `containers:` is a list (each item starts with `- `); each container is a mapping with `name`, `image`, `resources` and so on. Inline and block style are mixed freely: `labels: {app: web}` is the same as an indented `labels:` with `app: web` under it. A `|` after `command:`, `args:` or a ConfigMap key holds a small shell script, a Python program or a whole config file, newlines kept. The [next section](#objects-apiversion-kind-metadata-spec-status) explains what the top-level keys mean.
 
-A **mapping** is `key: value` (a Python dict). A **list** is one `- ` per item (a Python list). Nesting is done **only by indentation**, with spaces. Two spaces per level is the convention. Values without quotes are guessed: numbers become numbers, `true`/`false` become booleans, `null` becomes `None`, everything else becomes a string. `#` starts a comment.
+### Quote env values, image tags and label values
 
-```python
-# basics.py
-import yaml, json
-
-doc = """
-name: trainer            # a string: quotes are optional
-replicas: 3              # an int
-lr: 3.0e-4               # a float
-use_bf16: true           # a bool
-checkpoint_dir: null     # None
-gpus: [0, 1, 2, 3]       # a list, inline ("flow") style
-env:                     # a nested mapping: children are indented
-  WANDB_PROJECT: rl
-  NCCL_DEBUG: WARN
-datasets:                # a list in block style: one "- " per item
-  - name: math
-    weight: 0.7
-  - name: code
-    weight: 0.3
-"""
-print(json.dumps(yaml.safe_load(doc), indent=2))
-```
-
-Output:
-
-```
-{
-  "name": "trainer",
-  "replicas": 3,
-  "lr": 0.0003,
-  "use_bf16": true,
-  "checkpoint_dir": null,
-  "gpus": [
-    0,
-    1,
-    2,
-    3
-  ],
-  "env": {
-    "WANDB_PROJECT": "rl",
-    "NCCL_DEBUG": "WARN"
-  },
-  "datasets": [
-    {
-      "name": "math",
-      "weight": 0.7
-    },
-    {
-      "name": "code",
-      "weight": 0.3
-    }
-  ]
-}
-```
-
-Two styles mean the same thing. `gpus: [0, 1, 2, 3]` and `metadata: {name: x}` are the inline ("flow") style. The `- ` lists and indented mappings are the block style. Kubernetes manifests mostly use block style.
-
-### Multi-line strings
-
-Shell scripts and config files embedded in a manifest use `|` (keep newlines) or `>` (fold lines into one):
+Unquoted values are guessed, and Kubernetes is strict about types. Every `env:` value must be a string (`value: 8` is rejected, `value: "8"` works), and so must every label and `nodeSelector` value. Image tags and versions silently change if they look like numbers:
 
 ```python
-# multiline.py
+# quoting.py
 import yaml
 doc = """
-literal: |
-  line one
-  line two
-folded: >
-  these lines
-  become one line
+env:
+  - {name: WORLD_SIZE, value: 8}
+  - {name: WORLD_SIZE, value: "8"}
+  - {name: CUDA_VERSION, value: 12.10}
+  - {name: CUDA_VERSION, value: "12.10"}
+image_tag: 1.10
+nodeSelector: {nvidia.com/gpu.present: true}
 """
-print(yaml.safe_load(doc))
+d = yaml.safe_load(doc)
+for e in d["env"]:
+    print(f"env {e['name']:13} -> {e['value']!r:7} ({type(e['value']).__name__})")
+print(f"image_tag         -> {d['image_tag']!r:7} ({type(d['image_tag']).__name__})")
+v = d["nodeSelector"]["nvidia.com/gpu.present"]
+print(f"nodeSelector      -> {v!r:7} ({type(v).__name__})")
 ```
 
 Output:
 
 ```
-{'literal': 'line one\nline two\n', 'folded': 'these lines become one line\n'}
+env WORLD_SIZE    -> 8       (int)
+env WORLD_SIZE    -> '8'     (str)
+env CUDA_VERSION  -> 12.1    (float)
+env CUDA_VERSION  -> '12.10' (str)
+image_tag         -> 1.1     (float)
+nodeSelector      -> True    (bool)
 ```
 
-You will see `|` in `command:` blocks that run a small shell script, and in ConfigMaps that hold a whole config file.
+The rule: **quote every env value, every label/selector value, and anything that looks like a number but is a name** (versions, tags, ports in `host:container` form). That's why the DaemonSet below writes `nvidia.com/gpu.present: "true"`; the manifests also quote numbers like `cpu: "96"` and `averageValue: "4"` out of the same habit (resource quantities accept either form). A full image reference such as `nginx:1.29` is safe unquoted (it starts with letters, so it can't be read as a number), but a bare tag value like `1.10` is not.
 
 ### Several documents in one file
 
@@ -293,68 +249,15 @@ Deployment model-server
 Service model-server
 ```
 
-### The traps
+### Checking how a file parsed
 
-Unquoted values are guessed, and the guesses bite. PyYAML follows the YAML 1.1 rules, which many tools still use:
+When a manifest is rejected or behaves oddly, look at what it actually parsed to. This one-liner prints every document in a file as JSON (it uses `safe_load_all`, so multi-document files work):
 
-```python
-# traps.py
-import yaml
-doc = """
-country: NO        # the "Norway problem"
-version: 1.10      # looks like a version, parses as a float
-port_mapping: 22:22
-octal_ish: 0755
-quoted_country: "NO"
-quoted_version: "1.10"
-"""
-for k, v in yaml.safe_load(doc).items():
-    print(f"{k:15} -> {v!r}  ({type(v).__name__})")
+```bash
+python3 -c "import yaml,sys,json; print(json.dumps(list(yaml.safe_load_all(open(sys.argv[1]))), indent=2))" file.yaml
 ```
 
-Output:
-
-```
-country         -> False  (bool)
-version         -> 1.1  (float)
-port_mapping    -> 1342  (int)
-octal_ish       -> 493  (int)
-quoted_country  -> 'NO'  (str)
-quoted_version  -> '1.10'  (str)
-```
-
-- `NO` became `False` (the "Norway problem"); `yes`, `no`, `on`, `off` are all booleans under YAML 1.1.
-- `1.10` became the float `1.1`, so a version like CUDA `12.10` or Python `3.10` silently changes.
-- `22:22` became `1342` (YAML 1.1 reads it as base-60), and `0755` became `493` (octal).
-
-YAML 1.2 parsers fix some of these, but you rarely know which parser a tool uses. The rule is simple: **quote anything that must stay a string**: versions, image tags, ports in `host:container` form, country codes, and every value under `env:` (Kubernetes requires env values to be strings, so `value: 8` is rejected and `value: "8"` works).
-
-Indentation errors are the other common failure. Tabs are not allowed at all, and a misaligned key breaks the structure:
-
-```python
-# errors.py
-import yaml
-bad_tab = "env:\n\tNCCL_DEBUG: WARN\n"
-bad_indent = "env:\n  A: 1\n   B: 2\n"
-for name, doc in [("tab", bad_tab), ("misaligned", bad_indent)]:
-    try:
-        yaml.safe_load(doc)
-    except yaml.YAMLError as e:
-        print(f"{name}: {type(e).__name__}: {str(e).splitlines()[0]}")
-```
-
-Output:
-
-```
-tab: ScannerError: while scanning for the next token
-misaligned: ScannerError: mapping values are not allowed here
-```
-
-When a manifest fails with an error like these, check for tabs and alignment first. `python -c "import yaml,sys,json; print(json.dumps(yaml.safe_load(open(sys.argv[1])), indent=2))" file.yaml` shows exactly how a file was parsed.
-
-### Reading a manifest
-
-With that, every manifest in this chapter reads the same way: the top-level keys `apiVersion`, `kind`, `metadata`, `spec` are a mapping; `containers:` is a list (each item starts with `- `); each container is a mapping with `name`, `image`, `resources` and so on. The next section explains what those keys mean.
+A parse error here usually means a tab or a misaligned key (see the toolkit chapter). If it parses but the API server rejects it, `kubectl apply --dry-run=server -f file.yaml` runs the server's validation without creating anything, and `kubectl explain` (below) shows which fields exist.
 
 ## Architecture and the life of a `kubectl apply`
 
@@ -368,7 +271,7 @@ The **control plane** is the set of processes that store and act on cluster stat
 
 | Component | What it is | Why it exists |
 |---|---|---|
-| `kube-apiserver` | A stateless HTTPS REST server; the only component that talks to etcd | One place to do authentication, authorization, validation and versioning. Scales horizontally. |
+| `kube-apiserver` | A stateless HTTPS REST server (REST: every object has a URL, and you read, create, change and delete it with the HTTP verbs GET, POST, PUT/PATCH and DELETE); the only component that talks to etcd | One place to do authentication, authorization, validation and versioning. Scales horizontally. |
 | `etcd` | A small replicated key-value store using Raft consensus | Durable, consistent storage that survives a minority of control-plane machines dying. See [distributed systems](../foundations/distributed-systems.md) for Raft. |
 | `kube-scheduler` | A controller that sets `spec.nodeName` on unscheduled pods | Placement is a separate concern from creation, so it can be replaced or supplemented (Volcano, KAI). |
 | `kube-controller-manager` | One process running ~30 built-in controllers (Deployment, ReplicaSet, Job, Node, EndpointSlice, garbage collector...) | Packaging convenience; each controller is logically independent. |
@@ -380,7 +283,7 @@ Each **node** (a machine that runs your workloads) runs:
 |---|---|
 | `kubelet` | Watches for pods assigned to its node, asks the container runtime to start them, runs probes, reports status back. The only component that actually makes containers exist. |
 | Container runtime (containerd, CRI-O) | Pulls images and creates containers via the CRI (Container Runtime Interface, a gRPC API). See [containers](../foundations/containers-and-virtualization.md). |
-| `kube-proxy` | Programs iptables/nftables/IPVS rules so a Service's virtual IP forwards to pod IPs. |
+| `kube-proxy` | Programs iptables/nftables/IPVS rules (IPVS is the Linux kernel's built-in connection load balancer) so a Service's virtual IP forwards to pod IPs. |
 | CNI plugin (kindnet, Calico, Cilium) | Gives each pod an IP and routes between nodes. CNI is the Container Network Interface, a plugin spec. |
 
 ### Objects: apiVersion, kind, metadata, spec, status
@@ -407,11 +310,12 @@ What happens between you hitting enter and nginx serving traffic:
 
 ```
 kubectl apply -f deploy.yaml
-  |  1. kubectl reads kubeconfig (server URL, client cert/token), fetches the OpenAPI schema,
+  |  1. kubectl reads kubeconfig (server URL, client cert/token), fetches the OpenAPI schema
+  |     (a machine-readable list of every object type and its fields),
   |     GETs the object (404 -> create, 200 -> compute a patch), then POSTs or PATCHes
   v
 kube-apiserver
-  2. authentication   who are you? (client cert, bearer token, OIDC)
+  2. authentication   who are you? (client cert, bearer token, OIDC = single sign-on via an identity provider)
   3. authorization    may you create deployments in "default"? (RBAC)
   4. mutating admission    webhooks/plugins may change the object (inject defaults, sidecars)
   5. schema validation     fields exist and have the right types
@@ -428,7 +332,9 @@ watchers get notified (all of the below happen asynchronously, each its own loop
  13. kube-proxy on every node sees the endpoints -> rewrites iptables rules
 ```
 
-Real output, the API calls `kubectl` makes (log prefixes trimmed, kubeconfig and feature-gate lines removed):
+In step 11, the **pod sandbox** is the environment the pod's containers share: its network namespace (one IP for the whole pod) and parent cgroup, held open by a tiny placeholder "pause" container so app containers can crash and restart inside it without losing the pod's IP.
+
+Real output, the API calls `kubectl` makes (log prefixes trimmed, kubeconfig and feature-gate lines removed). Each line is one HTTP request: the verb, the URL (the object's REST path) and the HTTP status code that came back, where `200 OK` = success, `201 Created` = a new object was stored, `404 Not Found` = no such object yet (and, later in the chapter, `409 Conflict` = your write lost a race or the object already exists):
 
 ```bash
 $ kubectl apply -f nginx-deploy.yaml -v=6
@@ -514,13 +420,13 @@ $ ./etcd.sh get /registry/deployments/default/web --print-value-only | head -c 6
 00000030: 7422 002a 2463 3734 3238 3934 622d 6638  t".*$c742894b-f8
 ```
 
-The value starts with the magic bytes `k8s\0` followed by protobuf: the API server stores built-in types as protobuf for speed and converts to JSON for clients. Never write to etcd directly; you'd bypass validation, admission and the watch cache. The thing you should do with etcd is back it up (`etcdctl snapshot save`), because losing it means losing the cluster's entire state.
+(`xxd` prints bytes as hex on the left and as text on the right.) The value starts with the magic bytes `k8s\0` followed by protobuf (Protocol Buffers, Google's compact binary serialization format): the API server stores built-in types as protobuf for speed and converts to JSON for clients. Never write to etcd directly; you'd bypass validation, admission and the watch cache. The thing you should do with etcd is back it up (`etcdctl snapshot save`), because losing it means losing the cluster's entire state.
 
 Why etcd is the scaling limit: every write goes through Raft consensus (a majority of etcd members must persist it to disk before it's acknowledged), and the default size limit for the database is a few GB. Large clusters run into etcd write latency and object count before anything else, which is why you shouldn't, for example, create one object per training step or store model configs bigger than about 1 MiB (the per-object request limit) in ConfigMaps.
 
 ### Watches: how controllers learn about changes
 
-Polling the whole cluster every second wouldn't scale. Instead, clients open a **watch**: a long-lived HTTP request that streams one JSON line per change. Here is a raw watch on pods with label `app=web` while scaling the Deployment from 3 to 4 replicas (real output; `kubectl proxy` handles authentication so `curl` can talk plain HTTP):
+Polling the whole cluster every second wouldn't scale. Instead, clients open a **watch**: a long-lived HTTP request that streams one JSON line per change. Here is a raw watch on pods with label `app=web` while scaling the Deployment from 3 to 4 replicas (real output; `kubectl proxy` handles authentication so `curl` can talk plain HTTP; `curl -N` turns off output buffering so each event prints as it arrives, and `wait %2` waits for background job 2, the curl pipeline):
 
 ```bash
 #!/bin/bash
@@ -667,13 +573,14 @@ kubectl exec -it web-x -- bash                # shell inside a running container
 kubectl port-forward svc/web 8080:80          # localhost:8080 -> service, through the API server
 kubectl explain deployment.spec.strategy      # field docs from the server's schema
 kubectl get events --sort-by=.lastTimestamp   # what controllers did recently
+kubectl get pod web-x -o jsonpath='{.status.podIP}'   # pull one field out: a path through the object's JSON
 kubectl apply -f x.yaml / kubectl delete -f x.yaml
 kubectl diff -f x.yaml                        # what apply would change
 kubectl get pods -l app=web -w                # -l selects by label, -w watches
 kubectl top pod / node                        # needs metrics-server (not on kind by default)
 ```
 
-`kubectl explain` is underused: it answers "what fields does this object have" from the live cluster's schema, so it's always the right version.
+`-o jsonpath='{...}'` appears all over this chapter: the expression is a path through the object's JSON form (`.metadata.name`, `.items[0]`, `[*]` for "every element"), like indexing nested Python dicts and lists. `kubectl explain` is underused: it answers "what fields does this object have" from the live cluster's schema, so it's always the right version.
 
 ```bash
 $ kubectl explain pod.spec.containers.resources --recursive | head   # (sketched; shape of real output)
@@ -787,7 +694,7 @@ Advice that's specific to ML workloads:
 - Set memory requests equal to memory limits for trainers and inference servers. A Burstable trainer on a busy node can be evicted, or OOM-killed by the kernel when the node itself is out of memory, even though it's under its own limit.
 - Think twice about CPU limits on data-loading-heavy pods. CFS throttling with many DataLoader workers can stall the GPU in bursts; a request without a limit lets the pod use idle cores. Many clusters set CPU limits anyway for fairness; measure with `cat /sys/fs/cgroup/cpu.stat` (`nr_throttled`, `throttled_usec`).
 - GPUs are an **extended resource** (`nvidia.com/gpu`). They can only be whole integers, can't be overcommitted, and you set them in `limits` (requests default to the same value).
-- On Kubernetes before v1.32, one OOMing process kills the whole container's process group, which kills interactive training sessions. The fix is in [the gotchas chapter](kubernetes/README.md).
+- Since Kubernetes v1.28 (on cgroup v2 nodes), one OOMing process makes the kernel kill every process in the container (`memory.oom.group=1`), which kills interactive training sessions. v1.32 added the kubelet setting `singleProcessOOMKill` to opt out; the details are in [the gotchas chapter](kubernetes/README.md).
 
 ```bash
 # inside a pod: am I being throttled?
@@ -863,7 +770,7 @@ $ kubectl rollout history deploy/web
 
 For GPU inference, `maxSurge` needs care: a surge pod needs a free GPU. On a full cluster `maxSurge: 1, maxUnavailable: 0` deadlocks (the new pod is `Pending` forever); `maxSurge: 0, maxUnavailable: 1` works but drops capacity during the update.
 
-A **HorizontalPodAutoscaler** changes `replicas` based on a metric. CPU utilization is the wrong metric for LLM serving (see [autoscaling on queue depth](internals.md#autoscale-on-queue-depth-and-kv-cache-use-not-cpu)):
+A **HorizontalPodAutoscaler** changes `replicas` based on a metric. The example scales a **vLLM** Deployment (vLLM is a popular open-source LLM inference server, taught in [serving hands-on](../inference/serving-hands-on.md)) on its count of queued requests, read from **Prometheus** (the standard metrics database on Kubernetes: it periodically scrapes a `/metrics` HTTP endpoint on each pod and stores the time series). CPU utilization is the wrong metric for LLM serving (see [autoscaling on queue depth](internals.md#autoscale-on-queue-depth-and-kv-cache-use-not-cpu)):
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -908,6 +815,8 @@ $ kubectl get endpointslices -l kubernetes.io/service-name=web
 NAME        ADDRESSTYPE   PORTS   ENDPOINTS               AGE
 web-zq77h   IPv4          80      10.244.1.2,10.244.2.3   0s
 
+# kubectl run: start a one-off pod. --restart=Never = a bare pod (no controller), -i = attach to its output,
+# --rm = delete it when it exits, --quiet = suppress kubectl's own messages, `--` = the rest is the container's command
 $ kubectl run curl --image=curlimages/curl:8.11.1 --restart=Never --rm -i --quiet -- \
     sh -c 'nslookup web.default.svc.cluster.local | tail -3; cat /etc/resolv.conf'
 Address: 10.96.56.160
@@ -1021,7 +930,7 @@ $ ./etcd.sh get /registry/secrets/default/hf-token --print-value-only | strings 
 hf_not_a_real_token
 ```
 
-Two lessons from that last command. First, **base64 is encoding, not encryption**: on a default cluster the token sits in etcd in plain text, and anyone with etcd access or an etcd backup has it. Production clusters turn on encryption at rest (an `EncryptionConfiguration` on the API server, ideally backed by a cloud KMS) and often pull secrets from an external store (Vault, cloud secret managers) via the External Secrets Operator or the Secrets Store CSI driver. Second, client-side `kubectl apply` stored the whole input, including `stringData`, in the `kubectl.kubernetes.io/last-applied-configuration` annotation. Anyone who can read the Secret's metadata sees it. Create secrets with `kubectl create secret` or `kubectl apply --server-side`, which don't write that annotation.
+Two lessons from that last command. First, **base64 is encoding, not encryption**: on a default cluster the token sits in etcd in plain text, and anyone with etcd access or an etcd backup has it. Production clusters turn on encryption at rest (an `EncryptionConfiguration` on the API server, ideally backed by a cloud KMS) and often pull secrets from an external store (Vault, cloud secret managers) via the External Secrets Operator or the Secrets Store CSI driver. (`strings` prints the readable-text runs inside binary data, here the protobuf value.) Second, client-side `kubectl apply` stored the whole input, including `stringData`, in the `kubectl.kubernetes.io/last-applied-configuration` annotation. Anyone who can read the Secret's metadata sees it. Create secrets with `kubectl create secret` or `kubectl apply --server-side`, which don't write that annotation.
 
 ```bash
 kubectl create secret generic hf-token --from-literal=HF_TOKEN="$HF_TOKEN"   # no last-applied annotation
@@ -1102,9 +1011,10 @@ t=15s 0/1 Running endpoints=["10.244.2.7"]
 t=25s 0/1 Running endpoints=["10.244.2.7"]
 ```
 
-and then, toggling readiness by hand:
+and then, toggling readiness by hand (`s` is a small shell function that prints the pod's READY/STATUS/RESTARTS columns and the endpoint's ready flag):
 
 ```bash
+$ P=$(kubectl get pod -l app=model-server -o name)      # e.g. pod/model-server-6d4b9c7f5-q2x8z
 $ s() { echo "$1 $(kubectl get pod -l app=model-server --no-headers | awk '{print $2, $3, "restarts="$4}') \
     endpoint_ready=$(kubectl get endpointslices -l kubernetes.io/service-name=model-server \
     -o jsonpath='{.items[0].endpoints[*].conditions.ready}')"; }
@@ -1170,7 +1080,7 @@ shard 2/4 score=61
 shard 3/4 score=78
 ```
 
-Indexed Job pods also get a stable hostname `<job>-<index>` (here `shard-eval-0`), and with a headless Service plus `spec.template.spec.subdomain`, a DNS name `<job>-<index>.<service>`. That's enough for rank 0 to be a torch.distributed master, which the operator below uses.
+(`-o custom-columns=HEADER:path,...` prints one column per JSONPath-style field; the `\\.` (an escaped dot, with the backslash doubled because the shell removes one) keeps the dots inside the annotation key `batch.kubernetes.io/job-completion-index` from being read as path separators.) Indexed Job pods also get a stable hostname `<job>-<index>` (here `shard-eval-0`), and with a headless Service plus `spec.template.spec.subdomain`, a DNS name `<job>-<index>.<service>`. That's enough for rank 0 to be a torch.distributed master, which the operator below uses.
 
 For training, a **pod failure policy** (GA in v1.31) distinguishes "the code is broken, stop retrying" from "the node was preempted, retry without counting it":
 
@@ -1189,7 +1099,7 @@ spec:
 
 ### StatefulSet
 
-A **StatefulSet** is like a Deployment but each pod has a stable identity: a fixed name (`kv-0`, `kv-1`), a stable DNS name through a headless Service, and its own PersistentVolumeClaim that follows it across restarts. Pods start in order 0, 1, 2 and stop in reverse. Use it for databases, Redis, etcd, and for things like a parameter server or replay buffer that must keep its data and address.
+A **StatefulSet** is like a Deployment but each pod has a stable identity: a fixed name (`kv-0`, `kv-1`), a stable DNS name through a headless Service, and its own PersistentVolumeClaim that follows it across restarts. Pods start in order 0, 1, 2 and stop in reverse. Use it for databases, Redis (an in-memory key-value database, covered in [control planes](../platform/control-planes.md)), etcd, and for things like a parameter server or replay buffer that must keep its data and address.
 
 ```yaml
 apiVersion: v1
@@ -1267,8 +1177,8 @@ spec:
   template:
     metadata: {labels: {app: node-checker}}
     spec:
-      nodeSelector: {nvidia.com/gpu.present: "true"}   # only GPU nodes (label set by GPU feature discovery)
-      tolerations: [{operator: Exists}]                # run even on tainted nodes
+      nodeSelector: {nvidia.com/gpu.present: "true"}   # only GPU nodes (label set by GPU feature discovery, an NVIDIA DaemonSet that labels nodes with their GPU model and count)
+      tolerations: [{operator: Exists}]                # run even on tainted nodes (taints: see Scheduling controls below)
       hostPID: true                                    # see the node's processes
       containers:
         - name: check
@@ -1323,7 +1233,7 @@ Two storage facts that bite ML users:
 - **Access modes.** Most block-storage classes (cloud disks) are RWO: one node at a time. Multi-node training that writes checkpoints to a shared directory needs an RWX class backed by a network filesystem, or writes to object storage instead. See [storage](../foundations/storage-and-data.md).
 - **`WaitForFirstConsumer`.** A volume isn't created until a pod using it is scheduled, so the disk lands in the right zone. With `Immediate` binding, a disk can be created in zone A and the GPU pod then can't schedule anywhere but zone A.
 
-Other volume types you'll see: `emptyDir` (scratch space for the pod's life; `medium: Memory` makes it RAM-backed, which is how you give PyTorch a big `/dev/shm`, see [shared memory pitfalls](internals.md#shared-memory-devshm-pitfalls)), `configMap`/`secret`, and CSI ephemeral volumes.
+Other volume types you'll see: `emptyDir` (scratch space for the pod's life; `medium: Memory` makes it RAM-backed, which is how you give PyTorch a big `/dev/shm`, see [shared memory pitfalls](internals.md#shared-memory-devshm-pitfalls)), `configMap`/`secret`, and CSI ephemeral volumes (CSI, the Container Storage Interface, is the plugin spec storage vendors implement so Kubernetes can attach their volumes).
 
 ### Namespaces, ServiceAccounts and RBAC
 
@@ -1851,7 +1761,7 @@ If you run more than one replica, two operators would race; kopf's peering and c
 | [JobSet](https://jobset.sigs.k8s.io/) | `JobSet` | A group of Jobs (e.g. driver + workers) with shared DNS, restart-all-on-failure, success policies |
 | [LeaderWorkerSet](https://lws.sigs.k8s.io/) | `LeaderWorkerSet` | Replicated groups of pods (1 leader + N workers) as a unit; multi-node inference |
 | [Kubeflow Trainer](https://www.kubeflow.org/docs/components/trainer/) | `TrainJob`, `TrainingRuntime` (v2; v1 had `PyTorchJob` etc.) | PyTorch/DeepSpeed/JAX training jobs, built on JobSet in v2 |
-| [KubeRay](https://docs.ray.io/en/latest/cluster/kubernetes/index.html) | `RayCluster`, `RayJob`, `RayService` | Ray head and worker pods; common for RL and batch inference |
+| [KubeRay](https://docs.ray.io/en/latest/cluster/kubernetes/index.html) | `RayCluster`, `RayJob`, `RayService` | Ray head and worker pods (Ray is a Python framework for distributing tasks and stateful "actors" over a cluster: one head process coordinates, workers execute); common for RL and batch inference |
 | [Kueue](https://kueue.sigs.k8s.io/) | `ClusterQueue`, `LocalQueue`, `Workload` | Quotas and admission for all of the above |
 | [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/) | `ClusterPolicy` | The whole GPU software stack on every GPU node |
 
@@ -2043,6 +1953,8 @@ $ kubectl logs pretrain-70b-workers-0-0 -f           # rank 0
 ```
 
 ### Multi-node inference with LeaderWorkerSet
+
+Two terms first, both taught later in [model parallelism derivations](../training/model-parallelism/derivations.md): **tensor parallelism** (TP, `--tensor-parallel-size`) splits every layer's weight matrices across GPUs, which then all-reduce inside every layer, so it stays within one node's NVLink ([details](../training/model-parallelism/derivations.md#tensor-parallelism-megatron)); **pipeline parallelism** (PP, `--pipeline-parallel-size`) puts different layers on different GPUs or nodes and passes activations from one stage to the next ([details](../training/model-parallelism/derivations.md#pipeline-parallelism)). Losing any one rank of either breaks the model.
 
 Inference for a model too big for one node (e.g. a 671B MoE with tensor parallelism within a node and pipeline parallelism across two) needs replicated **groups** of pods: each replica is one leader plus N-1 workers that live and die together. [LeaderWorkerSet](https://lws.sigs.k8s.io/) (API `leaderworkerset.x-k8s.io/v1`) provides exactly that, injecting `LWS_LEADER_ADDRESS`, `LWS_GROUP_SIZE` and `LWS_WORKER_INDEX` into every pod. A vLLM-on-Ray layout, untested (the vLLM flags and Ray commands are version-sensitive; check the [vLLM LWS guide](https://docs.vllm.ai/en/latest/deployment/frameworks/lws.html)):
 
@@ -2317,7 +2229,7 @@ kubectl exec dataproc-5f6d -- cat /sys/fs/cgroup/memory.peak       # bytes, high
 kubectl exec dataproc-5f6d -- cat /sys/fs/cgroup/memory.events      # oom_kill counter
 ```
 
-If the *node* ran out of memory rather than the container hitting its limit, the pod is `Evicted` (by the kubelet) or a process is OOM-killed by the kernel with no `OOMKilled` reason on your container; check `kubectl describe node` for `MemoryPressure` and the node's `dmesg` via `kubectl debug node/...`. On Kubernetes before 1.32, one OOMing process kills the whole container; see [the gotchas chapter](kubernetes/README.md).
+If the *node* ran out of memory rather than the container hitting its limit, the pod is `Evicted` (by the kubelet) or a process is OOM-killed by the kernel with no `OOMKilled` reason on your container; check `kubectl describe node` for `MemoryPressure` and the node's `dmesg` via `kubectl debug node/...`. Since v1.28 on cgroup v2, one OOMing process kills the whole container by default (opt out with the kubelet's `singleProcessOOMKill`, v1.32+); see [the gotchas chapter](kubernetes/README.md).
 
 ### Running but not Ready
 

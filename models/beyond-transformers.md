@@ -6,9 +6,10 @@ The aim is to explain how each mechanism works, why it exists, and what it costs
 
 ## Prerequisites
 
-- [Model Architectures](architectures.md): attention, the KV cache, GQA/MLA, RoPE. This chapter assumes you know what a KV cache is and why decode is memory-bandwidth bound.
-- [Inference arithmetic](../inference/arithmetic.md) for the decode cost model, and [Training arithmetic](../training/arithmetic.md) for the `2N` FLOPs-per-token rule.
-- [GPU execution model](../compute/accelerator/execution-model.md) for why "runs as matmuls on tensor cores" vs "runs as elementwise work on CUDA cores" is a 10x+ difference.
+- [Model Architectures](architectures.md): attention, the KV cache, prefill vs decode, FlashAttention, GQA/MLA, RoPE, MoE. This chapter assumes you know what a KV cache is and why decode is memory-bandwidth bound.
+- [Computer architecture](../foundations/computer-architecture.md): HBM vs on-chip SRAM, and tensor cores vs the general-purpose FP32 lanes NVIDIA calls "CUDA cores" ([The pieces](../foundations/computer-architecture.md#the-pieces)), which is why "runs as matmuls on tensor cores" vs "runs as elementwise work on CUDA cores" is a 10x+ difference; the roofline ([Arithmetic intensity and the roofline model](../foundations/computer-architecture.md#arithmetic-intensity-and-the-roofline-model)); bf16/fp8 ([Floating point](../foundations/computer-architecture.md#floating-point-ieee-754)).
+- [Distributed systems](../foundations/distributed-systems.md): tensor parallelism, ranks, collectives (all-reduce, all-gather, all-to-all) and MFU, model FLOPs utilization ([Data parallel vs model parallel](../foundations/distributed-systems.md#data-parallel-vs-model-parallel), [Collectives](../foundations/distributed-systems.md#collectives-the-workhorse-of-distributed-training), [Time: one GPU vs a thousand](../foundations/distributed-systems.md#time-one-gpu-vs-a-thousand)).
+- Forward links (later chapters, not needed first): [Inference arithmetic](../inference/arithmetic.md) for the full decode cost model, [Training arithmetic](../training/arithmetic.md) for the `2N` FLOPs-per-token rule (stated where it is used below), [GPU execution model](../compute/accelerator/execution-model.md) and [Writing kernels](../compute/accelerator/writing-kernels.md) for how the kernels named here are built, [Serving engine internals](../inference/serving-engine-internals.md) for how engines manage caches.
 
 Conventions:
 
@@ -44,7 +45,7 @@ attention FLOPs / dense FLOPs  ~=  (2 * T * d * L) / (2 * N)  =  T * d * L / N
 
 At 8k, attention is a rounding error compared to the MLPs. At 128k it is already 1-2x the whole dense compute. At 1M it is 10-17x. Pretraining usually runs at 4k-8k and extends context later, which is why the O(T^2) term rarely shows up in pretraining budgets. It does show up in long-context extension, in long prefill at inference, and in RL on long generations.
 
-FlashAttention does not change this. It makes attention IO-efficient: the T x T matrix is never materialized, so memory is O(T). The FLOPs are still O(T^2).
+FlashAttention ([introduced in the previous chapter](architectures.md#the-kv-cache)) does not change this. It makes attention IO-efficient: the T x T matrix is never materialized, so memory is O(T). The FLOPs are still O(T^2).
 
 ### Problem 2: decode memory grows as O(T) per sequence
 
@@ -78,9 +79,9 @@ Llama-3-70B: 320 KiB/token, 40 GiB @128k, 320 GiB @1M
 Llama-3-405B: 504 KiB/token, 63 GiB @128k, 504 GiB @1M
 ```
 
-These numbers are per sequence. At 128k, one 70B request needs about as much KV memory as the bf16 weights of a 20B model. Decode is memory-bandwidth bound, so the time per token grows linearly with how much KV has to be read. Batch size, which is where serving gets its throughput, is capped by `(HBM - weights) / (KV per sequence)`.
+These numbers are per sequence. At 128k, one 70B request needs about as much KV memory as the bf16 weights of a 20B model. Decode is memory-bandwidth bound, so the time per token grows linearly with how much KV has to be read. Batch size, which is where serving gets its throughput, is capped by `(HBM - weights) / (KV per sequence)`, where HBM is the GPU's memory capacity (80 GB on an H100).
 
-GQA, MQA, MLA, and KV quantization shrink the constant (see [architectures.md](architectures.md)). They do not change the O(T) growth. Every architecture in the first half of this chapter tries, one way or another, to replace that growing cache with a fixed-size state. Fixed state means O(1) memory per token and O(T) total compute. The open question in this whole area is what you give up for that. The short answer is exact recall.
+GQA, MQA, MLA, and KV quantization (storing K and V in 8 or fewer bits with a scale factor) shrink the constant (see [architectures.md](architectures.md)). They do not change the O(T) growth. Every architecture in the first half of this chapter tries, one way or another, to replace that growing cache with a fixed-size state. Fixed state means O(1) memory per token and O(T) total compute. The open question in this whole area is what you give up for that. The short answer is exact recall.
 
 
 ## Linear attention and the RNN view
@@ -295,7 +296,7 @@ The chunked form does about 1.5x the FLOPs of the recurrence but in `T / C` sequ
 
 **Intuition.** Fix linear attention's "no forgetting" problem in the simplest way possible: multiply the memory by a constant `gamma < 1` before every write, so old entries fade exponentially. Different heads get different `gamma`s, so some heads remember the last ~20 tokens and others the last few thousand, like a bank of low-pass filters at different time scales.
 
-RetNet is linear attention with no feature map and a fixed per-head exponential decay `gamma`, plus xPos-style rotation on q and k:
+RetNet is linear attention with no feature map and a fixed per-head exponential decay `gamma`, plus xPos-style rotation on q and k (xPos, from Sun et al.'s "A Length-Extrapolatable Transformer", is RoPE with an extra per-dimension exponential decay folded into the rotation; [RoPE](architectures.md#rope) was covered in the previous chapter):
 
 ```
 S_t = gamma * S_{t-1} + k_t^T v_t           # per head, gamma in (0,1) fixed per head
@@ -497,7 +498,7 @@ C=32: |recurrent - chunked| = 9.5e-06
 max exp(-cum) over 512 steps: inf
 ```
 
-The last line is why the paper uses a secondary level of chunking (and log-space computation for the sub-blocks): `exp(-cum)` grows without bound as the chunk gets longer, and with fast-forgetting gates it overflows fp32 within a few hundred steps, let alone bf16. Keeping chunks short bounds it. GLA reported training throughput competitive with FlashAttention-2 at 2k context and faster beyond that. Kernels live in the `flash-linear-attention` (fla-org) Triton library, which has become the reference implementation for most of this family.
+The last line is why the paper uses a secondary level of chunking (and log-space computation for the sub-blocks): `exp(-cum)` grows without bound as the chunk gets longer, and with fast-forgetting gates it overflows fp32 within a few hundred steps, let alone bf16. Keeping chunks short bounds it. GLA reported training throughput competitive with FlashAttention-2 at 2k context and faster beyond that. Kernels live in the `flash-linear-attention` (fla-org) Triton library (Triton is a Python-embedded language from OpenAI for writing GPU kernels at the level of tiles rather than individual threads; it is taught in [Writing kernels: Triton from zero](../compute/accelerator/writing-kernels.md#triton-from-zero)), which has become the reference implementation for most of this family.
 
 ### DeltaNet and Gated DeltaNet
 
@@ -770,7 +771,7 @@ HiPPO-LegS A =
 
 Training uses the convolution: FFT in `O(T log T)`, fully parallel, and the state is never materialized. Inference uses the recurrence: O(n) state per channel and O(1) per token. Most of S4's complexity, the normal-plus-low-rank (NPLR) parameterization and Cauchy kernels, exists to compute `K` efficiently for the (non-diagonal) HiPPO matrix without forming `A_bar^j`. S4D later showed that a diagonal `A` with a suitable init works about as well, which made the whole thing much simpler: with diagonal `A`, `A_bar^j` is just elementwise powers, as in `s4d_kernel` above.
 
-**Evidence.** S4 was the first model to solve Path-X (length 16k) in the Long Range Arena benchmark, and it was strong on audio and other continuous signals. On language it was clearly behind transformers.
+**Evidence.** S4 was the first model to solve Path-X (length 16k) in the Long Range Arena (LRA) benchmark, a suite of synthetic long-sequence classification tasks; Path-X asks whether two marked points in a 128 x 128 image, fed in as a flat sequence of 16,384 pixels, are connected by a path, and it was strong on audio and other continuous signals. On language it was clearly behind transformers.
 
 **The weakness that matters:** LTI means the same kernel `K` is applied to every input. The model cannot decide, based on content, to remember this token and ignore that one. Content-based selection is exactly what language needs, and it is also exactly what the convolution trick forbids. H3 (Fu et al., "Hungry Hungry Hippos", arXiv 2212.14052) and Hyena (Poli et al., arXiv 2302.10866) added multiplicative gating around long convolutions to recover some of this. They narrowed the gap but did not close it.
 
@@ -867,7 +868,7 @@ The last three lines are the selectivity mechanism in numbers: with `A = -1`, a 
 
 Note that this naive version materializes `(b, T, d, n)` tensors. That is exactly the expansion by `n` that makes a naive implementation memory-bound and slow.
 
-**Hardware-aware scan.** The Mamba kernel never writes `(b, T, d, n)` to HBM. It loads `Delta`, `A`, `B`, `C`, and `x` (all O(b T d) or O(b T n)) into SRAM, does the discretization and the scan there, and writes only `y` (O(b T d)) back. For backward it recomputes the intermediate states instead of storing them, the same trick FlashAttention uses. Within a block it uses a parallel (Blelloch-style) associative scan, so the recurrence `h_t = a_t h_{t-1} + b_t` gets O(log T) depth. The kernel is still elementwise work, not matmul, so it runs on CUDA cores rather than tensor cores. That ceiling is what Mamba-2 removes.
+**Hardware-aware scan.** The Mamba kernel never writes `(b, T, d, n)` to HBM. It loads `Delta`, `A`, `B`, `C`, and `x` (all O(b T d) or O(b T n)) into SRAM (the GPU's small on-chip shared memory and registers, far faster to reach than HBM but only a few hundred KiB per SM; see [The pieces](../foundations/computer-architecture.md#the-pieces)), does the discretization and the scan there, and writes only `y` (O(b T d)) back. For backward it recomputes the intermediate states instead of storing them, the same trick FlashAttention uses. Within a block it uses a parallel (Blelloch-style) associative scan, so the recurrence `h_t = a_t h_{t-1} + b_t` gets O(log T) depth. The kernel is still elementwise work, not matmul, so it runs on CUDA cores rather than tensor cores. That ceiling is what Mamba-2 removes.
 
 **Block structure.** A Mamba block is `in_proj (d -> 2 * E d)`, then one branch goes through a causal depthwise conv1d (width 4), SiLU, and the SSM, gated by `SiLU(z)` from the other branch, then `out_proj`. With expansion `E = 2`, Mamba-1 models stack these blocks with no separate MLP, so the block does both mixing and channel MLP work. A minimal block, with a causality check (editing token 20 must not change outputs before it):
 
@@ -918,7 +919,7 @@ The `3 E d^2` is the in/out projections, which dominate at real widths; at this 
 
 **State size, concretely.** Mamba-2.8B has `d = 2560`, `E = 2`, `n = 16`, and 64 layers. Per layer the state is `5120 * 16` SSM elements plus `5120 * 3` conv-cache elements. Across 64 layers that is about 25 MB in fp32, constant in `T`. A 2.7B-class MHA transformer (32 layers, d=2560) uses 320 KiB of KV per token, so Mamba's entire state equals **about 76 tokens** of KV cache.
 
-**Evidence (as reported in the paper):** Mamba-3B matched or beat transformers twice its size on standard zero-shot evaluations. It solved selective copying and induction-head synthetic tasks, and extrapolated on induction heads to 1M tokens. It also reported about 5x higher generation throughput than a similarly sized transformer.
+**Evidence (as reported in the paper):** Mamba-3B matched or beat transformers twice its size on standard zero-shot evaluations. It solved selective copying (reproduce a few marked tokens scattered among filler tokens) and induction-head synthetic tasks (after seeing `... A B ... A`, predict `B`: the basic copy-from-context pattern), and extrapolated on induction heads to 1M tokens. It also reported about 5x higher generation throughput than a similarly sized transformer.
 
 ### Mamba-2 and state space duality (SSD)
 
@@ -944,6 +945,8 @@ Mamba-2 restricts `A` to a **scalar times identity per head** (`a_t` is one numb
 y = M x,   M[t, s] = C_t^T B_s * prod_{r=s+1..t} a_r    for t >= s, else 0
           = (L ⊙ C B^T)[t, s]                                  L = 1-semiseparable decay mask
 ```
+
+("1-semiseparable" means every rectangular block taken from on or below the diagonal has rank at most 1. A cumulative-product decay mask has that property, and it is what lets the matrix be applied in linear time.)
 
 That is masked linear attention: `C` plays the role of Q, `B` of K, `x` of V, and the mask `L` holds cumulative decays instead of 1s. This is the "duality". The same layer can be computed as a linear-time recurrence (the SSM view) or as a quadratic masked matmul (the attention view). First, the duality for Mamba-1's selective scan, continuing from the `selective_scan` block:
 
@@ -1044,9 +1047,9 @@ At `n = 128`, a Mamba-2 2.7B-shaped model (64 layers, d_inner 5120) has about 84
 
 **Systems details that matter:**
 
-- **Tensor parallelism:** Mamba-2 computes `x, z, B, C, Delta` from one parallel input projection at the start of the block, instead of Mamba-1's sequential `x -> (B, C, Delta)` dependency. That makes Megatron-style TP need one all-reduce per block, as an MLP does. It also adds a norm before `out_proj` for stability.
-- **Sequence/context parallelism:** you pass the state between devices (a "state passing" step) instead of ring-exchanging KV blocks. The communication is O(state), not O(T). It is step 3 of the code above, with chunks living on different devices.
-- **Decode:** O(1) per token, state updated in place. For serving, that means one fixed-size slot per sequence. Prefix caching only works if the state was snapshotted at exactly the prefix boundary, and speculative decoding needs state checkpointing so it can roll back rejected tokens.
+- **Tensor parallelism:** Mamba-2 computes `x, z, B, C, Delta` from one parallel input projection at the start of the block, instead of Mamba-1's sequential `x -> (B, C, Delta)` dependency. That makes Megatron-style TP need one all-reduce per block, as an MLP does. (Megatron-LM is NVIDIA's training library; "Megatron-style" TP splits the first projection of a block by columns and the last by rows across GPUs, so the only communication is one all-reduce of the block output. [Tensor parallelism](../foundations/distributed-systems.md#data-parallel-vs-model-parallel) was introduced in the distributed-systems chapter; the per-layer derivation is in [Parallelism From First Principles](../training/model-parallelism/derivations.md).) It also adds a norm before `out_proj` for stability.
+- **Sequence/context parallelism** (splitting one long sequence across GPUs, explained under [Ring attention and context parallelism](#ring-attention-and-context-parallelism) below): you pass the state between devices (a "state passing" step) instead of ring-exchanging KV blocks. The communication is O(state), not O(T). It is step 3 of the code above, with chunks living on different devices.
+- **Decode:** O(1) per token, state updated in place. For serving, that means one fixed-size slot per sequence. Prefix caching only works if the state was snapshotted at exactly the prefix boundary, and speculative decoding (both defined in [the previous chapter](architectures.md#encoder-decoder-t5)) needs state checkpointing so it can roll back rejected tokens.
 
 ### Where SSMs and linear RNNs are weak: recall and copying
 
@@ -1055,7 +1058,7 @@ This is the most important caveat in the chapter.
 - "Zoology: Measuring and Improving Recall in Efficient Language Models", Arora et al., arXiv 2312.04927. Introduces multi-query associative recall (MQAR). The authors report that most of the perplexity gap between gated-convolution models and attention comes from recall of previously seen tokens, and that the gap tracks state size.
 - "Simple linear attention language models balance the recall-throughput tradeoff" (Based), Arora et al., arXiv 2402.18668. Makes the recall vs. state-size tradeoff explicit: a fixed-state model can only recall as much as its state can hold.
 - "Repeat After Me: Transformers are Better than State Space Models at Copying", Jelassi, Brandfonbrener, Kakade, Malach, arXiv 2402.01032. Proves that a two-layer transformer can copy strings exponentially long in its size, while a fixed-state model cannot copy strings longer than its state allows. Experiments show that Mamba and similar models need far more training to copy, and fail to generalize on copy and phone-book lookup.
-- "An Empirical Study of Mamba-based Language Models", Waleffe et al. (NVIDIA), arXiv 2406.07887. 8B Mamba, Mamba-2, and transformer models trained on the same data, up to 3.5T tokens. Pure Mamba-2 matched or beat the transformer on many standard tasks, but lagged on 5-shot MMLU and on phone-book-style retrieval and long-context in-context learning. A hybrid of about 43% Mamba-2, 7% attention, and 50% MLP layers beat the transformer on average across their 12 standard tasks, by about +2.65 points as I recall the abstract. They projected up to 8x faster generation at long context.
+- "An Empirical Study of Mamba-based Language Models", Waleffe et al. (NVIDIA), arXiv 2406.07887. 8B Mamba, Mamba-2, and transformer models trained on the same data, up to 3.5T tokens. Pure Mamba-2 matched or beat the transformer on many standard tasks, but lagged on 5-shot MMLU (a multiple-choice exam benchmark covering 57 subjects; "5-shot" means five solved examples are put in the prompt first) and on phone-book-style retrieval (the prompt lists many name/number pairs, then asks for one name's number) and long-context in-context learning. A hybrid of about 43% Mamba-2, 7% attention, and 50% MLP layers beat the transformer on average across their 12 standard tasks, by about +2.65 points as I recall the abstract. They projected up to 8x faster generation at long context.
 
 The intuition: attention keeps every token, so its memory grows with T and it can look anything up. A fixed-state model must decide at write time what to keep, so it cannot answer a question about a detail it chose to drop. That is a fundamental information limit, not an optimization issue. You can see it without training anything: store `N` random (key, value) pairs in a 64 x 64 matrix memory, then query every key.
 
@@ -1154,7 +1157,7 @@ Nemotron-H-8B-like, 52L        4     0.50     4.00    16.00    0.043
 Qwen3-Next-like 3:1, 48L      12     0.75     6.00    24.00    0.035
 ```
 
-The KV column scales with the count of `A`s; the recurrent state is 8-45 MiB and does not grow. A real serving engine therefore has two kinds of cache per request: paged KV for the attention layers and one fixed-size slot per linear layer. A toy 3:1 hybrid makes that concrete, and checks that token-by-token decode with both cache types reproduces the full-sequence forward:
+The KV column scales with the count of `A`s; the recurrent state is 8-45 MiB and does not grow. A real serving engine therefore has two kinds of cache per request: paged KV ([defined in the previous chapter](architectures.md#encoder-decoder-t5)) for the attention layers and one fixed-size slot per linear layer. A toy 3:1 hybrid makes that concrete, and checks that token-by-token decode with both cache types reproduces the full-sequence forward:
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -1228,13 +1231,13 @@ After 20 tokens the attention layer's cache holds 20 entries and will keep growi
 
 "Zamba: A Compact 7B SSM Hybrid Model", Glorioso et al., arXiv 2405.16712.
 
-Mamba backbone plus a **single shared** attention+MLP block, applied every 6 Mamba blocks. The same weights are reused at each application, and the original embedding is concatenated in. The point is parameter efficiency: you get repeated access to attention without paying for its parameters several times. You still pay KV cache for every place the shared block is applied, because each application sees different inputs and so produces different K and V. Zamba2 refined this with two alternating shared blocks and LoRA per application. I'm less sure of the exact Zamba2 details.
+Mamba backbone plus a **single shared** attention+MLP block, applied every 6 Mamba blocks. The same weights are reused at each application, and the original embedding is concatenated in. The point is parameter efficiency: you get repeated access to attention without paying for its parameters several times. You still pay KV cache for every place the shared block is applied, because each application sees different inputs and so produces different K and V. Zamba2 refined this with two alternating shared blocks and LoRA per application (LoRA, low-rank adaptation, adds a small trainable low-rank product `B A` to a frozen weight matrix, so each application of the shared block gets its own cheap specialization). I'm less sure of the exact Zamba2 details.
 
 ### Samba (Microsoft)
 
 "Samba: Simple Hybrid State Space Models for Efficient Unlimited Context Language Modeling", Ren et al., arXiv 2406.07522.
 
-Layer-wise interleaving of Mamba, MLP, **sliding-window attention** (window 2048), and MLP. There is no global attention, so total state is bounded: Mamba state plus a 2048-token window. The 3.8B model was trained at 4k context. The paper reports perplexity extrapolation far beyond the training length and perfect passkey retrieval to 256k after short fine-tuning. Passkey retrieval is a weak test of recall, and bounded state still limits arbitrary lookups.
+Layer-wise interleaving of Mamba, MLP, **sliding-window attention** (window 2048), and MLP. There is no global attention, so total state is bounded: Mamba state plus a 2048-token window. The 3.8B model was trained at 4k context. The paper reports perplexity extrapolation far beyond the training length and perfect passkey retrieval to 256k after short fine-tuning (passkey retrieval hides one random number in a long stretch of filler text and asks the model to repeat it). Passkey retrieval is a weak test of recall, and bounded state still limits arbitrary lookups.
 
 ### NVIDIA Nemotron-H
 
@@ -1266,7 +1269,7 @@ What the published hybrids tell us:
 |---|---|---|
 | Jamba | 7 : 1 | full (no PE) |
 | MiniMax-01 | 7 : 1 | full softmax |
-| Nemotron-H | about 11 : 1 (about 8% attention) | full |
+| Nemotron-H | about 6 : 1 among mixers (4 of 52 layers attention, about 8%; rest Mamba-2 and MLP) | full |
 | NVIDIA 8B study (2406.07887) | about 6 : 1 among mixers (43% Mamba-2, 7% attn, rest MLP) | full |
 | Qwen3-Next | 3 : 1 | full, gated |
 | Kimi Linear | 3 : 1 | MLA |
@@ -1276,10 +1279,10 @@ What the published hybrids tell us:
 Reasoning about the ratio:
 
 1. **Retrieval needs only a few attention layers, but they must exist.** The NVIDIA study and Jamba both found that a small fraction of attention layers recovers most of the in-context-learning and retrieval gap. Going from 0 to 1 attention layer in 8 matters much more than going from 1 in 8 to 1 in 4.
-2. **KV cost is linear in the attention fraction.** Going from 1:7 to 1:3 doubles KV. The 3:1 models are betting that more retrieval capacity is worth 2x the KV, at a total that is still 4x below a pure transformer. The 7:1 and 11:1 models are betting on throughput.
+2. **KV cost is linear in the attention fraction.** Going from 1:7 to 1:3 doubles KV. The 3:1 models are betting that more retrieval capacity is worth 2x the KV, at a total that is still 4x below a pure transformer. The 6:1 and 7:1 models are betting on throughput.
 3. **Placement:** spread attention layers evenly through the depth rather than at the start. Several papers report the first layer working badly as attention, but I'd treat that as weakly established.
 4. **The FLOPs at moderate T barely change.** At 4k-32k, the MLP/MoE FLOPs dominate either way. The win is in decode memory and long-prefill compute, not short-context training throughput. If your workload is mostly 4k-context chat, a hybrid saves you little. If it is 128k+ documents, long reasoning traces, or agents with long histories, it saves you a lot.
-5. **Evaluation trap:** standard short benchmarks (MMLU, HellaSwag) don't stress recall. Hybrids and pure linear models look fine on them. Test needle-in-a-haystack variants with multiple keys (RULER-style), phone-book lookup, and long-context QA before concluding that a design is "equivalent".
+5. **Evaluation trap:** standard short benchmarks (MMLU, and HellaSwag, a pick-the-sensible-sentence-ending benchmark) don't stress recall. Hybrids and pure linear models look fine on them. Test needle-in-a-haystack variants (a fact, the "needle", is planted somewhere in a long context and the model is asked for it) with multiple keys (RULER, a long-context benchmark built from such multi-needle and multi-hop retrieval tasks, is the standard example), phone-book lookup, and long-context QA before concluding that a design is "equivalent".
 
 The same reasoning applies inside pure-attention models. Gemma 2 interleaves sliding-window (4096) and global attention 1:1, and Gemma 3 uses 5:1 with a 1024 window. For KV purposes, a sliding-window layer is a bounded-state layer: it costs `window * per-layer-KV`, constant in T.
 
@@ -1549,7 +1552,7 @@ Token count is `(H/P) * (W/P)`. It grows quadratically with resolution and inver
 | 518px, P=14 | 1369 | DINOv2 at its native high res |
 | 1024px, P=16 | 4096 | SAM-style high-res encoders, where O(T^2) attention starts to matter (SAM uses windowed attention) |
 
-ViTs need lots of data or strong augmentation to beat CNNs, because they lack locality and translation priors. At scale (JFT, LAION, WebLI) that stops mattering. Doubling the resolution multiplies T by 4 and attention FLOPs by 16, which is why VLMs tile images or merge tokens instead of feeding high-res images to a single ViT pass.
+ViTs need lots of data or strong augmentation to beat CNNs, because they lack locality and translation priors. At scale (JFT, LAION, WebLI: image and image-text datasets of hundreds of millions to billions of examples) that stops mattering. Doubling the resolution multiplies T by 4 and attention FLOPs by 16, which is why VLMs tile images or merge tokens instead of feeding high-res images to a single ViT pass.
 
 ### CLIP and SigLIP: contrastive image-text training
 
@@ -1624,7 +1627,7 @@ Why the loss matters for systems: CLIP's softmax normalizes over the **global** 
 
 Where they are used: CLIP and SigLIP vision towers are the default image encoders in open VLMs (LLaVA used CLIP ViT-L/14; PaliGemma, Idefics, and many others use SigLIP). CLIP text encoders conditioned early latent diffusion models. Contrastive embeddings also power retrieval and zero-shot classification.
 
-Text encoders (BERT-style, bidirectional, MLM-trained) are also still widely used for embeddings, rerankers, and classifiers, because they are cheap: a single forward pass with no decode loop. ModernBERT (Warner et al., arXiv 2412.13663) brought RoPE, GeGLU, alternating local/global attention, and unpadding to that class.
+Text encoders (BERT-style, bidirectional, MLM-trained) are also still widely used for embeddings, rerankers, and classifiers, because they are cheap: a single forward pass with no decode loop. ModernBERT (Warner et al., arXiv 2412.13663) brought RoPE, GeGLU, alternating local/global attention, and unpadding (concatenating a batch's sequences without pad tokens so no compute is spent on padding) to that class.
 
 
 ## Multimodal LLMs
@@ -1689,7 +1692,7 @@ gated xattn at init: |out - h| = 0.0e+00  (exact identity)
 
 **Flamingo (gated cross-attention).** "Flamingo: a Visual Language Model for Few-Shot Learning", Alayrac et al., arXiv 2204.14198. The LM stays frozen. New `GATED XATTN-DENSE` layers are interleaved between LM blocks: text queries cross-attend to vision features, and the output is scaled by `tanh(alpha)` with `alpha` initialized to 0, so at init the model is exactly the original LM (the `|out - h| = 0` check above). A **Perceiver resampler** compresses a variable number of vision features to a fixed 64 latent tokens per image (576 or 2880 inputs, 64 outputs either way). Image tokens never occupy the LM's self-attention context. The cost per image is a fixed-size cross-attention KV, and text length isn't consumed. In exchange you get extra parameters, an extra layer type, and weaker fine-grained interaction. Llama 3.2 Vision used cross-attention adapter layers in this spirit.
 
-**Q-Former (BLIP-2).** "BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models", Li et al., arXiv 2301.12597. A small transformer (about 188M params) with **32 learned query tokens** that cross-attend to frozen ViT features. It is trained in two stages: representation learning with contrastive, matching, and captioning losses, then generative alignment to a frozen LM. The output is 32 tokens per image, fed as soft prompts. That is very cheap in tokens, but the fixed bottleneck loses detail (OCR, charts). Open models have mostly moved back to LLaVA-style projection with token-reduction tricks.
+**Q-Former (BLIP-2).** "BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models", Li et al., arXiv 2301.12597. A small transformer (about 188M params) with **32 learned query tokens** that cross-attend to frozen ViT features. It is trained in two stages: representation learning with contrastive, matching, and captioning losses, then generative alignment to a frozen LM. The output is 32 tokens per image, fed as soft prompts (continuous vectors placed in the LM's input sequence where token embeddings would go). That is very cheap in tokens, but the fixed bottleneck loses detail (OCR, charts). Open models have mostly moved back to LLaVA-style projection with token-reduction tricks.
 
 **Native-resolution projection.** Qwen2-VL ("Qwen2-VL: Enhancing Vision-Language Model's Perception of the World at Any Resolution", arXiv 2409.12191) uses dynamic resolution: 14px patches, merged 2x2 by an MLP, so one LM token covers 28 x 28 px. It also uses M-RoPE, which factors position into temporal, height, and width components. InternVL uses "pixel shuffle" to cut tokens 4x: 448px / 14 = 32 x 32 = 1024 patches, down to 256 tokens per tile. Both are the 2x2 merge in the code: stack each 2 x 2 neighborhood into the channel dimension (4x fewer, 4x wider tokens), then project.
 
@@ -1704,7 +1707,7 @@ The core of a VQ tokenizer is a nearest-neighbor lookup: an encoder produces a g
 ```python
 import torch
 codebook = torch.randn(8192, 256)                       # (K, e) learned code vectors
-feats = torch.randn(1, 32, 32, 256)                     # (B, 32, 32, e) encoder output for a 512px image (f=16)
+feats = torch.randn(1, 32, 32, 256)                     # (B, 32, 32, e) encoder output for a 512px image (f=16: 16x downsampling per side)
 ids = torch.cdist(feats.view(-1, 256), codebook).argmin(-1).view(1, 32 * 32)   # (B, 1024) integer tokens
 print(ids.shape, ids.min().item() >= 0, ids.max().item() < 8192)  # -> torch.Size([1, 1024]) True True
 ```
@@ -1732,7 +1735,7 @@ This is why token-reduction methods (pixel shuffle, pooling, resamplers, droppin
 
 "Robust Speech Recognition via Large-Scale Weak Supervision", Radford et al., arXiv 2212.04356.
 
-Whisper is a classic **encoder-decoder** transformer. The input is a 30 s window converted to a log-mel spectrogram (80 bins, 128 for large-v3) at a 10 ms hop, giving 3000 frames. Two conv layers follow, the second with stride 2, giving **1500 encoder positions**, which the encoder processes bidirectionally. The decoder autoregressively generates text tokens (with special task, language, and timestamp tokens) and cross-attends to the encoder output. Large is 1.55B parameters. Trained on 680k hours of weakly supervised data.
+Whisper is a classic **encoder-decoder** transformer. The input is a 30 s window converted to a log-mel spectrogram (80 bins, 128 for large-v3) at a 10 ms hop, giving 3000 frames. A log-mel spectrogram is the audio cut into short overlapping windows ("frames"; the hop is the time between frame starts), each turned into the log energy in a set of frequency bands ("bins") spaced on the mel scale, which approximates human pitch perception; the result is a 2-D (bins x frames) array. Two conv layers follow, the second with stride 2, giving **1500 encoder positions**, which the encoder processes bidirectionally. The decoder autoregressively generates text tokens (with special task, language, and timestamp tokens) and cross-attends to the encoder output. Large is 1.55B parameters. Trained on 680k hours of weakly supervised data.
 
 ```python
 import torch, torch.nn as nn
@@ -1842,7 +1845,7 @@ The sampler recovers both modes and their width approximately (54/46 instead of 
 
 Sampling runs the learned reverse process from `x_T ~ N(0, I)`, one network evaluation per step. That was 1000 steps originally. DDIM (Song et al., arXiv 2010.02502) brought it to about 50 deterministic steps without retraining.
 
-**Classifier-free guidance** (Ho and Salimans, arXiv 2207.12598) runs the model with and without the condition and extrapolates: `eps = eps_uncond + w (eps_cond - eps_uncond)`. The model learns both by randomly replacing the condition with a "null" embedding during training. That **doubles** the cost of every step, unless the two evaluations are batched together (same FLOPs, better utilization) or distilled away:
+**Classifier-free guidance** (CFG; Ho and Salimans, arXiv 2207.12598) runs the model with and without the condition and extrapolates: `eps = eps_uncond + w (eps_cond - eps_uncond)`. The model learns both by randomly replacing the condition with a "null" embedding during training. That **doubles** the cost of every step, unless the two evaluations are batched together (same FLOPs, better utilization) or distilled away:
 
 ```python
 import torch
@@ -1966,7 +1969,7 @@ adaLN-Zero at init: |block(x) - x| = 0.0e+00  (every block starts as identity)
 after perturbing: |block(x, t=10) - block(x, t=900)| = 0.11 -> t now steers every block
 ```
 
-The paper's key finding is that sample quality (FID) tracks forward GFLOPs, whether those come from model size or from more tokens (smaller patches). That gives diffusion the same scaling story transformers have for LMs. DiT-XL/2 is about 119 GFLOPs per forward at 256px (the paper's table says 118.6).
+The paper's key finding is that sample quality (FID, Fréchet Inception Distance: the distance between feature statistics of generated and real images under a pretrained Inception classifier; lower is better) tracks forward GFLOPs, whether those come from model size or from more tokens (smaller patches). That gives diffusion the same scaling story transformers have for LMs. DiT-XL/2 is about 119 GFLOPs per forward at 256px (the paper's table says 118.6).
 
 DiT descendants now dominate:
 
@@ -2097,13 +2100,13 @@ Compare a 7B LLM decoding at batch 1: about 14 GB of weights read per token at 3
 
 Reasoning models (OpenAI o1/o3, DeepSeek-R1 ("DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning", arXiv 2501.12948), Qwen3 thinking modes, and so on) are, as far as anything public shows, **the same transformer architectures**: dense or MoE decoders, often with MLA, GQA, or SWA. What changes is the workload.
 
-- **Decode-dominated.** Outputs of 5k-100k tokens per query, versus a few hundred for chat. Per-request cost shifts from prefill to decode, and decode is bandwidth-bound. The KV cache now grows *during generation*, so a request that arrives small becomes large, which makes admission control and preemption harder. Prefix caching helps less, because the expensive part is the unique output.
+- **Decode-dominated.** Outputs of 5k-100k tokens per query, versus a few hundred for chat. Per-request cost shifts from prefill to decode, and decode is bandwidth-bound. The KV cache now grows *during generation*, so a request that arrives small becomes large, which makes admission control (deciding whether a new request's KV cache will fit before accepting it) and preemption (evicting a running request's cache when memory runs out, to swap or recompute it later) harder; see [Serving engine internals](../inference/serving-engine-internals.md#admission-control-by-kv-budget). Prefix caching helps less, because the expensive part is the unique output.
 - **This is where sub-quadratic and hybrid architectures pay off most.** Decoding 64k tokens with a 70B-shaped GQA model ends at 20 GiB of KV per sequence. A 1:7 hybrid ends at about 2.5 GiB plus constant state (last line of the arithmetic block above). MiniMax-M1 made this exact argument for using a lightning-attention hybrid in an RL-trained reasoner.
 - **RL training loops.** GRPO ("DeepSeekMath", arXiv 2402.03300) and its relatives drop the critic, but each update still needs G rollouts (for example 8-64) per prompt. Rollout generation is commonly reported as the majority of wall-clock in these pipelines (I'd treat "majority" as typical, not universal). The systems consequences, covered in depth in [RL infrastructure](../platform/rl-infrastructure.md):
-  - an inference engine (vLLM/SGLang) runs inside the training loop, either colocated with the trainer or on separate GPUs, with weight sync after each update;
+  - an inference engine (a server process that batches many requests and manages their KV caches on the GPU; vLLM and SGLang are the main open-source ones, covered in [Serving engine internals](../inference/serving-engine-internals.md)) runs inside the training loop, either colocated with the trainer or on separate GPUs, with weight sync after each update;
   - long-tail generation lengths create stragglers, which leads to partial rollouts, asynchronous or off-policy updates, and length caps;
   - small numerical mismatches between the inference engine's kernels and the trainer's kernels show up as an off-policy error that needs correcting (importance weighting). For hybrids and linear models this is sharper: the trainer runs the chunkwise kernel and the engine runs the recurrent one, and as the checks in this chapter show, those agree only to fp32 rounding (worse in bf16).
-- **Test-time scaling knobs** (best-of-N, self-consistency, longer thinking budgets) multiply decode tokens linearly. Price them with the decode arithmetic, not the prefill arithmetic.
+- **Test-time scaling knobs** (best-of-N, self-consistency (sample several answers and take the majority vote), longer thinking budgets) multiply decode tokens linearly. Price them with the decode arithmetic, not the prefill arithmetic.
 
 There is no architectural change needed. The pressure is to make decode cheaper, which pushes toward MLA/GQA, KV quantization, speculative decoding, sparse attention, and hybrids.
 
@@ -2114,12 +2117,12 @@ T = sequence length. "State per token" means the memory that must be kept per ge
 
 | family | training parallelism | inference state | compute in T (train / per decode step) | strengths | weaknesses | examples |
 |---|---|---|---|---|---|---|
-| Softmax attention (dense) | fully parallel (matmul, FlashAttention) | O(T) KV: `2 L h_kv d_h` bytes/token | O(T^2) / O(T) | exact recall, best ICL, mature kernels and serving | KV memory and bandwidth at long T | Llama, Qwen, DeepSeek, GPT |
+| Softmax attention (dense) | fully parallel (matmul, FlashAttention) | O(T) KV: `2 L h_kv d_h` x 2 bytes/token (bf16) | O(T^2) / O(T) | exact recall, best in-context learning, mature kernels and serving | KV memory and bandwidth at long T | Llama, Qwen, DeepSeek, GPT |
 | Sliding-window attention | parallel | O(window) | O(T w) / O(w) | bounded KV, simple | no retrieval beyond the window unless mixed with global layers | Mistral 7B, Gemma 2/3 (interleaved) |
 | Sparse attention (NSA/DSA/MoBA) | parallel, custom kernels | O(T) KV (all kept) | about O(T k) + cheap selector / O(k) | cuts compute and bandwidth, keeps full-context access | doesn't cut KV storage; kernels complex; selection may miss | DeepSeek-V3.2-Exp (DSA) |
 | Linear attention (vanilla) | chunkwise parallel | O(H dk dv) constant | O(T) / O(1) | tiny state, fast decode | weak recall, no forgetting; quality gap | research |
 | RetNet | chunkwise parallel | constant | O(T) / O(1) | simple, three equivalent forms | fixed decay, behind gated variants | research |
-| GLA / RWKV-6 | chunkwise (FLA kernels) | constant (matrix) | O(T) / O(1) | data-dependent forgetting, good throughput | recall limited by state | RWKV-6, research |
+| GLA / RWKV-6 | chunkwise (flash-linear-attention kernels) | constant (matrix) | O(T) / O(1) | data-dependent forgetting, good throughput | recall limited by state | RWKV-6, research |
 | DeltaNet / Gated DeltaNet / RWKV-7 | chunkwise (WY repr.) | constant (matrix) | O(T) / O(1) | best recall among fixed-state, state tracking | more complex kernels; still bounded memory | Qwen3-Next (hybrid), Kimi Linear (hybrid), RWKV-7 |
 | S4 / LTI SSM | FFT convolution | O(d n) constant | O(T log T) / O(1) | long continuous signals, stable | no content selection; weak on language | audio/time series, LRA |
 | Mamba (selective SSM) | parallel scan (CUDA cores) | O(d n) + conv cache, constant | O(T) / O(1) | content-aware gating, fast decode | recall/copying; scan doesn't use tensor cores | Mamba, Falcon Mamba, Jamba (inside) |
@@ -2159,6 +2162,8 @@ Expect a recall gap.
 
 ### Infrastructure (as of about late 2025; check current releases)
 
+This list is mostly product names. The ones not introduced yet: **CUDA** is NVIDIA's C++-based language for GPU kernels, and **Triton** a Python-embedded one (both taught in [Writing kernels](../compute/accelerator/writing-kernels.md)); **ROCm** is AMD's equivalent of the CUDA software stack, and a **TPU** is Google's ML accelerator, programmed through **JAX**; **TensorRT** / **TensorRT-LLM** are NVIDIA's inference compiler and LLM serving library; **llama.cpp** is a C++ inference engine for CPUs and consumer GPUs, and **GGUF** its model file format; **chunked prefill** means splitting a long prompt's prefill into pieces that are interleaved with other requests' decode steps; **`torch.compile`** is PyTorch's compiler that fuses operations into fewer kernels.
+
 - **Kernels:**
   - `mamba_ssm` and `causal-conv1d` (CUDA, from the Mamba authors) for Mamba-1/2;
   - `flash-linear-attention` (fla-org; Triton) for GLA, DeltaNet, Gated DeltaNet, RWKV-6/7, RetNet, Mamba-2, and many others. This is the de facto reference;
@@ -2166,7 +2171,7 @@ Expect a recall gap.
   - FlashAttention and FlashInfer for the attention layers of hybrids.
 
   Kernel support on non-NVIDIA hardware for these mixers is much thinner than for attention. I'm not confident about the current ROCm or TPU status. On TPU, JAX implementations of scan and chunkwise forms exist.
-- **Serving engines:** vLLM and SGLang support Mamba, Mamba-2, and hybrid models, including Jamba, Nemotron-H, Falcon-H1, and Qwen3-Next, the last with day-0 support announced. As I understand it, vLLM's V1 engine added a hybrid KV-cache manager that allocates attention KV pages and fixed-size recurrent state slots together. The rough edges: prefix caching, speculative decoding, and chunked prefill interactions with recurrent state were all incomplete or recently added at various points. TensorRT-LLM has Mamba and hybrid support. llama.cpp supports Mamba, RWKV, and some hybrids, with a GGUF ecosystem behind them. Verify per model.
+- **Serving engines:** vLLM and SGLang support Mamba, Mamba-2, and hybrid models, including Jamba, Nemotron-H, Falcon-H1, and Qwen3-Next, the last with day-0 support announced. As I understand it, vLLM's V1 engine (its re-architected engine core) added a hybrid KV-cache manager that allocates attention KV pages and fixed-size recurrent state slots together. The rough edges: prefix caching, speculative decoding, and chunked prefill interactions with recurrent state were all incomplete or recently added at various points. TensorRT-LLM has Mamba and hybrid support. llama.cpp supports Mamba, RWKV, and some hybrids, with a GGUF ecosystem behind them. Verify per model.
 - **Training:** Megatron-LM/Megatron-Core supports Mamba hybrids (used for Nemotron-H). Hugging Face `transformers` has modeling code for most of the above, but its pure-PyTorch fallback paths are very slow. Make sure the fused kernels are actually installed and being used. Benchmark tokens/s before and after.
 - **Diffusion serving:** `diffusers` is the default library. xDiT and similar tools provide sequence/patch parallelism for DiTs. ComfyUI dominates hobbyist pipelines. Compiled and quantized deployments use TensorRT or torch.compile with FP8.
 

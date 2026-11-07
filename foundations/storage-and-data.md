@@ -6,7 +6,7 @@ This chapter starts from "what is a disk" and works up to the arithmetic a senio
 
 Conventions:
 
-- Examples marked **[torch]** need `pip install torch numpy safetensors` (tested with torch 2.15.0, safetensors 0.8.0, numpy 2.5.4, Python 3.14). Pure-Python examples need only `python3`. **[boto3, moto]** needs `pip install boto3 "moto[s3]"`. **[tiktoken]** needs `pip install tiktoken`.
+- Examples marked **[torch]** need `pip install torch numpy safetensors` (tested with torch 2.15.0, safetensors 0.8.0, numpy 2.5.4, Python 3.14). Pure-Python examples need only `python3`. **[boto3, moto]** needs `pip install boto3 "moto[s3]"` (boto3 is AWS's Python client library; moto fakes AWS services in-process for testing). **[tiktoken]** needs `pip install tiktoken`.
 - Unless marked otherwise, outputs come from one run on an Apple M4 laptop (macOS, 16 GB RAM, internal SSD). The `fio` and `dd` outputs come from a Linux 6.10 VM (Docker Desktop's linuxkit kernel) on the same laptop. Its virtual disk is a file on the macOS SSD, so its absolute numbers mean nothing for real servers. They show what the tools print and how the numbers relate to each other.
 - Commands that need a real cluster (Lustre `lfs`, `mdadm`, `nvme`, real S3) are marked **untested**. Their flags are taken from the tools' documentation.
 
@@ -15,7 +15,11 @@ Conventions:
 - [Computer Architecture](computer-architecture.md): especially [Storage devices](computer-architecture.md#storage-devices) and [Bandwidth vs latency](computer-architecture.md#bandwidth-vs-latency).
 - [Linux and Operating Systems](linux-and-os.md): especially section 3, [Files and filesystems](linux-and-os.md#3-files-and-filesystems), covering inodes, mount points, the page cache, and `fsync` with atomic rename. This chapter assumes you know why `write()` returning doesn't mean the data is on disk.
 - [Concurrency and Parallelism](concurrency.md): [DataLoader internals](concurrency.md#part-4-how-the-pytorch-dataloader-works-inside) and [Async I/O for checkpoints and data](concurrency.md#part-8-async-io-for-checkpoints-and-data).
-- [Computer Networking](networking.md): enough to know what bandwidth, latency, RTT and TCP are.
+- [Computer Networking](networking.md): enough to know what bandwidth, latency, RTT and TCP are, plus HTTP (object stores are HTTP APIs) and the [bandwidth-delay product](networking.md#bandwidth-delay-product).
+- [The toolkit](toolkit.md): `pip` and virtual environments for the **[torch]**-style examples, JSON (the safetensors header and checkpoint manifests are JSON), and git (a run's git SHA belongs in its checkpoint).
+- [Distributed Systems](distributed-systems.md): ranks, barriers and process groups (the gloo backend), [data vs model parallelism](distributed-systems.md#model-parallelism) (FSDP, tensor and pipeline parallelism, which decide how a checkpoint is sharded), and [MTBF and how often to checkpoint](distributed-systems.md#how-often-to-checkpoint).
+- [Containers and Virtualization](containers-and-virtualization.md): volumes and bind mounts, and why environments belong in images rather than on a shared filesystem.
+- Forward links: [Training arithmetic](../training/arithmetic.md) (bytes per parameter, FLOPs per token) and [Model Parallelism](../training/model-parallelism/README.md).
 
 
 ## 1. Three ways to store bytes: block, file, object
@@ -40,7 +44,7 @@ Every storage product you'll meet sells one of three interfaces. Most confusion 
 
 ### Block storage
 
-A **block device** is a numbered array of fixed-size blocks (usually 512 bytes or 4 KiB), and you read or write whole blocks by number. It has no names, directories or permissions. A local NVMe drive is a block device. So is a cloud "volume" such as AWS EBS or a GCP Persistent Disk: it is attached over the network, but the VM sees it as a disk. On Linux they appear under `/dev`:
+A **block device** is a numbered array of fixed-size blocks (usually 512 bytes or 4 KiB), and you read or write whole blocks by number. It has no names, directories or permissions. A local NVMe drive is a block device. So is a cloud "volume" such as AWS EBS or a GCP Persistent Disk: it is attached over the network, but the VM sees it as a disk. A SAN LUN (in the diagram) is the on-premises version: a virtual disk carved out of a dedicated storage array and served to one server over a storage network. On Linux they appear under `/dev`:
 
 ```bash
 $ lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL        # untested; sketched output from a GPU node
@@ -83,6 +87,8 @@ print(st.st_size, st.st_ino, oct(st.st_mode))
 An **object store** (Amazon S3, Google Cloud Storage, Azure Blob, Cloudflare R2, MinIO, Ceph RGW) keeps **objects**: an immutable blob of bytes, a **key** (a string such as `runs/a/step_100/shard_0.bin`) and a little metadata. Objects live in a flat namespace called a **bucket**, and you use them through an HTTP API: `PUT` a whole object, `GET` it (or a byte range of it), `DELETE` it, `LIST` keys by prefix. That's nearly the whole interface.
 
 What's missing is deliberate. There is no appending, no writing at an offset, no rename (a "rename" is copy plus delete), no locks, and no real directories (the `/` in a key is just a character). Giving these up lets the provider spread objects over thousands of servers with no cross-server coordination. That is how S3 offers effectively unlimited capacity and very high aggregate throughput at a few cents per GB-month. The cost is latency: every request is an HTTP round trip, typically tens of milliseconds to the first byte.
+
+Below, `aws` is Amazon's command-line client for its services, and `model.safetensors` is a weights file in the safetensors format, a JSON header followed by raw tensor bytes (taught in [section 6](#safetensors-a-header-plus-raw-bytes)).
 
 ```bash
 # untested here (needs AWS credentials); standard aws-cli commands
@@ -157,7 +163,7 @@ Normally data travels disk → kernel page cache → user buffer → pinned buff
 
 ### NFS
 
-**NFS** (Network File System) is the oldest and simplest shared filesystem: one server (or an HA pair) exports a directory, and clients mount it. Every operation becomes an RPC to that server, so it has one server's bandwidth and one server's metadata throughput. NFS is fine for home directories and code, and poor for datasets and checkpoints at scale. Its consistency model is **close-to-open**: another client is only guaranteed to see your writes after you `close()` the file and it `open()`s it. It is not guaranteed to see them while you're still writing.
+**NFS** (Network File System) is the oldest and simplest shared filesystem: one server (or an HA pair: two servers where one takes over if the other dies) exports a directory, and clients mount it. Every operation becomes an RPC to that server, so it has one server's bandwidth and one server's metadata throughput. NFS is fine for home directories and code, and poor for datasets and checkpoints at scale. Its consistency model is **close-to-open**: another client is only guaranteed to see your writes after you `close()` the file and it `open()`s it. It is not guaranteed to see them while you're still writing.
 
 ```bash
 # untested: typical NFS mount and a look at its options
@@ -167,7 +173,7 @@ $ nfsstat -m
  Flags: rw,vers=4.1,rsize=1048576,wsize=1048576,nconnect=8,hard,proto=tcp,...
 ```
 
-`nconnect=8` opens 8 TCP connections to the server instead of 1 (Linux 5.3+). A single TCP stream is often the limit for one NFS client, for the reasons in [section 9](#transfer-time-and-the-bandwidth-delay-product).
+`vers=4.1` picks the NFS protocol version, and `rsize`/`wsize` are the largest single read and write request the client sends (1 MiB here). `nconnect=8` opens 8 TCP connections to the server instead of 1 (Linux 5.3+). A single TCP stream is often the limit for one NFS client, for the reasons in [section 9](#transfer-time-and-the-bandwidth-delay-product).
 
 ### How a parallel filesystem works
 
@@ -232,7 +238,7 @@ Many sites set a default layout called PFL (Progressive File Layout): the first 
 | | Lustre | IBM Storage Scale (GPFS) | WekaFS | VAST |
 |---|---|---|---|---|
 | Metadata | dedicated MDS/MDT servers (can be several) | distributed across the cluster's nodes | distributed across all backend nodes | in the shared storage itself, accessed by stateless servers |
-| Client | kernel module | native NSD client, or NFS/SMB | native client (POSIX), or NFS/SMB/S3 | mostly NFS (with multipath / RDMA extensions) |
+| Client | kernel module | native NSD client (GPFS's own protocol), or NFS/SMB (SMB is the Windows file-sharing protocol) | native client (POSIX), or NFS/SMB/S3 | mostly NFS (with multipath / RDMA extensions) |
 | Notable | open source, needs careful tuning (see the [NASA best practices](https://www.nas.nasa.gov/hecc/support/kb/lustre-best-practices_226.html)) | very mature; tiering to object storage; sub-blocks for small files | flash-native; tiers to an object store | flash-native; global data reduction |
 
 These descriptions are from vendor documentation and the Storage chapter's [Which file system to choose](../storage/README.md#which-file-system-to-choose). They are not from benchmarks run for this chapter. For ML, what to evaluate is: aggregate large-file read and write bandwidth at your node count, small-file metadata ops/s, and behaviour when hundreds of clients write checkpoints at once. Use the tools in [section 5](#5-measuring-storage) and the Storage chapter's [`fio-scan`](../storage/README.md#fio).
@@ -262,7 +268,7 @@ S3's API has become the standard that GCS, R2, MinIO, Ceph and others imitate, s
 - **Whole-object writes.** `PUT` replaces the entire object. To change one byte you rewrite the object.
 - **Consistency.** As of December 2020, AWS S3 gives strong read-after-write consistency: after a successful `PUT`, every `GET` and `LIST` sees the new data. Older S3 and some S3-compatible stores were only *eventually consistent*: a `LIST` right after a `PUT` might not show the new object. Check this for any non-AWS store you rely on.
 - **No atomic multi-object operations.** A checkpoint made of 1,000 objects is never written atomically. A reader can see 600 new shards and 400 old ones. You build atomicity yourself by writing a marker object last (see [section 7](#making-checkpoints-trustworthy)).
-- **Conditional writes.** As of late 2024, S3 supports `If-None-Match: *` on `PUT` ("only create if absent") and `If-Match` ("only overwrite if the ETag is still X"). These are building blocks for locks and leader election on top of S3. They are version-sensitive, so check your provider.
+- **Conditional writes.** As of late 2024, S3 supports `If-None-Match: *` on `PUT` ("only create if absent") and `If-Match` ("only overwrite if the ETag is still X"; an **ETag** is a fingerprint string S3 returns for each version of an object). These are building blocks for locks and leader election on top of S3. They are version-sensitive, so check your provider.
 - **Rate limits per prefix.** AWS documents at least 3,500 `PUT`/`COPY`/`POST`/`DELETE` and 5,500 `GET`/`HEAD` requests per second per partitioned prefix. Throughput comes from many parallel requests, often spread across prefixes. One request at a time gets you one connection's worth of bandwidth.
 
 ```python
@@ -323,7 +329,7 @@ range read: bytes 10485760-10485775/15728763 ok: True
 
 ### Multipart uploads and range reads
 
-**Multipart upload** splits a large object into parts that are uploaded independently, retried independently and committed together. As of the S3 docs at the time of writing, parts are 5 MiB to 5 GiB, with at most 10,000 parts per object. Object size has long been capped at 5 TiB; check the current docs, because AWS has announced larger limits. The object doesn't exist until `CompleteMultipartUpload`, which is a single atomic commit for one object. Abandoned uploads keep their parts, and you keep paying for them, until you abort them or a lifecycle rule cleans them up. Set an `AbortIncompleteMultipartUpload` lifecycle rule on every bucket you checkpoint to.
+**Multipart upload** splits a large object into parts that are uploaded independently, retried independently and committed together. As of the S3 docs at the time of writing, parts are 5 MiB to 5 GiB, with at most 10,000 parts per object. Object size has long been capped at 5 TiB; check the current docs, because AWS has announced larger limits. The object doesn't exist until `CompleteMultipartUpload`, which is a single atomic commit for one object. Abandoned uploads keep their parts, and you keep paying for them, until you abort them or a lifecycle rule (a bucket setting that automatically deletes or archives objects or incomplete uploads by age) cleans them up. Set an `AbortIncompleteMultipartUpload` lifecycle rule on every bucket you checkpoint to.
 
 The demo shows the trap in point 4: a multipart object's ETag is not the file's MD5, so `md5sum file == ETag` "verification" fails, or worse, gets skipped. To verify, either recompute the ETag the same way with the same part size, or store your own checksum as object metadata. S3 also supports additional checksums (CRC32C, SHA-256 and others) at upload time.
 
@@ -358,7 +364,7 @@ with ThreadPoolExecutor(32) as pool:                        # 32 requests in fli
 
 ### FUSE mounts of object stores
 
-A **FUSE** (Filesystem in Userspace) client such as `s3fs`, `gcsfuse`, `rclone mount` or AWS `mountpoint-s3` makes a bucket look like a directory. It is handy and a common source of surprises. A FUSE mount can't give you POSIX semantics the store doesn't have. Depending on the client, "rename" is a full copy or unsupported, random writes are unsupported (mountpoint-s3 supports only sequential writes to new files, per its docs), `fsync` may not mean "durable in the store", and `ls` on a big prefix is slow and paginated. `torch.save` to a FUSE mount followed by the atomic-rename pattern from the [Linux chapter](linux-and-os.md#fsync-and-durability-why-checkpoints-get-lost) may silently not be atomic. Prefer the object API (via DCP storage plugins, `fsspec`, or your own uploader) for checkpoints, and keep FUSE for read-mostly convenience.
+A **FUSE** (Filesystem in Userspace) client such as `s3fs`, `gcsfuse`, `rclone mount` or AWS `mountpoint-s3` makes a bucket look like a directory. It is handy and a common source of surprises. A FUSE mount can't give you POSIX semantics the store doesn't have. Depending on the client, "rename" is a full copy or unsupported, random writes are unsupported (mountpoint-s3 supports only sequential writes to new files, per its docs), `fsync` may not mean "durable in the store", and `ls` on a big prefix is slow and paginated. `torch.save` to a FUSE mount followed by the atomic-rename pattern from the [Linux chapter](linux-and-os.md#fsync-and-durability-why-checkpoints-get-lost) may silently not be atomic. Prefer the object API (via DCP storage plugins, `fsspec`, or your own uploader) for checkpoints, and keep FUSE for read-mostly convenience. (DCP, `torch.distributed.checkpoint`, is PyTorch's sharded checkpoint library, taught in [section 6](#torchdistributedcheckpoint-every-rank-writes-its-own-pieces); `fsspec` is a Python library that gives local files, S3, GCS and others one file-like interface.)
 
 ```bash
 # untested: AWS mountpoint-s3, read-only mount for loading a dataset or model
@@ -392,7 +398,7 @@ fio --name=randread-4k \          # job name (also names the data files)
     --bs=4k \                     # block size of each I/O
     --iodepth=32 \                # requests kept in flight per job (only meaningful with an async engine)
     --numjobs=4 \                 # parallel jobs (processes); total in flight = numjobs x iodepth
-    --ioengine=libaio \           # Linux native async I/O; io_uring is the modern alternative
+    --ioengine=libaio \           # Linux native async I/O; io_uring (newer kernel async-I/O interface) is the modern alternative
     --direct=1 \                  # O_DIRECT: bypass the page cache, so we measure storage, not RAM
     --time_based --runtime=10s \  # run for a fixed time instead of until size is done
     --ramp_time=2s \              # ignore the first 2 s (warm-up)
@@ -454,7 +460,7 @@ fio --name=shards --directory=/lustre/bench --rw=read --bs=1M --size=4G --numjob
     --ioengine=libaio --direct=1 --iodepth=8 --time_based --runtime=60s --group_reporting --unlink=1
 ```
 
-A parallel filesystem has to be measured from many nodes at once. One client can't saturate it. Run the same fio job on N nodes (via `srun` or `pdsh`) and add the results, or use fio's client/server mode (`fio --server` on each node, `fio --client=hosts.txt job.fio` from one). For metadata, IOR/mdtest (from the IO500 benchmark) is the standard tool.
+A parallel filesystem has to be measured from many nodes at once. One client can't saturate it. Run the same fio job on N nodes (via Slurm's `srun`, or `pdsh`, which runs one command over ssh on many hosts at once) and add the results, or use fio's client/server mode (`fio --server` on each node, `fio --client=hosts.txt job.fio` from one). For metadata, IOR/mdtest (from the IO500 benchmark) is the standard tool.
 
 ### dd and its pitfalls
 
@@ -714,9 +720,11 @@ In practice `model.save_pretrained(dir, max_shard_size="5GB")` and `huggingface_
 
 ### torch.distributed.checkpoint: every rank writes its own pieces
 
-In a sharded training job (FSDP, tensor parallel, pipeline parallel; see [Model Parallelism](../training/model-parallelism/README.md)), no rank has the full model. The naive save, gathering everything to rank 0 and calling `torch.save`, sends the whole model through one GPU's memory and one node's network link and disk. At 405B scale that takes hours, or runs out of memory.
+In a sharded training job (FSDP, tensor parallel, pipeline parallel; introduced in [Distributed Systems](distributed-systems.md#model-parallelism), in depth in [Model Parallelism](../training/model-parallelism/README.md)), no rank has the full model. The naive save, gathering everything to rank 0 and calling `torch.save`, sends the whole model through one GPU's memory and one node's network link and disk. At 405B scale that takes hours, or runs out of memory.
 
 **torch.distributed.checkpoint (DCP)** has each rank write only the shards it owns, in parallel, plus one small global `.metadata` file describing how the pieces fit together. Loading can use a *different* parallel layout than saving: DCP reads the metadata and gives each rank the byte ranges that make up the shard it now owns. This is **resharding on load**, and it is what lets you resume a 256-GPU run on 192 GPUs.
+
+New PyTorch pieces in the demo below: `mp.spawn(run, nprocs=2)` starts two processes that each call `run(rank, ...)`, and they form a process group over the CPU-only `gloo` backend (both as in [Distributed Systems](distributed-systems.md#communication-models)). A **device mesh** (`init_device_mesh`) is a named grid of ranks, here just a line of 2. A **DTensor** (`distribute_tensor(full, mesh, [Shard(0)])`) is a tensor that knows it is split across that mesh, here by rows (dim 0), so each rank physically holds half of it; `w.to_local()` is that rank's half. FSDP2 (the current version of PyTorch's FSDP) stores parameters as DTensors, which is why DCP understands them.
 
 ```python
 # dcp_demo.py  [torch]  - torch.distributed.checkpoint on 2 CPU ranks (gloo)
@@ -808,7 +816,7 @@ for m, n in models.items():
         fmt = lambda t: f"{t/60:8.1f}m" if t >= 120 else f"{t:8.1f}s"
         print(f"{m:5} {what:22} {size/1e9:7.0f}GB " + " ".join(f"{fmt(t):>10}" for t in ts))
 
-# GPU -> host snapshot (the only part async checkpointing cannot hide)
+# GPU -> host snapshot, "D2H" = device-to-host copy (the only part async checkpointing cannot hide)
 n_gpu, pcie = 1024, 25e9         # 405B train state over 1024 GPUs; ~25 GB/s achieved D2H per GPU (assumption)
 per_gpu = models["405B"] * 14 / n_gpu
 print(f"\n405B train state over {n_gpu} GPUs: {per_gpu/1e9:.1f} GB/GPU -> D2H snapshot {per_gpu/pcie:.2f} s at 25 GB/s")
@@ -840,7 +848,7 @@ MTBF 2.78 h, blocking cost  600 s -> checkpoint every  57.8 min, ~34.6% time los
 
 What the bandwidth columns correspond to (orders of magnitude, not quotes):
 
-- **1 GB/s**: one NFS client, a single-stream object-store upload, or a slow WAN link.
+- **1 GB/s**: one NFS client, a single-stream object-store upload, or a slow WAN link (wide-area network: a link between sites or regions).
 - **10 GB/s**: one node writing to a few local NVMe drives, or one node's share of a good parallel FS.
 - **100 GB/s**: the aggregate of tens of nodes writing to a strong parallel FS at once. The Storage chapter's [JeanZay case study](../storage/README.md#which-file-system-to-choose), 2.3 TB in 40 s from 384 processes, works out to about 58 GB/s.
 - **1 TB/s**: hundreds of nodes each writing to *their own local NVMe* at a few GB/s. This is why fast checkpointing systems write locally first.
@@ -849,7 +857,7 @@ The bottleneck is usually the smallest of: per-GPU device-to-host copy, per-node
 
 ### How often to checkpoint
 
-The Young/Daly formula (Young 1974; Daly 2006) balances two costs. Checkpointing often wastes the blocking time `C` on every save. Checkpointing rarely loses on average half an interval of work per failure. With mean time between failures `M`, the optimum interval is about `sqrt(2 C M)`. The script plugs in the failure rate reported for Llama 3 405B pre-training on 16k H100s: 466 job interruptions in a 54-day snapshot ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783). That gives an MTBF of 2.8 hours. The numbers are first-order: they ignore restart time, which at this scale is often minutes and adds to every failure. The conclusion still holds. Cutting the blocking cost from 10 minutes to 5 seconds cuts the overhead from about 35% to about 3%, and that is what async checkpointing buys.
+The Young/Daly formula (Young 1974; Daly 2006; first met in [Distributed Systems](distributed-systems.md#how-often-to-checkpoint)) balances two costs. Checkpointing often wastes the blocking time `C` on every save. Checkpointing rarely loses on average half an interval of work per failure. With mean time between failures `M`, the optimum interval is about `sqrt(2 C M)`. The script plugs in the failure rate reported for Llama 3 405B pre-training on 16k H100s: 466 job interruptions in a 54-day snapshot ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783). (Distributed Systems used 419 from the same table: that is the *unexpected* interruptions only; the other 47 were planned, such as maintenance. For checkpoint planning every interruption costs you work, so this chapter uses the total.) That gives an MTBF of 2.8 hours. The numbers are first-order: they ignore restart time, which at this scale is often minutes and adds to every failure. The conclusion still holds. Cutting the blocking cost from 10 minutes to 5 seconds cuts the overhead from about 35% to about 3%, and that is what async checkpointing buys.
 
 ### Async checkpointing
 
@@ -951,7 +959,7 @@ vision: 64 GPUs x 2000 img/s x 110 KB = 14.1 GB/s
 Tokenize once, offline, and train from token IDs. On-the-fly tokenization in DataLoader workers costs CPU on GPU nodes, makes throughput depend on document length, and makes exact resumption harder. A typical offline pipeline:
 
 ```
-raw text (jsonl.zst / parquet on object store)
+raw text (jsonl.zst = one JSON doc per line, zstd-compressed / parquet = a columnar table file format; on object store)
   -> filter + dedup (separate stage, separate chapter of your life)
   -> tokenize in parallel (CPU nodes, many processes)
   -> concatenate documents with an end-of-text (EOT) token between them
@@ -1002,7 +1010,7 @@ Notes:
 
 - **Decode a sample and look at it** every time you build shards. The `decoded:` line catches wrong tokenizers, missing EOT tokens and byte-order bugs in seconds.
 - **dtype matters.** Llama 3's 128,256-token vocabulary doesn't fit in uint16. Writing it as uint16 silently wraps IDs above 65,535 into other tokens. Assert `max_id < 2**16` or use uint32.
-- The 13M tok/s is optimistic. The text is very repetitive, which BPE handles fast. Real web text is slower; measure on your corpus. At 15T tokens, even 10M tok/s means 17 days on one machine, which is why this runs on a CPU cluster (Ray, Spark, Slurm array jobs) with one task per input file.
+- The 13M tok/s is optimistic. The text is very repetitive, which BPE handles fast. Real web text is slower; measure on your corpus. At 15T tokens, even 10M tok/s means 17 days on one machine, which is why this runs on a CPU cluster (Ray and Spark are Python/JVM frameworks for spreading tasks over many machines; a Slurm array job submits many copies of one script, each with its own index) with one task per input file.
 - **Store the tokenizer's identity** (name, version, hash of its vocab file) in the manifest. A model trained on shards from tokenizer A and evaluated with tokenizer B is a silent disaster.
 
 ### Pretokenized shards and memory-mapped token arrays
@@ -1177,7 +1185,7 @@ A full random permutation is the gold standard, but it doesn't always fit:
 - **Materializing the permutation.** 10^10 windows × 8 bytes (int64) = 80 GB per rank. Alternatives: a permutation computed on demand (a seeded bijection on `[0, N)` such as a Feistel network, which gives `perm(i)` in O(1) memory), or a two-level shuffle.
 - **Random access on remote storage** is slow (see above), so streaming formats read sequentially and shuffle approximately.
 
-The standard approximate scheme is **two-level shuffling**: shuffle the order of shards, then pass samples through a **shuffle buffer** that holds `k` samples and emits a random one each time a new one arrives. Here it is over WebDataset-style tar shards:
+The standard approximate scheme is **two-level shuffling**: shuffle the order of shards, then pass samples through a **shuffle buffer** that holds `k` samples and emits a random one each time a new one arrives. Here it is over WebDataset-style tar shards (WebDataset, [described below](#streaming-from-object-storage-webdataset-and-mosaicml-streaming), stores each sample as a few files sharing a name inside an ordinary tar archive):
 
 ```python
 # tarstream.py  - WebDataset-style tar shards: sequential reads, shard shuffle + shuffle buffer
@@ -1239,6 +1247,8 @@ $ tar tvf /tmp/wds/shard-000000.tar | head -4
 -rw-r--r--  0 0      0          26 Dec 31  1969 000001.json
 ```
 
+(The `tar tvf` listing shows permissions, owner, size, date and name per member; the 1969 dates are just Unix time 0, because the script never set a modification time.)
+
 The metric shows the weakness. With a buffer of 200 and shards of 250 samples, 54% of neighbouring samples come from the same shard, against 25% for a true shuffle. Approximate shuffles are biased toward shard locality, and the bias matters when shards are *sorted*, for example by source, by language, or by crawl date: a batch drawn mostly from one shard has a skewed distribution, which can show up as periodic loss spikes. Three remedies: make the buffer much larger than one shard, read several shards at once and interleave them (WebDataset and MosaicML Streaming both do this through workers and their own sampling schemes), and, most important, **randomize sample order when you write the shards**, so that each shard is already a random sample of the corpus. Pre-shuffling is a one-time cost at write time and fixes the problem at the source.
 
 ### Streaming from object storage: WebDataset and MosaicML Streaming
@@ -1257,7 +1267,7 @@ ds = (wds.WebDataset(urls, shardshuffle=True)      # shuffle shard order
         .to_tuple("jpg", "json"))
 ```
 
-- **[MosaicML Streaming](https://github.com/mosaicml/streaming)** uses its own MDS shard format with an index file. It caches shards on local disk (the `local=` directory), downloads ahead of use, and is built for deterministic resumption across changes in the number of nodes. Its documentation calls this "elastic determinism".
+- **[MosaicML Streaming](https://github.com/mosaicml/streaming)** uses its own MDS shard format (Mosaic Data Shard; unrelated to Lustre's metadata server, also called MDS) with an index file. It caches shards on local disk (the `local=` directory), downloads ahead of use, and is built for deterministic resumption across changes in the number of nodes. Its documentation calls this "elastic determinism".
 
 ```python
 # untested; MosaicML Streaming pattern
@@ -1336,7 +1346,7 @@ A single rsync is a single stream and a single process. To parallelize, split th
 
 ```bash
 # untested: 16 parallel rsyncs, one per top-level shard directory
-ls src/ | xargs -P 16 -I{} rsync -a --partial src/{} user@remote:/dst/
+ls src/ | xargs -P 16 -I{} rsync -a --partial src/{} user@remote:/dst/   # -P 16: run up to 16 at once
 ```
 
 ### rclone, s5cmd and other parallel tools
@@ -1387,6 +1397,7 @@ On this Apple M4, SHA-256 beats MD5 because the CPU has SHA-256 instructions. On
 
 ```bash
 # at the source: one manifest per checkpoint/dataset, hashed in parallel (one process per file)
+# (-print0 / -0 separate names with NUL bytes so spaces in names are safe; -P 16 = 16 processes at once)
 find step_00020000 -type f -print0 | xargs -0 -P 16 sha256sum > step_00020000.sha256
 # at the destination, after transfer:
 sha256sum -c --quiet step_00020000.sha256 && echo "all shards verified"

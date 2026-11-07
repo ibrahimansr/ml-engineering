@@ -8,9 +8,12 @@ All the arithmetic in this chapter was checked with `python3`. Where a number de
 
 ## Prerequisites
 
-- [Computer architecture](computer-architecture.md) for PCIe, DMA and memory bandwidth.
-- [Linux and the OS](linux-and-os.md) for processes, file descriptors and system calls. A socket is a file descriptor.
-- [Concurrency](concurrency.md) for threads, `asyncio` and blocking I/O. The asyncio server below assumes you have seen an event loop.
+- [The toolkit](toolkit.md) for the terminal and a Python environment with `torch` for the **[torch]** examples.
+- [Computer architecture](computer-architecture.md) for PCIe, DMA, memory bandwidth, bits vs bytes, and the GPU-side pieces (NVLink/NVSwitch, GPUDirect).
+- [Linux and the OS](linux-and-os.md) for the shell, processes, file descriptors, system calls, environment variables (`MASTER_ADDR`, `RANK`, ...), `ssh`, and [how `torchrun` spawns workers](linux-and-os.md#how-torchrun-spawns-workers). A socket is a file descriptor.
+- [Concurrency](concurrency.md) for threads, `asyncio` and blocking I/O (the asyncio server below assumes you have seen an event loop), and for the distributed-training vocabulary this chapter uses from the first page: rank, process group, collective, all-reduce, NCCL and Gloo ([A distributed hang is a deadlock across machines](concurrency.md#a-distributed-hang-is-a-deadlock-across-machines)).
+
+Forward links: Slurm and Kubernetes appear only in passing here and are taught in [Slurm from zero](../orchestration/slurm/from-zero.md) and [Kubernetes from zero](../orchestration/kubernetes-from-zero.md); containers in [Containers and virtualization](containers-and-virtualization.md); the parallelism strategies (data, tensor, pipeline) in [Parallelism from first principles](../training/model-parallelism/derivations.md).
 
 Conventions for the code in this chapter:
 
@@ -26,7 +29,7 @@ Training a large model is a distributed program. Every optimizer step, thousands
 Three kinds of problems show up over and over:
 
 1. **Connectivity:** process A cannot reach process B at all. Typical causes are a wrong IP, a blocked port, a hostname that resolves to the wrong address, or the wrong network interface.
-2. **Performance:** things work, but slowly. Typical causes are traffic going over TCP instead of RDMA, the wrong NIC, an oversubscribed fabric, or a misread spec sheet.
+2. **Performance:** things work, but slowly. Typical causes are traffic going over TCP instead of RDMA, the wrong NIC, an oversubscribed fabric, or a misread spec sheet. (A **NIC**, network interface card, is the hardware that connects a machine to the network. **RDMA** is a way for NICs to move data directly between machines' memories without the operating system in the path; it is what GPU clusters use for gradients, and it gets [its own section](#hpc-networking-rdma-infiniband-roce-efa) below. Every other term here is built up in this chapter.)
 3. **Reliability:** things work and then stop. Typical causes are a flapping link, a congested switch, or a timeout.
 
 Each section below gives you the concepts needed to reason about one or more of these.
@@ -77,6 +80,8 @@ Textbooks teach the 7-layer OSI model. The Internet actually runs on the 4- or 5
 | 3 Network | Internet | IP (v4/v6) | Addresses, subnets, routing between networks |
 | 2 Data link | Link | Ethernet, InfiniBand link layer | MAC addresses, switches, frames, MTU |
 | 1 Physical | Link (physical) | Copper, fiber, transceivers, cables | Link speed, cable faults, optics |
+
+Two entries in the first row need a word. **gRPC** is Google's framework for **RPC** (remote procedure call: calling a function that runs on another machine, as if it were local); it runs on top of HTTP/2 and is common in serving and control-plane code. **NCCL bootstrap** is the start-up conversation NCCL's processes have over ordinary TCP before any GPU data moves; it's dissected in [How PyTorch distributed bootstraps](#how-pytorch-distributed-bootstraps).
 
 You can see layers 3 and 4 in the arguments of every socket call. `getaddrinfo` (the function that turns a name into addresses, covered later) returns one entry per combination of address family (L3: IPv4 or IPv6) and socket type (L4: stream = TCP, datagram = UDP). The `proto` column is the number that goes into the IP header's protocol field:
 
@@ -142,7 +147,7 @@ Each header holds the information its layer needs:
 
 On the receiving side the layers unwrap in reverse order. A switch only looks at the Ethernet header. A router looks at the IP header. Only the end host looks at TCP.
 
-Headers are just packed bytes. Building one frame by hand with `struct` makes the byte counts concrete. The IP header also carries a checksum, a 16-bit ones'-complement sum that lets a router detect a corrupted header; a correct header sums to zero:
+Headers are just packed bytes. Building one frame by hand with `struct` makes the byte counts concrete. The IP header also carries a checksum, a 16-bit ones'-complement sum that lets a router detect a corrupted header; a correct header sums to zero. (Python's `struct.pack(fmt, ...)` turns integers into bytes. In the format string, `!` means network byte order, which is big-endian (endianness is in [Why binary](computer-architecture.md#why-binary)); `B`, `H` and `I` are 1-, 2- and 4-byte unsigned integers; `4s` is 4 raw bytes. `struct.unpack` reverses it.)
 
 ```python
 # encap.py
@@ -179,7 +184,7 @@ IP header : 45 00 04 10 00 00 00 00 40 06 5e d8 0a 01 02 08 0a 01 02 07
 checksum verifies: True
 ```
 
-Read the IP header bytes left to right: `45` is version 4 with a 5-word header, `04 10` is the total length (1040), `40` is TTL 64, `06` is TCP, and the last eight bytes are `10.1.2.8` and `10.1.2.7`. Wireshark shows you exactly this, decoded.
+Read the IP header bytes left to right: `45` is version 4 with a 5-word header, `04 10` is the total length (1040), `40` is TTL 64, `06` is TCP, and the last eight bytes are `10.1.2.8` and `10.1.2.7`. Wireshark (a graphical packet-capture viewer; its command-line cousin `tcpdump` is in [Practical tools](#tcpdump-basics)) shows you exactly this, decoded.
 
 ### MTU and jumbo frames
 
@@ -206,7 +211,7 @@ MTU 1500: payload 1460, wire 1538, eff 94.9%, frames/s @100G 8.13 M
 MTU 9000: payload 8960, wire 9038, eff 99.1%, frames/s @100G 1.38 M
 ```
 
-The bandwidth gain is only about 4%. The bigger effect is in the last column. Handling 8 million packets per second in software is a lot of CPU work, which is one reason TCP at 100+ Gbps is hard (more on this below). NIC offloads like TSO/GRO hide some of the cost by letting the kernel deal with large chunks while the NIC splits and merges them.
+The bandwidth gain is only about 4%. The bigger effect is in the last column. Handling 8 million packets per second in software is a lot of CPU work, which is one reason TCP at 100+ Gbps is hard (more on this below). NIC offloads like TSO/GRO (TCP segmentation offload, generic receive offload) hide some of the cost by letting the kernel deal with large chunks while the NIC splits and merges them.
 
 The classic MTU failure is a **mismatch**. One host is set to 9000, a switch in the path is at 1500, and small packets (like ping or SSH handshakes) get through while large transfers hang or crawl. If "ping works but the transfer stalls", check MTU along the path:
 
@@ -215,7 +220,7 @@ ip link show eth0                  # look for "mtu 9000"
 ping -M do -s 8972 other-host      # 8972 + 8 ICMP + 20 IP = 9000; -M do forbids fragmentation
 ```
 
-(Linux syntax, untested on this Mac.) If the large ping fails while a plain `ping other-host` succeeds, something in the path has a smaller MTU. On macOS the equivalents are `ifconfig en0 | grep mtu` and `ping -D -s 1472 host` (`-D` sets don't-fragment). For reference, a Mac's loopback interface has a 16 KiB MTU and its Wi-Fi a standard 1500:
+(Linux syntax, untested on this Mac. `ip` is Linux's network configuration tool, used throughout this chapter. `ping` sends small ICMP packets, ICMP being the IP layer's own control protocol, and times the replies; it's covered under [ping](#ping). `-s` sets the payload size.) If the large ping fails while a plain `ping other-host` succeeds, something in the path has a smaller MTU. On macOS the equivalents are `ifconfig en0 | grep mtu` and `ping -D -s 1472 host` (`-D` sets don't-fragment). For reference, a Mac's loopback interface has a 16 KiB MTU and its Wi-Fi a standard 1500:
 
 ```
 $ ifconfig lo0 | head -1
@@ -237,7 +242,7 @@ InfiniBand has its own MTU, usually 4096 bytes (IB supports 256 to 4096). RoCE d
 1. Run `encap.py`, change the payload to 1460 bytes and check that the frame is exactly 1514 bytes (+4 FCS = 1518, the classic maximum Ethernet frame).
 2. Flip one byte of the IP header after the checksum is computed and confirm `ip_checksum(ip) != 0`. That is all a router does to detect a damaged header.
 3. Extend `mtu.py` with a column for frames per second at 400 Gbps and MTU 4096 (an RDMA MTU). How many packets per second does the NIC handle in hardware?
-4. Open `curl -v http://example.com` and label each output line with its layer (DNS, TCP, HTTP).
+4. Open `curl -v http://example.com` and label each output line with its layer (DNS, TCP, HTTP). (`curl` fetches a URL from the command line, and `-v` prints each step; see [curl](#curl). Come back to this one after the [HTTP section](#http11-from-raw-sockets) if the output means nothing yet.)
 
 ## Ethernet, switches and routers
 
@@ -276,7 +281,7 @@ On this Mac the address is locally administered (macOS private Wi-Fi addresses),
 
 ### Switches vs routers
 
-A **switch** (L2) connects devices in the same local network, also called a broadcast domain or VLAN. It learns which MAC address sits behind which port by watching source addresses on incoming frames. It then forwards each frame only to the port where the destination lives. If it does not know the destination yet, it floods the frame to all ports.
+A **switch** (L2) connects devices in the same local network, also called a broadcast domain or VLAN (a virtual LAN: one physical switch carved into several separate L2 networks by tagging frames with a VLAN number). It learns which MAC address sits behind which port by watching source addresses on incoming frames. It then forwards each frame only to the port where the destination lives. If it does not know the destination yet, it floods the frame to all ports.
 
 A **router** (L3) connects different IP networks. It reads the destination IP, looks it up in a routing table and forwards the packet to the next hop. It also decrements the TTL so a packet caught in a loop eventually dies.
 
@@ -362,8 +367,8 @@ Three ranges are reserved for private networks (RFC 1918). They are not routed o
 A few other special ranges you will see:
 
 - `127.0.0.0/8`: loopback. `127.0.0.1` is "this machine". Traffic never leaves the host.
-- `169.254.0.0/16`: link-local. A host gives itself one of these when DHCP failed. On clouds, `169.254.169.254` is the instance metadata service.
-- `172.17.0.0/16`: the default Docker bridge network. It is a private range like any other, but it often confuses NCCL because it looks like a real interface (see below).
+- `169.254.0.0/16`: link-local. A host gives itself one of these when DHCP (the protocol that hands out IP addresses automatically when a machine joins a network) failed. On clouds, `169.254.169.254` is the instance metadata service: a web server, reachable only from inside each VM, that tells the machine about itself (instance type, region, temporary credentials).
+- `172.17.0.0/16`: the default Docker bridge network (the virtual network Docker creates on a host so its containers can talk to each other; containers are introduced in [Docker and Apptainer for ML](linux-and-os.md#docker-and-apptainer-for-ml)). It is a private range like any other, but it often confuses NCCL because it looks like a real interface (see below).
 
 `ipaddress` knows all of these, which is handy for sanity checks in launch scripts (for example, refusing to start if `MASTER_ADDR` is loopback while `WORLD_SIZE` spans several nodes):
 
@@ -491,6 +496,8 @@ The SLURM idiom for choosing a master is:
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 ```
 
+(Just enough to follow it: SLURM is the job scheduler most GPU clusters use; you met a job script in [Putting it together](linux-and-os.md#10-putting-it-together-one-training-job-end-to-end), and it's taught in [Slurm from zero](../orchestration/slurm/from-zero.md). Inside a job, SLURM sets `SLURM_JOB_NODELIST` to a compressed list of the job's nodes such as `node-[017-018]`; `scontrol show hostnames` expands it to one name per line, and `head -n 1` keeps the first, which becomes the master.)
+
 This relies on that hostname resolving correctly from every node. Verify it with `getent hosts $MASTER_ADDR` on a worker. Resolving names from Python, and the hostname-to-loopback trap reproduced on a laptop, are in [DNS lookups in code](#dns-lookups-in-code) below.
 
 ### Try this
@@ -508,9 +515,9 @@ IP delivers packets between hosts, best effort. Packets can be lost, duplicated 
 
 A **port** is a 16-bit number (0 to 65535). A connection is identified by a 5-tuple: (protocol, source IP, source port, destination IP, destination port). Servers listen on well-known ports, for example SSH on 22, HTTPS on 443, and torch distributed's default `MASTER_PORT` of 29500. Clients get a random **ephemeral port**. On Linux the default range is 32768 to 60999, visible in `/proc/sys/net/ipv4/ip_local_port_range`. macOS uses the IANA range, `sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last` prints `49152` and `65535`. A server that picks a fixed port inside the ephemeral range can collide with some unrelated outgoing connection that got that port by chance, which is one reason `MASTER_PORT` defaults to 29500, below both ranges.
 
-Ports below 1024 need root to bind. Only one process can listen on a given (IP, port, protocol) at a time. That rule is why "address already in use" happens when a previous training run is still alive, or a zombie is holding port 29500.
+Ports below 1024 need root to bind. Only one process can listen on a given (IP, port, protocol) at a time. That rule is why "address already in use" happens when a previous training run is still alive, or a leftover process from a crashed run is still holding port 29500.
 
-A **socket** is the operating system's handle for one endpoint of communication. Here is a complete TCP server and client in Python. This is the same pattern that sits under PyTorch's TCP store.
+A **socket** is the operating system's handle for one endpoint of communication. Here is a complete TCP server and client in Python. This is the same pattern that sits under PyTorch's TCP store (the small key-value server that ranks use to find each other at start-up; see [Step 1](#step-1-rendezvous-over-tcp-the-store) below).
 
 ```python
 # server.py -- run on the "master" node
@@ -691,7 +698,7 @@ cross-region  BDP  875.000 MB   64 KiB window caps at   0.0075 Gbps
 
 The implication: if a TCP connection's window is capped at 64 KiB, throughput is capped at window/RTT. That is 65536 × 8 / 0.2 ms ≈ 2.6 Gbps in the data center and only about 7.5 Mbps across a 70 ms link, no matter how fat the pipe is. Linux autotunes socket buffers. The typical default maxima are around 6 MB receive and 4 MB send (`net.ipv4.tcp_rmem` / `tcp_wmem`; check your distro). That is plenty for the data center but far short of the 875 MB a cross-region 100 Gbps link would need. This is why copying a checkpoint across regions over a single TCP stream is slow, and why tools open many parallel streams.
 
-The InfiniBand row is worth a second look. The BDP is small because the latency is tiny. On that fabric, software overhead per message, not the window, is the bottleneck.
+The InfiniBand row is worth a second look (NDR is the name of InfiniBand's 400 Gbps generation; [InfiniBand](#infiniband) below has the details). The BDP is small because the latency is tiny. On that fabric, software overhead per message, not the window, is the bottleneck.
 
 ### UDP
 
@@ -735,7 +742,7 @@ The last line is an ICMP "port unreachable" message from the kernel, delivered o
 
 TCP is excellent for the Internet. For moving gradients between GPUs it has three structural costs:
 
-1. **Copies.** Sending GPU memory over a TCP socket goes like this: GPU memory → host memory (cudaMemcpy) → kernel socket buffer (copy during `send`) → NIC (DMA). The receive side repeats it in reverse. Each copy uses memory bandwidth and adds latency.
+1. **Copies.** Sending GPU memory over a TCP socket goes like this: GPU memory → host memory (`cudaMemcpy`, the CUDA call that copies between GPU and CPU memory) → kernel socket buffer (copy during `send`) → NIC (DMA). The receive side repeats it in reverse. Each copy uses memory bandwidth and adds latency.
 2. **CPU and kernel overhead.** Every send and receive is a system call. The kernel runs the TCP state machine, computes checksums (unless offloaded) and handles interrupts. At 100 Gbps and 1500 MTU that is about 8 million packets per second. A single TCP stream typically cannot saturate a 100+ Gbps NIC on one core, so you need many streams and many cores. Those cores are the same ones running your data loader.
 3. **Latency floor.** A round trip through the kernel stack on a LAN is typically tens of microseconds. RDMA hardware achieves low single-digit microseconds. Exact numbers depend heavily on hardware and tuning.
 
@@ -777,12 +784,12 @@ send size  4194304 B:   59.5 Gbit/s    0.00 M sends/s
 
 (One run, Apple M4, one sender thread. An anecdote, not a benchmark.) Two lessons. Small messages are bounded by calls per second, not bytes: about half a million `send()` calls per second is the ceiling here, and Python adds its own overhead on top of the kernel's. And even with 4 MiB sends and no wire, one TCP stream on one core reaches about 60 Gbit/s, roughly one seventh of a single 400 Gbps NIC, while burning a full core. An RDMA NIC moves 400 Gbit/s with the CPU idle.
 
-NCCL can run over plain TCP sockets (its "Socket" transport). When the RDMA path is misconfigured, NCCL may silently fall back to it, and all-reduce bandwidth drops by an order of magnitude or more. Spotting `NET/Socket` instead of `NET/IB` in `NCCL_DEBUG=INFO` output is one of the most valuable debugging skills covered in [network debug](../network/debug/README.md).
+NCCL can run over plain TCP sockets (its "Socket" transport). When the RDMA path is misconfigured, NCCL may silently fall back to it, and all-reduce bandwidth drops by an order of magnitude or more. Spotting `NET/Socket` instead of `NET/IB` (IB = InfiniBand, the RDMA fabric covered [below](#infiniband)) in `NCCL_DEBUG=INFO` output (the environment variable that makes NCCL log its choices) is one of the most valuable debugging skills covered in [network debug](../network/debug/README.md).
 
 ### Try this
 
 1. In `flowctl.py`, set `cli.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1 << 20)` before connecting. How much more fits in flight? (The kernel may round or cap the value; print it back.)
-2. Run `tput.py` with two and four sender threads on separate connections. Does aggregate throughput scale? That is the "many streams" fix that `iperf3 -P` and checkpoint uploaders use.
+2. Run `tput.py` with two and four sender threads on separate connections. Does aggregate throughput scale? That is the "many streams" fix that `iperf3 -P` (a throughput-testing tool; `-P` sets the number of parallel streams; see [iperf3](#iperf3)) and checkpoint uploaders use.
 3. Change `aimd.py` so the loss threshold drops from 40 to 20 at round trip 15 (a competing flow arrives). How many round trips until the sawtooth adapts?
 4. In `udp.py`, send 10,000 datagrams in a tight loop without reading, then read with a timeout and count how many arrived. On loopback you may still lose some when the receive buffer overflows. That is UDP loss without any network.
 
@@ -792,7 +799,7 @@ The echo server earlier works on localhost and hides four problems that every re
 
 ### TCP is a byte stream: framing
 
-TCP delivers a stream of bytes, not a sequence of messages. The kernel is free to merge several of your `send()` calls into one `recv()`, or to split one `send()` across many. Code that assumes "one send = one recv" works in testing on localhost and corrupts data under load. The fix is **framing**: a convention for where each message ends. The two common ones are a delimiter (HTTP headers end with `\r\n\r\n`, Redis commands with `\r\n`) and a **length prefix**: send the message length as a fixed-size integer, then the message.
+TCP delivers a stream of bytes, not a sequence of messages. The kernel is free to merge several of your `send()` calls into one `recv()`, or to split one `send()` across many. Code that assumes "one send = one recv" works in testing on localhost and corrupts data under load. The fix is **framing**: a convention for where each message ends. The two common ones are a delimiter (HTTP headers end with `\r\n\r\n`, Redis commands with `\r\n`; Redis is a popular in-memory key-value database) and a **length prefix**: send the message length as a fixed-size integer, then the message.
 
 ```python
 # framing.py
@@ -850,9 +857,9 @@ naive recv got: b'set k1 v1\nset k2 v2\nget k1\n'
 after close: peer closed after 0/4 bytes
 ```
 
-Three sends became one receive, and one send became 512 receives, even though we asked for up to 1 MiB each time. (`socketpair` gives a Unix-domain stream socket; TCP behaves the same way, with chunk sizes that depend on the MSS and buffer state.) `recv_exact` plus a length prefix is the entire fix. `sendall` is the sending half of the same idea: plain `send()` may write only part of the buffer and return the count, and `sendall` loops for you.
+Three sends became one receive, and one send became 512 receives, even though we asked for up to 1 MiB each time. (`socketpair` gives a Unix-domain stream socket; TCP behaves the same way, with chunk sizes that depend on the MSS (maximum segment size: the largest TCP payload per packet, the MTU minus the IP and TCP headers) and buffer state.) `recv_exact` plus a length prefix is the entire fix. `sendall` is the sending half of the same idea: plain `send()` may write only part of the buffer and return the count, and `sendall` loops for you.
 
-Two things to add before using this on a network: cap `n` (a corrupted or malicious 4-byte header can claim 4 GiB and make you allocate it), and use a binary format such as `struct`, msgpack or protobuf instead of JSON for tensors. Never use `pickle` on bytes from a socket you do not fully trust; unpickling runs arbitrary code.
+Two things to add before using this on a network: cap `n` (a corrupted or malicious 4-byte header can claim 4 GiB and make you allocate it), and use a binary format such as `struct`, msgpack or protobuf (compact binary serialization formats; protobuf is the one gRPC uses) instead of JSON for tensors. Never use `pickle` on bytes from a socket you do not fully trust; unpickling runs arbitrary code.
 
 ### Timeouts and the errors you will actually see
 
@@ -986,7 +993,7 @@ Honest result: on macOS loopback the effect is small (about 18 µs here), becaus
 
 ### Many clients at once: an asyncio TCP server
 
-A server that handles one connection at a time cannot be a rendezvous point for 1,000 ranks. The three classic designs are a thread per connection, a process per connection, and an **event loop**: one thread that waits on all sockets at once (using `epoll` on Linux, `kqueue` on macOS) and runs whichever handler has data ready. `asyncio` is Python's event loop; see [concurrency](concurrency.md) for how it works. Here is a tiny TCPStore-like key-value server: `SET k v`, `GET k`, and `WAIT k`, which blocks the caller until some other client sets `k`. Four "ranks" connect to it, rank 0 publishes an id late, and everyone waits for it, exactly the shape of NCCL's unique-id exchange:
+A server that handles one connection at a time cannot be a rendezvous point for 1,000 ranks. The three classic designs are a thread per connection, a process per connection, and an **event loop**: one thread that waits on all sockets at once (using `epoll` on Linux, `kqueue` on macOS) and runs whichever handler has data ready. `asyncio` is Python's event loop; see [concurrency](concurrency.md) for how it works. Here is a tiny TCPStore-like key-value server: `SET k v`, `GET k`, and `WAIT k`, which blocks the caller until some other client sets `k`. Four "ranks" connect to it, rank 0 publishes an id late, and everyone waits for it, exactly the shape of NCCL's unique-id exchange ([Step 2](#step-2-nccl-builds-its-own-connections) below):
 
 ```python
 # akv.py
@@ -1082,6 +1089,8 @@ async def main():
 asyncio.run(main())
 ```
 
+To try it: `python3 -m http.server` is the standard library's tiny web server (it serves the current directory), the trailing `&` runs each command in the background ([job control](linux-and-os.md#job-control--jobs-fg-bg-ctrl-z)), and `curl` fetches a URL (`-s` silent, `-o /dev/null` discard the body, `-w` print the listed fields; see [curl](#curl)).
+
 ```
 $ python3 -m http.server 8765 --bind 127.0.0.1 &
 $ python3 relay.py 9999 127.0.0.1 8765 &
@@ -1090,7 +1099,7 @@ $ curl -s -o /dev/null -w 'via relay: HTTP %{http_code}, %{size_download} bytes\
 via relay: HTTP 200, 1731 bytes
 ```
 
-SSH does the same thing, except that the bytes between your laptop and the remote end travel inside the encrypted SSH connection, and the "open a connection to the target" step happens on the remote machine. Kubernetes' `kubectl port-forward` and every L4 load balancer are variations on this loop.
+SSH does the same thing, except that the bytes between your laptop and the remote end travel inside the encrypted SSH connection, and the "open a connection to the target" step happens on the remote machine. Kubernetes' `kubectl port-forward` and every L4 load balancer are variations on this loop. (Kubernetes is a system for running containers across a cluster of machines, and `kubectl` is its command-line client; both are taught in [Kubernetes from zero](../orchestration/kubernetes-from-zero.md).)
 
 ### Try this
 
@@ -1137,7 +1146,7 @@ no-such-host.invalid     90.7 ms  gaierror: [Errno 8] nodename nor servname prov
 
 Look at the second line: this laptop's own hostname resolves to `127.0.0.1` *as well as* its LAN address. That is the `127.0.1.1` trap from the hostname section in another form. A launcher that does `MASTER_ADDR=$(hostname)` and resolves it on the master could advertise loopback. Note also that a lookup takes tens of milliseconds and a failed one even longer, which is why thousands of ranks resolving at once can overload a DNS server.
 
-The command-line tools ask a DNS server directly, bypassing `/etc/hosts`:
+The command-line tools ask a DNS server directly, bypassing `/etc/hosts`. DNS stores typed **records**: an `A` record maps a name to an IPv4 address and an `AAAA` record to an IPv6 address. `dig name A` asks for the A records; `+short` prints only the answers, and `+noall +answer +stats` prints just the answer section plus timing:
 
 ```
 $ dig +short huggingface.co A
@@ -1254,7 +1263,7 @@ $ curl -v http://127.0.0.1:8765/ -o /dev/null 2>&1 | grep -E '^[*<>]' | head -8
 
 ### TLS basics
 
-**TLS** (Transport Layer Security; "SSL" is its obsolete predecessor's name) sits between TCP and the application. It gives three guarantees: **confidentiality** (bytes are encrypted), **integrity** (tampering is detected), and **authentication** (you are talking to the host you named). Authentication works through **certificates**: the server presents a certificate binding its public key to its name, signed by a **certificate authority (CA)** that your machine already trusts, possibly through a chain of intermediate CAs. The client checks the signature chain up to a trusted root, checks the validity dates, and checks that the name it asked for appears in the certificate's **Subject Alternative Name (SAN)** list. Because one IP can host many sites, the client also sends the name it wants in the clear at the start of the handshake. That is **SNI** (Server Name Indication), and it is what `server_hostname=` sets in Python.
+**TLS** (Transport Layer Security; "SSL" is its obsolete predecessor's name) sits between TCP and the application. It gives three guarantees: **confidentiality** (bytes are encrypted), **integrity** (tampering is detected), and **authentication** (you are talking to the host you named). Authentication works through **certificates**. (Public-key cryptography in two sentences: a key pair has a private key the owner keeps secret and a public key anyone may see; data signed with the private key can be checked with the public key, which proves the signer holds the private key. A certificate is a small file containing a name and a public key, signed by someone else.) The server presents a certificate binding its public key to its name, signed by a **certificate authority (CA)** that your machine already trusts, possibly through a chain of intermediate CAs. The client checks the signature chain up to a trusted root, checks the validity dates, and checks that the name it asked for appears in the certificate's **Subject Alternative Name (SAN)** list. Because one IP can host many sites, the client also sends the name it wants in the clear at the start of the handshake. That is **SNI** (Server Name Indication), and it is what `server_hostname=` sets in Python.
 
 ```python
 # tls.py
@@ -1310,7 +1319,7 @@ self-signed.badssl.com   -> self-signed certificate
 
 The TLS 1.3 handshake cost one extra round trip on top of TCP's, which is why connection reuse (keep-alive, connection pools) matters for chatty clients. Note the 90-day certificate lifetime: certificates expire, and an expired internal certificate is a classic cause of a fleet-wide outage at 00:00 UTC.
 
-`openssl s_client` is the command-line equivalent and the first thing to run when a client says "certificate verify failed":
+`openssl s_client` is the command-line equivalent and the first thing to run when a client says "certificate verify failed". `-connect host:port` opens the TLS connection and `-servername` sets the SNI; the `echo |` feeds it an empty input so it exits after the handshake instead of waiting for you to type; `openssl x509 -noout -dates -ext subjectAltName` parses the certificate it printed and shows just the validity dates and the SAN list:
 
 ```
 $ echo | openssl s_client -connect example.com:443 -servername example.com 2>/dev/null \
@@ -1327,7 +1336,7 @@ X509v3 Subject Alternative Name:
     DNS:example.com, DNS:*.example.com
 ```
 
-Internal services (a model registry, an inference endpoint inside the cluster) often use a private CA. The correct way to talk to them is to trust that CA, not to turn verification off:
+Internal services (a model registry, an inference endpoint inside the cluster) often use a private CA. The correct way to talk to them is to trust that CA, not to turn verification off. To try it locally, this command makes a throwaway **self-signed** certificate (one that signs itself, so it acts as its own CA): `req -x509` creates a certificate rather than a signing request, `-newkey rsa:2048 -nodes` generates a new RSA key without a password, `-keyout`/`-out` name the key and certificate files, `-days 7` sets the lifetime, `-subj "/CN=localhost"` sets the name, and `-addext` adds the SAN entries a modern client checks:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
@@ -1396,7 +1405,7 @@ Networking people and ML people use different units, and vendors take advantage 
 
 Watch the capitalization. `Gb` is gigabit and `GB` is gigabyte. Some benchmark tools also report GiB/s (2^30 bytes/s), which is about 7% less than GB/s for the same number.
 
-**Line rate vs payload.** The quoted rate is the raw signaling rate after line encoding. Packet headers, as in the MTU table above, plus protocol overhead mean that application payload always comes out a few percent lower. A well-tuned 400 Gbps InfiniBand link typically delivers somewhere in the high 300s Gbps in `ib_write_bw`. Do not expect 400.
+**Line rate vs payload.** The quoted rate is the raw signaling rate after line encoding. Packet headers, as in the MTU table above, plus protocol overhead mean that application payload always comes out a few percent lower. A well-tuned 400 Gbps InfiniBand link typically delivers somewhere in the high 300s Gbps in `ib_write_bw` (an RDMA bandwidth benchmark from the `perftest` suite; see [iperf3](#iperf3)). Do not expect 400.
 
 **Unidirectional vs bidirectional.** A full-duplex link can send at full rate in both directions at once. Many vendors quote the *sum of both directions*. NVIDIA's "900 GB/s NVLink" for H100 is bidirectional: it is 450 GB/s in each direction. A ring all-reduce sends in one direction on each link, so the per-direction number is the one that matters. The [network chapter](../network/README.md#unidirectional-vs-bidirectional-duplex) covers this in detail. **Always ask "per direction or both?"**
 
@@ -1449,7 +1458,7 @@ $ ping -c 3 huggingface.co | tail -1
 round-trip min/avg/max/stddev = 17.428/18.509/20.264/1.252 ms
 ```
 
-Loopback is 59 µs round trip through the kernel's ICMP path; a CDN edge across town is about 18 ms. Inside a data center expect tens to low hundreds of microseconds between hosts. `ping` sends ICMP (Internet Control Message Protocol, the IP layer's own signalling protocol) echo requests and reports round-trip time. It answers "is the host reachable at the IP layer, and what is the latency?" Caveat: many cloud environments and firewalls block ICMP, so a failed ping does not prove the host is unreachable. Use `nc` (below) to test a TCP port directly.
+Loopback is 59 µs round trip through the kernel's ICMP path; a CDN edge (a content provider's nearby cache server) across town is about 18 ms. Inside a data center expect tens to low hundreds of microseconds between hosts. `ping` sends ICMP (Internet Control Message Protocol, the IP layer's own signalling protocol) echo requests and reports round-trip time. It answers "is the host reachable at the IP layer, and what is the latency?" Caveat: many cloud environments and firewalls block ICMP, so a failed ping does not prove the host is unreachable. Use `nc` (below) to test a TCP port directly.
 
 ### traceroute / tracepath
 
@@ -1495,7 +1504,7 @@ On macOS the equivalents are `lsof` and `netstat`, run here against `python3 -m 
 ```
 $ lsof -nP -iTCP:8765 -sTCP:LISTEN
 COMMAND   PID          USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-Python  53468 ibrahimansari    3u  IPv4 0xb842af7a915e1c80      0t0  TCP 127.0.0.1:8765 (LISTEN)
+Python  53468 you              3u  IPv4 0xb842af7a915e1c80      0t0  TCP 127.0.0.1:8765 (LISTEN)
 $ netstat -an -p tcp | grep 8765
 tcp4       0      0  127.0.0.1.8765         *.*                    LISTEN
 tcp4       0      0  127.0.0.1.52628        127.0.0.1.8765         TIME_WAIT
@@ -1596,7 +1605,7 @@ Debugging a hanging rendezvous: run tcpdump on the master and start a worker. If
 
 ### ssh: keys, config, tunnels
 
-You will use SSH constantly, and multi-node launchers (pdsh, the DeepSpeed launcher, MPI) often use it to start processes on other nodes.
+You will use SSH constantly, and multi-node launchers (pdsh, which runs one command on many hosts in parallel; the DeepSpeed launcher; MPI, the classic HPC library and launcher for multi-process programs) often use it to start processes on other nodes. ([Working remotely](linux-and-os.md#working-remotely-ssh-scp-rsync) covered the basics; this section adds what clusters need.)
 
 **Keys.** Use key pairs instead of passwords:
 
@@ -1612,12 +1621,12 @@ Launchers that ssh between compute nodes need passwordless SSH from node to node
 ```
 Host login
     HostName login.cluster.org
-    User ibrahim
+    User you
     IdentityFile ~/.ssh/id_ed25519
 
 Host gpu-*
     ProxyJump login              # reach compute nodes through the login node
-    User ibrahim
+    User you
 ```
 
 Now `ssh gpu-017` hops through the login node automatically. `ssh -G` prints the configuration ssh *would* use for a host without connecting, which is the way to debug a config file. Real output on this Mac with the config above saved as `ssh_config` (and `alice` / `login.cluster.example.org` as the user and host):
@@ -1634,7 +1643,7 @@ A few more options that save beginners hours on clusters (all standard OpenSSH, 
 
 ```
 Host *
-    ServerAliveInterval 60        # send a keepalive every 60 s so idle sessions behind NAT don't drop
+    ServerAliveInterval 60        # send a keepalive every 60 s so idle sessions behind NAT (address-translating home/office routers) don't drop
     ControlMaster auto            # reuse one TCP+SSH connection for later sessions to the same host
     ControlPath ~/.ssh/cm-%r@%h:%p
     ControlPersist 10m
@@ -1656,7 +1665,7 @@ This is far safer than starting Jupyter with `--ip=0.0.0.0` on a shared cluster,
 
 ### Firewalls and why MASTER_PORT gets blocked
 
-A **firewall** filters packets by rules on IPs, ports and protocols. On Linux the host firewall is `nftables`, often managed through `ufw` (Ubuntu) or `firewalld` (RHEL). In clouds there is another layer outside the host: **security groups** or **VPC firewall rules**.
+A **firewall** filters packets by rules on IPs, ports and protocols. On Linux the host firewall is `nftables`, often managed through `ufw` (Ubuntu) or `firewalld` (RHEL). In clouds there is another layer outside the host: **security groups** or **VPC firewall rules** (a VPC, virtual private cloud, is your private network inside the cloud provider; a security group is a named set of allow rules attached to machines in it, enforced by the provider).
 
 Common ways distributed training trips over firewalls:
 
@@ -1687,6 +1696,8 @@ table inet filter {
   }
 }
 ```
+
+Read it top to bottom: a table of rules for IPv4 and IPv6 (`inet`); one chain that sees every incoming packet (`hook input`) and drops anything no rule accepts (`policy drop`); then accept replies to connections this host opened (`ct state established,related`), anything on loopback (`iif lo`), SSH (`tcp dport 22`), and every packet whose source address is in the cluster subnet (`ip saddr 10.1.0.0/16`).
 
 ### Try this
 
@@ -1742,7 +1753,7 @@ A leaf's **oversubscription ratio** is downlink bandwidth to servers divided by 
 
 For web traffic, where most servers are idle most of the time, 3:1 is cheap and fine. For training, where *every* GPU communicates at the same moment during an all-reduce, oversubscription directly cuts collective bandwidth. AI backend fabrics are therefore usually built **non-blocking (1:1)**, or close to it, at least within a job's scale unit. Ask the provider. It is one of the most important questions about a cluster you are renting.
 
-What 3:1 does to a cross-rack data-parallel all-reduce, using the ring formula from the collectives section below:
+What 3:1 does to a cross-rack data-parallel all-reduce, using the ring formula from the collectives section below. Taking it on trust for now: in a ring all-reduce of `S` bytes over `N` ranks, each rank sends `2(N-1)/N × S` bytes, so the time is roughly that divided by each rank's bandwidth ([derived below](#ring-all-reduce-step-by-step)):
 
 ```python
 # oversub.py
@@ -1810,7 +1821,7 @@ With 8 elephant flows on 8 links, a perfect spread happens 0.24% of the time, an
 - **North-south** traffic enters or leaves the data center: users hitting your inference API, downloading datasets from the Internet, pushing to the Hub.
 - **East-west** traffic stays between servers inside the data center: gradient all-reduce, reading from a parallel filesystem, checkpoint writes.
 
-Training is overwhelmingly east-west. Clusters often physically separate these into a **frontend network** (Ethernet: SSH, storage, the Internet) and a **backend/compute network** (InfiniBand or RoCE, GPU-to-GPU only), plus an **out-of-band management network** for BMCs. The [network chapter](../network/README.md#cluster-networks) describes these. When debugging, always know which of these networks a given connection is supposed to use.
+Training is overwhelmingly east-west. Clusters often physically separate these into a **frontend network** (Ethernet: SSH, storage, the Internet) and a **backend/compute network** (InfiniBand or RoCE, GPU-to-GPU only), plus an **out-of-band management network** for BMCs (baseboard management controllers: a small independent computer on each server's motherboard that lets admins power-cycle it and reach its console even when the OS is dead). The [network chapter](../network/README.md#cluster-networks) describes these. When debugging, always know which of these networks a given connection is supposed to use.
 
 The volume difference is large. A back-of-envelope comparison for one data-parallel job, a 7B model in bf16 on 64 GPUs taking one step every 2 seconds, against the north-south traffic of its data and checkpoints:
 
@@ -1880,7 +1891,7 @@ The price is setup complexity. Memory must be **registered** (pinned and made kn
 - **HCA** (Host Channel Adapter): the IB NIC, for example a ConnectX card. It shows up as a device such as `mlx5_0`.
 - **Subnet Manager (SM):** software, either OpenSM or NVIDIA UFM, running on a switch or a host. It discovers the fabric topology, assigns addresses, and computes forwarding tables for all switches. Without a running SM, IB ports stay in the `INIT` state and do not pass traffic. "Port state INIT" means "go check the SM".
 - **LID** (Local Identifier): a 16-bit address the SM assigns to each port. It plays the role of a MAC/IP address inside an IB subnet. Ports also have permanent 64-bit **GUIDs**, similar to MAC addresses.
-- **Verbs:** the IB/RDMA programming interface (`libibverbs`). The core objects are the **Queue Pair (QP)**, a send queue plus a receive queue representing one connection, the **Completion Queue (CQ)**, where the NIC reports finished work, and **Memory Regions (MR)**, which are registered buffers. NCCL, MPI and UCX all speak verbs. You will rarely write verbs code yourself, but `NCCL_IB_*` environment variables and error messages use these terms.
+- **Verbs:** the IB/RDMA programming interface (`libibverbs`). The core objects are the **Queue Pair (QP)**, a send queue plus a receive queue representing one connection, the **Completion Queue (CQ)**, where the NIC reports finished work, and **Memory Regions (MR)**, which are registered buffers. NCCL, MPI and UCX (another communication library used under MPI and some serving stacks) all speak verbs. You will rarely write verbs code yourself, but `NCCL_IB_*` environment variables and error messages use these terms.
 - **Credit-based flow control:** IB is **lossless** at the link layer. A sender transmits only when the receiver has advertised buffer credits, so switches do not drop packets because of congestion. This is a big reason IB performance is so predictable.
 
 IB link generations are named by per-lane speed: EDR, HDR, NDR, XDR. A typical port today is 4 lanes, for example NDR 4x = 400 Gbps. The [network chapter](../network/README.md#infiniband) has the table.
@@ -1925,7 +1936,7 @@ IB can also carry IP traffic (**IPoIB**, the `ib0` interface). IPoIB is convenie
 The problem: Ethernet drops packets when buffers fill, and the RDMA transport in NICs historically handles loss poorly. Its recovery is crude (go-back-N), and throughput collapses under loss. RoCE deployments therefore try to make Ethernet behave **losslessly**, using two mechanisms:
 
 - **PFC** (Priority Flow Control, IEEE 802.1Qbb). When a switch buffer for a traffic class nears full, it sends a "pause" frame upstream, telling the sender to stop that class briefly. It prevents drops, but pauses can propagate backwards and cause "head-of-line blocking" and, in pathological cases, deadlock. It is a blunt tool.
-- **ECN** (Explicit Congestion Notification). Instead of dropping, a congested switch *marks* packets. The receiver reflects the mark back to the sender, which reduces its rate. On RoCE NICs this loop is usually **DCQCN**. ECN acts earlier and more gently than PFC. PFC stays as a backstop.
+- **ECN** (Explicit Congestion Notification). Instead of dropping, a congested switch *marks* packets. The receiver reflects the mark back to the sender, which reduces its rate. On RoCE NICs this loop is usually **DCQCN** (Data Center Quantized Congestion Notification, the standard rate-control algorithm built into RoCE NICs). ECN acts earlier and more gently than PFC. PFC stays as a backstop.
 
 Why does loss hurt so much? The classic RDMA NIC recovery is **go-back-N**: on a gap, the receiver discards everything after the missing packet and the sender resends from the missing one onwards. TCP instead does **selective** retransmission of only what was lost. A simulation with a window of 256 packets in flight (illustrative; the real window depends on the bandwidth-delay product):
 
@@ -1984,10 +1995,10 @@ NCCL_DEBUG=INFO python train.py 2>&1 | grep -m3 GDRDMA
 
 AWS does not offer InfiniBand. Its HPC network is **EFA** (Elastic Fabric Adapter). EFA provides OS-bypass networking using AWS's own **SRD** (Scalable Reliable Datagram) protocol. SRD sprays packets across many paths and handles reordering and retransmission in the NIC. That is a different design choice from IB and RoCE: tolerate loss and spread load, rather than make the network lossless.
 
-Software-wise, EFA is accessed through **libfabric**, and NCCL reaches it through the **aws-ofi-nccl** plugin. Practical consequences:
+Software-wise, EFA is accessed through **libfabric** (also called OFI, OpenFabrics Interfaces: a user-space library that gives one API over many fabrics, with a "provider" per fabric, here `efa`), and NCCL reaches it through the **aws-ofi-nccl** plugin (a shared library NCCL loads at start-up that translates NCCL's network calls into libfabric calls). Practical consequences:
 
 - NCCL logs show `NET/OFI` (the plugin) instead of `NET/IB`.
-- You need the EFA driver, libfabric and the plugin installed in your container, at compatible versions. A missing plugin means NCCL falls back to TCP sockets, and that fallback is a very common cause of "training on AWS is mysteriously slow".
+- You need the EFA driver, libfabric and the plugin installed in your container (the packaged software environment your job runs in; see [Docker and Apptainer for ML](linux-and-os.md#docker-and-apptainer-for-ml)), at compatible versions. A missing plugin means NCCL falls back to TCP sockets, and that fallback is a very common cause of "training on AWS is mysteriously slow".
 - `fi_info -p efa` lists EFA devices. If it shows nothing, EFA is not usable from this environment. A sketch of healthy output (untested here; abridged):
 
 ```
@@ -1999,7 +2010,7 @@ provider: efa
     protocol: FI_PROTO_EFA
 ```
 
-  One entry per EFA device is typical, so a p5-class instance lists many. "No data available" means no EFA device is visible, usually because the container was started without the devices passed through.
+  One entry per EFA device is typical, so a p5-class instance (AWS's 8×H100 machine type, which has many EFA NICs) lists many. "No data available" means no EFA device is visible, usually because the container was started without the devices passed through.
 - As noted above, the security group must allow all traffic within itself.
 
 Other clouds have their own equivalents. Google Cloud, for example, has GPUDirect-TCPX/TCPXO and RDMA-capable offerings on newer instance types. These details change frequently, so check the provider's current docs.
@@ -2072,7 +2083,7 @@ $ sudo lspci -s 41:00.0 -vv | grep -E 'LnkCap|LnkSta'
 
 **NVLink** is NVIDIA's dedicated GPU-to-GPU link, far faster than PCIe. H100 has 18 NVLink 4 links totaling 900 GB/s bidirectional (450 GB/s per direction). B200 doubles that. **NVSwitch** chips connect all GPUs in a node, so any GPU can talk to any other at full NVLink bandwidth. It is literally a switch, like the leaf switches above, but inside the box, carrying load/store and copy traffic between GPU memories.
 
-Compare the numbers per GPU and per direction: about 450 GB/s over NVLink inside the node versus about 50 GB/s through a 400 Gbps NIC between nodes. That is roughly a 9x gap, and it is why parallelism strategies put the chattiest communication (tensor parallelism) inside the NVLink domain and the less frequent communication (data parallelism, pipeline stages) across nodes. Rack-scale systems such as NVL72 extend the NVLink domain to 72 GPUs across a rack, which shifts that boundary. AMD has the equivalent Infinity Fabric/xGMI. See the [intra-node section](../network/README.md#intra-node-networking).
+Compare the numbers per GPU and per direction: about 450 GB/s over NVLink inside the node versus about 50 GB/s through a 400 Gbps NIC between nodes. That is roughly a 9x gap, and it is why parallelism strategies put the chattiest communication (tensor parallelism) inside the NVLink domain and the less frequent communication (data parallelism, pipeline stages) across nodes. In one sentence each (all derived in [Parallelism from first principles](../training/model-parallelism/derivations.md)): **data parallelism** gives every GPU a full model copy and all-reduces gradients once per step; **tensor parallelism (TP)** splits each layer's weight matrices across GPUs, so they must exchange activations inside every layer; **pipeline parallelism** gives each GPU a contiguous block of layers (a stage) and passes activations from stage to stage, one **micro-batch** (a slice of the batch) at a time. Rack-scale systems such as NVL72 extend the NVLink domain to 72 GPUs across a rack, which shifts that boundary. AMD has the equivalent Infinity Fabric/xGMI. See the [intra-node section](../network/README.md#intra-node-networking).
 
 A sketch of `nvidia-smi topo -m` on an 8-GPU NVSwitch node (untested here; trimmed to four GPUs and two NICs, real tables list all devices):
 
@@ -2144,7 +2155,7 @@ The processes need to find each other first. Nobody yet knows the others' addres
        set/get keys: "who is out there?", "here is the NCCL unique id"
 ```
 
-Every rank connects to the store. The world size is checked, and processes block until all ranks have arrived. That blocking is the hang you see when one node never shows up. With `torchrun`, the elastic agent manages this rendezvous; the details depend on `--rdzv-backend`. With a plain `init_method="env://"`, the `MASTER_ADDR`, `MASTER_PORT`, `RANK` and `WORLD_SIZE` environment variables drive it.
+Every rank connects to the store. The world size is checked, and processes block until all ranks have arrived. That blocking is the hang you see when one node never shows up. With `torchrun`, the elastic agent (the per-node `torchrun` process from [How torchrun spawns workers](linux-and-os.md#how-torchrun-spawns-workers)) manages this rendezvous; the details depend on `--rdzv-backend`. With a plain `init_method="env://"`, the `MASTER_ADDR`, `MASTER_PORT`, `RANK` and `WORLD_SIZE` environment variables drive it.
 
 The store is low-bandwidth control traffic. Its only requirements are that every rank can open a TCP connection to `MASTER_ADDR:MASTER_PORT`, and that the master listens on an address the others can reach.
 
@@ -2264,7 +2275,7 @@ node0:41721:41790 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[1] via P2P/IPC
 node0:41721:41790 [0] NCCL INFO Channel 00/0 : 8[0] -> 0[0] [receive] via NET/IB/0/GDRDMA
 ```
 
-`Bootstrap : Using ens5` is the interface choice for the TCP bootstrap. `Using network IB` (versus `Socket`) is the inter-node transport. `via P2P/IPC` is NVLink/PCIe inside the node, and `NET/IB/0/GDRDMA` is RDMA on HCA 0 with GPUDirect. A bad line to see is `NET/Socket : Using [0]ens5:...` on a cluster that has InfiniBand.
+Each line starts with `host:pid:thread [local GPU index]`. In the `Channel` lines, `0[0] -> 1[1]` means global rank 0 on GPU 0 sends to rank 1 on GPU 1. `Bootstrap : Using ens5` is the interface choice for the TCP bootstrap. `Using network IB` (versus `Socket`) is the inter-node transport. `via P2P/IPC` is NVLink/PCIe inside the node, and `NET/IB/0/GDRDMA` is RDMA on HCA 0 with GPUDirect. A bad line to see is `NET/Socket : Using [0]ens5:...` on a cluster that has InfiniBand.
 
 `NCCL_SOCKET_IFNAME` selects an *IP interface* (from `ip addr`). `NCCL_IB_HCA` selects *RDMA devices* (from `ibv_devices`). They are different namespaces, and mixing them up is a common mistake. See [network debug](../network/debug/README.md#nccl_socket_ifname) for details.
 
@@ -2278,7 +2289,7 @@ node0:41721:41790 [0] NCCL INFO Channel 00/0 : 8[0] -> 0[0] [receive] via NET/IB
 | Rendezvous OK, first all-reduce hangs | NCCL bootstrap / interface | `NCCL_DEBUG=INFO`; which interface it chose; set `NCCL_SOCKET_IFNAME`; allow all intra-cluster ports |
 | Works, but all-reduce bandwidth is tiny | Transport fallback | `NCCL_DEBUG=INFO`: look for `NET/Socket` vs `NET/IB` / `NET/OFI`; `GDRDMA` present? |
 | Works on 1 node, fails on 2 | Inter-node path | Intra-node uses NVLink and never touches the network; test with `nc`, `ib_write_bw` |
-| Works in bare metal, fails in Docker | Interfaces/devices in container | `--network=host`, pass RDMA devices into the container, `--ipc=host`/shm size |
+| Works in bare metal, fails in Docker | Interfaces/devices in container | `docker run` flags: `--network=host` (use the host's interfaces instead of the Docker bridge), pass RDMA devices into the container, `--ipc=host`/shm size; see [Containers](containers-and-virtualization.md#3-docker-from-zero) |
 | Random NCCL timeouts mid-run | Fabric | Link errors, congestion; see [network debug](../network/debug/README.md) |
 
 Most rows of that table can be checked before launch with a few lines of Python run on every node. `preflight.py` resolves the local hostname (flagging loopback), resolves the master, asks the kernel which source IP it would use to reach it, and probes the port:
@@ -2329,7 +2340,7 @@ A good habit for the first run on any new cluster is to run a minimal all-reduce
 2. Start `torchrun --nnodes=2 --node-rank=0 --nproc-per-node=1 --master-addr=127.0.0.1 --master-port=29600 ddp_gloo.py` and never start node 1. Watch it hang, and read the timeout message it eventually prints. That is a missing node.
 3. Run two `torchrun` jobs with the same `--master-port` at the same time. Which error do you get, and from which process?
 4. Set `GLOO_SOCKET_IFNAME=lo0` (macOS) and then `GLOO_SOCKET_IFNAME=en0`, and repeat the socket listing. Which addresses does Gloo listen on now?
-5. Turn `preflight.py` into a check that exits non-zero on any problem, and run it as the first line of your SLURM batch script on every node with `srun python preflight.py $MASTER_ADDR $MASTER_PORT`.
+5. Turn `preflight.py` into a check that exits non-zero on any problem, and run it as the first line of your SLURM batch script on every node with `srun python preflight.py $MASTER_ADDR $MASTER_PORT` (`srun` launches a command on the job's nodes; see [Slurm from zero](../orchestration/slurm/from-zero.md#interactive-work-salloc-and-srun)).
 
 ## Collective communication: an intuitive introduction
 
@@ -2369,7 +2380,7 @@ This is data-parallel gradient synchronization. Divide by 3 and you have average
 all ranks: [1, 2, 3, 10, 20, 30, 100, 200, 300]
 ```
 
-ZeRO/FSDP uses it to reassemble sharded parameters before a layer runs.
+ZeRO/FSDP uses it to reassemble sharded parameters before a layer runs. (ZeRO and FSDP are variants of data parallelism in which each rank stores only a 1/N **shard** of the parameters, gradients and optimizer state instead of a full copy; see [ZeRO and FSDP](../training/model-parallelism/derivations.md#zero-and-fsdp).)
 
 **Reduce-scatter** (sum): reduce, then split the result so each rank keeps one chunk.
 
@@ -2383,7 +2394,7 @@ FSDP uses it for gradients: each rank keeps only the summed gradient shard it ow
 
 The key identity is **all-reduce = reduce-scatter followed by all-gather**. Reduce-scatter leaves each rank with one reduced chunk, and all-gather spreads those chunks to everyone. This is exactly how the ring algorithm works, and it is why FSDP can do "all-reduce in two halves" with compute in between.
 
-**All-to-all:** rank *i* sends its *j*-th chunk to rank *j*, like a matrix transpose across ranks. It is used for expert parallelism in mixture-of-experts models.
+**All-to-all:** rank *i* sends its *j*-th chunk to rank *j*, like a matrix transpose across ranks. It is used for expert parallelism in mixture-of-experts models (models whose feed-forward layer is many "expert" sub-networks with a router sending each token to a few of them; with experts on different GPUs, every token must be shipped to its experts' GPUs and back; see [Expert parallelism](../training/model-parallelism/derivations.md#expert-parallelism)).
 
 ```
 rank 0: [1, 10, 100]

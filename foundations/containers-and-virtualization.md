@@ -11,14 +11,19 @@ Conventions:
 - Anything that needs an NVIDIA GPU, `/dev/kvm`, a real HPC cluster, Firecracker, gVisor or Kata is marked **untested**. Those examples follow the documented interfaces, but nobody ran them for this chapter. The Docker Desktop VM exposes no `/dev/kvm` (checked: `ls: /dev/kvm: No such file or directory`), so nothing that needs hardware virtualization could run.
 - Partway through writing, Docker use was stopped on this machine. A few Docker examples written after that point (`docker save`, the `--memory` OOM check, the `--docker` mode of the sandbox harness) are marked untested. The node-agent and sandbox demos in sections 8 and 10 use only the Python standard library and ran without Docker.
 - Version-sensitive facts carry an "as of" note. Check them against your versions.
+- **Reading `docker run` before section 3.** Sections 1 and 2 use Docker as a convenient Linux host before section 3 teaches it. Just enough to follow along: `docker run [flags] IMAGE [COMMAND...]` starts a new container from the named image (`alpine:3.20` and `ubuntu:24.04` are small Linux distributions, `python:3.12-slim` is Debian with Python; the part after `:` is a version tag) and runs `COMMAND` inside it. `sh -c '...'` / `bash -c '...'` runs a whole shell script given as one string. The flags you'll see: `--rm` deletes the container when the command exits; `--privileged` turns off almost all isolation (used here to get a full Linux host to experiment in, and explained in [section 10](#the-main-escape-classes)); `--pid=host` shares the host's process table; `-v HOST_PATH:CONTAINER_PATH[:ro]` makes a host directory visible inside (`:ro` = read-only); `--user UID:GID` runs as that user; `--cap-add`/`--cap-drop` and `--security-opt` adjust the security features explained in section 2. Everything is taught properly in [section 3](#3-docker-from-zero).
+- A **CVE** ("Common Vulnerabilities and Exposures", e.g. `CVE-2022-0847`) is the public ID number assigned to a known security bug. The chapter cites them so you can look up the write-ups.
 
 
 ## Prerequisites
 
-- [Foundations: Linux and Operating Systems](linux-and-os.md): processes, system calls, `/proc`, signals, mounts, cgroups and namespaces at a high level, and the CUDA driver vs runtime split. This chapter assumes all of it.
-- [Foundations: Computer Architecture](computer-architecture.md): privilege levels, virtual memory and page tables, PCIe and DMA. These are needed for the virtualization half.
-- [Foundations: Networking](networking.md): IP addresses, ports, bridges, NAT and DNS. These are needed for container networking.
+- [The toolkit](toolkit.md): the shell, Python virtual environments (venv, uv), git (`.dockerignore` uses `.gitignore` syntax), and the JSON and YAML formats plus `jq`. Docker's configs, seccomp profiles, OCI specs and the Firecracker API are JSON; the Kubernetes and CDI examples are YAML.
+- [Foundations: Linux and Operating Systems](linux-and-os.md): processes, system calls, `/proc`, signals, mounts, cgroups and namespaces at a high level, the [brief Docker/Apptainer preview](linux-and-os.md#docker-and-apptainer-for-ml), and the CUDA driver vs runtime split. This chapter assumes all of it.
+- [Foundations: Computer Architecture](computer-architecture.md): privilege levels, virtual memory and page tables, the TLB, PCIe and DMA. These are needed for the virtualization half.
+- [Foundations: Networking](networking.md): IP addresses and CIDR subnets, ports, routing, DNS, HTTP, gRPC, and [firewalls with nftables](networking.md#firewalls-and-why-master_port-gets-blocked). These are needed for container and VM networking. (Bridges and NAT are defined here where they are first used.)
 - [Foundations: Concurrency](concurrency.md) is helpful for the DataLoader and `/dev/shm` discussion.
+- [Foundations: Distributed Systems](distributed-systems.md#core-vocabulary): the one-paragraph definitions of Slurm, Kubernetes and pods, which this chapter uses before their own chapters.
+- Forward links: [Kubernetes from zero](../orchestration/kubernetes-from-zero.md) (pods, RuntimeClass, device plugins), [Slurm from zero](../orchestration/slurm/from-zero.md) (`srun`), and [The GPU software stack](../compute/gpu-software-stack.md) (driver vs runtime in depth).
 
 
 
@@ -31,7 +36,7 @@ Conventions:
 1. **Dependency isolation.** Project A needs PyTorch 2.3 with CUDA 12.1, project B needs PyTorch 2.6 with CUDA 12.6, and both need to run on the same machine. A virtualenv isolates Python packages but not `libc`, `libstdc++`, NCCL or system tools. An image isolates the whole user space.
 2. **Resource isolation.** Eight jobs share one 8-GPU node. One job leaks host memory, and you want *that job* to be OOM-killed rather than the node. One job forks 10,000 processes, and the others should still be able to `fork`.
 3. **Security isolation.** You run code you didn't write and don't trust. Examples are model-generated code in a code-RL environment, an agent with a shell tool, a customer's inference container, or a pickle file someone uploaded. Here the question isn't "does it work" but "what is the worst thing it can do if it tries".
-4. **Reproducibility and portability.** "It works on my machine" goes away when "my machine" is a content-addressed image digest. The same bytes then run on a laptop, a CI runner and 512 cluster nodes.
+4. **Reproducibility and portability.** "It works on my machine" goes away when "my machine" is a content-addressed image digest (an image named by a hash of its contents, so the name can only ever mean those exact bytes; see [Tags and digests](#images-and-layers) in section 3). The same bytes then run on a laptop, a CI runner (CI, continuous integration: a service that automatically builds and tests every commit) and 512 cluster nodes.
 
 The first two reasons are about *accidents*, and the third is about *adversaries*. That difference is the most important idea in this chapter. Containers are excellent against accidents. Against a determined adversary they are one layer among several, because every container on a host shares one kernel.
 
@@ -48,7 +53,7 @@ From the weakest boundary to the strongest:
 | Full VM (QEMU/KVM, cloud instance) | the hardware and a larger device model | seconds to minutes | GBs of RAM for the guest | same as above, with more code to attack |
 | Separate physical machine | the network | minutes | a whole machine | the network |
 
-Startup and overhead figures are orders of magnitude, not benchmarks. The Firecracker numbers come from its paper and are discussed in section 8.
+Startup and overhead figures are orders of magnitude, not benchmarks. The Firecracker numbers come from its paper and are discussed in section 8. Several names in the table are preview-only: KVM is Linux's built-in hypervisor and a VMM (virtual machine monitor) is the program that runs one VM on top of it (both section 7); the Sentry is gVisor's user-space kernel (section 9).
 
 A **kernel** is the privileged program that owns the hardware and that every process asks for services through system calls (see [linux-and-os.md](linux-and-os.md#the-kernel-and-why-it-exists)). The "boundary" column is a rough measure of how much code sits between an attacker and the host. The Linux kernel exposes around 450 system calls (Docker's default seccomp profile allows 426 by name; see section 2) and millions of lines of driver code. A microVM exposes the KVM interface and a handful of emulated devices.
 
@@ -109,7 +114,7 @@ A **namespace** wraps a global kernel resource so that the processes inside it s
 |---|---|---|---|
 | `mnt` | mount table | `CLONE_NEWNS` | its own `/`, mounts don't leak out |
 | `pid` | process IDs | `CLONE_NEWPID` | first process is PID 1; can't see or signal host processes |
-| `net` | interfaces, routes, iptables, sockets, ports | `CLONE_NEWNET` | only `lo` until someone adds an interface |
+| `net` | interfaces, routes, iptables (the older name for the kernel's firewall rules; nftables is its successor), sockets, ports | `CLONE_NEWNET` | only `lo` until someone adds an interface |
 | `uts` | hostname, domain name | `CLONE_NEWUTS` | its own `hostname` |
 | `ipc` | SysV IPC, POSIX message queues | `CLONE_NEWIPC` | its own shared memory segments |
 | `user` | UIDs/GIDs, capabilities | `CLONE_NEWUSER` | can be "root" inside while being UID 1001 outside |
@@ -144,7 +149,7 @@ touch: cannot touch '/etc/pwned': Permission denied
 
 The `uid_map` line reads "UID 0 inside maps to UID 1001 outside, for a range of 1 UID". Inside the namespace, alice is root. To the real `/etc`, which is owned by host root, she is still 1001. This is the mechanism behind rootless Podman, rootless Docker and Apptainer's `--fakeroot`.
 
-Unprivileged user namespaces also widen the kernel attack surface a lot. Code paths that used to need real root, such as mounting some filesystems and configuring network namespaces, become reachable by anyone. Many kernel privilege-escalation exploits start with `unshare(CLONE_NEWUSER)`. This is why Docker's default seccomp profile blocks namespace creation (below), and why some distributions restrict unprivileged user namespaces with sysctls or AppArmor (as of Ubuntu 23.10+).
+Unprivileged user namespaces also widen the kernel attack surface a lot. Code paths that used to need real root, such as mounting some filesystems and configuring network namespaces, become reachable by anyone. Many kernel privilege-escalation exploits start with `unshare(CLONE_NEWUSER)`. This is why Docker's default seccomp profile blocks namespace creation (below), and why some distributions restrict unprivileged user namespaces with sysctls or AppArmor (a kernel security module, explained under [LSMs](#lsms-and-no_new_privs) below; as of Ubuntu 23.10+).
 
 ### cgroups v2: limits and accounting
 
@@ -169,7 +174,7 @@ The files you'll use:
 
 One rule surprises everyone the first time: **"no internal processes"**. A non-root cgroup that has processes can't hand controllers to its children. You must move the processes into a leaf first. The script in the next section hits this rule and works around it.
 
-Limits measured inside the hand-built container below, with `memory.max=64M`, `pids.max=32` and `cpu.max="50000 100000"` (ran):
+Limits measured inside the hand-built container below, with `memory.max=64M`, `pids.max=32` and `cpu.max="50000 100000"` (ran). The memory test pipes 200 MB of zero bytes into `tail`; `tail` keeps the last 10 *lines* in memory, and `/dev/zero` contains no newline, so it ends up holding all 200 MB:
 
 ```console
 / # head -c 209715200 /dev/zero | tail > /dev/null; echo "exit status: $?"   # buffer 200MB
@@ -266,8 +271,8 @@ ML-relevant capabilities you may be asked to add:
 | `IPC_LOCK` | pin large amounts of memory for RDMA and GPUDirect (often paired with `--ulimit memlock=-1`) | low |
 | `SYS_NICE` | set thread priorities and NUMA policies (`numactl --membind` needs it in some setups) | low |
 | `SYS_PTRACE` | `py-spy dump`, `gdb -p` on another process in the container | medium: can read other processes' memory |
-| `SYS_ADMIN` | mounting FUSE filesystems, some profilers | **high**: it's "the new root" |
-| `NET_ADMIN` | configure interfaces, tc shaping | high on shared hosts |
+| `SYS_ADMIN` | mounting FUSE filesystems (FUSE = filesystems implemented by an ordinary user-space program instead of kernel code, e.g. `s3fs`), some profilers | **high**: it's "the new root" |
+| `NET_ADMIN` | configure interfaces, tc shaping (`tc` is Linux traffic control: per-interface bandwidth limits and queueing) | high on shared hosts |
 
 ### seccomp: filtering system calls
 
@@ -301,7 +306,7 @@ exit=137
 
 The first run is a useful accident. Docker had already put the process in filter mode (`Seccomp: 2` in `/proc/self/status`), and the kernel refuses to switch a filtered process to strict mode, so `prctl` returns `EINVAL`. With Docker's filter removed, strict mode engages and the `getpid()` system call kills the process (137 = SIGKILL).
 
-Modern seccomp uses **seccomp-bpf** filters: small classic-BPF programs that look at the syscall number and its arguments (register values only, so they can't follow pointers). Docker, containerd and Kubernetes ship a default profile as JSON, which `libseccomp` compiles into BPF. Here is what Docker's default profile actually contains. The file was downloaded from `moby/profiles` and parsed (ran):
+Modern seccomp uses **seccomp-bpf** filters: small classic-BPF programs (**BPF**, the Berkeley Packet Filter, is a tiny bytecode language the kernel can run safely; it was invented for filtering network packets, and **eBPF** is its modern, extended form used all over the kernel) that look at the syscall number and its arguments (register values only, so they can't follow pointers). Docker, containerd and Kubernetes ship a default profile as JSON, which `libseccomp` compiles into BPF. Here is what Docker's default profile actually contains. The file was downloaded from `moby/profiles` (`curl -L` follows redirects, `-O` saves under the remote file name) and parsed (ran):
 
 ```console
 $ curl -sLO https://raw.githubusercontent.com/moby/profiles/main/seccomp/default.json
@@ -360,7 +365,7 @@ touch ok
 mkdir: can't create directory '/nope': Operation not permitted
 ```
 
-Real profiles are allowlists (`"defaultAction": "SCMP_ACT_ERRNO"`). The denylist above only shows the mechanism. A denylist misses every syscall you didn't think of, including ones added in the next kernel release (`clone3`, `io_uring_setup`, ...). Docker's profile blocks `io_uring_*` in recent versions; io_uring has been a rich source of kernel bugs. To build a tight profile for a specific workload, trace it first: `strace -f -c -o counts.txt python train.py` lists every syscall it makes.
+Real profiles are allowlists (`"defaultAction": "SCMP_ACT_ERRNO"`). The denylist above only shows the mechanism. A denylist misses every syscall you didn't think of, including ones added in the next kernel release (`clone3`, `io_uring_setup`, ...). Docker's profile blocks `io_uring_*` in recent versions; io_uring (Linux's newer asynchronous I/O interface, where a process submits batches of I/O through shared-memory rings) has been a rich source of kernel bugs. To build a tight profile for a specific workload, trace it first: `strace -f -c -o counts.txt python train.py` lists every syscall it makes.
 
 ### overlayfs: layered, copy-on-write filesystems
 
@@ -402,7 +407,7 @@ Everything an image layer does can be read off this output:
 - **Lookup** walks the layers top-down: `upper`, then `l2`, then `l1`. The first match wins, so `l2/a.txt` shadows `l1/a.txt`.
 - **New files** go straight into `upper` (`c.txt`).
 - **Modifying a lower file triggers a copy-up.** The *whole file* is copied into `upper` before the write lands (`b.txt`, now 12 bytes). Appending one byte to a 10 GB file in an image layer copies 10 GB. Don't write checkpoints or datasets into the container filesystem. Use a volume (section 3).
-- **Deleting a lower file** creates a **whiteout**: a character device with number 0/0 in `upper` (`c--------- 0, 0 a.txt`). The lower layers are immutable, so deletion has to be recorded as a marker. This is also why `RUN rm -rf /big` in a Dockerfile never shrinks an image: the bytes stay in the earlier layer, and the later layer just adds a whiteout.
+- **Deleting a lower file** creates a **whiteout**: a character device with number 0/0 in `upper` (`c--------- 0, 0 a.txt`). The lower layers are immutable, so deletion has to be recorded as a marker. This is also why `RUN rm -rf /big` in a Dockerfile (the image build recipe taught in section 3, where each `RUN` line produces one layer) never shrinks an image: the bytes stay in the earlier layer, and the later layer just adds a whiteout.
 - `workdir` is overlayfs's scratch space for atomic copy-ups. It must be on the same filesystem as `upper`.
 
 Docker's `overlay2` storage driver (shown as `overlayfs` under the containerd image store) does exactly this. Each image layer is one `lowerdir`, and each container gets one `upperdir`. `docker diff` lists what's in the upper layer (ran):
@@ -428,7 +433,7 @@ $ docker run --rm --security-opt label=type:container_t ...       # SELinux, ill
 
 ### Build a container by hand
 
-Now combine the pieces. The script below starts from a tarball of the Alpine root filesystem and does the core of what `runc` does. The tarball was made with `docker export $(docker create alpine:3.20) > alpine-rootfs.tar`, which is 9.1 MB. The script uses no Docker. It needs only `mount`, `unshare`, `pivot_root` and the cgroup filesystem (ran, as root inside a `--privileged` Ubuntu container standing in for a Linux host):
+Now combine the pieces. The script below starts from a tarball of the Alpine root filesystem and does the core of what `runc` does (runc is the small program that Docker, through several layers covered in sections 3 and 4, finally calls to create each container). The tarball was made with `docker export $(docker create alpine:3.20) > alpine-rootfs.tar`, which is 9.1 MB. The script uses no Docker. It needs only `mount`, `unshare`, `pivot_root` and the cgroup filesystem (ran, as root inside a `--privileged` Ubuntu container standing in for a Linux host):
 
 ```bash
 #!/bin/bash
@@ -511,7 +516,7 @@ The order of steps is deliberate:
 | seccomp filter | all ~450 syscalls reachable |
 | `no_new_privs`, AppArmor/SELinux profile | setuid binaries and LSM confinement |
 | masked/read-only paths: `/proc/kcore`, `/proc/sys`, `/sys/firmware`, `/proc/sysrq-trigger` ... | the host's kernel memory and tunables are visible through `/proc` and `/sys` |
-| a veth pair plus bridge for networking | our netns has no connectivity at all |
+| a veth pair plus bridge for networking (both defined under [Networking](#networking) in section 3) | our netns has no connectivity at all |
 | `/dev/pts`, `/dev/shm`, `/dev/mqueue`, `/etc/hosts`, `/etc/resolv.conf`, `/etc/hostname` | programs expect them |
 | rlimits, `oom_score_adj`, the right UID/GID, env vars, working directory | from the image config |
 | mounts set up in the *container's* mount namespace | our overlay and `/dev` mounts were made in the outer namespace and stay visible there |
@@ -525,7 +530,7 @@ If you want to see the full list, `runc spec` prints the default OCI `config.jso
 
 ### The moving parts
 
-**Docker** is a client and a daemon for building, distributing and running containers. When you type `docker run`, the request goes through several programs:
+**Docker** is a client and a daemon for building, distributing and running containers. When you type `docker run`, the request goes through several programs. (**REST** below means a plain HTTP API where you act on URLs with `GET`/`PUT`/`POST`/`DELETE` and send JSON bodies; here the HTTP travels over a Unix-domain socket file instead of TCP.)
 
 ```
 docker CLI ──REST over /var/run/docker.sock──> dockerd (image mgmt, networks, volumes, build)
@@ -545,7 +550,7 @@ docker CLI ──REST over /var/run/docker.sock──> dockerd (image mgmt, netw
 
 ### Images and layers
 
-An **image** is an ordered list of layers plus a JSON config. Each layer is a tarball of filesystem changes. The config holds the environment, the entrypoint, the working directory and so on. Each Dockerfile step that changes files makes a layer. `docker history` shows them (ran):
+An **image** is an ordered list of layers plus a JSON config. Each layer is a tarball of filesystem changes. The config holds the environment, the entrypoint, the working directory and so on. Each Dockerfile step that changes files makes a layer. `docker history` shows them (ran; `--format '{{.Size}}...'` is a Go template, Docker's way of choosing output fields, where `{{.Field}}` prints one field of each record):
 
 ```console
 $ docker history --format '{{.Size}}\t{{.CreatedBy}}' python:3.12-slim | cut -c1-110
@@ -565,7 +570,7 @@ $ docker image inspect python:3.12-slim --format '{{len .RootFS.Layers}} layers,
 
 `ENV` and `CMD` change only the config, so they show 0B and produce no filesystem layer. The four real layers are the Debian base (110 MB), the CA certificates (5 MB), the Python build (44.7 MB) and the symlinks (16 kB), each listed uncompressed.
 
-**Tags and digests.** `python:3.12-slim` is a *tag*: a mutable pointer that moves when the maintainers rebuild, which happened 13 hours before this run. `python@sha256:4840d5...` is a *digest*: the SHA-256 of the manifest, which is immutable. Always pin by digest for anything you need to reproduce. A tag pinned last month can silently give you a different libc tomorrow.
+**Tags and digests.** `python:3.12-slim` is a *tag*: a mutable pointer that moves when the maintainers rebuild, which happened 13 hours before this run. `python@sha256:4840d5...` is a *digest*: the SHA-256 (a cryptographic hash: any change to the input changes the output, and nobody can construct two inputs with the same hash) of the manifest, the small JSON file that lists the image's config and layers (fetched by hand under [Registries](#registries-and-pull-time) below). A digest is immutable. Always pin by digest for anything you need to reproduce. A tag pinned last month can silently give you a different libc tomorrow.
 
 Layers are shared. Sixty-four images built on the same 10 GB CUDA+PyTorch base, each adding 200 MB of code, occupy 10 + 64 × 0.2 = 22.8 GB on a node and in the registry, instead of 652.8 GB if nothing were shared (computed). This is why a team should standardize on a small number of base images.
 
@@ -650,6 +655,7 @@ That is 11.3 s instead of 0.9 s for a one-line change, with only numpy to instal
 # .dockerignore
 .git
 **/__pycache__
+# weight files (safetensors is a tensors-only weights format, section 10)
 *.pt
 *.safetensors
 checkpoints/
@@ -660,7 +666,7 @@ data/
 
 ### Multi-stage builds
 
-A **multi-stage build** uses one fat stage for compiling and copies only the artifacts into a slim final stage. Compilers, headers and caches never ship (ran):
+A **multi-stage build** uses one fat stage for compiling and copies only the artifacts into a slim final stage. Compilers, headers and caches never ship. Below, `apk` is Alpine's package manager, `musl-dev` the headers of musl (Alpine's C library), and `gcc -static` links the C library into the binary so it can run in the empty `scratch` image (ran):
 
 ```dockerfile
 # stage 1: a fat image with a compiler
@@ -715,7 +721,7 @@ print("index", h["Content-Type"], "digest", h["Docker-Content-Digest"][:19] + ".
 for m in index["manifests"]:
     p = m.get("platform", {})
     plat = "/".join(x for x in (p.get("os"), p.get("architecture"), p.get("variant")) if x)
-    print(f"  {plat:16s} {m['digest'][:19]}...")   # unknown/unknown = attestation (SBOM/provenance)
+    print(f"  {plat:16s} {m['digest'][:19]}...")   # unknown/unknown = attestation (SBOM = list of packages inside; provenance = how it was built)
 
 arm = next(m for m in index["manifests"] if m["platform"]["architecture"] == "arm64")
 _, body = get(f"{base}/manifests/{arm['digest']}", tok)  # 2. the per-platform manifest
@@ -779,7 +785,7 @@ These are line-rate lower bounds. Real pulls are also slowed by decompression (g
 - run a pull-through cache or registry mirror in the cluster,
 - use peer-to-peer distribution (Dragonfly, Spegel, Kraken),
 - use lazy-pulling snapshotters (stargz/eStargz, SOCI, Nydus) that fetch file chunks on first access,
-- use zstd-compressed layers,
+- use zstd-compressed layers (zstd is a compression format that decompresses several times faster than gzip),
 - on HPC, use a single squashfs/SIF file on the parallel filesystem (section 5).
 
 ### Volumes and bind mounts
@@ -807,7 +813,7 @@ Bind mounts have one sharp edge: **UIDs are numbers**. A container running as ro
 
 ### Networking
 
-Each container gets its own network namespace, and Docker connects it to the outside in one of several modes. On the default **bridge** network, a **veth pair** (a virtual cable with one end in the container as `eth0` and the other end on the host) plugs into a Linux bridge `docker0`, and NAT carries traffic out (ran):
+Each container gets its own network namespace, and Docker connects it to the outside in one of several modes. On the default **bridge** network, a **veth pair** (a virtual cable with one end in the container as `eth0` and the other end on the host) plugs into a Linux bridge `docker0` (a **bridge** is a software Ethernet switch inside the kernel), and NAT carries traffic out. **NAT** (network address translation) means the host rewrites the container's private source address (`172.17.x.x`) to its own IP on the way out and reverses the rewrite on replies, so the outside world only ever sees the host (ran):
 
 ```console
 $ docker run --rm alpine:3.20 sh -c 'ip -o -4 addr; ip route'
@@ -839,9 +845,9 @@ $ docker port inference
 8000/tcp -> [::]:8080
 ```
 
-Notice `0.0.0.0:8080`. Publishing binds to *all* interfaces by default, so a Jupyter server or an unauthenticated vLLM endpoint started with `-p 8000:8000` on a cloud VM is reachable from the internet unless a firewall stops it. Docker also inserts its own iptables rules, which can bypass host firewalls such as `ufw`. Use `-p 127.0.0.1:8000:8000` and an SSH tunnel.
+Notice `0.0.0.0:8080`. Publishing binds to *all* interfaces by default, so a Jupyter server or an unauthenticated vLLM endpoint (vLLM is a popular LLM inference server) started with `-p 8000:8000` on a cloud VM is reachable from the internet unless a firewall stops it. Docker also inserts its own iptables rules, which can bypass host firewalls such as `ufw`. Use `-p 127.0.0.1:8000:8000` and an SSH tunnel.
 
-For **multi-node training, use `--network host`**. The bridge adds NAT and a veth hop, and more importantly NCCL needs to see the real high-speed interfaces, InfiniBand/RoCE devices and their IPs. `--network host` skips the network namespace entirely. Kubernetes pods for training typically use `hostNetwork: true` or an SR-IOV/RDMA network plugin (section 7, and [kubernetes-from-zero.md](../orchestration/kubernetes-from-zero.md)).
+For **multi-node training, use `--network host`**. The bridge adds NAT and a veth hop, and more importantly NCCL needs to see the real high-speed interfaces, InfiniBand/RoCE devices and their IPs. `--network host` skips the network namespace entirely. Kubernetes pods for training typically use `hostNetwork: true` (a field in the pod's YAML description, the equivalent of `--network host`) or an SR-IOV/RDMA network plugin (section 7, and [kubernetes-from-zero.md](../orchestration/kubernetes-from-zero.md)).
 
 ### The run flags that matter for ML
 
@@ -951,6 +957,7 @@ Why each choice was made:
 - **The driver is not in the image.** `libcuda.so` comes from the host at run time (section 6). The image's CUDA 12.4 needs a host driver that supports 12.4. See the [CUDA driver vs runtime table](linux-and-os.md#cuda-driver-vs-runtime-vs-toolkit-why-cuda-version-mismatch-happens).
 - **Copying `/opt/python` together with `/opt/venv`.** A venv contains symlinks to the interpreter it was created with. Copying the venv without the interpreter, or to a different path, breaks it. Installing a uv-managed Python into a fixed directory makes both relocatable as a pair.
 - **`TORCH_CUDA_ARCH_LIST`.** It compiles kernels only for A100 (8.0) and H100 (9.0). Compiling every architecture multiplies build time and binary size, but an architecture you leave out fails at runtime with `no kernel image is available for execution on the device`.
+- **Two syntax notes.** `COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv ...` copies a file out of *another image* (here the `uv` binary), not out of an earlier stage. `--no-build-isolation` makes pip/uv build the extension against the torch already installed in the venv instead of a fresh, temporary environment.
 - **`tini` as PID 1** for signal forwarding, because Kubernetes has no `--init` flag. **A non-root user**, so a compromise of the training code isn't root in the container. **`libibverbs`** for InfiniBand. NCCL loads it dynamically, and without it NCCL silently falls back to TCP.
 - If you use NVIDIA's NGC images (`nvcr.io/nvidia/pytorch:YY.MM-py3`), you get a tested PyTorch/CUDA/NCCL/cuDNN/Transformer Engine combination, at a cost of tens of GB per image. That is often the right trade for training; for inference, prefer slim images.
 
@@ -967,7 +974,7 @@ docker cp <ctr>:/app/core.123 .                # pull files out of a dead contai
 
 # from the Linux host: enter a container's namespaces with host tools (py-spy, gdb, strace)
 pid=$(docker inspect -f '{{.State.Pid}}' <ctr>)
-sudo nsenter -t $pid -m -u -i -n -p -- ps aux  # untested here; standard util-linux usage
+sudo nsenter -t $pid -m -u -i -n -p -- ps aux  # join its mnt, uts, ipc, net, pid namespaces; untested here
 sudo py-spy dump --pid <host-pid-of-python>    # py-spy works from the host using the host PID
 ```
 
@@ -996,7 +1003,7 @@ The **Open Container Initiative (OCI)** maintains three specifications:
    }
    ```
 
-2. **Distribution spec**: the HTTP API (`/v2/<repo>/manifests/<ref>`, `/v2/<repo>/blobs/<digest>`) the script used. Registries now also store non-image artifacts this way, such as Helm charts, SBOMs and model weights, because content-addressed blob storage is useful for anything.
+2. **Distribution spec**: the HTTP API (`/v2/<repo>/manifests/<ref>`, `/v2/<repo>/blobs/<digest>`) the script used. Registries now also store non-image artifacts this way, such as Helm charts (packaged Kubernetes application templates), SBOMs (software bills of materials: lists of what's inside an image) and model weights, because content-addressed blob storage is useful for anything.
 3. **Runtime spec**: what a *runtime* such as `runc` consumes. The input is a **bundle**, a directory with a `rootfs/` and a `config.json` that describes namespaces, mounts, capabilities, seccomp, cgroup limits and the process to run.
 
 `docker save` writes an image as an OCI layout on disk (untested here; the Docker run was stopped before this step):
@@ -1049,7 +1056,9 @@ sudo crictl ps                 # containers on this node (untested here)
 sudo crictl inspect <id> | jq .info.runtimeSpec.linux.resources   # the OCI config the kubelet asked for
 ```
 
-A **RuntimeClass** selects which shim runs a pod. This is how a cluster runs normal workloads on runc and untrusted workloads on gVisor or Kata (untested; see [kubernetes-from-zero.md](../orchestration/kubernetes-from-zero.md)):
+A **RuntimeClass** selects which shim runs a pod. This is how a cluster runs normal workloads on runc and untrusted workloads on gVisor or Kata (untested; see [kubernetes-from-zero.md](../orchestration/kubernetes-from-zero.md)).
+
+*Preview: this is a Kubernetes manifest, taught in [Kubernetes from zero](../orchestration/kubernetes-from-zero.md#yaml-for-kubernetes); skim it now and come back.* Just enough to read it: it is YAML (see [the toolkit](toolkit.md#yaml)). You don't run Kubernetes objects; you hand the file to the cluster (`kubectl apply -f file.yaml`) as a description of what should exist, and Kubernetes makes it so. Every object has an `apiVersion` and `kind` (what type of object this is), `metadata.name` (its name) and a body, usually `spec`. A line containing only `---` separates two objects in one file. The first object defines a RuntimeClass called `gvisor` whose `handler` names a runtime that containerd on each node knows about. The second is a **pod** running one container from the `python:3.12-slim` image, and `runtimeClassName: gvisor` asks for it to be run with gVisor instead of runc:
 
 ```yaml
 apiVersion: node.k8s.io/v1
@@ -1088,7 +1097,7 @@ On a shared SLURM cluster, nobody gets root, users' jobs share nodes, home direc
 **Apptainer** (formerly Singularity, now a Linux Foundation project; the fork SingularityCE also exists) was designed for this environment:
 
 - **No daemon.** `apptainer exec` is a normal program that sets up namespaces and execs your process *as you*, with your UID inside and outside. Depending on how the site configured it, it uses unprivileged user namespaces or a setuid starter.
-- **Images are single files** (`.sif`, the Singularity Image Format): a squashfs filesystem plus metadata and an optional signature. One 15 GB file on Lustre or GPFS is read by thousands of nodes, mounted read-only through a loop device or squashfuse. Pulling from a registry isn't needed per node, and the parallel filesystem handles one big file far better than millions of small ones.
+- **Images are single files** (`.sif`, the Singularity Image Format): a squashfs filesystem plus metadata and an optional signature. (**squashfs** is a compressed, read-only filesystem packed into one file. A **loop device** lets the kernel mount a file as if it were a disk; **squashfuse** does the same mount in user space, through FUSE (defined in the capabilities table above), without root.) One 15 GB file on Lustre or GPFS (the shared [network filesystems](linux-and-os.md#local-vs-network-filesystems) of HPC clusters) is read by thousands of nodes, mounted read-only through a loop device or squashfuse. Pulling from a registry isn't needed per node, and the parallel filesystem handles one big file far better than millions of small ones.
 - **Integration by default.** Your home directory, `/tmp` and the current directory are bind-mounted in. The host network is used with no network namespace, so InfiniBand works with no flags. Environment variables pass through. The container is closer to "a different user space" than "a separate machine".
 
 The common commands (untested here, no HPC cluster available; the syntax follows the Apptainer docs):
@@ -1104,6 +1113,7 @@ apptainer exec --nv --bind /lustre/data:/data pytorch.sif python train.py
 apptainer exec --nv --containall --cleanenv --bind $PWD:/work pytorch.sif python /work/train.py
 
 # inside SLURM: srun starts one apptainer per task; ranks talk over the host network
+# (4 nodes x 8 tasks = 32 processes, one per GPU; srun is taught in orchestration/slurm/from-zero.md)
 srun --nodes=4 --ntasks-per-node=8 --gpus-per-node=8 \
   apptainer exec --nv pytorch.sif python train.py
 ```
@@ -1147,7 +1157,7 @@ Security posture: Apptainer protects the *cluster* from users mostly by ensuring
 
 Since containers share the host kernel, "giving a container a GPU" doesn't involve virtualization. It means making three things visible inside the container:
 
-1. **Device nodes**: `/dev/nvidia0..N` (one per GPU), `/dev/nvidiactl`, `/dev/nvidia-uvm` and `/dev/nvidia-uvm-tools` (unified memory), and `/dev/nvidia-modeset`. With MIG there are also `/dev/nvidia-caps/*`. The device cgroup, or the eBPF device filter on cgroup v2, must allow them.
+1. **Device nodes**: `/dev/nvidia0..N` (one per GPU), `/dev/nvidiactl`, `/dev/nvidia-uvm` and `/dev/nvidia-uvm-tools` (unified memory), and `/dev/nvidia-modeset`. With MIG (splitting one GPU into several isolated slices, covered [below](#sharing-gpus-and-what-gpus-isolate)) there are also `/dev/nvidia-caps/*`. The device cgroup, or the eBPF device filter on cgroup v2, must allow them.
 2. **User-space driver libraries** that match the host kernel module *exactly*: `libcuda.so`, `libnvidia-ml.so` (NVML, used by `nvidia-smi`), `libnvidia-ptxjitcompiler.so`, and others. These are version-locked to `nvidia.ko`. If you baked them into the image, the image would only work on hosts with that exact driver, which is why images must *not* contain them.
 3. **Binaries** such as `nvidia-smi`, and optionally `nvidia-persistenced`'s socket.
 
@@ -1165,7 +1175,7 @@ container                          │ host
 The **NVIDIA Container Toolkit** automates that injection. It has gone through several designs, so you'll meet all of them:
 
 - **The legacy hook (`nvidia-container-runtime-hook`).** An OCI *prestart hook*: a program the runtime runs after creating the container's namespaces and before starting the process. `libnvidia-container` finds the driver files on the host and bind-mounts them in. `docker run --gpus all` drives this path.
-- **`nvidia-container-runtime`.** A thin wrapper around `runc` that edits the OCI `config.json` to add the GPU devices and mounts, then calls `runc`. Kubernetes nodes running the GPU Operator typically configure containerd to use it.
+- **`nvidia-container-runtime`.** A thin wrapper around `runc` that edits the OCI `config.json` to add the GPU devices and mounts, then calls `runc`. Kubernetes nodes running the GPU Operator (NVIDIA's Kubernetes add-on that installs the driver and this toolkit on GPU nodes) typically configure containerd to use it.
 - **CDI (Container Device Interface).** A vendor-neutral spec: a YAML/JSON file in `/etc/cdi/` or `/var/run/cdi/` that lists exactly which device nodes, mounts, environment variables and hooks a named device needs. Runtimes such as containerd, CRI-O, Podman and Docker apply these edits themselves, with no NVIDIA-specific runtime involved. This is the direction NVIDIA is moving (as of Toolkit 1.14-1.17, 2024-2025).
 
 Setting it up on a Linux host (untested here; commands from the NVIDIA Container Toolkit docs):
@@ -1187,7 +1197,7 @@ docker run --rm --device nvidia.com/gpu=all ubuntu nvidia-smi   # needs CDI enab
 podman run --rm --device nvidia.com/gpu=0 ubuntu nvidia-smi
 ```
 
-A CDI spec is just a declarative list of edits. Here is an abridged, illustrative fragment; the generated file lists dozens of library mounts:
+A CDI spec is just a declarative list of edits, written in YAML ([the toolkit](toolkit.md#yaml) covers the syntax). Read it as: for the device named `nvidia.com/gpu=0`, add `/dev/nvidia0`; for any GPU of this kind, also add the control device nodes, bind-mount the host's `libcuda.so` read-only, and run `nvidia-ctk` as a hook to refresh the dynamic linker cache (`ldconfig`, see [shared libraries](linux-and-os.md#shared-libraries-and-ld_library_path)) so the new library is found. Here is an abridged, illustrative fragment; the generated file lists dozens of library mounts:
 
 ```yaml
 cdiVersion: 0.5.0
@@ -1211,7 +1221,7 @@ containerEdits:                      # applied for any device of this kind
     args: [nvidia-ctk, hook, update-ldcache, --folder, /usr/lib/x86_64-linux-gnu]
 ```
 
-In Kubernetes, the **NVIDIA device plugin** advertises `nvidia.com/gpu: 8` per node. A pod that requests `nvidia.com/gpu: 2` gets two specific GPUs through the same mechanism. See [kubernetes-from-zero.md](../orchestration/kubernetes-from-zero.md) and [gpu-software-stack.md](../compute/gpu-software-stack.md).
+In Kubernetes, the **NVIDIA device plugin** (a small per-node program that tells Kubernetes which special hardware a node has) advertises `nvidia.com/gpu: 8` per node. A pod that requests `nvidia.com/gpu: 2` gets two specific GPUs through the same mechanism. See [kubernetes-from-zero.md](../orchestration/kubernetes-from-zero.md) and [gpu-software-stack.md](../compute/gpu-software-stack.md).
 
 ### The failure checklist
 
@@ -1229,7 +1239,7 @@ In Kubernetes, the **NVIDIA device plugin** advertises `nvidia.com/gpu: 8` per n
 nvidia-smi -L
 python -c "import torch; print(torch.version.cuda, torch.cuda.is_available(), torch.cuda.device_count())"
 ls /dev/infiniband 2>/dev/null; ibv_devinfo | head
-NCCL_DEBUG=INFO torchrun --nproc-per-node 2 -m torch.distributed.run ... 2>&1 | grep -E "NET/|via"
+NCCL_DEBUG=INFO torchrun --nproc-per-node 2 your_allreduce_test.py 2>&1 | grep -E "NET/|via"
 ```
 
 ### RDMA and InfiniBand in containers
@@ -1245,7 +1255,7 @@ docker run --gpus all --network host --device /dev/infiniband --cap-add IPC_LOCK
 
 - **MIG (Multi-Instance GPU, A100/H100 and later)** partitions one GPU in hardware into up to 7 instances, each with its own SMs, L2 slices and memory. Each instance appears as a separate device that can be given to a different container. This is real performance isolation.
 - **Time-slicing** (device plugin config) and **MPS** (Multi-Process Service) let several containers share one GPU, with no memory isolation in the time-slicing case and limited isolation with MPS. Use them only for trusted co-tenants.
-- **Security:** every container with a GPU talks to the same huge kernel driver through `ioctl`s on `/dev/nvidia*`. Driver bugs are kernel bugs (NVIDIA publishes security bulletins for the GPU driver regularly). The container toolkit itself has had container-escape CVEs, for example CVE-2024-0132, a TOCTOU in the NVIDIA Container Toolkit's handling of images, fixed in 1.16.2. For mutually untrusted tenants, give each tenant whole GPUs or MIG slices *inside separate VMs* (section 7), or use a sandbox designed for GPUs (gVisor's `nvproxy`, section 9).
+- **Security:** every container with a GPU talks to the same huge kernel driver through `ioctl`s on `/dev/nvidia*`. Driver bugs are kernel bugs (NVIDIA publishes security bulletins for the GPU driver regularly). The container toolkit itself has had container-escape CVEs, for example CVE-2024-0132, a TOCTOU (time-of-check to time-of-use: a file is checked, then swapped by the attacker before it is used) in the NVIDIA Container Toolkit's handling of images, fixed in 1.16.2. For mutually untrusted tenants, give each tenant whole GPUs or MIG slices *inside separate VMs* (section 7), or use a sandbox designed for GPUs (gVisor's `nvproxy`, section 9).
 
 
 
@@ -1258,7 +1268,7 @@ A **virtual machine (VM)** runs a complete guest operating system, with its own 
 Early x86 couldn't do this cleanly. Some privileged instructions failed silently instead of trapping, so VMware used binary translation and Xen used *paravirtualization*: modified guest kernels that called the hypervisor directly. Since about 2006, CPUs have had **hardware virtualization extensions**: Intel VT-x, AMD-V, and the ARM virtualization extensions with EL2. They add a new mode:
 
 - The guest runs in **non-root mode** (VMX non-root on Intel) at full speed, rings 0-3 included. Ordinary instructions, including most kernel code, execute natively.
-- Sensitive events cause a **VM exit**: a hardware switch to the hypervisor in root mode. Examples are I/O port access, some MSR and CPUID reads, external interrupts, and accesses to unmapped "device" memory (MMIO). The hypervisor emulates the event and does a **VM entry** back. An exit-plus-entry round trip costs on the order of a microsecond (it varies by CPU generation and exit reason). Hypervisor performance work is mostly about *avoiding exits*.
+- Sensitive events cause a **VM exit**: a hardware switch to the hypervisor in root mode. Examples are I/O port access, some MSR (model-specific register: CPU configuration registers) and CPUID (the instruction that reports CPU features) reads, external interrupts, and accesses to unmapped "device" memory (MMIO). The hypervisor emulates the event and does a **VM entry** back. An exit-plus-entry round trip costs on the order of a microsecond (it varies by CPU generation and exit reason). Hypervisor performance work is mostly about *avoiding exits*.
 - **Second-level address translation** (Intel EPT, AMD NPT) lets the guest manage its own page tables (guest-virtual to guest-physical) while hardware applies a second table owned by the hypervisor (guest-physical to host-physical). Before EPT/NPT, the hypervisor had to maintain "shadow page tables", which was slow. The remaining cost is TLB misses: a full two-dimensional page walk with 4-level tables on both sides touches up to (4+1) × (4+1) - 1 = **24** memory references instead of 4, and with 5-level tables it is 35 (computed). Huge pages on *both* the guest and host side cut this sharply, which is one reason GPU cloud VMs back guest memory with 1 GiB host huge pages.
 
 ### KVM and QEMU
@@ -1287,7 +1297,7 @@ vm = fcntl.ioctl(kvm, KVM_CREATE_VM, 0)                             # returns a 
 print("VM fd:", vm)   # next: KVM_SET_USER_MEMORY_REGION, KVM_CREATE_VCPU, mmap kvm_run, loop KVM_RUN
 ```
 
-Every VMM is "that loop plus device emulation": QEMU, Firecracker, Cloud Hypervisor, crosvm. The VMMs differ in *how much* device emulation they carry. **QEMU** emulates almost everything: dozens of machine types, legacy PCI devices, USB, sound, floppy controllers. Its breadth is its attack surface, and the VENOM bug (CVE-2015-3456) was a guest-to-host escape through QEMU's *floppy controller* emulation. A minimal QEMU invocation (untested):
+Every VMM is "that loop plus device emulation": QEMU, Firecracker, Cloud Hypervisor, crosvm. The VMMs differ in *how much* device emulation they carry. **QEMU** emulates almost everything: dozens of machine types, legacy PCI devices, USB, sound, floppy controllers. Its breadth is its attack surface, and the VENOM bug (CVE-2015-3456) was a guest-to-host escape through QEMU's *floppy controller* emulation. A minimal QEMU invocation (untested; `ubuntu.qcow2` is a disk image in qcow2, QEMU's copy-on-write disk format, and `hostfwd` forwards host port 2222 to the guest's SSH port 22):
 
 ```bash
 qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 8G \
@@ -1302,9 +1312,9 @@ Emulating a real NIC such as an Intel e1000 means trapping every register access
 
 | Device | Purpose |
 |---|---|
-| virtio-net | network; `vhost-net` moves the data path into the host kernel, `vhost-user` into a user-space switch such as DPDK |
+| virtio-net | network; `vhost-net` moves the data path into the host kernel, `vhost-user` into a user-space switch such as DPDK (a library for processing packets in user space, bypassing the kernel) |
 | virtio-blk / virtio-scsi | block storage |
-| virtio-fs | share a host directory with the guest at near-native speed (FUSE over virtqueues plus DAX) |
+| virtio-fs | share a host directory with the guest at near-native speed (FUSE over virtqueues plus DAX, direct mapping of host file pages into guest memory) |
 | virtio-vsock | host-guest sockets with no network config, used by Firecracker and Kata agents |
 | virtio-balloon | the host asks the guest to give memory back |
 
@@ -1319,8 +1329,10 @@ The danger is **DMA**. A device can read and write *any* physical address. A gue
 Linux exposes this to user space through **VFIO**. You unbind the device from its host driver, bind it to `vfio-pci`, and the VMM maps its BARs (the PCIe regions holding device registers and memory) into the guest and programs the IOMMU. The steps (untested, Linux host with VT-d or AMD-Vi enabled in the BIOS):
 
 ```bash
-# 1. kernel cmdline: intel_iommu=on iommu=pt   (AMD: amd_iommu=on is usually default)
+# 1. kernel cmdline (boot parameters the bootloader, e.g. GRUB, passes to the kernel):
+#    intel_iommu=on iommu=pt   (AMD: amd_iommu=on is usually default)
 # 2. list IOMMU groups: devices in one group can't be isolated from each other
+#    (${g##*/} is bash for "strip everything up to the last /", i.e. the basename)
 for g in /sys/kernel/iommu_groups/*; do
   echo "group ${g##*/}:"; for d in $g/devices/*; do echo "   $(lspci -nns ${d##*/})"; done
 done
@@ -1362,7 +1374,7 @@ AMD **SEV-SNP** and Intel **TDX** encrypt a VM's memory with keys the hypervisor
 
 Containers start in about 100 ms but share the kernel. Classic VMs isolate well but carry a BIOS, a large device model and seconds of boot time. A **microVM** is a VM stripped to the minimum needed to run one Linux workload: no BIOS (the VMM loads the kernel directly into guest memory and jumps to it), no PCI bus or legacy devices, and just a few virtio devices. You get the *hardware* isolation boundary of a VM with start-up and density close to a container's.
 
-The canonical example is AWS **Firecracker**, which runs Lambda and Fargate. From the paper (Agache et al., "Firecracker: Lightweight Virtualization for Serverless Applications", NSDI 2020) and the project README:
+The canonical example is AWS **Firecracker**, which runs Lambda and Fargate (AWS's serverless function and serverless container services). From the paper (Agache et al., "Firecracker: Lightweight Virtualization for Serverless Applications", NSDI 2020) and the project README:
 
 - written in Rust, roughly 50k lines, against QEMU's roughly 1.4M (paper figures; both have grown since),
 - boots a minimal Linux guest to user space in **about 125 ms**,
@@ -1379,7 +1391,7 @@ The figure shows the two concentric barriers. The guest (customer zone) must fir
 
 ### The Firecracker API, step by step
 
-Firecracker is configured over a REST API on a Unix socket. A full boot looks like this (**untested**: it needs `/dev/kvm`. The endpoints and fields follow the Firecracker getting-started guide and its OpenAPI spec; check them against your release):
+Firecracker is configured over a REST API (HTTP requests with JSON bodies, as defined in section 3) on a Unix socket. The script defines a small shell function `fc METHOD PATH JSON` that sends one such request with `curl --unix-socket`; each numbered step is one `PUT` that sets one part of the VM. A full boot looks like this (**untested**: it needs `/dev/kvm`. The endpoints and fields follow the Firecracker getting-started guide and its OpenAPI spec, a machine-readable description of the API; check them against your release):
 
 ```bash
 # 0. a kernel (vmlinux, uncompressed) and an ext4 rootfs image, from the getting-started guide
@@ -1400,7 +1412,8 @@ fc PUT /boot-source '{"kernel_image_path": "./vmlinux",
 fc PUT /drives/rootfs '{"drive_id": "rootfs", "path_on_host": "./rootfs.ext4",
                         "is_root_device": true, "is_read_only": false}'
 
-# 4. network: a host tap device presented as virtio-net (create it first: ip tuntap add tap0 mode tap)
+# 4. network: a host tap device (a virtual NIC whose other end is a file descriptor; see "VM networking" below)
+#    presented as virtio-net (create it first: ip tuntap add tap0 mode tap)
 fc PUT /network-interfaces/eth0 '{"iface_id": "eth0", "guest_mac": "AA:FC:00:00:00:01",
                                   "host_dev_name": "tap0"}'
 
@@ -1411,7 +1424,7 @@ fc PUT /actions '{"action_type": "InstanceStart"}'
 Everything else is a host-side concern you build yourself: the tap device and its routing or NAT, the rootfs image (often built by exporting a Docker image into an ext4 file), and a way to get commands in and results out. **vsock** is the usual channel for that: an agent in the guest listens on a vsock port, and the host connects through a Unix socket that Firecracker exposes.
 
 ```bash
-fc PUT /vsock '{"guest_cid": 3, "uds_path": "./v.sock"}'   # before InstanceStart; untested
+fc PUT /vsock '{"guest_cid": 3, "uds_path": "./v.sock"}'   # CID = the guest's vsock address; before InstanceStart; untested
 ```
 
 Rate limiters on the drive and network objects (`"rate_limiter": {"bandwidth": {"size": ..., "refill_time": ...}}`) cap each VM's I/O, so one tenant can't saturate the host disk.
@@ -1433,7 +1446,7 @@ fc PUT /snapshot/load '{"snapshot_path": "./warm.state",
 
 On restore, the memory file is `mmap`ed with copy-on-write, so pages load lazily on first touch. Restore cost then scales with the memory the workload actually *touches*, not with the VM size. One memory file can back many clones, and their untouched pages are shared through the page cache. With `"backend_type": "Uffd"`, a user-space page-fault handler serves pages on demand, from the network for example. "Diff" snapshots record only dirty pages since the last snapshot.
 
-Snapshots carry a real correctness trap: **every clone is identical**. Clones share the same RNG state (the kernel CRNG, Python's `random`, NumPy seeds), the same MAC and IP, the same TLS session keys, UUIDs generated before the snapshot, and the same notion of time until the clock is corrected. For RL environments this is a silent correlation bug: a thousand "independent" episodes that draw identical random numbers. Re-seed after restore, explicitly, with entropy injected from the host. The VM Generation ID device was designed to tell guests "you've been cloned", but don't rely on user-space libraries to react to it.
+Snapshots carry a real correctness trap: **every clone is identical**. Clones share the same RNG state (the kernel CRNG, i.e. the kernel's cryptographic random number generator behind `/dev/urandom`, Python's `random`, NumPy seeds), the same MAC and IP, the same TLS session keys, UUIDs generated before the snapshot, and the same notion of time until the clock is corrected. For RL environments this is a silent correlation bug: a thousand "independent" episodes that draw identical random numbers. Re-seed after restore, explicitly, with entropy injected from the host. The VM Generation ID device was designed to tell guests "you've been cloned", but don't rely on user-space libraries to react to it.
 
 ```python
 # run inside the guest immediately after restore (sketch): fresh seeds from host-injected entropy
@@ -1727,7 +1740,7 @@ Each lifecycle rule shows up in this output:
 - **The disk clone is free.** "0 KiB actually allocated" means the 256 MiB image (sparse here) was cloned with APFS `clonefile`. `cp --reflink` on XFS or btrfs does the same on Linux. Real images aren't sparse, but the clone still shares their blocks until the guest writes.
 - **The timings are the fake's.** "vmm 43ms" is Python interpreter start-up for the fake VMM process, and "boot" is the configured sleep. Real Firecracker process start-up is a few ms, and guest boot is covered under performance numbers below.
 
-What the toy leaves out, and a production agent needs: actually executing the network and cgroup commands (next sections), persisting state for reconciliation after an agent restart, per-step metrics and traces (time-in-state histograms are the main SLO signal), capturing the serial console log for debugging failed boots, and backpressure toward the scheduler.
+What the toy leaves out, and a production agent needs: actually executing the network and cgroup commands (next sections), persisting state for reconciliation after an agent restart, per-step metrics and traces (time-in-state histograms are the main SLO signal; an SLO, service-level objective, is a target such as "99% of sandboxes ready within 500 ms"), capturing the serial console log for debugging failed boots, and backpressure toward the scheduler.
 
 ### VM networking: taps, addressing and egress policy
 
@@ -1764,7 +1777,7 @@ sysctl -w net.ipv4.ip_forward=1                               # once per host
 
 Address budgeting (computed): a /16 holds 2^(30-16) = **16,384** /30 subnets, so one /30 per VM is plenty per node. It wastes 3 of every 4 addresses, which is why some agents use /31 point-to-point links (32,768 per /16) or per-VM namespaces with identical guest IPs.
 
-The **egress policy** is the security-critical part. A single nftables table, with a set the node agent adds taps to and removes them from (untested; standard nftables syntax, adapt the addresses to your node):
+The **egress policy** is the security-critical part. A single nftables table, with a set the node agent adds taps to and removes them from (untested; standard nftables syntax, adapt the addresses to your node). nftables was introduced in [Networking](networking.md#firewalls-and-why-master_port-gets-blocked). New pieces here: a `set` is a named list the rules can match against (`@allowed_taps`); each `chain` attaches to a kernel hook (`input` = packets addressed to this host, `forward` = packets routed through it, `postrouting` = just before they leave); `ct state established,related accept` lets through replies to connections that were already allowed; and `masquerade` is NAT, rewriting the sandbox's source address to the node's own:
 
 ```
 # /etc/nftables.d/sbx.nft - load with: nft -f sbx.nft
@@ -1914,7 +1927,7 @@ Both projects plug into the OCI runtime slot, so `docker run --runtime=...` or a
 
 ### gVisor: a kernel in user space
 
-**gVisor** (Google; runs parts of Cloud Run, App Engine and GKE Sandbox) implements the Linux system-call interface *in a user-space program*, the **Sentry**, written in Go. The application's system calls are intercepted and handled by the Sentry, which keeps its own process table, memory management, VFS and TCP/IP stack (netstack). The Sentry itself uses only a small, seccomp-restricted set of host syscalls. File access goes through a separate **Gofer** process, or a direct host-file mode in newer versions.
+**gVisor** (Google; runs parts of Cloud Run, App Engine and GKE Sandbox) implements the Linux system-call interface *in a user-space program*, the **Sentry**, written in Go. The application's system calls are intercepted and handled by the Sentry, which keeps its own process table, memory management, VFS (the virtual filesystem layer that turns `open`/`read` into calls on a specific filesystem) and TCP/IP stack (netstack). The Sentry itself uses only a small, seccomp-restricted set of host syscalls. File access goes through a separate **Gofer** process, or a direct host-file mode in newer versions.
 
 ```
   app ──syscall──> [platform intercepts] ──> Sentry (Go "kernel")  ──small seccomp'd syscall set──> host kernel
@@ -1980,9 +1993,9 @@ Costs: VM boot time (hundreds of ms or more per pod), guest memory overhead, and
 Untrusted code is now routine in ML systems:
 
 - **Code RL and agentic RL.** The policy writes code, and the environment executes it to compute a reward: unit tests, a judge, a SWE-style repository task. This happens millions of times per training run.
-- **Agents with tools.** A shell, a Python interpreter, a browser, a filesystem. The input is model output conditioned on untrusted documents, so prompt injection is in scope.
+- **Agents with tools.** A shell, a Python interpreter, a browser, a filesystem. The input is model output conditioned on untrusted documents, so prompt injection (instructions hidden in a document that the model then follows) is in scope.
 - **Evaluation harnesses.** HumanEval, MBPP and SWE-bench all *execute* model completions. The HumanEval repo ships with execution disabled by default and a warning for exactly this reason.
-- **Model artifacts.** `torch.load` on a pickle file executes arbitrary code. Use `weights_only=True` (the default since PyTorch 2.6) or safetensors.
+- **Model artifacts.** `torch.load` on a pickle file executes arbitrary code. Use `weights_only=True` (the default since PyTorch 2.6) or safetensors, a weights format that stores only raw tensor bytes plus a JSON header, so loading it can't run code.
 - **Multi-tenant inference and fine-tuning platforms.** Customer containers, customer LoRA code, custom kernels.
 
 Model-generated code has one property ordinary untrusted code lacks: **it is optimized against your sandbox.** A policy doesn't need to be malicious to find an escape. Gradient descent on reward will find any path that raises reward. That includes paths that just break the *grader* without touching the host: overwriting the test file, `sys.exit(0)` before the asserts run, monkeypatching `unittest`, reading the reference solution from disk, printing the string the grader greps for, or killing the grader process. Reports of reward hacking in code RL describe exactly these behaviours. So the sandbox has two jobs:
@@ -1996,16 +2009,16 @@ Model-generated code has one property ordinary untrusted code lacks: **it is opt
 |---|---|---|
 | Kernel bugs reachable by syscalls | Dirty COW (CVE-2016-5195), Dirty Pipe (CVE-2022-0847), many io_uring and netfilter bugs, user-namespace-reachable bugs | tight seccomp; no user namespaces inside; gVisor or a VM boundary; patch kernels |
 | Container runtime bugs | runc CVE-2019-5736 (overwrite host `runc` binary via `/proc/self/exe`); runc CVE-2024-21626 "Leaky Vessels" (leaked fd to host cwd); NVIDIA Container Toolkit CVE-2024-0132 | patch; user namespaces (they limited 2019-5736); VM boundary |
-| Misconfiguration | `--privileged`; mounting `docker.sock`; `-v /:/host`; `hostPID`/`hostNetwork`; `CAP_SYS_ADMIN`; writable host paths | policy (admission controllers), review, defaults that deny |
-| Network | cloud metadata at `169.254.169.254` (steals instance credentials); internal services with no auth; data exfiltration; downloading second-stage payloads | `--network none` or an egress allowlist proxy; block metadata IPs; separate VPC |
-| Secrets in reach | API keys in env vars, `~/.aws`, mounted kubeconfig, HF tokens, the training code's own credentials | scrub env; mount nothing you don't need; separate identities per sandbox |
+| Misconfiguration | `--privileged`; mounting `docker.sock`; `-v /:/host`; `hostPID`/`hostNetwork`; `CAP_SYS_ADMIN`; writable host paths | policy (admission controllers: Kubernetes plugins that reject pod specs breaking a rule), review, defaults that deny |
+| Network | cloud metadata at `169.254.169.254` (steals instance credentials); internal services with no auth; data exfiltration; downloading second-stage payloads | `--network none` or an egress allowlist proxy; block metadata IPs; separate VPC (a cloud provider's private virtual network) |
+| Secrets in reach | API keys in env vars, `~/.aws`, mounted kubeconfig (the file holding Kubernetes cluster credentials), HF tokens, the training code's own credentials | scrub env; mount nothing you don't need; separate identities per sandbox |
 | Resource exhaustion | fork bombs, memory bombs, disk fill, output floods, infinite loops | cgroups (`pids`, `memory`, `cpu`, `io`), timeouts, quotas, output caps |
 | Hypervisor/VMM bugs | VENOM (CVE-2015-3456, QEMU floppy emulation) | minimal device model (Firecracker), jailer, patch |
-| Side channels | Spectre/MDS-class leaks between tenants sharing a core | don't co-locate mutually hostile tenants on SMT siblings; mitigations on |
+| Side channels | Spectre/MDS-class leaks between tenants sharing a core (attacks that read another process's data through CPU caches and speculative execution) | don't co-locate mutually hostile tenants on SMT siblings; mitigations on |
 | Persistence across episodes | state left in a reused sandbox influences the next episode or tenant | fresh sandbox per episode (snapshot restore makes this cheap) |
 | GPU driver | ioctl surface of `nvidia.ko` | no GPU for untrusted code unless needed; nvproxy or VM passthrough |
 
-Here is what `--privileged` really means, from the measurements above: all 41 capabilities (`CapEff: 000001ffffffffff`), seccomp and AppArmor off, every host device in `/dev`, and writable `/sys`. With that, `mount /dev/sda1 /mnt` mounts the host disk, and loading a kernel module is one `insmod` away. **A privileged container is not a sandbox.** It's a convenience wrapper around root on the host. The same goes for mounting the Docker socket: `docker -H unix:///var/run/docker.sock run --privileged -v /:/host ...` from inside the container is a full host takeover, with no exploit needed.
+Here is what `--privileged` really means, from the measurements above: all 41 capabilities (`CapEff: 000001ffffffffff`), seccomp and AppArmor off, every host device in `/dev`, and writable `/sys`. With that, `mount /dev/sda1 /mnt` mounts the host disk, and loading a kernel module is one `insmod` (the command that loads a kernel module) away. **A privileged container is not a sandbox.** It's a convenience wrapper around root on the host. The same goes for mounting the Docker socket: `docker -H unix:///var/run/docker.sock run --privileged -v /:/host ...` from inside the container is a full host takeover, with no exploit needed.
 
 ### Defense in depth: a reference design
 
@@ -2113,7 +2126,7 @@ big file    exit=1                  274B  '~~~~~~^^^^^^^^^^^^^^^^^^^\nOSError: [
 env secret  exit=0                    5B  'None'
 flood       exit=0                65536B  'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 $ ls -la /tmp/sbx_big
--rw-r--r--  1 ibrahimansari  wheel  1048576 Nov  5 16:20 /tmp/sbx_big
+-rw-r--r--  1 you            wheel  1048576 Nov  5 16:20 /tmp/sbx_big
 ```
 
 What each result shows:
@@ -2149,12 +2162,12 @@ def grade(sandbox_run, workspace):
 - Tests and reference solutions are never in the policy's filesystem, or are mounted read-only and verified by hash.
 - Pass/fail comes from a structured report through a channel the code can't forge, never from parsing stdout and never from exit codes alone.
 - Count collected tests. "0 tests ran, exit 0" must score zero.
-- Diff the workspace and flag edits outside the allowed paths (tests, `conftest.py`, `sitecustomize.py`, `.pth` files).
+- Diff the workspace and flag edits outside the allowed paths (tests, `conftest.py`, `sitecustomize.py`, `.pth` files: the last three are run or loaded automatically by pytest or by Python at start-up, so writing one hijacks the grader).
 - Sample and *read* trajectories with unusually high reward. Every reward-hacking report started with someone reading the transcripts.
 
 ### Throughput: sandboxes are part of the step time
 
-In RL, sandbox latency sits directly inside the rollout loop. Here is an example budget (illustrative arithmetic, not measurements): a batch of 1,024 rollouts, each running tests for 2 s, on 64 sandbox hosts with 32 concurrent sandboxes each (2,048 slots). That's one wave of 2 s. Add 1 s of cold start per sandbox and the wave takes 3 s, so start-up is 33% of environment time. Add a 15 GB image pull on a fresh node and the first wave takes minutes. This is why serious RL environment platforms keep **warm pools**: pre-booted or snapshot-restored sandboxes waiting for work. Restoring from a snapshot turns "boot plus import torch" into "map a memory file". The platform side of this, including schedulers, pools and environment servers, is in [rl-infrastructure.md](../platform/rl-infrastructure.md) and [control-planes.md](../platform/control-planes.md).
+In RL, sandbox latency sits directly inside the rollout loop. Here is an example budget (illustrative arithmetic, not measurements): a batch of 1,024 rollouts, each running tests for 2 s, on 64 sandbox hosts with 32 concurrent sandboxes each (2,048 slots). That's one wave of 2 s. Add 1 s of cold start per sandbox and the wave takes 3 s, so start-up is 33% of environment time. Add a 15 GB image pull on a fresh node and the first wave takes minutes. This is why serious RL environment platforms keep **warm pools**: pre-booted or snapshot-restored sandboxes waiting for work. Restoring from a snapshot turns "boot plus import torch" into "map a memory file". (In the one-liner below, `-(-a // b)` is Python's idiom for ceiling division.) The platform side of this, including schedulers, pools and environment servers, is in [rl-infrastructure.md](../platform/rl-infrastructure.md) and [control-planes.md](../platform/control-planes.md).
 
 ```console
 $ python3 -c '

@@ -10,7 +10,13 @@ This chapter assumes you know the RL algorithms (PPO, GRPO, REINFORCE-style esti
 - [Inference Arithmetic](../inference/arithmetic.md) and [Inside a Serving Engine](../inference/serving-engine-internals.md): decode is memory-bound, KV cache sizing, continuous batching, prefix caching, and [determinism and batch invariance](../inference/serving-engine-internals.md#determinism-and-batch-invariance). The generation half of RL *is* an inference server.
 - [Parallelism derivations](../training/model-parallelism/derivations.md): [FSDP](../training/model-parallelism/derivations.md#zero-and-fsdp), [tensor parallelism](../training/model-parallelism/derivations.md#tensor-parallelism-megatron) and the [collective cost model](../training/model-parallelism/derivations.md#collective-cost-models-alpha-beta-ring). The training half of RL is an ordinary sharded training job, and weight synchronization is a resharding problem between those two layouts.
 - [Containers and Virtualization](../foundations/containers-and-virtualization.md): needed for the sandboxed code-execution section.
-- [Training Arithmetic](../training/arithmetic.md): FLOPs per token (`6N`) and MFU.
+- [Training Arithmetic](../training/arithmetic.md): FLOPs per token (`6N`) and MFU, and the [PyTorch caching allocator](../training/arithmetic.md#pytorch-caching-allocator-internals) (CUDA IPC section).
+- [Linux and OS](../foundations/linux-and-os.md): [signals](../foundations/linux-and-os.md#signals), [process groups](../foundations/linux-and-os.md#process-groups-and-sessions), [ulimits / `setrlimit`](../foundations/linux-and-os.md#file-descriptors-and-ulimits) and [`py-spy`](../foundations/linux-and-os.md#py-spy-what-is-python-doing-right-now), used by the verifier harness and the debugging table.
+- [Storage and Data](../foundations/storage-and-data.md): checkpoints, safetensors and shared filesystems (weight sync through storage).
+- [Slurm from zero](../orchestration/slurm/from-zero.md): `sbatch`, `srun` and `torchrun` under Slurm, for the launch script at the end.
+- [Serving LLMs in Practice](../inference/serving-hands-on.md): the [OpenAI-compatible API](../inference/serving-hands-on.md#the-openai-compatible-api-and-streaming) the rollout workers speak, and [vLLM on Ray](../inference/serving-hands-on.md#vllm-on-ray).
+- [Control Planes](control-planes.md): [Little's law](control-planes.md#littles-law), [bounded queues and load shedding](control-planes.md#bounded-queues-load-shedding-and-per-tenant-limits) and [retries](control-planes.md#retries-and-retry-budgets), which the queue and verifier-service sections reuse.
+- The [toolkit](../foundations/toolkit.md) chapter for [`jq`](../foundations/toolkit.md#jq-json-on-the-command-line) and `uv run`.
 
 Online RL for LLMs differs from pretraining in one important way: the training data does not exist until the current model creates it. Every step therefore runs an inference workload (generate rollouts), an evaluation workload (score them, possibly by executing code), and a training workload (compute gradients), and then moves the new weights back to the inference side. Each of these is a distributed system on its own. The RL algorithm determines which of them may overlap and by how much. This chapter covers the infrastructure that connects them: placement, staleness, weight transfer, rollout serving, environments, queues, failure handling, and how the open frameworks are organized.
 
@@ -59,7 +65,7 @@ Each line in that loop blocks until the previous one finishes. The rest of the c
 
 Configuration: a Qwen2.5-32B-like dense model (64 layers, 8 KV heads of dim 128, about 32.5B parameters) on 64 H100s. One GRPO step uses 256 prompts × 16 samples, 1024-token prompts, and long-tailed reasoning responses (lognormal, median about 6k tokens, capped at 32k). Generation runs on 16 TP=4 engines. Training recomputes the old-policy logprobs (`2N` FLOPs per token), runs a reference-model forward (`2N`), and a forward+backward (`6N`), for `10N` FLOPs per token.
 
-The script below simulates one engine with continuous batching. Each decode step costs one read of the weights plus one read of every active sequence's KV cache from HBM. That is the decode roofline from [inference arithmetic](../inference/arithmetic.md#decode-latency-lower-bound), assuming 60% of peak HBM bandwidth is achieved.
+The script below simulates one engine with continuous batching. Each decode step costs one read of the weights plus one read of every active sequence's KV cache from HBM. That is the decode roofline from [inference arithmetic](../inference/arithmetic.md#decode-latency-lower-bound), assuming 60% of peak HBM bandwidth is achieved. The script calls that fraction `MBU` (model bandwidth utilization), the memory-bandwidth counterpart of MFU.
 
 ```python
 # step_budget.py - where the time goes in one synchronous GRPO-style step.
@@ -274,7 +280,7 @@ In-flight updates exist because of the tail. Without them, a 32k-token rollout s
 
 ### A toy async RL pipeline
 
-The following toy contains every moving part of an async system, scaled down until it runs in two seconds. The **trainer** is a separate OS process (`multiprocessing`), as a real trainer would be. The **generator** is one `asyncio` event loop that keeps `SLOTS` rollouts in flight at once, as an inference engine with continuous batching does. The two are connected by a **bounded queue**, which provides backpressure. Weights are a shared-memory array published together with a **version counter** under a lock, which stands in for weight sync. The policy is a 4-way softmax, reward is 1 for action 3, and rollout length is lognormal so the tail is real. `k` is the maximum lag: a rollout may *start* only if its batch index is at most `k` ahead of the trainer's version. `k=0` is the synchronous loop.
+The following toy contains every moving part of an async system, scaled down until it runs in two seconds. The **trainer** is a separate OS process (`multiprocessing`), as a real trainer would be. The **generator** is one `asyncio` event loop that keeps `SLOTS` rollouts in flight at once, as an inference engine with continuous batching does. The two are connected by a **bounded queue**, which provides backpressure. Weights are a shared-memory array published together with a **version counter** under a lock, which stands in for weight sync. The stdlib provides these directly: `mp.Array("d", A)` is an array of `A` C doubles in shared memory that both processes can index like a list, `mp.Value("i", 0)` is a single shared C int read and written through `.value`, and `lock=False` skips their built-in per-object lock because the code uses one explicit `mp.Lock()` to cover the weights and the version together ([shared memory](../foundations/concurrency.md#shared-memory) and its race conditions are covered in the concurrency chapter). The policy is a 4-way softmax, reward is 1 for action 3, and rollout length is lognormal so the tail is real. `k` is the maximum lag: a rollout may *start* only if its batch index is at most `k` ahead of the trainer's version. `k=0` is the synchronous loop.
 
 ```python
 # toy_async_rl.py - generator (asyncio, many concurrent rollouts) -> bounded queue -> trainer (process).
@@ -427,7 +433,7 @@ lp_train = torch.log_softmax(logits, -1).gather(1, tok[:, None]).squeeze(1)  # (
 log_r = lp_train - lp_samp                                        # (T,) per-token log ratio
 print(f"per-token |log ratio|: mean {log_r.abs().mean():.2e}  max {log_r.abs().max():.2e}")
 print(f"sequence log ratio (sum over {T} tokens): {log_r.sum():+.3f}  -> ratio {log_r.sum().exp():.3f}")
-mis_kl = (lp_samp - lp_train).mean()                              # k1 estimate of KL(sampler || trainer)
+mis_kl = (lp_samp - lp_train).mean()                              # k1 estimate of KL(sampler || trainer): mean log ratio
 print(f"mismatch KL estimate (k1, per token): {mis_kl:.2e}")
 
 # staleness: the behaviour policy is k optimizer steps old; each step moves logits by ~eps
@@ -452,7 +458,7 @@ staleness k= 4: ratio p1 0.824 p99 1.205 max   1.34  | frac clipped by TIS(C=2) 
 staleness k=16: ratio p1 0.455 p99 1.986 max   3.08  | frac clipped by TIS(C=2) 0.0095  | ESS/T 0.908
 ```
 
-The bottom four lines are the staleness part. The p1-p99 ratio band widens from `[0.96, 1.05]` at one step of staleness to `[0.46, 1.99]` at 16, and TIS clipping only starts to bite at large `k`. The effective sample size (`ESS = (Σr)² / Σr²`) falls slowly, so in this toy moderate staleness wastes little data. Real policy drift per step depends on learning rate and data and is not Gaussian. Measure it on your own run with the per-bin mismatch KL. The top three lines are the zero-staleness part, covered next.
+The bottom four lines are the staleness part. The p1-p99 ratio band widens from `[0.96, 1.05]` at one step of staleness to `[0.46, 1.99]` at 16, and TIS clipping only starts to bite at large `k`. The effective sample size (`ESS = (Σr)² / Σr²`) falls slowly, so in this toy moderate staleness wastes little data. Real policy drift per step depends on learning rate and data and is not Gaussian. Measure it on your own run with the per-bin mismatch KL. The top three lines are the zero-staleness part, covered next. (The "k1" estimator there is the plain Monte Carlo estimate of `KL(μ‖π)`: the mean of `log μ − log π` over tokens sampled from `μ`. It is unbiased but an individual estimate can be negative, as it is here. The non-negative `k3` variant used for alerting appears in [Infrastructure health signals](#infrastructure-health-signals).)
 
 ### Sampler-trainer mismatch at zero staleness
 
@@ -674,11 +680,11 @@ if __name__ == "__main__":
     a.send(reduce_tensor(full)); assert a.recv() == "done"
 ```
 
-The protocol detail that matters is **lifetime**. The trainer must keep `full` alive until the engine confirms the copy. If the trainer frees it and the caching allocator reuses the memory, the engine reads garbage. Nothing errors, and logprobs are simply wrong.
+The protocol detail that matters is **lifetime**. The trainer must keep `full` alive until the engine confirms the copy. If the trainer frees it and the caching allocator ([PyTorch caching allocator](../training/arithmetic.md#pytorch-caching-allocator-internals)) reuses the memory, the engine reads garbage. Nothing errors, and logprobs are simply wrong.
 
 ### Over the network: checkpoint streaming
 
-When engines are elastic (they join and leave), live in another datacenter, or are not trusted, a shared NCCL group is the wrong tool. A single failed member hangs a collective (see [distributed systems](../foundations/distributed-systems.md)). The alternative is the same method you would use to distribute any large file: the trainer writes a versioned checkpoint, and engines pull it. A minimal HTTP version, runnable with the stdlib:
+When engines are elastic (they join and leave), live in another datacenter, or are not trusted, a shared NCCL group is the wrong tool. A single failed member hangs a collective (see [distributed systems](../foundations/distributed-systems.md)). The alternative is the same method you would use to distribute any large file: the trainer writes a versioned checkpoint, and engines pull it. A minimal HTTP version, runnable with the stdlib (`http.server` serves a directory over HTTP, as in [Networking](../foundations/networking.md#http11-from-raw-sockets); `urllib.request.urlopen` is the stdlib HTTP client):
 
 ```python
 # ckpt_stream.py - trainer publishes versioned shards over HTTP; an engine polls and pulls the newest.
@@ -719,7 +725,7 @@ pulled version 1 {'shard0.bin': 8388608, 'shard1.bin': 8388608}
 second poll: 1 (nothing new)
 ```
 
-The design points carry over to real systems. The `LATEST` pointer is written last and atomically (`os.replace`), so readers never see a half-written version. Every shard has a checksum, because WAN transfers do corrupt data and a corrupt shard gives a broken policy with no error. Old versions are kept until no engine is reading them. To scale out, fan out through relays or peer-to-peer (each engine re-serves what it downloaded) instead of having a thousand engines pull from one trainer NIC. This is the same reasoning as a pipelined broadcast tree.
+The design points carry over to real systems. The `LATEST` pointer is written last and atomically (`os.replace`, the write-temp-then-rename pattern from [Distributed Systems](../foundations/distributed-systems.md#where-you-dont-get-to-sidestep-it)), so readers never see a half-written version. Every shard has a checksum, because WAN transfers do corrupt data and a corrupt shard gives a broken policy with no error. Old versions are kept until no engine is reading them. To scale out, fan out through relays, a CDN (content delivery network: many cache servers near the readers) or peer-to-peer (each engine re-serves what it downloaded) instead of having a thousand engines pull from one trainer NIC. This is the same reasoning as a pipelined broadcast tree.
 
 ## Rollout workers
 
@@ -731,7 +737,7 @@ RL uses an inference engine differently from chat serving:
 - **Throughput, not latency.** There is no human waiting on time-to-first-token. Batch as large as KV memory allows and accept long per-token latency.
 - **Sampling must be exactly what the loss assumes.** Record the temperature, top-p, top-k and the logprob definition (raw vs processed) together with the rollout.
 
-A request to an OpenAI-compatible vLLM server. The flags follow vLLM's API as I know it; check against the version you run. **Untested:**
+A request to an OpenAI-compatible vLLM server (the request/response format is taught in [Serving LLMs in Practice](../inference/serving-hands-on.md#the-openai-compatible-api-and-streaming); this uses the older `/v1/completions` route, which takes a raw `prompt`, here a list of token ids, instead of chat `messages`). `"logprobs": 0` asks for the logprob of each sampled token only, `return_tokens_as_token_ids` (a vLLM extension) returns ids instead of strings, and the `jq` filter ([toolkit](../foundations/toolkit.md#jq-json-on-the-command-line)) prints just the finish reason and token count. The flags follow vLLM's API as I know it; check against the version you run. **Untested:**
 
 ```bash
 curl -s localhost:8000/v1/completions -H 'Content-Type: application/json' -d '{
@@ -915,7 +921,7 @@ The normalisation (`/ mask.sum()` per sequence, per batch, or a constant) is an 
 
 ### Chat templates and tokenization consistency
 
-The importance ratio is only meaningful if the trainer scores **the exact token ids the sampler produced**, in **the exact context it produced them in**. Three ways to break that, demonstrated with a real tokenizer (Qwen3, loaded offline from the local HF cache):
+The importance ratio is only meaningful if the trainer scores **the exact token ids the sampler produced**, in **the exact context it produced them in**. Three ways to break that, demonstrated with a real tokenizer (Qwen3, loaded offline from the local HF cache). Two Hugging Face `transformers` calls appear: `AutoTokenizer.from_pretrained(name)` downloads (or reads from the local cache) the tokenizer files for a model, and `tok.apply_chat_template(messages, ...)` runs the model's chat template (defined in [Inside a Serving Engine](../inference/serving-engine-internals.md#why-cpu-overhead-matters-at-decode): a small Jinja program that turns `{"role", "content"}` messages into one prompt string). `<|im_start|>` and `<|im_end|>` are Qwen's special tokens that open and close a chat turn. To rerun it: `pip install transformers` and expect a tokenizer download of roughly 10 MB on first use.
 
 ```python
 # tokcheck.py - three ways trainer and sampler disagree about "the same" text. Qwen3 tokenizer, offline.
@@ -986,7 +992,7 @@ The infrastructure rule: **reward computation must not be on the trainer's criti
 
 ### Sandboxed code execution
 
-Model-written code is **untrusted input**. It will, sometimes by accident and sometimes because RL rewards it, loop forever, fork-bomb, fill the disk, flood stdout, read the test file to find expected answers, open network connections, or kill its parent. The minimum single-machine harness: a fresh working directory, a child process in its own process group, CPU/file/fd limits, a wall-clock timeout, bounded output capture, and killing the *whole process group* on timeout:
+Model-written code is **untrusted input**. It will, sometimes by accident and sometimes because RL rewards it, loop forever, fork-bomb, fill the disk, flood stdout, read the test file to find expected answers, open network connections, or kill its parent. The minimum single-machine harness: a fresh working directory, a child process in its own [process group](../foundations/linux-and-os.md#process-groups-and-sessions), CPU/file/fd limits (`resource.setrlimit`, see [ulimits](../foundations/linux-and-os.md#file-descriptors-and-ulimits)), a wall-clock timeout, bounded output capture, and killing the *whole process group* on timeout. The same harness is built layer by layer, with the security reasoning, in [Containers: a minimal harness](../foundations/containers-and-virtualization.md#a-minimal-harness-layer-by-layer); here the focus is throughput and reward correctness:
 
 ```python
 # verify.py - a reward service's inner loop: run untrusted model-written code with limits, many at once.
@@ -1057,9 +1063,9 @@ Points from this output and from writing the code:
 - **Every failure mode ends with reward 0, and the harness itself survives.** The infinite loop is killed by `RLIMIT_CPU` (`killed`). The output flood is truncated at 64 KB. The crash returns its exit code. The mean reward comes out exactly at the expected 6/11.
 - **Wall-clock timeouts become flaky under load.** At concurrency 32 on 10 cores, three of the ten hung programs hit the 3 s *wall* timeout before reaching 2 s of *CPU* time, because they were time-sliced with other jobs. (In an earlier run of the same command it was 9 of 10.) Here both outcomes give reward 0, so nothing changes. For a *correct but slow* solution, though, the outcome depends on how loaded the sandbox host is, and that is **reward noise produced by the infrastructure**. Use CPU-time limits or fixed per-job CPU allocations (cgroup quotas, see [containers](../foundations/containers-and-virtualization.md)) for anything that decides correctness, and keep the wall-clock limit as a last-resort backstop.
 - **asyncio subprocess gotcha (found while writing this).** Since Python 3.12, `Process.wait()` does not return until the child's pipes are closed. The first version of this script read a bounded prefix of stdout, killed the child, then called `wait()`, and hung forever because unread data stayed in the pipe. The fix is the `drain()` loop: keep reading and discarding until EOF. In a production reward service this bug shows up as a slow leak of stuck verification tasks.
-- **This is not a security boundary.** `setrlimit` plus a temp directory stops accidents, not adversaries. It does not stop network access, reading other files on the host, or kernel exploits. `RLIMIT_AS` (memory) is not enforced on macOS at all. On Linux, use real isolation layers. From weakest to strongest: namespaces + cgroups + seccomp (containers, nsjail), a user-space kernel (gVisor), a microVM (Firecracker, Kata). See [containers and virtualization](../foundations/containers-and-virtualization.md) for what each one actually isolates.
+- **This is not a security boundary.** `setrlimit` plus a temp directory stops accidents, not adversaries. It does not stop network access, reading other files on the host, or kernel exploits. `RLIMIT_AS` (memory) is not enforced on macOS at all. On Linux, use real isolation layers. From weakest to strongest: namespaces + cgroups + seccomp (containers, nsjail, a small sandboxing tool that applies these primitives to one process), a user-space kernel (gVisor), a microVM (Firecracker, Kata). See [containers and virtualization](../foundations/containers-and-virtualization.md) for what each one actually isolates.
 
-A container-based version of the same harness would look like this. **Untested**: Docker was not used for this chapter. The flags are standard `docker run` options.
+A container-based version of the same harness would look like this. **Untested**: Docker was not used for this chapter. The flags are standard `docker run` options, each explained in [the run flags that matter](../foundations/containers-and-virtualization.md#the-run-flags-that-matter-for-ml) and [defense in depth](../foundations/containers-and-virtualization.md#defense-in-depth-a-reference-design). `137` is 128 + 9, the shell's exit code for a process killed by signal 9 (SIGKILL; see [signals](../foundations/linux-and-os.md#signals)).
 
 ```bash
 docker run --rm --network none --read-only --tmpfs /work:rw,size=64m \
@@ -1096,8 +1102,8 @@ per-task image pull/start 15 s     4.4/s x  45.0 s =  197.1 concurrent sandboxes
 These are *averages*. Completions arrive in bursts (a whole group finishes together, a whole batch at the end of a synchronous step), so provision for the peak, or put a queue in front and accept the extra latency. The levers:
 
 - **Warm pools**: keep pre-started sandboxes and hand one out per job, so per-job cost is reset time rather than boot time.
-- **Snapshot/restore**: microVM snapshots restore in tens to hundreds of ms (Firecracker's published goal is fast boot; measure your own setup).
-- **Image locality**: for SWE-style tasks every task has its own multi-GB image (for example, `swebench/sweb.eval.*` images are around 4 GB each). Pre-pull to nodes and schedule jobs where the image already is. Pulling on demand is the cold-start cost.
+- **Snapshot/restore**: microVM snapshots restore in tens to hundreds of ms (Firecracker's published goal is fast boot; measure your own setup). The mechanics are in [Containers: snapshots](../foundations/containers-and-virtualization.md#snapshots-starting-from-a-warm-vm), and the same fleet arithmetic from the sandbox side is in [Throughput: sandboxes are part of the step time](../foundations/containers-and-virtualization.md#throughput-sandboxes-are-part-of-the-step-time).
+- **Image locality**: for SWE-style tasks (SWE-bench and similar: the agent must patch a real repository so that its tests pass) every task has its own multi-GB image (for example, `swebench/sweb.eval.*` images are around 4 GB each). Pre-pull to nodes and schedule jobs where the image already is. Pulling on demand is the cold-start cost.
 - **Multi-turn agents hold a sandbox for the whole episode**, not per call, so `time in system` is the episode duration. This is where hosted sandbox services and Kubernetes-based fleets ([Kubernetes](../orchestration/kubernetes-from-zero.md)) come in.
 
 ### Reward-computation throughput
@@ -1143,7 +1149,7 @@ prompt source -> [Q1] -> generators -> [Q2] -> verifiers -> [Q3] -> batcher -> [
                        generators <---------------- weights (version v) ----------------+
 ```
 
-Every queue must be **bounded**, and every bound is a policy decision. A bound on Q4 is a bound on in-queue staleness: a batch can be at most `|Q4|` steps old when the trainer pulls it. A bound on Q1 together with the number of generator slots bounds in-flight work, and with it in-flight staleness and KV memory. A bound on Q2 protects the verifier fleet. Unbounded queues turn a slow consumer into an OOM, or worse, into silently growing staleness. The monitoring rule from [concurrency](../foundations/concurrency.md#producerconsumer-and-backpressure) applies: queues near full mean the downstream stage is the bottleneck, queues near empty mean the upstream stage is.
+Every queue must be **bounded**, and every bound is a policy decision. A bound on Q4 is a bound on in-queue staleness: a batch can be at most `|Q4|` steps old when the trainer pulls it. A bound on Q1 together with the number of generator slots bounds in-flight work, and with it in-flight staleness and KV memory. A bound on Q2 protects the verifier fleet. Unbounded queues turn a slow consumer into an OOM, or worse, into silently growing staleness. The monitoring rule from [concurrency](../foundations/concurrency.md#producerconsumer-and-backpressure) applies: queues near full mean the downstream stage is the bottleneck, queues near empty mean the upstream stage is. What to do when a bounded queue is full (block, shed, or rate-limit per tenant) is worked through in [Control Planes](control-planes.md#bounded-queues-load-shedding-and-per-tenant-limits).
 
 ```python
 # queue_depth.py - which stage is the bottleneck? Read the queue depths. (runnable)
@@ -1211,12 +1217,19 @@ How the stages actually talk, as of the frameworks surveyed:
 | Transport | Used for | Notes |
 |---|---|---|
 | Ray actors + object store | verl, OpenRLHF, slime, NeMo-RL control and data | one Python "driver" calls methods on remote actors. Large objects go through shared memory. Single-controller programming model |
-| ZMQ sockets | prime-rl orchestrator ↔ trainer (default `rollout_transport`) | point-to-point, the trainer pulls one step at a time |
+| ZMQ sockets (ZeroMQ, a message-passing library; also vLLM's internal process link, see [serving internals](../inference/serving-engine-internals.md#the-fix-separate-processes-persistent-state-async-scheduling)) | prime-rl orchestrator ↔ trainer (default `rollout_transport`) | point-to-point, the trainer pulls one step at a time |
 | Shared filesystem | rollout dumps, checkpoints, prime-rl's `rollout_transport.type = "filesystem"` | simple and persistent. Bounded by storage throughput |
 | HTTP | engines (OpenAI-style + `/generate`), remote reward servers (OpenRLHF `--reward.remote_url`), weight relays | crosses trust and network boundaries, easy to load-balance |
-| NCCL / NIXL / Mooncake | weights only | high bandwidth, fragile under membership changes |
+| NCCL / NIXL / Mooncake | weights only (NIXL and Mooncake are the KV-transfer libraries from [disaggregated serving](../inference/serving-engine-internals.md#disaggregated-prefill-and-decode), reused for weights) | high bandwidth, fragile under membership changes |
 
-A Ray single-controller sketch, to show the programming model. **Untested** (Ray is not installed here):
+A Ray single-controller sketch, to show the programming model. Ray was introduced in [vLLM on Ray](../inference/serving-hands-on.md#vllm-on-ray) as a distributed runtime with a head and worker processes. Just enough of its API to read the sketch:
+
+- `ray.init()` connects this Python process (the **driver**) to a Ray cluster, or starts a local one.
+- `@ray.remote(num_gpus=4)` on a class makes it an **actor** class: each instance runs in its own process, which Ray places on some node that has 4 free GPUs.
+- `Engine.remote(...)` creates such an actor and returns a handle. `handle.method.remote(args)` calls the method in the actor's process and returns immediately with an `ObjectRef`, a future for the result.
+- `ray.get(refs)` blocks until the results are ready and fetches them. Large results travel through Ray's per-node shared-memory **object store** rather than through the driver's sockets.
+
+**Untested** (Ray is not installed here):
 
 ```python
 import ray
@@ -1247,7 +1260,7 @@ Training reward is measured on the training distribution, with the training samp
 - **Pin the version.** Evaluate a specific checkpoint version and record it. In async systems, "the model at step 400" has to be defined: the trainer's weights after step 400, synced to an engine.
 - **Fixed sampling settings and seeds**, distinct from training settings (e.g. temperature 0.6, top-p 0.95, `n=16` for pass@k). With batch-dependent numerics, even greedy decoding is not reproducible across fleet states. Report averages over enough samples.
 - **Separate priority or a separate engine slice**, so that evals do not steal the tail-filling slots and change training dynamics. prime-rl's orchestrator has explicit eval source and sink modules for this. In verl it is a periodic validation step.
-- **Uncertainty.** On a 500-problem benchmark, a pass@1 difference of 1-2 points is often within noise. Use pass@k with the unbiased estimator and report a confidence interval.
+- **Uncertainty.** On a 500-problem benchmark, a pass@1 difference of 1-2 points is often within noise. Use pass@k with the unbiased estimator and report a confidence interval. (pass@k is the probability that at least one of `k` samples for a problem is correct. Estimating it as "draw exactly `k` samples" is noisy, so you draw `n ≥ k`, count `c` correct, and use `1 - C(n-c, k) / C(n, k)`, the chance that a random size-`k` subset contains a correct one.)
 
 ```python
 # passk.py - unbiased pass@k from n samples with c correct (Chen et al. 2021, arXiv 2107.03374)
@@ -1281,7 +1294,7 @@ RL adds failure modes that pretraining doesn't have, and several of them look li
 | KL to reference or policy entropy blows up | can be algorithmic, but rule out stale or mixed-version rollouts and mis-masked env tokens first | mismatch KL by staleness bin, trained-token fraction |
 | Response length collapses or explodes | max-tokens or truncation change, stop-token or template mismatch (model never emits EOS as the engine expects) | finish-reason histogram (`stop` vs `length`) |
 | Trainer idle, queues empty | generator-bound: engines down, KV oversubscribed, sandbox fleet saturated | queue depths per stage |
-| Run hangs completely | NCCL weight-sync collective with a dead member, a deadlocked orchestrator | stack dumps (`py-spy dump`), [hanging guide](../debug/torch-distributed-hanging-solutions.md) |
+| Run hangs completely | NCCL weight-sync collective with a dead member, a deadlocked orchestrator | stack dumps ([`py-spy dump`](../foundations/linux-and-os.md#py-spy-what-is-python-doing-right-now)), [hanging guide](../debug/torch-distributed-hanging-solutions.md) |
 
 ### Stuck rollouts and timeouts
 
@@ -1390,7 +1403,7 @@ Architecture only, from READMEs, docs and source trees. These projects change mo
 | Framework | Trainer | Inference | Control plane | Placement | Async |
 |---|---|---|---|---|---|
 | **verl** (ByteDance Seed; HybridFlow, arXiv 2409.19256) | FSDP / FSDP2 / Megatron-LM (plus other "engine workers") | vLLM, SGLang, HF | Ray, single controller | colocated by default, disaggregated supported | `verl/experimental/{one_step_off_policy,fully_async_policy}`. Pluggable `checkpoint_engine` backends for weight sync (naive, nccl, nixl, mooncake, kimi_ckpt_engine, hccl) |
-| **OpenRLHF** (arXiv 2405.11143) | DeepSpeed (ZeRO-3, AutoTP) | vLLM | Ray | separate placement of actor/critic/reward/ref, or `--train.colocate_all` | `--train.async_enable`, `--train.async_queue_size`, `--train.partial_rollout_enable` |
+| **OpenRLHF** (arXiv 2405.11143) | DeepSpeed (ZeRO-3, AutoTP: DeepSpeed's automatic tensor parallelism) | vLLM | Ray | separate placement of actor/critic/reward/ref, or `--train.colocate_all` | `--train.async_enable`, `--train.async_queue_size`, `--train.partial_rollout_enable` |
 | **prime-rl** (Prime Intellect; INTELLECT-2, arXiv 2505.07291) | FSDP2 | vLLM | separate processes: trainer, orchestrator (CPU), inference server. ZMQ or filesystem for rollouts, NCCL for weights. Launched via `uv run rl @ config.toml`, Slurm for multi-node | disaggregated | fully async, `orchestrator.max_staleness` (default 8) with token masking |
 | **TRL** (Hugging Face) | Accelerate/DeepSpeed/FSDP | vLLM via `vllm_mode="colocate"` (default) or `"server"` | single program | either | primarily synchronous; vLLM IS correction flags |
 | **slime** (THUDM / Z.ai; used for GLM-4.5-era RL) | Megatron-LM | SGLang | Ray | colocated or disaggregated | supports async (verify current docs) |
@@ -1428,7 +1441,7 @@ Mapping onto three codebases (paths from the GitHub trees on 2026-11-05; they wi
 
 A practical exercise that teaches a codebase faster than reading: run its smallest example end to end (for prime-rl, the README's 2-GPU `reverse-text` example; for verl and OpenRLHF, their GSM8K quickstarts), then put a breakpoint or a log line at each of the seven points above and watch one rollout travel through the system.
 
-A Slurm launch for a disaggregated layout, as a sketch of what "launched via Slurm" means. **Untested**. The heterogeneous-job syntax is standard Slurm, but the program names are placeholders:
+A Slurm launch for a disaggregated layout, as a sketch of what "launched via Slurm" means. **Untested**. The heterogeneous-job syntax is standard Slurm, but the program names are placeholders. `sbatch` directives and `srun` are taught in [Slurm from zero](../orchestration/slurm/from-zero.md#the-directives-that-matter); what is new here is the **heterogeneous job**. `#SBATCH hetjob` separates two groups of directives, so one job gets two components with different shapes (here 4 inference nodes and 4 trainer nodes) that start together. `srun --het-group=N` launches a step on component `N` only. Each `srun ... &` runs in the background and `wait` keeps the batch script alive until all of them exit. The `torchrun --rdzv-backend c10d` line is the multi-node launch from [Launch with torchrun](../orchestration/slurm/from-zero.md#launch-with-torchrun):
 
 ```bash
 #!/bin/bash
@@ -1445,6 +1458,8 @@ wait
 ```
 
 ## You can now read
+
+This is the last chapter in the reading order, so the chapters below come earlier; revisit them with the RL pipeline in mind.
 
 - [Decentralized Training](../training/decentralized-training.md): RL over the WAN, where weight sync and verification of untrusted rollouts dominate.
 - [Services and Control Planes](control-planes.md): how to run the orchestrator, reward services and sandbox fleets as production services.

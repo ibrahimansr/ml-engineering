@@ -6,12 +6,15 @@ This chapter assumes you know the transformer math. It does not assume you know 
 
 - [Computer architecture](../../foundations/computer-architecture.md) - the GPU memory hierarchy (HBM vs SRAM) and why FLOP/s and bytes/s are separate limits. The roofline argument used throughout this chapter depends on it.
 - [Concurrency](../../foundations/concurrency.md) - streams, asynchronous launches and overlap. "Overlap compute with communication" is a concurrency statement, and every cost model below depends on whether the overlap actually happens.
-- [Networking](../../foundations/networking.md) - latency vs bandwidth, NVLink vs InfiniBand, RDMA, bisection bandwidth. Every `β` in this chapter is a networking number.
+- [Toolkit](../../foundations/toolkit.md) - running commands in a terminal, Python virtual environments, `export` of environment variables. The setup block below uses all three.
+- [Networking](../../foundations/networking.md) - latency vs bandwidth, NVLink vs InfiniBand, RDMA, loopback and network interfaces, and [how PyTorch distributed bootstraps](../../foundations/networking.md#how-pytorch-distributed-bootstraps) (rendezvous, `MASTER_ADDR`/`MASTER_PORT`). Every `β` in this chapter is a networking number.
 - [Distributed systems](../../foundations/distributed-systems.md) - ranks, process groups, collectives, and why a slow rank stalls everyone.
+- [Execution model](../../compute/accelerator/execution-model.md) - GEMMs, [FlashAttention and online softmax](../../compute/accelerator/execution-model.md#flashattention), and reading a profiler trace. The context-parallel section builds on online softmax.
+- [Collectives internals](../../network/collectives-internals.md) - the alpha-beta model, ring/tree algorithms, bus bandwidth, bisection bandwidth and oversubscription, and compute-communication overlap. This chapter uses its formulas without re-deriving them.
 - [Transformer architectures](../../models/architectures.md) - GQA/MQA, SwiGLU, MoE layers. The head-count constraints and the expert-parallel sections use these details.
 - [Training arithmetic](../arithmetic.md) - FLOPs per token and memory per parameter. This chapter uses those results without re-deriving them.
 
-You don't need the Linux/OS chapter or the beyond-transformers chapter here.
+You don't need the Linux/OS chapter, the beyond-transformers chapter, or the cluster chapters (Slurm, Kubernetes) here. Everything runs as local processes on one machine.
 
 This chapter is the quantitative companion to the [Model Parallelism survey](README.md). The survey explains what each technique is and links to the implementations. This chapter builds each technique from scratch in a few dozen lines of `torch.distributed` code that you can run on a laptop, checks that it computes exactly what the unsharded model computes, and then derives what it costs in memory and in bytes moved. The last part uses those formulas to choose a layout for two concrete models. The collective algorithms themselves (ring, tree, NVLS, how NCCL chooses between them) are covered in [collectives internals](../../network/collectives-internals.md). FLOPs-per-token and memory arithmetic for a single model are in [training arithmetic](../arithmetic.md).
 
@@ -19,7 +22,7 @@ Two kinds of numbers appear below. **Measured**: outputs of the scripts in this 
 
 ## Running the code: many processes on one machine
 
-Distributed training runs one process per GPU. Each process is a *rank*, numbered `0 .. world_size-1`. The processes find each other through a *rendezvous*: rank 0 listens on an address and port, everyone else connects there, and they agree on who is who. After that they talk through a *backend*: NCCL on NVIDIA GPUs, **gloo** on CPUs. Gloo implements the same collectives over ordinary TCP sockets, so the same code runs on a laptop with no GPU at all. That is what every demo in this chapter does.
+Distributed training runs one process per GPU. Each process is a *rank*, numbered `0 .. world_size-1`. The processes find each other through a *rendezvous*: rank 0 listens on an address and port, everyone else connects there, and they agree on who is who. After that they talk through a *backend*: NCCL on NVIDIA GPUs, **gloo** on CPUs. Gloo implements the same collectives over ordinary TCP sockets, so the same code runs on a laptop with no GPU at all. That is what every demo in this chapter does. (Launching a process group on one machine is worked through step by step in [collectives internals](../../network/collectives-internals.md#launching-a-process-group-on-one-machine); the TCP rendezvous underneath is in [networking](../../foundations/networking.md#step-1-rendezvous-over-tcp-the-store).)
 
 `torchrun` is the launcher. It starts `--nproc-per-node` copies of your script and sets the environment variables `RANK`, `WORLD_SIZE`, `LOCAL_RANK`, `MASTER_ADDR` and `MASTER_PORT` in each, so that `dist.init_process_group("gloo")` needs no arguments.
 
@@ -34,7 +37,7 @@ export GLOO_SOCKET_IFNAME=lo0                     # macOS: make gloo use the loo
 torchrun --nproc-per-node 4 --master-addr 127.0.0.1 collectives.py
 ```
 
-On this Mac, leaving out `--master-addr 127.0.0.1` and `GLOO_SOCKET_IFNAME=lo0` made `torchrun` hang until I killed it after 60 s: gloo tried to resolve the machine's hostname to a non-loopback interface. On Linux, `GLOO_SOCKET_IFNAME=lo` does the same job. You will also see harmless warnings about IPv6 address lookups and `OMP_NUM_THREADS`; they are omitted from the outputs below. The outputs are otherwise pasted verbatim. The alternative to `torchrun` is `torch.multiprocessing.spawn(fn, nprocs=N)`, which forks the workers from inside one Python script; you then set `MASTER_ADDR`/`MASTER_PORT` yourself and pass `rank` and `world_size` to `init_process_group`.
+On this Mac, leaving out `--master-addr 127.0.0.1` and `GLOO_SOCKET_IFNAME=lo0` made `torchrun` hang until I killed it after 60 s: gloo tried to resolve the machine's hostname to a non-loopback interface (interfaces and hostname resolution: [networking](../../foundations/networking.md#interfaces-and-the-routing-table)). On Linux, `GLOO_SOCKET_IFNAME=lo` does the same job. You will also see harmless warnings about IPv6 address lookups and `OMP_NUM_THREADS`; they are omitted from the outputs below. The outputs are otherwise pasted verbatim. The alternative to `torchrun` is `torch.multiprocessing.spawn(fn, nprocs=N)`, which forks the workers from inside one Python script; you then set `MASTER_ADDR`/`MASTER_PORT` yourself and pass `rank` and `world_size` to `init_process_group`.
 
 ## Notation and hardware constants
 
@@ -56,9 +59,9 @@ Hardware used in the worked examples. These match H100 SXM specs:
 - **HBM** (High Bandwidth Memory, the GPU's on-package DRAM, the memory "GPU memory" usually refers to): 80 GB per H100.
 - **NVLink** (NVIDIA's GPU-to-GPU link inside a node, routed through NVSwitch chips so that any GPU can reach any other at full speed): 900 GB/s per GPU *bidirectional*, so `β_nvl = 450 GB/s` per direction. Achieved NCCL bus bandwidth is lower. Measure yours with the [network benchmarks](../../network/benchmarks/).
 - **InfiniBand (IB)** (the inter-node network; each GPU has its own NIC, a network interface card, and talks to it via **RDMA**, remote direct memory access, which means one machine writes directly into another machine's memory without going through either CPU): 400 Gb/s per GPU, so `β_ib = 400/8 = 50 GB/s` per direction.
-- Dense BF16 peak is 989 TFLOP/s. I assume 40% MFU, so `F = 0.4 * 989e12 = 395.6e12 FLOP/s`. This is an assumption, not a measurement.
+- Dense BF16 peak is 989 TFLOP/s. I assume 40% MFU (model FLOPs utilization: useful model FLOP/s divided by peak, defined in [training arithmetic](../arithmetic.md#mfu-and-hfu-properly)), so `F = 0.4 * 989e12 = 395.6e12 FLOP/s`. This is an assumption, not a measurement.
 
-A **node** here means 8 GPUs sharing one NVLink domain. A **collective** is a communication operation in which every rank of a group takes part, for example all of them summing a tensor together. **NCCL** is NVIDIA's library that implements collectives on GPUs. A **kernel** is a single function launched on the GPU. A **CUDA stream** is an ordered queue of kernels. Kernels on different streams may run concurrently, which is the mechanism behind every "overlap" claim in this chapter.
+A **node** here means 8 GPUs sharing one NVLink domain. A **collective** is a communication operation in which every rank of a group takes part, for example all of them summing a tensor together. **NCCL** is NVIDIA's library that implements collectives on GPUs. A **kernel** is a single function launched on the GPU. A **CUDA stream** is an ordered queue of kernels. Kernels on different streams may run concurrently, which is the mechanism behind every "overlap" claim in this chapter (see [multiple streams in PyTorch](../../foundations/concurrency.md#multiple-streams-in-pytorch) and [streams and what "async" means](../../network/collectives-internals.md#streams-and-what-async-means)).
 
 These constants live in one small module that the cost-model scripts below import:
 
@@ -174,7 +177,7 @@ The `assert` in the script checks the identity the rest of this chapter leans on
 
 ### The ring algorithm, built by hand
 
-The standard way to all-reduce large tensors is the *ring*: arrange the ranks in a circle, cut the tensor into `N` chunks, and pass chunks to the right neighbour. In `N-1` steps of "send a chunk, add the one you received" each rank ends up owning the full sum of one chunk (that is a reduce-scatter). In `N-1` more steps of "send the finished chunk along" everyone gets every finished chunk (that is an all-gather). Each step every rank sends `M/N` bytes, so the total sent per rank is `2(N-1)/N · M`. Here it is with point-to-point `isend`/`irecv`, checked against `dist.all_reduce` and with the bytes counted:
+The standard way to all-reduce large tensors is the *ring*: arrange the ranks in a circle, cut the tensor into `N` chunks, and pass chunks to the right neighbour. In `N-1` steps of "send a chunk, add the one you received" each rank ends up owning the full sum of one chunk (that is a reduce-scatter). In `N-1` more steps of "send the finished chunk along" everyone gets every finished chunk (that is an all-gather). Each step every rank sends `M/N` bytes, so the total sent per rank is `2(N-1)/N · M`. Here it is with point-to-point `isend`/`irecv` (`dist.isend(t, dst)` and `dist.irecv(t, src)` start a non-blocking send to or receive from one rank and return a request object whose `.wait()` blocks until the transfer is done; posting the send and the receive before waiting on either is what keeps two neighbours from deadlocking while each waits for the other), checked against `dist.all_reduce` and with the bytes counted:
 
 ```python
 # ring_allreduce.py
@@ -303,7 +306,7 @@ fit: alpha = 48.9 us per message, beta = 3.76 GB/s per rank (loopback, gloo, 4 r
 half-bandwidth message size M_1/2 = alpha*beta*N = 735 KB
 ```
 
-The shape is what matters, not the loopback numbers. Small messages cost a few hundred microseconds regardless of size (`α` dominates; the jitter between them is noise on a shared laptop), large messages approach a fixed bandwidth (`β` dominates), and the crossover is `M_1/2 = N·α·β`, the message size at which you get half the peak bandwidth. On an H100 cluster `α` is a few to tens of microseconds and `β` is tens to hundreds of GB/s, so `M_1/2` is in the MB range. That is why DDP and FSDP group gradients into buckets of tens of MB. "busbw" (bus bandwidth) here is `2(N-1)/N · M / t`, the same normalization `nccl-tests` uses, so that a perfect ring reports the link bandwidth regardless of `N`. The fit is from one run on a busy laptop, so treat the exact values as an anecdote.
+The shape is what matters, not the loopback numbers. Small messages cost a few hundred microseconds regardless of size (`α` dominates; the jitter between them is noise on a shared laptop), large messages approach a fixed bandwidth (`β` dominates), and the crossover is `M_1/2 = N·α·β`, the message size at which you get half the peak bandwidth. On an H100 cluster `α` is a few to tens of microseconds and `β` is tens to hundreds of GB/s, so `M_1/2` is in the MB range. That is why DDP and FSDP group gradients into buckets of tens of MB. "busbw" (bus bandwidth) here is `2(N-1)/N · M / t`, the same normalization `nccl-tests` (NVIDIA's standard collective benchmark, see [collectives internals](../../network/collectives-internals.md#the-same-measurement-on-gpus-nccl-tests-and-torch-dist-bench)) uses ([algbw vs busbw](../../network/collectives-internals.md#algbw-vs-busbw)), so that a perfect ring reports the link bandwidth regardless of `N`. The fit is from one run on a busy laptop, so treat the exact values as an anecdote.
 
 ## Data parallelism (DDP)
 
@@ -389,7 +392,7 @@ The DDP gradient equals the single-process full-batch gradient to 5e-10 (float r
 
 ### Communication volume
 
-With `b_g` bytes per gradient element (2 for bf16 gradients, 4 for fp32 gradients as in classic AMP with fp32 params), one all-reduce of all gradients per step sends:
+With `b_g` bytes per gradient element (2 for bf16 gradients, 4 for fp32 gradients as in classic AMP, automatic mixed precision via `torch.autocast`, with fp32 params; see [mixed precision internals](../arithmetic.md#mixed-precision-internals)), one all-reduce of all gradients per step sends:
 
 ```
 V_DDP = 2·(d-1)/d · b_g·Ψ  ≈  2·b_g·Ψ  bytes per rank per step
@@ -571,7 +574,7 @@ Count bf16 bytes per rank per step, with `b = 2`:
   - no final all-gather, because each rank updates only its own shard and the next forward will gather
   - total `3bΨ = 1.5 × V_DDP`
 
-Gradient accumulation changes this. ZeRO-3 with `reshard_after_forward=True` repeats the two all-gathers for each micro-batch. If it also reduce-scatters every micro-batch, as it does by default, the cost becomes `3bΨ·k` for `k` micro-batches. With FSDP2 you can trade memory for volume: `reshard_after_forward=False` keeps unsharded params from forward to backward (which is ZeRO-2 behaviour, `2bΨ`), and `model.set_requires_gradient_sync(False)` on all but the last micro-batch accumulates unsharded gradients locally. The [survey's GAS discussion](README.md#inter-node-speed-requirements-to-use-zero) covers the DeepSpeed side.
+Gradient accumulation changes this. ZeRO-3 with `reshard_after_forward=True` repeats the two all-gathers for each micro-batch. If it also reduce-scatters every micro-batch, as it does by default, the cost becomes `3bΨ·k` for `k` micro-batches. With FSDP2 you can trade memory for volume: `reshard_after_forward=False` keeps unsharded params from forward to backward (which is ZeRO-2 behaviour, `2bΨ`), and `model.set_requires_gradient_sync(False)` on all but the last micro-batch accumulates unsharded gradients locally. The [survey's discussion of gradient accumulation steps (GAS)](README.md#inter-node-speed-requirements-to-use-zero) covers the DeepSpeed side.
 
 The comm-bound condition is the same derivation as for DDP, with `3bΨ` in place of `2bΨ`. Forward all-gathers can overlap with forward compute, so the window is the whole step:
 
@@ -663,7 +666,7 @@ prefetch depth 4: unsharded params 8.6 GB + one layer of grads 1.7 GB
 ```
 
 
-Prefetch depth is limited by memory. Overlap is limited by the CPU: if the Python thread falls behind (too many small modules, CPU-bound launches), the all-gather is issued late and is exposed. This is the most common reason FSDP underperforms its cost model. You can only see it in a GPU profiler trace (look for all-gather kernels that start after the compute stream goes idle); see [Profiling and optimization](../profiling-and-optimization.md).
+Prefetch depth is limited by memory. Overlap is limited by the CPU: if the Python thread falls behind (too many small modules, CPU-bound launches), the all-gather is issued late and is exposed. This is the most common reason FSDP underperforms its cost model. You can only see it in a GPU profiler trace ([Nsight Systems](../../compute/accelerator/execution-model.md#nsight-systems-where-does-the-time-go), [verifying overlap in a trace](../../network/collectives-internals.md#verifying-overlap-in-a-trace)) (look for all-gather kernels that start after the compute stream goes idle); see [Profiling and optimization](../profiling-and-optimization.md).
 
 ### FSDP1 vs FSDP2
 
@@ -672,7 +675,7 @@ Prefetch depth is limited by memory. Overlap is limited by the CPU: if the Pytho
 | Unit of sharding | one `FlatParameter` per wrapped module: all params flattened and concatenated, then split into `d` equal 1-D chunks | each parameter is a `DTensor` sharded on dim 0 (`Shard(0)`) |
 | Consequences | a parameter may straddle ranks; per-param attributes (dtype, `requires_grad`, weight decay) need `use_orig_params=True` and are awkward; padding at the end | per-param semantics preserved; frozen params, per-param optimizers, fp8 all-gather are natural |
 | Composition with TP | params are already DTensors after TP, so flat-param over DTensor is clumsy | 2-D `DTensor` with placements `(Shard(0) on dp, Shard(k) on tp)` on a 2-D mesh |
-| Memory management | `recordStream`-based, which can make memory release non-deterministic | copy-in/copy-out into a per-group flat buffer, deterministic frees |
+| Memory management | `recordStream`-based (`Tensor.record_stream` tells the caching allocator that another CUDA stream still uses a tensor, so the allocator delays reusing its memory until that stream's queued work is done, at a time that depends on GPU progress), which can make memory release non-deterministic | copy-in/copy-out into a per-group flat buffer, deterministic frees |
 | Communication | one AG/RS per FlatParameter | one AG/RS per `fully_shard` group (FSDP2 also flattens for the collective, then views back out) |
 
 The "straddle" row, made concrete for a few Llama-8B-shaped parameters on 8 ranks:
@@ -829,7 +832,7 @@ f:  forward = identity        backward = all-reduce(dX)     # at block input, be
 g:  forward = all-reduce(Z)   backward = identity           # at block output, after the row-parallel GEMM
 ```
 
-Where `f` and `f̄` sit in a Megatron TP layer (Korthikanti et al.):
+Where `f` and `f̄` sit in a Megatron TP layer (Korthikanti et al.; the figure's `f̄` is what this chapter calls `g`):
 
 ![transformer layer with tensor parallelism](images/megatron-tp-f-g-operators.jpg)
 
@@ -918,7 +921,7 @@ A transformer layer has two blocks (attention, MLP), and each block has one `f` 
 |---|---|---|
 | forward | 2 | `g` after attention `W_O`, `g` after MLP `B` |
 | backward | 2 | `f` before attention QKV, `f` before MLP `A` |
-| forward recompute (full activation checkpointing) | +2 | the forward `g`s run again |
+| forward recompute (full activation checkpointing: activations are discarded after forward and recomputed in backward; see [what recomputation adds](../arithmetic.md#what-recomputation-adds)) | +2 | the forward `g`s run again |
 
 You don't have to take this on trust. PyTorch's built-in TP (`ColwiseParallel` / `RowwiseParallel` applied with `parallelize_module`) can be inspected with `CommDebugMode`, which counts every collective DTensor issues. Here on a two-block layer, with and without sequence parallelism (next section):
 
@@ -981,7 +984,7 @@ V_TP(layer) = 4 · 2(t-1)/t · 2BTh = 16·B·T·h·(t-1)/t  bytes     (no recomp
 
 ### Why TP stays inside NVLink
 
-TP communication is on the critical path. `g`'s output is the next block's input, so unless you use async-TP / collective-matmul decomposition ([survey](README.md#async-tp)), the GPU waits for it. Compare comm time to compute time per layer. For a standard layer with `12h²` params, the per-rank FLOPs are `6·12h²·BT/t` (forward + backward), so:
+TP communication is on the critical path. `g`'s output is the next block's input, so unless you use async-TP / collective-matmul decomposition ([survey](README.md#async-tp), [collectives internals](../../network/collectives-internals.md#async-tp--collective-matmul)), the GPU waits for it. Compare comm time to compute time per layer. For a standard layer with `12h²` params, the per-rank FLOPs are `6·12h²·BT/t` (forward + backward), so:
 
 ```
 t_comm / t_compute = [16·BTh·(t-1)/t / β] / [72·h²·BT/(t·F)]
@@ -1027,7 +1030,7 @@ one AR: 234.9 MB -> 0.52 ms NVLink, 4.70 ms IB
 exposed fraction: NVLink 15%, IB 131%
 ```
 
-So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is the whole argument. It holds for any `h` you are likely to train: you would need `h ≳ 74k` to bring cross-IB TP down to the NVLink ratio. On NVL72-class systems, the NVLink domain is 72 GPUs, and the same formula says TP can go wider. You still pay the `(t-1)/t` factor and shrinking GEMMs (`h/t` gets small, efficiency drops). That second effect is not in this model, so measure it.
+So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is the whole argument. It holds for any `h` you are likely to train: you would need `h ≳ 74k` to bring cross-IB TP down to the NVLink ratio. On NVL72-class systems (GB200 NVL72: a rack of 72 Blackwell GPUs on one NVLink switch fabric), the NVLink domain is 72 GPUs, and the same formula says TP can go wider. You still pay the `(t-1)/t` factor and shrinking GEMMs (`h/t` gets small, efficiency drops). That second effect is not in this model, so measure it.
 
 ## Sequence parallelism and context parallelism
 
@@ -1035,7 +1038,7 @@ So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is t
 
 Reference: [Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/abs/2205.05198) (Korthikanti et al., arXiv 2205.05198).
 
-With SP, `g` (all-gather) and `ḡ` (reduce-scatter) replace the all-reduces, and the norm/dropout regions are sharded along the sequence:
+With SP, `g` (all-gather) and `ḡ` (reduce-scatter) replace the all-reduces (these are the figure's names, from the paper: its `g` is the new `f` below and its `ḡ` the new `g`), and the norm/dropout regions are sharded along the sequence:
 
 ![transformer layer with tensor and sequence parallelism](images/megatron-tp-sp-g-operators.jpg)
 
@@ -1127,7 +1130,7 @@ TP:              s·b·h·(10 + 24/t + 5·a·s/(h·t))
 TP + SP:         s·b·h·(34/t + 5·a·s/(h·t))
 ```
 
-The `5as/h` term is the materialized `s×s` attention score/softmax/dropout. FlashAttention doesn't store it, so drop the term. At `s = 8192`, `b = 1`, `h = 8192`, `t = 8`:
+The `5as/h` term is the materialized `s×s` attention score/softmax/dropout. FlashAttention doesn't store it ([execution model](../../compute/accelerator/execution-model.md#flashattention)), so drop the term. At `s = 8192`, `b = 1`, `h = 8192`, `t = 8`:
 
 ```python
 # sp_mem.py
@@ -1163,14 +1166,14 @@ Ulysses instead uses two all-to-alls to swap the sharded dimension from sequence
 
 ([source](https://arxiv.org/abs/2309.14509))
 
-**Ring attention** ([Ring Attention with Blockwise Transformers](https://arxiv.org/abs/2310.01889), Liu et al., arXiv 2310.01889). Rank `i` holds `Q_i, K_i, V_i` for `T/c` tokens. In `c-1` steps it passes its current KV block to rank `i+1` (a point-to-point send/recv, not a collective), receives one from `i-1`, and accumulates attention with online softmax:
+**Ring attention** ([Ring Attention with Blockwise Transformers](https://arxiv.org/abs/2310.01889), Liu et al., arXiv 2310.01889). Rank `i` holds `Q_i, K_i, V_i` for `T/c` tokens. In `c-1` steps it passes its current KV block to rank `i+1` (a point-to-point send/recv, P2P for short, not a collective), receives one from `i-1`, and accumulates attention with online softmax:
 
 ```
 forward  volume/rank = (c-1) · B · (T/c) · 2·d_kv · b    ≈  2·B·T·d_kv·b       (d_kv = n_kv·d_head)
 backward volume/rank ≈ 2× forward  (KV circulates again, plus dK, dV circulate back)
 ```
 
-*Online softmax* is what makes the blockwise computation exact: keep a running row-max `m`, a running normalizer `l` and a running unnormalized output, and when a new block raises the max, rescale what you have accumulated by `exp(m_old - m_new)`. The simulation below runs the `c` ranks in one process (the KV "send" is just indexing a different block), checks the result against PyTorch's causal SDPA, and counts how much work each rank does under the two token layouts discussed under causal load balancing below:
+*Online softmax* is what makes the blockwise computation exact: keep a running row-max `m`, a running normalizer `l` and a running unnormalized output, and when a new block raises the max, rescale what you have accumulated by `exp(m_old - m_new)`. This is the same trick FlashAttention uses inside one GPU, derived in [execution model: online softmax](../../compute/accelerator/execution-model.md#online-softmax). The simulation below runs the `c` ranks in one process (the KV "send" is just indexing a different block), checks the result against PyTorch's causal SDPA (`F.scaled_dot_product_attention` with `is_causal=True`), and counts how much work each rank does under the two token layouts discussed under causal load balancing below:
 
 ```python
 # ring_attention.py
@@ -1325,13 +1328,13 @@ At `T = 128k`, `c = 8`: ring sends 469.8 MB per rank and Ulysses 528.5 MB (ratio
 | fabric | P2P, tolerates crossing IB | all-to-all wants high bisection, best on NVLink |
 | kernel | needs a ring/online-softmax wrapper around flash attention | stock flash attention on full `T` |
 
-The two compose (2D/"USP" style): Ulysses inside the node, ring across nodes.
+The two compose (2D, or "USP" style, after Unified Sequence Parallelism, which combines them): Ulysses inside the node, ring across nodes.
 
 **Causal load balancing.** With a contiguous split, rank `i` attends to `i+1` blocks, so work is proportional to `i + 1/2` and the last rank does `(c-1/2)/(c/2) = 2 - 1/c` times the mean: 1.5x at `c = 2`, 1.875x at `c = 8`. Fix (zigzag): cut T into `2c` chunks and give rank `i` chunks `i` and `2c-1-i`. Work becomes `(i+½) + (2c-1-i+½) = 2c`, the same on every rank. `ring_attention.py` above measures it: contiguous max/mean 1.749 at `c = 4` (formula 1.750), zigzag exactly 1.000. Megatron-CP and the Llama 3 CP use this layout. Llama 3 ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783) all-gathers K/V instead of ringing them, which is simpler and, with GQA, cheap.
 
 ## Pipeline parallelism
 
-Split `L` layers into `p` stages, and split the per-replica batch into `m` micro-batches. Each stage lives on a different device (or TP group); a micro-batch's activations flow forward through the stages and its gradients flow back. Let `F`, `B`, `W` denote per-micro-batch per-stage times for forward, backward-for-inputs and backward-for-weights. Normalize to `F = 1`, `B_full = B + W = 2`. The survey's [PP section](README.md#pipeline-parallelism) has the pictures.
+Split `L` layers into `p` stages, and split the per-replica batch into `m` micro-batches. Each stage lives on a different device (or TP group); a micro-batch's activations flow forward through the stages and its gradients flow back. In this section only, `F`, `B`, `W` (not FLOP/s and batch size) denote per-micro-batch per-stage times for forward, backward-for-inputs and backward-for-weights. Normalize to `F = 1`, `B_full = B + W = 2`. The survey's [PP section](README.md#pipeline-parallelism) has the pictures.
 
 The simulator below makes every claim in this section checkable. It is a unit-time list scheduler: each device has an ordered list of operations; at each time step a device starts its next operation if that operation's input is ready (the forward of the previous stage, or the backward of the next stage), and otherwise idles. For zero-bubble schedules, an idle device may instead run a deferred weight-gradient `W`. It prints one row per device: digits are forward passes of micro-batch `0..7`, lowercase letters are backward passes (`a` = micro-batch 0), uppercase letters are `W` passes, `.` is idle (the *bubble*).
 
@@ -1716,7 +1719,7 @@ Static-shape implementations (GShard [arXiv 2006.16668](https://arxiv.org/abs/20
 capacity C = CF · (tokens in EP group · k) / E
 ```
 
-Tokens beyond `C` are dropped, which means they skip the expert through the residual connection. Buffers are padded to `C`, so the a2a volume and expert FLOPs scale with `CF`. `CF = 1.25` costs 25% more bytes and FLOPs than perfect balance, and still drops tokens whenever an expert's load is more than 1.25x the mean. Dropless implementations (grouped GEMM with variable sizes, as in MegaBlocks, [arXiv 2211.15841](https://arxiv.org/abs/2211.15841)) remove the padding, but then the slowest rank sets the step time. Load balance is a throughput problem, not just a quality problem.
+Tokens beyond `C` are dropped, which means they skip the expert through the residual connection. Buffers are padded to `C`, so the a2a (all-to-all) volume and expert FLOPs scale with `CF`. `CF = 1.25` costs 25% more bytes and FLOPs than perfect balance, and still drops tokens whenever an expert's load is more than 1.25x the mean. Dropless implementations (grouped GEMM with variable sizes, as in MegaBlocks, [arXiv 2211.15841](https://arxiv.org/abs/2211.15841)) remove the padding, but then the slowest rank sets the step time. Load balance is a throughput problem, not just a quality problem.
 
 ### Aux loss vs aux-loss-free balancing
 
@@ -1775,7 +1778,7 @@ Measured expert load for aux-loss vs aux-loss-free models (DeepSeek-V3):
 ### EP × TP interactions
 
 - Attention is usually TP+SP, so at the MoE layer each TP rank holds `n/t` tokens and dispatches only those. The a2a volume per GPU is divided by `t`.
-- TP *inside* an expert (expert-TP, ETP) splits already-small FFNs (`2048` wide in V3), giving tiny, inefficient GEMMs and an extra AG/RS per expert. The modern default is ETP = 1. The expert mesh `(EP, EDP)` is decoupled from the attention mesh `(TP, CP, DP)`, so that the same GPUs are factored differently for the two halves of the layer. Megatron calls this "MoE Parallel Folding" ([arXiv 2504.14960](https://arxiv.org/abs/2504.14960), id unverified).
+- TP *inside* an expert (expert-TP, ETP) splits already-small FFNs (`2048` wide in V3), giving tiny, inefficient GEMMs and an extra AG/RS per expert. The modern default is ETP = 1. The expert mesh `(EP, EDP)` is decoupled from the attention mesh `(TP, CP, DP)`, so that the same GPUs are factored differently for the two halves of the layer. Megatron calls this "MoE Parallel Folding" ([arXiv 2504.14960](https://arxiv.org/abs/2504.14960), Liu et al.).
 - Expert parameters are replicated across `EDP = world / (PP · EP)` ranks. Their gradients are reduced over that EDP group, not over the full DP group.
 
 ```python
@@ -1964,7 +1967,7 @@ You can check the interleaved bubble with the simulator: `simulate("interleaved"
 | bubble | 0 | 0 | 0.17 s |
 | est. step (compute 4.72 s) | ≥ 8.5 s (+recompute) | ≈ 5.4 s if FSDP overlaps | ≈ 5.6 s + 0.17 s if DP doesn't overlap |
 
-**Pick B.** It has the same exposed TP cost as C, no bubble, no PP code, and its IB traffic is 15% of compute time, so it hides with margin under a 4.7 s step. Its risk is FSDP overlap quality at 128 ranks with 80 layer-groups, which you can check in a profiler trace in 10 minutes. If the trace shows exposed all-gathers, C is the fallback: its IB traffic is 4x lower. Async-TP would cut the exposed 0.67 s in both. A variant to consider is TP4 × FSDP256: TP 0.43 s, FSDP 3-pass 105 GB → 2.1 s, activations 45.6 GB. It is viable only if FSDP overlap is near perfect.
+**Pick B.** It has the same exposed TP cost as C, no bubble, no PP code, and its IB traffic is 15% of compute time, so it hides with margin under a 4.7 s step. Its risk is FSDP overlap quality at 128 ranks with 80 layer-groups, which you can check in a profiler trace in 10 minutes. If the trace shows exposed all-gathers, C is the fallback: its IB traffic is 4x lower. Async-TP would cut the exposed 0.67 s in both. A variant to consider is TP4 × FSDP256 (2 sequences per TP group): TP 0.29 s (0.43 s if you add full recompute to cut the activations below), FSDP 3-pass 105 GB → 2.1 s, activations 45.6 GB. It is viable only if FSDP overlap is near perfect.
 
 All of these step times are cost-model estimates (40% MFU assumed, nominal `β`). None of them has been run on GPUs.
 
@@ -2193,7 +2196,7 @@ max |param_parallel - param_reference| after 3 steps: 1.5e-06
 
 The losses agree to within 1e-5 and the parameters to 1.5e-6 after three AdamW steps. The `wq` placement `(_StridedShard(dim=0, sf=2), Shard(dim=0))` is the 2-D sharding described in the notes below: FSDP's dim-0 shard on the `dp` axis layered over TP's dim-0 (column) shard on the `tp` axis. PyTorch 2.15 also prints two warnings that I have left out of the output above: one that the root FSDP module returned a view (harmless here because nothing modifies the logits in place), and one that `full_tensor()` on a strided shard needs two sequential all-gathers (it only affects the final check).
 
-For the real 70B launch (`torchrun --nproc-per-node 8 --nnodes N ...`), the changes are: `dist.init_process_group("nccl")` plus `torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))`, `init_device_mesh("cuda", ...)` with `TP = 8`, `Model(V=128256, h=8192, nh=64, nkv=8, f=28672, L=80)` built under `with torch.device("meta"):` so that no rank ever allocates the full model, `model.to_empty(device="cuda")` followed by weight initialization after sharding (parameters are uninitialized after `to_empty`), `param_dtype=torch.bfloat16`, and `AdamW(..., fused=True)`. Those GPU-specific lines are **untested** here; the meta-device and `to_empty` path in particular was not run.
+For the real 70B launch (`torchrun --nproc-per-node 8 --nnodes N ...`), the changes are: `dist.init_process_group("nccl")` plus `torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))`, `init_device_mesh("cuda", ...)` with `TP = 8`, `Model(V=128256, h=8192, nh=64, nkv=8, f=28672, L=80)` built under `with torch.device("meta"):` so that no rank ever allocates the full model, `model.to_empty(device="cuda")` followed by weight initialization after sharding (parameters are uninitialized after `to_empty`), `param_dtype=torch.bfloat16`, and `AdamW(..., fused=True)` (the whole optimizer update in one or a few kernels instead of several per parameter tensor). Those GPU-specific lines are **untested** here; the meta-device and `to_empty` path in particular was not run.
 
 Notes on the recipe:
 
@@ -2208,14 +2211,13 @@ Notes on the recipe:
 - The interleaved-1F1B in-flight memory `p + (p-1)/v` is derived from Megatron's warm-up count, not quoted from the paper. The simulator reproduces it, but the simulator uses the same warm-up rule, so this is a consistency check, not independent confirmation.
 - The ZB-H1 schedule in the simulator is a greedy rule that reproduces the paper's bubble and peak-memory numbers; it is not the paper's exact schedule.
 - The DeepSeek-V3 constants (`γ = 0.001`, sequence-wise `α = 1e-4`, `M = 4` nodes, EP64/PP16 on 2048 H800) are from my reading of arXiv 2412.19437. The DualPipe table is reproduced from it.
-- The "MoE Parallel Folding" arXiv id 2504.14960 is unverified.
 - The activation-memory constant 34 is for a GPT block with a 4h GELU MLP and dropout. For SwiGLU/GQA models without dropout it is approximate.
 - All `β` values are nominal. Achieved all-reduce/all-to-all bus bandwidth is typically noticeably lower and depends on message size. Plug in measured busbw (`alphabeta.py`, or `nccl-tests` on GPUs).
 - DDP's first-iteration single bucket is observed behaviour in torch 2.15 with default arguments; older versions bucketed from the first iteration.
 
 ## You can now read
 
-- [Collectives internals](../../network/collectives-internals.md) - how NCCL implements the collectives used here, and when it picks tree over ring.
+- [Collectives internals](../../network/collectives-internals.md) (an earlier chapter, worth rereading now) - how NCCL implements the collectives used here, and when it picks tree over ring.
 - [Decentralized training](../decentralized-training.md) - the same cost models when `β` is a WAN link and `α` is tens of milliseconds.
 - [Profiling and optimization](../profiling-and-optimization.md) - checking in a trace whether the overlap these cost models assume actually happens.
 - [RL infrastructure](../../platform/rl-infrastructure.md) - the parallelism layouts used for trainer and inference workers in RL systems.

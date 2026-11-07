@@ -4,12 +4,17 @@
 
 Read these first if the systems vocabulary is new to you:
 
+- [Toolkit](../foundations/toolkit.md) - terminal basics, git and Make (the nccl-tests build is `git clone` + `make`), JSON (the profiler trace parsed near the end), and the "reading C" section (NCCL is a C library; `ncclConfig_t` and friends are C structs).
 - [Computer architecture](../foundations/computer-architecture.md) - GPU memory (HBM), SMs, caches and PCIe; every bandwidth in this chapter is one of these.
-- [Linux and the OS](../foundations/linux-and-os.md) - processes, NUMA, sysfs and drivers, which is where NCCL reads the machine's topology from.
+- [Linux and the OS](../foundations/linux-and-os.md) - processes, NUMA, sysfs and drivers, which is where NCCL reads the machine's topology from; also [environment variables](../foundations/linux-and-os.md#environment-variables-and-path), which is how every `NCCL_*` setting below is passed.
 - [Concurrency](../foundations/concurrency.md) - memory fences, flags, polling and streams; the NCCL protocols and compute-comm overlap are concurrency problems.
-- [Networking](../foundations/networking.md) - links, switches, packets, flow control, RDMA and routing; needed for the topology and transport sections.
-- [Distributed systems](../foundations/distributed-systems.md) - ranks, collectives, synchronization, stragglers and timeouts.
-- [Transformer architectures](../models/architectures.md) - tensor, sequence and expert parallelism, which are what generate the all-gathers, reduce-scatters and all-to-alls costed here.
+- [Networking](../foundations/networking.md) - links, switches, packets, flow control, RDMA and routing; needed for the topology and transport sections. In particular [HPC networking: RDMA, InfiniBand, RoCE, EFA](../foundations/networking.md#hpc-networking-rdma-infiniband-roce-efa) (HCAs, verbs, queue pairs, PFC/ECN), [ECMP](../foundations/networking.md#ecmp) and [how PyTorch distributed bootstraps](../foundations/networking.md#how-pytorch-distributed-bootstraps).
+- [Distributed systems](../foundations/distributed-systems.md) - ranks, collectives, synchronization, stragglers and timeouts, and [data parallel vs model parallel](../foundations/distributed-systems.md#data-parallel-vs-model-parallel) for the one-paragraph versions of DDP, ZeRO/FSDP, tensor and pipeline parallelism used throughout.
+- [Transformer architectures](../models/architectures.md) - the MLP shapes used in the async-TP example and [Mixture of Experts](../models/architectures.md#mixture-of-experts), whose expert routing is what generates all-to-alls.
+- [GPU execution model](../compute/accelerator/execution-model.md) - SMs, warps, CTAs (thread blocks), kernels, GEMMs and [wave quantization](../compute/accelerator/execution-model.md#why-dims-want-multiples-of-8-16-64-128); a NCCL channel is one CTA, and SM contention is about these.
+- [GPU software stack](../compute/gpu-software-stack.md) - where NCCL, nccl-tests and the InfiniBand tools come from: [InfiniBand for operators](../compute/gpu-software-stack.md#infiniband-for-operators-ports-the-subnet-manager-lids) (`ibstat`), [perftest](../compute/gpu-software-stack.md#perftest-measuring-one-link) (`ib_write_bw`), [the NCCL environment variables an operator sets](../compute/gpu-software-stack.md#the-environment-variables-an-operator-sets) and [nccl-tests](../compute/gpu-software-stack.md#nccl-tests-single-node-then-two-then-all).
+
+Forward links (later chapters; this one defines just enough where it first uses them): [Slurm from zero](../orchestration/slurm/from-zero.md) (`srun`, used in two multi-node command blocks), [orchestration internals](../orchestration/internals.md#c10d-rendezvous) (torchrun's rendezvous), [model parallelism derivations](../training/model-parallelism/derivations.md) (the full treatment of DDP buckets, FSDP, TP/SP and EP volumes) and [profiling and optimization](../training/profiling-and-optimization.md) (reading real training traces).
 
 ## Introduction
 
@@ -100,7 +105,7 @@ Before deriving algorithms, the bounds they are measured against:
 
 These bounds are what `busbw` normalizes against, which is why they come first. See [algbw vs busbw](#algbw-vs-busbw).
 
-A *lower bound* is a time no algorithm can beat on the given hardware, so it tells you how much room is left: if your measurement is at 90% of the bound, stop optimizing the algorithm. Note how the all-reduce bandwidth bound barely moves with `p` - adding ranks doesn't add bytes per rank - while the latency bound keeps growing:
+A *lower bound* is a time no algorithm can beat on the given hardware, so it tells you how much room is left: if your measurement is at 90% of the bound, stop optimizing the algorithm. Note how the all-reduce bandwidth bound barely moves with `p` - adding ranks doesn't add bytes per rank - while the latency bound keeps growing (in the code and output, RS = reduce-scatter and AG = all-gather, abbreviations used for the rest of the chapter):
 
 ```python
 # lower_bounds.py - the floor any algorithm is measured against, p ranks, n bytes, link B
@@ -230,7 +235,7 @@ mine = torch.empty(1024)                              # (n/p,)
 dist.reduce_scatter_tensor(mine, full)                # ring RS: (p-1)/p * n bytes out, per rank
 ```
 
-Both moved `(p-1)/p · n` bytes per rank, half of an all-reduce. That's the arithmetic behind FSDP/ZeRO-3 "costing the same as DDP plus one extra all-gather": DDP does one all-reduce (`2·(p-1)/p · n`), FSDP does an all-gather in forward, another in backward, and a reduce-scatter (`3·(p-1)/p · n`), i.e. 1.5x the bytes.
+Both moved `(p-1)/p · n` bytes per rank, half of an all-reduce. (Reminder from [Data parallel vs model parallel](../foundations/distributed-systems.md#data-parallel-vs-model-parallel): *DDP* - DistributedDataParallel - keeps a full copy of the model on every rank and all-reduces the gradients; *FSDP* / *ZeRO-3* keeps only a `1/p` shard of parameters, gradients and optimizer state per rank, all-gathers each layer's weights just before using them and reduce-scatters the gradients. The full derivation is in [ZeRO and FSDP](../training/model-parallelism/derivations.md#zero-and-fsdp).) That's the arithmetic behind FSDP/ZeRO-3 "costing the same as DDP plus one extra all-gather": DDP does one all-reduce (`2·(p-1)/p · n`), FSDP does an all-gather in forward, another in backward, and a reduce-scatter (`3·(p-1)/p · n`), i.e. 1.5x the bytes.
 
 ### Ring all-reduce
 
@@ -449,11 +454,11 @@ ok: p in {2,4,8,16,64}
 
 Recursive doubling sent `3 x 8 = 24` chunks per rank in 3 rounds; Rabenseifner sent `4+2+1+1+2+4 = 14` in 6 rounds; the ring would send 14 in 14 rounds. That's the whole latency/bandwidth trade-off in one line of output. Notice also *which* rounds are expensive: the 4-chunk exchanges are with `r XOR 4`, the farthest partner - the point of the next paragraph.
 
-Why NCCL doesn't use Rabenseifner as its main algorithm: the partner at round `k` is at distance `p/2^(k+1)`, so on a hierarchical topology the first rounds - the ones moving the most data - cross the slowest links, and on a fat-tree (the usual cluster network: nodes plug into *leaf* switches, and leaves are joined through a layer of *spine* switches) those long-distance exchanges collide in the spine. A ring keeps every transfer on a nearest-neighbour link that NCCL picked to be fast. NCCL 2.23 did add PAT (Parallel Aggregated Trees), a Bruck-like logarithmic algorithm for all-gather and reduce-scatter, but restricted to one GPU per node ([NVIDIA blog](https://developer.nvidia.com/blog/new-scaling-algorithm-and-initialization-with-nvidia-collective-communications-library-2-23/)).
+Why NCCL doesn't use Rabenseifner as its main algorithm: the partner at round `k` is at distance `p/2^(k+1)`, so on a hierarchical topology the first rounds - the ones moving the most data - cross the slowest links, and on a fat-tree (the usual cluster network: nodes plug into *leaf* switches, and leaves are joined through a layer of *spine* switches) those long-distance exchanges collide in the spine. A ring keeps every transfer on a nearest-neighbour link that NCCL picked to be fast. NCCL 2.23 did add PAT (Parallel Aggregated Trees), a Bruck-like logarithmic algorithm (Bruck's algorithm does an all-gather in `⌈log2 p⌉` rounds, each rank sending to the rank `2^k` places away in round `k`, like recursive doubling but for any `p`) for all-gather and reduce-scatter, but restricted to one GPU per node ([NVIDIA blog](https://developer.nvidia.com/blog/new-scaling-algorithm-and-initialization-with-nvidia-collective-communications-library-2-23/)).
 
 ### All-to-all
 
-In an *all-to-all*, every rank sends a different piece of data to every other rank - it's a transpose of a `p x p` matrix of blocks, with row `r` living on rank `r`. Mixture-of-experts layers use it to send each token to the GPU holding its expert. Each rank holds `p` blocks of `n/p` bytes, block `j` destined for rank `j` (`n` is the per-rank send buffer).
+In an *all-to-all*, every rank sends a different piece of data to every other rank - it's a transpose of a `p x p` matrix of blocks, with row `r` living on rank `r`. Mixture-of-experts layers use it to send each token to the GPU holding its expert ([Mixture of Experts](../models/architectures.md#mixture-of-experts); spreading the experts over GPUs is called *expert parallelism*, EP, derived in [Expert parallelism](../training/model-parallelism/derivations.md#expert-parallelism)). Each rank holds `p` blocks of `n/p` bytes, block `j` destined for rank `j` (`n` is the per-rank send buffer).
 
 - **Pairwise exchange**: `p-1` rounds, round `k` sends to `r+k` and receives from `r-k`:
 
@@ -617,7 +622,7 @@ In theory, then, the double binary tree is bandwidth-optimal *and* logarithmic. 
 
 NCCL builds the tree at node granularity, not GPU granularity: inside a node the GPUs form a chain, and the double binary tree spans the nodes. A maintainer gives the latency models as `2·(G-1)·l + 2·log2(N)·L` for the tree and `N·(G-1)·l + N·L` for one ring traversal ([NCCL #1049](https://github.com/NVIDIA/nccl/issues/1049); `l` intra-node hop latency, `L` network hop latency). The ring all-reduce is two traversals, so `2·(N·(G-1)·l + N·L)` up to the `-1` terms.
 
-Historically NCCL implemented the tree only for all-reduce; the other collectives use rings (or PAT, NVLS, CollNet where available).
+Historically NCCL implemented the tree only for all-reduce; the other collectives use rings (or PAT, above, and NVLS or CollNet, the in-switch reduction schemes described in [NVLS](#nvls-nvlink-sharp) and [CollNet and IB SHARP](#collnet-and-ib-sharp), where available).
 
 ### Hierarchical all-reduce
 
@@ -695,7 +700,7 @@ node total over its G NICs: 24576  (2(N-1)/N*n = 24576, the bound for N nodes)
 
 The NVLink side moves the full `2·(G-1)/G · n` per GPU; the NIC side moves `1/G` of a flat all-reduce's bytes per GPU, and the `G` NICs of a node together move exactly the all-reduce bound for `N` nodes.
 
-NCCL's flat multi-channel ring already gets the same inter-node bandwidth term: it builds one ring per NIC (more precisely, per channel, with channels mapped onto NICs), and each ring crosses each node boundary once. What hierarchy buys you is the latency term - `2·(N-1)` network hops instead of `2·(P-1)` total hops - and the freedom to use a different algorithm at each level (NVLS inside, tree or SHARP across). NCCL's `NVLSTree` and `CollNetDirect` are exactly such hierarchical schedules.
+NCCL's flat multi-channel ring already gets the same inter-node bandwidth term: it builds one ring per NIC (more precisely, per channel - NCCL's unit of parallelism, one GPU thread block driving one ring, see [Channels](#channels) - with channels mapped onto NICs), and each ring crosses each node boundary once. What hierarchy buys you is the latency term - `2·(N-1)` network hops instead of `2·(P-1)` total hops - and the freedom to use a different algorithm at each level (NVLS inside, tree or SHARP across). NCCL's `NVLSTree` and `CollNetDirect` are exactly such hierarchical schedules.
 
 ### Summary of costs
 
@@ -1029,7 +1034,7 @@ Real output from the M4, the three runs merged into one table (time in µs, band
 
 How to read it:
 
-- **Latency floor.** Below ~64KB the time doesn't depend on size: ~350-420µs for 2 ranks, ~0.9-1.5ms for 4, ~3.4-4.3ms for 8. That's `α_total`, and it grows with `p` (more sequential steps, more processes to schedule on a loaded machine). A GPU all-reduce on NVLink has a floor of ~15µs ([Latency](benchmarks/README.md#latency)) - 20-200x lower, because no kernel socket, syscall or process wakeup sits on the path.
+- **Latency floor.** Below ~64KB the time doesn't depend on size: ~350-420µs for 2 ranks, ~0.9-1.5ms for 4, ~3.4-4.3ms for 8. That's `α_total`, and it grows with `p` (more sequential steps, more processes to schedule on a loaded machine). A GPU all-reduce on NVLink has a floor of ~15µs ([Latency](benchmarks/README.md#latency)) - 20-300x lower, because no kernel socket, syscall or process wakeup sits on the path.
 - **Plateau.** `busbw` tops out at ~1.8GB/s (2 ranks), ~1.5 (4) and ~1.0 (8). In a contention-free world with a fixed per-link `β`, `busbw` would be the same for all three; here it isn't, because the ranks share 10 cores (4 fast, 6 slow), one memory system and one kernel, so adding ranks adds contention rather than links.
 - **Noise.** Earlier runs of the same script on the same machine gave plateaus of 2.03GB/s (2 ranks), 1.32 and 1.50GB/s (4 ranks, two runs) and 1.03GB/s (8 ranks), and 4-rank small-message latencies anywhere from 0.5 to 4.7ms. The machine was shared (load average 10-20). The 8-rank drop at 256MiB (1.06 -> 0.58GB/s `busbw` here, 0.79GB/s in the earlier run) appeared in both runs; I didn't investigate it (memory pressure is one guess: 8 ranks x 256MiB buffers plus gloo's internal copies, on 16GB).
 - **`busbw` doing its job.** At 16MiB, `algbw` is 1.66 / 0.96 / 0.61GB/s for 2/4/8 ranks - it falls with `p` as the [algbw vs busbw](#algbw-vs-busbw) section predicts - while `busbw` is 1.66 / 1.44 / 1.06.
@@ -1118,6 +1123,8 @@ NCCL_ALGO=Ring NCCL_PROTO=Simple ./build/all_reduce_perf -b 1M -e 1G -f 2 -g 8
 NCCL_ALGO=Tree ./build/all_reduce_perf -b 1M -e 1G -f 2 -g 8
 ```
 
+How to read these lines, if [GPU software stack](../compute/gpu-software-stack.md#nccl-tests-single-node-then-two-then-all) is not fresh: `git clone ... && make` downloads and compiles the C/CUDA sources of nccl-tests ([toolkit](../foundations/toolkit.md#reading-c), git and Make sections); `./build/all_reduce_perf` is the resulting program. `python -m torch.distributed.run` is the same thing as the `torchrun` command, and `--rdzv_endpoint localhost:6000 --rdzv_backend c10d` tells it where the rendezvous store lives (the `MASTER_ADDR:MASTER_PORT` idea from above; [orchestration internals](../orchestration/internals.md#c10d-rendezvous) goes deeper). A line that starts with `NAME=value NAME2=value2 command` sets those environment variables for that one command only ([environment variables](../foundations/linux-and-os.md#environment-variables-and-path)). NCCL reads all of its configuration this way: `NCCL_DEBUG=INFO` makes it log its decisions to stderr, `NCCL_DEBUG_SUBSYS` picks which parts log (`INIT` setup, `GRAPH` topology and rings, `TUNING` algorithm choice), and `NCCL_ALGO` / `NCCL_PROTO` restrict which algorithm and protocol it may use (both explained in [NCCL internals](#nccl-internals) below). The full list is NCCL's [environment variables page](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html).
+
 The output has the same `algbw`/`busbw` columns as the gloo script (per operation, out-of-place and in-place); compare the plateau `busbw` with the per-direction link rate, as in [algbw vs busbw](#algbw-vs-busbw).
 
 ## NCCL internals
@@ -1131,7 +1138,7 @@ A channel is NCCL's unit of parallelism: one CUDA thread block (CTA - a group of
 1. **One SM can't saturate NVLink**. A single CTA's load/store throughput is far below 450-900GBps, so NCCL needs many SMs to drive the links.
 2. **Multiple NICs and multiple paths**. Each channel's ring can enter and leave the node through a different NIC; NCCL typically uses at least one channel per NIC, often two.
 
-The channel count is chosen per call by the tuner, and is reduced for small messages (fewer CTAs means less launch and synchronization overhead). That is one reason the measured `busbw` curve ramps more slowly than the one-`α`-one-`β` model predicts: the effective `β` at mid sizes is that of fewer channels. You can bound it with [`NCCL_MIN_CTAS` / `NCCL_MAX_CTAS`](benchmarks/README.md#nccl_min_ctas-and-nccl_max_ctas) (formerly `NCCL_MIN_NCHANNELS` / `NCCL_MAX_NCHANNELS`, which are still accepted in the versions I've seen) or per communicator via `ncclConfig_t`. Forcing more channels than the tuner picks rarely helps bandwidth on NVLink and costs SMs; forcing fewer is the standard knob to free SMs for overlapped compute (see [SM contention](#sm-contention)).
+The channel count is chosen per call by the tuner, and is reduced for small messages (fewer CTAs means less launch and synchronization overhead). That is one reason the measured `busbw` curve ramps more slowly than the one-`α`-one-`β` model predicts: the effective `β` at mid sizes is that of fewer channels. You can bound it with [`NCCL_MIN_CTAS` / `NCCL_MAX_CTAS`](benchmarks/README.md#nccl_min_ctas-and-nccl_max_ctas) (formerly `NCCL_MIN_NCHANNELS` / `NCCL_MAX_NCHANNELS`, which are still accepted in the versions I've seen) or per communicator via `ncclConfig_t` (a *communicator* is NCCL's object for one group of ranks - the NCCL side of a PyTorch process group, created by `ncclCommInitRank`; `ncclConfig_t` is a C struct of options passed when creating it - see the "reading C" section of the [toolkit](../foundations/toolkit.md#reading-c)). Forcing more channels than the tuner picks rarely helps bandwidth on NVLink and costs SMs; forcing fewer is the standard knob to free SMs for overlapped compute (see [SM contention](#sm-contention)).
 
 Why split work into channels at all, rather than one big kernel? Because a GPU is ~100+ independent cores, and a single core (SM) can only issue so many loads and stores per cycle. To move 450GBps you need many SMs each moving a slice - which is exactly a channel. **[GPU, untested]** - how to see and bound the channel count:
 
@@ -1144,7 +1151,7 @@ NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,GRAPH \
 NCCL_MIN_CTAS=4 NCCL_MAX_CTAS=8 torchrun --nproc_per_node 8 train.py
 ```
 
-The channel count is also visible as the number of CTAs in the NCCL kernel's launch configuration in an Nsight Systems trace.
+The channel count is also visible as the number of CTAs in the NCCL kernel's launch configuration in an Nsight Systems trace ([Nsight Systems](../compute/accelerator/execution-model.md#nsight-systems-where-does-the-time-go)).
 
 ### Topology detection and graph search
 
@@ -1173,7 +1180,7 @@ For each `(algorithm, protocol)` pair NCCL estimates
 time(size) = latency(algo, proto, nRanks, nNodes) + size / bandwidth(algo, proto, topology)
 ```
 
-and picks the minimum - this is the "model of the latency and bandwidth of each algorithm/protocol combination" described in [NCCL #790](https://github.com/NVIDIA/nccl/issues/790). The latency is built from a per-`(algo, proto)` base latency plus a per-hop hardware latency times the hop count of the algorithm, with separate per-hop values for NVLink, PCIe and the network. The values live in `src/graph/tuning.cc`. As I recall them for recent versions (unverified, and they change across versions), the per-hop numbers are of the order of: NVLink ring hop ~0.6µs `LL` / ~1.9µs `LL128` / ~3.4µs `Simple`; network hop ~2.7µs `LL` / ~4µs `LL128` / ~14µs `Simple`; base latencies of a few to ~15µs. I use those orders of magnitude in the [worked numbers](#worked-numbers) below and label them as assumptions. They are model parameters, not measurements - but they are the parameters NCCL itself uses to choose, so they're the right ones for predicting what NCCL will choose.
+and picks the minimum - this is the "model of the latency and bandwidth of each algorithm/protocol combination" described in [NCCL #790](https://github.com/NVIDIA/nccl/issues/790). The latency is built from a per-`(algo, proto)` base latency plus a per-hop hardware latency times the hop count of the algorithm, with separate per-hop values for NVLink, PCIe and the network. The values live in `src/graph/tuning.cc`. As I recall them for recent versions (unverified, and they change across versions), the per-hop numbers are of the order of (`LL`, `LL128` and `Simple` are NCCL's three *protocols* - different ways for a receiver to know that data has arrived, trading latency for bandwidth - explained in [Protocols](#protocols-simple-ll-ll128) below): NVLink ring hop ~0.6µs `LL` / ~1.9µs `LL128` / ~3.4µs `Simple`; network hop ~2.7µs `LL` / ~4µs `LL128` / ~14µs `Simple`; base latencies of a few to ~15µs. I use those orders of magnitude in the [worked numbers](#worked-numbers) below and label them as assumptions. They are model parameters, not measurements - but they are the parameters NCCL itself uses to choose, so they're the right ones for predicting what NCCL will choose.
 
 A toy version of that selection for an 8-GPU NVLink 4 ring, with the assumed per-hop numbers above. `LL128`'s base latency (8.4µs) and its 93.75% efficiency are my assumptions, the efficiency from the line format in [Protocols](#protocols-simple-ll-ll128); the real model has more terms and per-architecture tables:
 
@@ -1410,7 +1417,7 @@ PXN (PCI x NVLink, NCCL 2.12) lets a GPU send to a remote GPU through a *differe
 
 This matters mostly for all-to-all and point-to-point patterns, where without PXN every GPU would talk to every remote NIC. `NCCL_PXN_DISABLE=1` turns it off; it trades NVLink bandwidth (cheap) for spine bandwidth (expensive, possibly oversubscribed).
 
-**[GPU, untested]** - the A/B test for whether PXN matters to your job is an all-to-all benchmark with and without it:
+**[GPU, untested]** - the A/B test for whether PXN matters to your job is an all-to-all benchmark with and without it. Preview: this uses Slurm, the cluster scheduler taught in [Slurm from zero](../orchestration/slurm/from-zero.md#srun-launching-a-step). Just enough to follow: `srun` starts copies of a program across the nodes Slurm has given you; `-N 2` asks for 2 nodes and `--ntasks-per-node 8` for 8 processes on each, one per GPU (hence `-g 1`, one GPU per process). For that to work nccl-tests must be compiled with MPI support (`make MPI=1 ...`, see [nccl-tests in the GPU software stack chapter](../compute/gpu-software-stack.md#nccl-tests-single-node-then-two-then-all)); MPI is the classic HPC library the 16 processes use to find each other.
 
 ```bash
 # multi-node, e.g. 2 nodes x 8 GPUs under SLURM with MPI-built nccl-tests
@@ -1420,7 +1427,7 @@ NCCL_PXN_DISABLE=1 srun -N 2 --ntasks-per-node 8 ./build/alltoall_perf -b 1M -e 
 
 ### Buffer registration and symmetric memory
 
-By default NCCL copies user data into its own FIFO buffers and the peer copies it out - an extra pass through HBM and, for the network, the proxy works from NCCL-owned registered memory. User buffer registration (`ncclCommRegister`, or automatic registration of buffers captured in CUDA graphs) lets NCCL work directly on the user buffer: for NVLS the user buffer is mapped into the multicast object, for IB it's registered with the NIC, avoiding the copy and freeing SMs. PyTorch exposes this through its NCCL memory pool APIs. Requirements and limitations (allocation through `ncclMemAlloc` / cuMem APIs, which collectives benefit) vary by version - check the [NCCL user buffer registration docs](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html).
+By default NCCL copies user data into its own FIFO buffers and the peer copies it out - an extra pass through HBM and, for the network, the proxy works from NCCL-owned registered memory. User buffer registration (`ncclCommRegister`, or automatic registration of buffers captured in CUDA graphs - see [CUDA graphs](../compute/accelerator/execution-model.md#cuda-graphs)) lets NCCL work directly on the user buffer: for NVLS the user buffer is mapped into the multicast object, for IB it's registered with the NIC, avoiding the copy and freeing SMs. PyTorch exposes this through its NCCL memory pool APIs. Requirements and limitations (allocation through `ncclMemAlloc` / the cuMem APIs - CUDA's low-level virtual-memory driver calls (`cuMemCreate`, `cuMemMap`) that let one physical allocation be mapped into other GPUs and devices - which collectives benefit) vary by version - check the [NCCL user buffer registration docs](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html).
 
 **[GPU, untested]** In PyTorch the route is a CUDA memory pool backed by NCCL's allocator, registered with the communicator. The method names below exist in the torch 2.15 type stubs (`ProcessGroupNCCL.mem_allocator`, `register_mem_pool`, `torch.cuda.MemPool`, `torch.cuda.use_mem_pool`); I didn't run it, and the API is young:
 
@@ -1460,6 +1467,8 @@ Per-GPU unidirectional NVLink bandwidth, from the table in [NVLink](README.md#nv
 | NVLink 5   | B200/GB200/B300  |    18 |          900GBps | 8 (HGX) or 72 (NVL72)            |
 | NVLink 6   | Rubin (announced)|    36 |         1500GBps | announced                        |
 
+The NVLink 6 figure is preliminary. NVIDIA first announced 3.6TBps duplex per Rubin GPU (260TB/s per NVL72 rack); later reports cite a revision to 3TBps duplex (216TB/s per rack), which is the 1500GBps per direction in the table ([ServeTheHome](https://www.servethehome.com/?p=106378)). Check NVIDIA's current Vera Rubin NVL72 spec page before using it in a calculation.
+
 Note that the "900GBps" usually quoted for NVLink 4 is the duplex sum; the number that goes into `β` for a collective is 450GBps. NVL72: 72 GPUs x 1.8TBps duplex = 129.6TBps, the "130TB/s" NVIDIA quotes for [GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/). On an NVL72, a ring all-reduce over 72 GPUs has bandwidth term `2·71/72 · n/900GBps`, i.e. the full NVLink rate at 9x the scale of an HGX node, and the inter-node problem starts at the rack boundary instead of the board.
 
 ```python
@@ -1482,7 +1491,7 @@ The inter-node path for a GPU's data is: HBM → GPU's PCIe interface → PCIe s
 
 - **GPU and NIC under the same PCIe switch** (`PIX`/`PXB` in `nvidia-smi topo -m`): peer-to-peer traffic stays inside the switch. DGX-style nodes pair each GPU with a NIC this way.
 - **Through the CPU root complex** (`PHB`) or **across sockets** (`SYS`): peer-to-peer either degrades or is disabled, and NCCL may fall back to staging through host memory. `NCCL_NET_GDR_LEVEL` sets the maximum distance at which NCCL will use GPUDirect RDMA.
-- **PCIe ACS** enabled on switches forces peer-to-peer traffic up to the root complex for IOMMU checks; see [Disable Access Control Services](benchmarks/README.md#disable-access-control-services).
+- **PCIe ACS** (Access Control Services, a PCIe switch feature that makes device-to-device traffic go up to the CPU's root complex so the IOMMU - the memory-protection unit for devices from [IOMMU, VFIO and PCIe passthrough](../foundations/containers-and-virtualization.md#iommu-vfio-and-pcie-passthrough) - can check it) forces peer-to-peer traffic up to the root complex for IOMMU checks; see [Disable Access Control Services](benchmarks/README.md#disable-access-control-services).
 
 A 400Gbps NIC needs 50GBps, which a PCIe 5 x16 link (~64GBps per direction raw) can carry; an 800Gbps NIC (100GBps) needs PCIe 6 x16 or two x16 links. If GPU and NIC share an upstream PCIe link, their traffic can contend there.
 
@@ -1503,13 +1512,13 @@ print("400Gbps NIC needs", 400/8, "GB/s;  800Gbps needs", 800/8, "GB/s")
 
 ```bash
 nvidia-smi topo -m                                  # look at the GPUi <-> mlx5_j cells: PIX/PXB good, SYS bad
-sudo lspci -vv -s <bus:dev.fn> | grep -E "LnkCap|LnkSta"   # negotiated speed/width, e.g. x16 vs x8
+sudo lspci -vv -s <bus:dev.fn> | grep -E "LnkCap|LnkSta"   # -s: one device by its PCI address (first column of lspci); capable vs negotiated speed/width, e.g. x16 vs x8
 cat /sys/class/net/<ifname>/device/numa_node        # which NUMA node a NIC hangs off
 ```
 
 ### Rail-optimized vs non-rail fat-tree
 
-*Bisection bandwidth* is the total bandwidth across the narrowest cut that splits the nodes into two equal halves - the worst-case capacity for "half the cluster talks to the other half", which is what all-to-all does. A *non-blocking* fat-tree has enough parallel leaf-to-spine uplinks that any half of the nodes can talk to the other half at full speed, i.e. full bisection bandwidth. In a **rail-optimized** network, NIC `i` of every node connects to leaf switch(es) `i` - rail `i`. Traffic between same-index GPUs on different nodes needs one switch hop if the rail fits in one leaf, and never touches the spine. NCCL's rings (with `NCCL_CROSS_NIC` defaulting to "prefer same NIC") and the per-rail inter-node step of a hierarchical all-reduce produce exactly that traffic, so all-reduce, reduce-scatter and all-gather can avoid the spine almost entirely. Cross-rail traffic (all-to-all, pipeline sends between different local ranks) either goes through the spine or, with [PXN](#pxn), hops over NVLink first.
+*Bisection bandwidth* is the total bandwidth across the narrowest cut that splits the nodes into two equal halves - the worst-case capacity for "half the cluster talks to the other half", which is what all-to-all does. A *non-blocking* fat-tree has enough parallel leaf-to-spine uplinks that any half of the nodes can talk to the other half at full speed, i.e. full bisection bandwidth. In a **rail-optimized** network, NIC `i` of every node connects to leaf switch(es) `i` - rail `i`. Traffic between same-index GPUs on different nodes needs one switch hop if the rail fits in one leaf, and never touches the spine. NCCL's rings (with `NCCL_CROSS_NIC` defaulting to "prefer same NIC") and the per-rail inter-node step of a hierarchical all-reduce produce exactly that traffic, so all-reduce, reduce-scatter and all-gather can avoid the spine almost entirely. Cross-rail traffic (all-to-all, pipeline sends between different local ranks - in *pipeline parallelism* each GPU holds a different block of layers and sends activations to the next one, see [Pipeline parallelism](../training/model-parallelism/derivations.md#pipeline-parallelism)) either goes through the spine or, with [PXN](#pxn), hops over NVLink first.
 
 A fat tree - links get "fatter" towards the root so bisection bandwidth is preserved:
 
@@ -1559,7 +1568,7 @@ The output format changes between NCCL versions, so grep loosely and read the li
 
 ### InfiniBand
 
-InfiniBand is a network technology built for RDMA, separate from Ethernet. It is lossless by construction: link-level, credit-based flow control means a sender never transmits unless the receiver has buffer space, so packets are not dropped under congestion - they wait. Routing is computed by the *subnet manager* (a software service, running on a switch or a host, that discovers the fabric and programs every switch's forwarding tables). NVIDIA's IB switches support **adaptive routing**, which picks among equal-cost output ports per packet based on queue occupancy rather than a static hash; the NIC handles the resulting out-of-order delivery for RDMA. Adaptive routing turns "two flows hashed onto the same uplink" from a persistent 2x slowdown into transient queueing - see [InfiniBand adaptive routing](benchmarks/README.md#infiniband-adaptive-routing). IB also has congestion control (FECN/BECN-based), but tuning it is rarely exposed to users.
+InfiniBand is a network technology built for RDMA, separate from Ethernet. It is lossless by construction: link-level, credit-based flow control means a sender never transmits unless the receiver has buffer space, so packets are not dropped under congestion - they wait. Routing is computed by the *subnet manager* (a software service, running on a switch or a host, that discovers the fabric and programs every switch's forwarding tables). NVIDIA's IB switches support **adaptive routing**, which picks among equal-cost output ports per packet based on queue occupancy rather than a static hash; the NIC handles the resulting out-of-order delivery for RDMA. Adaptive routing turns "two flows hashed onto the same uplink" from a persistent 2x slowdown into transient queueing - see [InfiniBand adaptive routing](benchmarks/README.md#infiniband-adaptive-routing). IB also has congestion control (based on FECN/BECN - forward and backward explicit congestion notification bits that switches set in packet headers, the IB counterpart of ECN), but tuning it is rarely exposed to users.
 
 The NCCL-visible failure semantics come from RC (reliable connected) queue pairs - a QP is the pair of send/receive queues the NIC keeps for one RDMA connection: an RDMA op that isn't acknowledged within the local ACK timeout is retransmitted, up to a retry count, after which the QP goes to error and NCCL reports a fatal error. `NCCL_IB_TIMEOUT` sets the exponent: the timeout is `4.096µs · 2^NCCL_IB_TIMEOUT`, so 20 gives ~4.3s and 22 gives ~17.2s per attempt, multiplied by `NCCL_IB_RETRY_CNT` retries. (I believe the default timeout exponent is 20 in recent versions; older versions used a lower value - check your version's docs.)
 
@@ -1579,7 +1588,7 @@ NCCL_IB_TIMEOUT=22:  17.180 s per attempt, x7 retries =  120.3 s
 
 The `x7` assumes `NCCL_IB_RETRY_CNT=7`, which I believe is the default (7 is also the maximum the IB retry-count field can hold); the exact accounting of attempts vs retries is a detail I haven't verified. The point is the order of magnitude: a dead link takes tens of seconds to surface as an error at the default, and minutes at 22.
 
-**[GPU, untested]** - the IB-level checks before blaming NCCL:
+**[GPU, untested]** - the IB-level checks before blaming NCCL. These tools were introduced in [InfiniBand for operators](../compute/gpu-software-stack.md#infiniband-for-operators-ports-the-subnet-manager-lids) and [perftest](../compute/gpu-software-stack.md#perftest-measuring-one-link); in short, an *HCA* (host channel adapter) is an IB NIC and shows up as a device named like `mlx5_0`, `ibstat` prints each HCA port's state and rate, `ibv_devinfo` is the same view through the verbs library (the RDMA programming interface whose queue pairs NCCL uses, see [InfiniBand](../foundations/networking.md#infiniband)), and `ib_write_bw` from the perftest package measures raw RDMA-write bandwidth between two NICs with no NCCL involved - start it on one node, then point the same command at that node's address from the other:
 
 ```bash
 ibstat                              # each HCA port: State: Active, Physical state: LinkUp, Rate: 400
@@ -1596,7 +1605,7 @@ RoCEv2 (RDMA over Converged Ethernet) carries the IB transport inside ordinary U
 
 The tuning surface is large (ECN thresholds, DCQCN rate parameters, PFC headroom, traffic classes - `NCCL_IB_TC`, `NCCL_IB_GID_INDEX` select class and RoCE version), and mistuning shows up as low or erratic collective bandwidth rather than errors. Meta describes running RoCE for training at scale, including that DCQCN tuning was not the main lever for them and that collective-library-level flow control and routing mattered more ([Gangidi et al., RDMA over Ethernet for Distributed AI Training at Meta Scale](https://doi.org/10.1145/3651890.3672233), SIGCOMM 2024). Vendor Ethernet fabrics for AI (Spectrum-X, see [README](README.md#spectrum-x-ethernet)) add per-packet adaptive routing on the switch and reordering in the NIC, i.e. they import the IB approach.
 
-**[GPU, untested]** - the NCCL side of a RoCE setup is mostly selecting the right GID (the RoCE address entry: v1 or v2, IPv4 or IPv6) and traffic class; the values depend on the cluster's switch configuration, so the numbers below are placeholders to be replaced with what your network team configured:
+**[GPU, untested]** - the NCCL side of a RoCE setup is mostly selecting the right GID (the RoCE address entry: v1 or v2, IPv4 or IPv6) and traffic class; the values depend on the cluster's switch configuration, so the numbers below are placeholders to be replaced with what your network team configured. (The `for` loop prints every GID table entry of port 1 of `mlx5_0` from sysfs; [RoCE in one page](../compute/gpu-software-stack.md#roce-in-one-page) shows what the table looks like. `export` sets a variable for every later command in this shell, so the training job launched afterwards inherits it. `NCCL_SOCKET_IFNAME` is covered in [Which interface does NCCL pick?](../foundations/networking.md#which-interface-does-nccl-pick).)
 
 ```bash
 # which GID index is RoCE v2 on this port
@@ -1608,7 +1617,7 @@ export NCCL_SOCKET_IFNAME=eth0  # interface for NCCL's bootstrap TCP connections
 
 ### Flow collisions and ECMP
 
-Without adaptive routing, a switch with several equal-cost uplinks chooses one per flow (a flow is the sequence of packets of one connection) by hashing header fields - this is ECMP, equal-cost multi-path routing - (for RoCEv2, typically the 5-tuple including the UDP source port, which the NIC derives from the QP). Collective traffic has **low entropy** (few distinct flows, so few distinct hash inputs): a ring all-reduce over `N` nodes with 8 channels is a handful of long-lived, equally sized *elephant flows* (large, long-lived flows, as opposed to the many short "mice" of web traffic, which hashing spreads well). Hashing `k` such flows onto `k` uplinks:
+Without adaptive routing ([ECMP](../foundations/networking.md#ecmp) has the basics), a switch with several equal-cost uplinks chooses one per flow (a flow is the sequence of packets of one connection) by hashing header fields - this is ECMP, equal-cost multi-path routing - (for RoCEv2, typically the 5-tuple including the UDP source port, which the NIC derives from the QP). Collective traffic has **low entropy** (few distinct flows, so few distinct hash inputs): a ring all-reduce over `N` nodes with 8 channels is a handful of long-lived, equally sized *elephant flows* (large, long-lived flows, as opposed to the many short "mice" of web traffic, which hashing spreads well). Hashing `k` such flows onto `k` uplinks:
 
 - `P(no collision) = k!/k^k` - 0.24% for `k = 8`, ~1e-6 for `k = 16`.
 - Expected load on the most loaded uplink (simulated, 20k trials): 2.59 flows for `k = 8`, 3.07 for `k = 16`.
@@ -1658,7 +1667,7 @@ The overlap story in [Comms and compute overlap](README.md#comms-and-compute-ove
 
 ### Streams and what "async" means
 
-A NCCL collective is a kernel. PyTorch launches it on a dedicated NCCL stream (a CUDA stream is a queue of GPU work that runs in order; work in different streams may run concurrently) per process group (the set of ranks a collective runs over), with event-based dependencies on the compute stream (input ready) and back (`work.wait()` makes the compute stream wait for the NCCL stream). Overlap happens when the GPU has kernels from both streams ready at once and enough resources to run them concurrently. Three ways it silently doesn't:
+A NCCL collective is a kernel. PyTorch launches it on a dedicated NCCL stream (a CUDA stream is a queue of GPU work that runs in order; work in different streams may run concurrently) per process group (the set of ranks a collective runs over), with event-based dependencies on the compute stream (input ready) and back (`work.wait()` makes the compute stream wait for the NCCL stream). Overlap happens when the GPU has kernels from both streams ready at once and enough resources to run them concurrently (streams and events in PyTorch: [Multiple streams in PyTorch](../foundations/concurrency.md#multiple-streams-in-pytorch)). The thing being overlapped in data-parallel training is usually a *gradient bucket*: DDP and FSDP group gradients into buckets of a few tens of MB and launch one collective per bucket as soon as backward has produced all of that bucket's gradients, so communication for the last layers runs while backward is still computing the earlier ones ([Bucketing and overlap](../training/model-parallelism/derivations.md#bucketing-and-overlap) derives the sizes). Three ways it silently doesn't:
 
 1. A dependency forces serialization (you `wait()` too early, or the bucket isn't ready until the last layer's backward).
 2. The collective's CTAs can't be scheduled because compute kernels occupy all SMs - the NCCL kernel starts late or runs with fewer resident CTAs.
@@ -1767,7 +1776,7 @@ s.synchronize()
 
 ### Async TP / collective matmul
 
-Tensor parallelism with sequence parallelism has, in every layer, `Y = AllGather(X) · W` (column-parallel) and `Z = ReduceScatter(Y · W')` (row-parallel), where the collective is on the critical path of the GEMM that consumes or produces it. Bucketing can't overlap these - the GEMM needs the gathered data. Decomposition can: split the all-gather into its `p` ring steps and run the GEMM on each shard as it arrives:
+*Tensor parallelism* (TP) splits each weight matrix of a layer across `p` GPUs, so every GPU does a slice of every matmul; *sequence parallelism* (SP) additionally shards the activations between those matmuls along the token dimension, so instead of all-reducing a layer's output TP+SP all-gathers the activations before a matmul and reduce-scatters after it. A *column-parallel* linear layer gives each GPU a slice of the output columns of `W`; a *row-parallel* one gives each GPU a slice of the input rows, so the partial results have to be summed. This is the one-paragraph version; [Tensor parallelism](../training/model-parallelism/derivations.md#tensor-parallelism-megatron) and [Megatron sequence parallelism](../training/model-parallelism/derivations.md#megatron-sequence-parallelism-sp) derive it. With that, TP+SP has, in every layer, `Y = AllGather(X) · W` (column-parallel) and `Z = ReduceScatter(Y · W')` (row-parallel), where the collective is on the critical path of the GEMM that consumes or produces it. Bucketing can't overlap these - the GEMM needs the gathered data. Decomposition can: split the all-gather into its `p` ring steps and run the GEMM on each shard as it arrives:
 
 ```
 for k in 0..p-1:
@@ -1828,7 +1837,7 @@ X=134MB  gemm 1.39ms  all-gather 0.33ms  sequential 1.72ms  decomposed ~1.39ms  
 
 ### Verifying overlap in a trace
 
-Overlap is a claim about a timeline, so check the timeline. With the PyTorch profiler or Nsight Systems (`nsys profile --trace=cuda,nvtx`):
+Overlap is a claim about a timeline, so check the timeline. With the PyTorch profiler ([Spotting it in a trace](../compute/accelerator/execution-model.md#spotting-it-in-a-trace)) or Nsight Systems (`nsys profile --trace=cuda,nvtx`, see [Nsight Systems](../compute/accelerator/execution-model.md#nsight-systems-where-does-the-time-go); the full workflow is in [profiling and optimization](../training/profiling-and-optimization.md)):
 
 1. Find the NCCL kernels (`ncclDevKernel_AllReduce_Sum_bf16_RING_LL`, `..._ReduceScatter_..._RING_SIMPLE` etc. - the name carries collective, op, dtype, algorithm and protocol, which is also a cheap way to see NCCL's choice without debug logs) and the compute kernels they're meant to overlap with.
 2. Check that they actually run concurrently on different streams, not back-to-back.
@@ -2026,7 +2035,9 @@ print(f"latency share of the ideal ring: {lat / (lat + 1.75e9 / B):.1%}")
 # ring                   ideal: 3.94ms
 # ring  measured busbw 367GB/s: 4.77ms
 # latency share of the ideal ring: 1.2%
-``` The NVLink tree is not listed because inside one NVSwitch node NCCL's tree degenerates to a chain, which has no advantage there.
+```
+
+The NVLink tree is not listed because inside one NVSwitch node NCCL's tree degenerates to a chain, which has no advantage there.
 
 Where the regime changes, for the 8-GPU ring:
 
@@ -2281,7 +2292,7 @@ round 6: [(0, 1), (2, 7), (3, 6), (4, 5)]
 128 nodes: 8128 pairs in 127 rounds of 64 disjoint pairs
 ```
 
-**[GPU, untested]** - one round as SLURM jobs, each a 2-node `all_reduce_perf` (assumes nccl-tests built with MPI support and that SLURM's `--nodelist` can place each pair):
+**[GPU, untested]** - one round as SLURM jobs, each a 2-node `all_reduce_perf` (assumes nccl-tests built with MPI support and that SLURM's `--nodelist` can place each pair). Preview of [Slurm](../orchestration/slurm/from-zero.md#srun-launching-a-step) again (`srun` as in [PXN](#pxn); `--nodelist=$a,$b` names the exact two nodes). The shell parts: `while IFS=, read a b; do ... done < pairs.txt` reads `pairs.txt` line by line, splitting each line at the comma (`IFS=,`) into the variables `a` and `b`; the `&` at the end of the `srun` line runs it in the background so all pairs of the round run at once, and `wait` blocks until every background job has finished ([job control](../foundations/linux-and-os.md#job-control--jobs-fg-bg-ctrl-z)). The last line pulls the "Avg bus bandwidth" summary out of every log and sorts numerically on the third `:`-separated field (`sort -t: -k3 -n`), slowest first:
 
 ```bash
 # pairs.txt: one "nodeA,nodeB" per line, from one round of the schedule above

@@ -2,12 +2,20 @@
 
 Almost every confusing failure in ML engineering that isn't a math bug turns out to be a concurrency bug: a DataLoader that eats 200GB of RAM, a training step that looks fast in a profiler but slow in wall-clock time, a timing measurement that claims your matmul runs at 50 PFLOPS, a checkpoint that holds the weights of the wrong step, a 512-GPU job that freezes with no error, an inference server that stops answering while it tokenizes one long prompt.
 
-This chapter assumes you know ML math and use Python and PyTorch, but have never studied concurrency. It starts at zero and builds up to the machinery you meet every day: DataLoader workers, CUDA streams, async checkpointing, NCCL hangs and serving engines. The goal is that you understand *why* these things behave the way they do, so the rest of this book reads as a set of applications rather than a set of spells.
+This chapter assumes you know ML math and use Python and PyTorch, but have never studied concurrency. It starts at zero and builds up to the machinery you meet every day: DataLoader workers, CUDA streams, async checkpointing, NCCL hangs (NCCL is NVIDIA's library for moving tensors between GPUs; [Part 2](#a-distributed-hang-is-a-deadlock-across-machines) introduces just enough of it) and serving engines. The goal is that you understand *why* these things behave the way they do, so the rest of this book reads as a set of applications rather than a set of spells.
 
 Conventions:
 
 - Every code block is runnable. Pure-Python examples need only `python3` (tested with CPython 3.14). Examples marked **[torch]** need `pip install torch numpy` and run on CPU. Examples marked **[GPU]** need a CUDA GPU; those were **not executed** while writing this chapter - they follow the documented PyTorch APIs, but treat them as untested.
 - Any numbers printed by the examples depend on your machine. Where I quote a number from a run, I say so, and it is one run on one laptop - an anecdote, not a benchmark.
+
+## Prerequisites
+
+- [The toolkit](toolkit.md) for the terminal and a Python environment with `torch` and `numpy` to run the examples.
+- [Computer architecture](computer-architecture.md) for cores and hardware threads, caches and cache lines, NUMA, DMA and pinned memory, and the GPU host/device split (kernels, asynchronous launches, streams).
+- [Linux and the OS](linux-and-os.md) for processes, `fork`, signals, `/dev/shm`, copy-on-write, the OOM killer, and [how `torchrun` spawns workers](linux-and-os.md#how-torchrun-spawns-workers).
+
+Forward links: the distributed-training vocabulary used here (rank, collective, all-reduce, NCCL) is introduced just enough in [Part 2](#a-distributed-hang-is-a-deadlock-across-machines) and taught properly in [Networking](networking.md#collective-communication-an-intuitive-introduction) and [Distributed systems](distributed-systems.md); GPU kernels, thread blocks and streams in depth are in [the GPU execution model](../compute/accelerator/execution-model.md).
 
 
 
@@ -34,7 +42,7 @@ When you run `python train.py`, the operating system (OS) creates a **process**.
 - OS resources: open files, sockets, a current directory, environment variables.
 - one or more **threads**.
 
-A **thread** is a single sequence of instructions being executed: it has its own instruction pointer, its own registers, and its own stack (for local variables and function calls). All threads in a process **share the address space**: every thread can read and write every global variable, every heap object, every tensor.
+A **thread** is a single sequence of instructions being executed: it has its own instruction pointer (the address of the next instruction to run), its own registers, and its own stack (for local variables and function calls). All threads in a process **share the address space**: every thread can read and write every global variable, every heap object, every tensor.
 
 | | Processes | Threads (in one process) |
 |---|---|---|
@@ -59,8 +67,8 @@ Swapping one thread out and another in is a **context switch**. The direct cost 
 
 Practical consequences for ML:
 
-- **Oversubscription hurts.** If you run 8 training processes, each spawns a PyTorch intra-op thread pool sized to all 64 cores, plus 8 DataLoader workers each, you have hundreds of CPU-hungry threads fighting for 64 cores. They spend time context-switching and thrashing caches instead of working. This is why `torchrun` sets `OMP_NUM_THREADS=1` by default and prints a warning about it, and why DataLoader workers call `torch.set_num_threads(1)` inside each worker.
-- **Pinning matters.** Keeping a process on the cores near its GPU and memory (NUMA affinity) avoids both migrations and remote memory access - see [NUMA affinity](../training/performance/README.md#numa-affinity).
+- **Oversubscription hurts.** If you run 8 training processes, each spawns a PyTorch intra-op thread pool (the threads PyTorch uses to parallelize a single CPU op such as a matmul) sized to all 64 cores, plus 8 DataLoader workers each, you have hundreds of CPU-hungry threads fighting for 64 cores. They spend time context-switching and thrashing caches instead of working. This is why `torchrun` sets `OMP_NUM_THREADS=1` (the environment variable that sizes OpenMP thread pools, the C/C++ threading mechanism behind PyTorch's and NumPy's CPU math) by default and prints a warning about it, and why DataLoader workers call `torch.set_num_threads(1)` inside each worker.
+- **Pinning matters.** Keeping a process on the cores near its GPU and memory (NUMA affinity) avoids both migrations and remote memory access - see [NUMA](computer-architecture.md#numa) for the hardware and [NUMA affinity](../training/performance/README.md#numa-affinity).
 
 
 
@@ -133,7 +141,7 @@ Locks cost something: an uncontended acquire is cheap (tens of nanoseconds in C)
 
 ### Semaphores
 
-A **semaphore** is a counter with two operations: acquire (decrement; block if it would go below zero) and release (increment; wake a waiter). A lock is a semaphore that starts at 1. A semaphore that starts at N lets at most N threads into a region - perfect for "don't open more than N connections to the object store."
+A **semaphore** is a counter with two operations: acquire (decrement; block if it would go below zero) and release (increment; wake a waiter). A lock is a semaphore that starts at 1. A semaphore that starts at N lets at most N threads into a region - perfect for "don't open more than N connections to the object store." (An **object store**, such as Amazon S3, is a network storage service where you fetch whole files by name, one network request each; see [Object stores](storage-and-data.md#4-object-stores).)
 
 ```python
 # semaphore.py
@@ -196,7 +204,7 @@ Two details are load-bearing. First, the condition variable is always paired wit
 
 In practice you should rarely touch locks and condition variables directly. Most concurrent programs are better written as threads that communicate by passing messages through a **thread-safe queue**. `queue.Queue` is built from exactly the primitives above (a lock and two condition variables, "not empty" and "not full"), and it handles all the subtle cases correctly. The queue *owns* the synchronization; each object is touched by one thread at a time; most races disappear by construction. We'll use queues for producer/consumer pipelines in Part 5.
 
-Equivalents: `multiprocessing.Queue` across processes (data is pickled), `asyncio.Queue` inside an event loop (not thread-safe - for coroutines only).
+Equivalents: `multiprocessing.Queue` across processes (data is pickled), `asyncio.Queue` inside an event loop (not thread-safe - for coroutines only; both terms are explained in [asyncio](#asyncio) below).
 
 ### Deadlock
 
@@ -223,7 +231,7 @@ t2 = threading.Thread(target=worker, args=("T2", lock_b, lock_a))   # opposite o
 t1.start(); t2.start(); t1.join(); t2.join()
 ```
 
-T1 holds A and wants B; T2 holds B and wants A. The timeout is only there so the example terminates: one thread gives up, releases its lock, and the other then succeeds. Remove the timeout and the program hangs forever.
+T1 holds A and wants B; T2 holds B and wants A. The timeout is only there so the example terminates: usually one thread gives up, releases its lock, and the other then succeeds (occasionally both time out together, since their timeouts expire at almost the same moment). Remove the timeout and the program hangs forever.
 
 Deadlock requires all four of the **Coffman conditions** to hold simultaneously. Break any one and deadlock is impossible:
 
@@ -238,7 +246,7 @@ Lock ordering is the standard practical fix: if every thread acquires locks in t
 
 ### Livelock
 
-A **livelock** is the polite cousin of deadlock: threads are not blocked - they're busy, actively responding to each other - but none makes progress. Think of two people in a corridor who both step aside the same way, over and over. The classic way to create one is to "fix" a deadlock by having each thread back off and retry when it can't get the second lock - and then have both threads retry in lock-step.
+A **livelock** is the polite cousin of deadlock: threads are not blocked - they're busy, actively responding to each other - but none makes progress. Think of two people in a corridor who both step aside the same way, over and over. The classic way to create one is to "fix" a deadlock by having each thread back off and retry when it can't get the second lock - and then have both threads retry in lock-step. (In the example, `threading.Barrier(2)` is a meeting point: each thread's `step.wait()` blocks until both threads have called it, which forces the two into exactly the same rhythm.)
 
 ```python
 # livelock.py
@@ -271,6 +279,13 @@ The barrier makes the synchronization perfect so you see the livelock determinis
 ML sightings: several workers retrying a contended file lock on a shared filesystem in step; a cluster job auto-restart loop that immediately crashes on the same bad node and restarts again, forever, consuming the allocation while making zero training progress.
 
 ### A distributed hang is a deadlock across machines
+
+First, just enough distributed-training vocabulary to follow the rest of this chapter. It is taught properly in [Networking](networking.md#collective-communication-an-intuitive-introduction) and [Distributed systems](distributed-systems.md).
+
+- In **data-parallel training** every GPU is driven by its own process, which holds a full copy of the model and trains on its own slice of the batch. After the backward pass the processes average their gradients, so every copy takes the same optimizer step and the copies stay identical.
+- Each of those processes has an integer id, its **rank**, from 0 to `WORLD_SIZE - 1`. These are the `RANK` and `WORLD_SIZE` environment variables that `torchrun` sets for each worker ([how torchrun spawns workers](linux-and-os.md#how-torchrun-spawns-workers)). The set of ranks that communicate together is a **process group**.
+- A **collective** is an operation that every rank in the group calls and that computes something over all ranks' data. The workhorse is **all-reduce**: each rank contributes a tensor of the same shape, and every rank gets back the elementwise sum. Divide by the number of ranks and you have the averaged gradient. In PyTorch it's `torch.distributed.all_reduce(t)`, which overwrites `t` in place on every rank.
+- **NCCL** (NVIDIA Collective Communications Library, pronounced "nickel") implements collectives between GPUs, and PyTorch calls it for you. NCCL runs each collective as a GPU kernel and keeps some background threads of its own. On CPU-only machines PyTorch uses a different backend, **Gloo**. That's what this book's laptop-runnable examples use.
 
 Now replace threads with processes on different machines, and locks with collective operations. In data-parallel training every rank calls `all_reduce` on gradients. An `all_reduce` cannot complete on any rank until **all** ranks have joined it - so each collective acts like a barrier that every participant must reach.
 
@@ -384,9 +399,9 @@ if pid == 0:                      # but NOT the thread that would release it
 os.waitpid(pid, 0)
 ```
 
-Python 3.12+ emits a `DeprecationWarning: This process ... is multi-threaded, use of fork() may lead to deadlocks in the child` for exactly this reason. Real-world sources of such locks: logging handlers, the allocator in some C libraries, OpenMP/MKL thread pools, gRPC, and the **CUDA driver**.
+Python 3.12+ emits a `DeprecationWarning: This process ... is multi-threaded, use of fork() may lead to deadlocks in the child` for exactly this reason. Real-world sources of such locks: logging handlers, the allocator in some C libraries, OpenMP/MKL thread pools (MKL is Intel's math library), gRPC (a library for calling functions on another machine over the network, see [Networking](networking.md#http11-from-raw-sockets)), and the **CUDA driver**.
 
-Once a process has initialized CUDA, the driver has background threads, a GPU context, and memory mappings that are not valid in a forked child. PyTorch detects this and refuses:
+Once a process has initialized CUDA, the driver has background threads, a GPU context (the driver's per-process state for one GPU: its memory allocations and loaded kernels), and memory mappings that are not valid in a forked child. PyTorch detects this and refuses:
 
 ```
 RuntimeError: Cannot re-initialize CUDA in forked subprocess. To use CUDA with multiprocessing, you must use the 'spawn' start method
@@ -447,7 +462,7 @@ if __name__ == "__main__":
     shm.close(); shm.unlink()                            # unlink exactly once, by the owner
 ```
 
-Shared memory brings back all the race conditions of threads - two processes writing the same array need synchronization (a `multiprocessing.Lock`, or a protocol where ownership is handed over through a queue). PyTorch does this for you: `torch.multiprocessing` and the DataLoader move tensors into shared memory and send only a small handle through the queue. This is why DataLoader with big batches inside Docker fails with errors about `/dev/shm` or "bus error" - Docker's default `/dev/shm` is 64 MB; raise it with `--shm-size` or `--ipc=host`.
+Shared memory brings back all the race conditions of threads - two processes writing the same array need synchronization (a `multiprocessing.Lock`, or a protocol where ownership is handed over through a queue). PyTorch does this for you: `torch.multiprocessing` and the DataLoader move tensors into shared memory and send only a small handle through the queue. This is why DataLoader with big batches inside Docker fails with errors about `/dev/shm` or "bus error" - Docker's default `/dev/shm` is 64 MB; raise it with `--shm-size` or `--ipc=host`. (Docker runs your program in a container, an isolated process with its own filesystem; those are flags to `docker run`. See [Docker and Apptainer for ML](linux-and-os.md#docker-and-apptainer-for-ml); Docker is taught from zero in [Containers](containers-and-virtualization.md#3-docker-from-zero).)
 
 ### concurrent.futures
 
@@ -459,9 +474,9 @@ Threads handle I/O concurrency well up to hundreds of connections. Beyond that, 
 
 - A function defined with `async def` is a **coroutine**. Calling it doesn't run it; it produces a coroutine object.
 - `await something` means "pause me here until `something` is done, and let other coroutines run meanwhile."
-- The **event loop** is a scheduler that runs one coroutine at a time until it hits an `await` on something not yet ready, then switches to another ready coroutine, and uses the OS's efficient I/O multiplexing (epoll/kqueue) to know when sockets are ready.
+- The **event loop** is a scheduler that runs one coroutine at a time until it hits an `await` on something not yet ready, then switches to another ready coroutine, and uses the OS's efficient I/O multiplexing (epoll on Linux, kqueue on macOS: system calls that wait on many sockets at once and report which ones have data) to know when sockets are ready. (A **socket** is the file descriptor a program uses for one network connection; [Networking](networking.md#ports-and-sockets) builds them up from scratch.)
 
-Because switching only happens at `await`, there are no races between `await` points - a big simplification over threads. The price: **anything that blocks without awaiting freezes every coroutine in the process.** A CPU-heavy tokenization, a synchronous `requests.get`, a `torch.load`, a GPU sync - while it runs, the server answers nobody.
+Because switching only happens at `await`, there are no races between `await` points - a big simplification over threads. The price: **anything that blocks without awaiting freezes every coroutine in the process.** A CPU-heavy tokenization, a synchronous `requests.get` (from the popular `requests` HTTP client), a `torch.load`, a GPU sync - while it runs, the server answers nobody.
 
 ```python
 # blocking_loop.py
@@ -498,6 +513,8 @@ When to use what:
 | Moderate I/O concurrency with blocking libraries (parallel S3 downloads, writing checkpoint shards) | `ThreadPoolExecutor` |
 | CPU-bound Python (decoding, augmentation, tokenization in pure Python) | Processes: `ProcessPoolExecutor`, DataLoader workers |
 | CPU-bound native code that releases the GIL (NumPy, many tokenizers' Rust/C++ backends) | Threads may be enough - measure |
+
+(HTTP is the request/response protocol that web APIs, model hubs and object stores like S3 speak over the network; [Networking](networking.md#http11-from-raw-sockets) writes it by hand. Here it only stands for "a network request that mostly waits".)
 
 #### An inference-server batcher in 40 lines
 
@@ -546,7 +563,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The `MAX_WAIT_S` knob is a direct latency/throughput trade-off: waiting longer fills bigger batches (more throughput per GPU) and adds that wait to every request's latency. Real engines (vLLM, SGLang, TGI) go further with *continuous batching* - inserting new requests into the running batch at every decode step rather than waiting for a whole batch to finish - and they typically keep the GPU-driving loop out of the asyncio thread entirely (in a separate thread or process) so that tokenization and HTTP handling never stall the GPU, and GPU syncs never stall HTTP. See [Inference](../inference/README.md).
+The `MAX_WAIT_S` knob is a direct latency/throughput trade-off: waiting longer fills bigger batches (more throughput per GPU) and adds that wait to every request's latency. Real engines (vLLM, SGLang, TGI: open-source LLM serving engines) go further with *continuous batching* - inserting new requests into the running batch at every decode step (one forward pass that generates the next token for every sequence in the batch) rather than waiting for a whole batch to finish, taught in [Continuous batching and the scheduler](../inference/serving-engine-internals.md#continuous-batching-and-the-scheduler) - and they typically keep the GPU-driving loop out of the asyncio thread entirely (in a separate thread or process) so that tokenization and HTTP handling never stall the GPU, and GPU syncs never stall HTTP. See [Inference](../inference/README.md).
 
 
 
@@ -654,7 +671,7 @@ USS ("unique set size") is the memory private to a process - exactly the pages t
 
 Fixes, in rough order of preference:
 
-- Store per-sample metadata in **few big objects**: NumPy arrays (fixed-width strings, or one byte buffer plus an offsets array), tensors, Arrow tables, or a memory-mapped file. One object = one refcount, no matter how many elements.
+- Store per-sample metadata in **few big objects**: NumPy arrays (fixed-width strings, or one byte buffer plus an offsets array), tensors, Arrow tables (Apache Arrow, a columnar in-memory format used by Hugging Face `datasets`), or a memory-mapped file. One object = one refcount, no matter how many elements.
 - Load metadata lazily inside each worker (from a file or database) instead of in the parent.
 - Don't measure with RSS: RSS counts shared pages in every process, so 8 workers sharing 10 GB look like 80 GB. Use USS/PSS (`psutil`'s `memory_full_info`, or `smem`).
 - With `spawn`/`forkserver` the problem changes form: there's no sharing to lose, but each worker pays a full pickled copy of the dataset up front.
@@ -748,7 +765,7 @@ So far we've assumed that when thread A writes `x = 1`, thread B reading `x` aft
 - **Visibility**: a write by one core may sit in that core's store buffer or cache for a while before other cores can see it.
 - **Ordering**: compilers and CPUs reorder memory operations for speed. If A writes `data = 42` then `ready = True`, B may observe `ready == True` and still read the old `data`. x86 is relatively strict (it doesn't reorder stores with other stores); ARM - including Apple silicon and Grace CPUs - is weaker and permits more reorderings.
 
-A **memory model** is the contract defining which reorderings are allowed and which operations create ordering guarantees. In C/C++ (where PyTorch's internals and your custom CUDA extensions live), plain variables have no inter-thread guarantees at all - a data race on a non-atomic variable is undefined behaviour. `std::atomic<T>` gives atomicity plus ordering controls (`memory_order_acquire`/`release`/`seq_cst`): a release-store to `ready` guarantees that everything written before it is visible to a thread that acquire-loads `ready` and sees the new value. Locks include these barriers internally, which is why correctly locked code doesn't need to think about any of this.
+A **memory model** is the contract defining which reorderings are allowed and which operations create ordering guarantees. In C/C++ (where PyTorch's internals and your custom CUDA extensions live; [the toolkit](toolkit.md#reading-c) covers reading C), plain variables have no inter-thread guarantees at all - a data race on a non-atomic variable is undefined behaviour. `std::atomic<T>` (C++'s standard wrapper that makes operations on a variable of type `T` atomic) gives atomicity plus ordering controls (`memory_order_acquire`/`release`/`seq_cst`): a release-store to `ready` guarantees that everything written before it is visible to a thread that acquire-loads `ready` and sees the new value. Locks include these barriers internally, which is why correctly locked code doesn't need to think about any of this.
 
 `volatile` is a common source of confusion. In C/C++, `volatile` only tells the compiler not to optimize away or merge accesses (meant for memory-mapped hardware registers); it gives **neither atomicity nor inter-thread ordering** and is not a synchronization tool. In Java and C#, `volatile` *does* provide visibility and ordering - same keyword, different meaning.
 
@@ -756,14 +773,14 @@ In Python, the GIL acts as a full barrier at every thread switch, so CPython pro
 
 Where it does reach ML engineers:
 
-- **CUDA kernels**: the GPU memory model is weak. Threads in a block communicate through shared memory only after `__syncthreads()`; across blocks you need atomics and `__threadfence()`. Floating-point `atomicAdd` from many threads completes in nondeterministic order, and since float addition isn't associative, the result varies run to run in the last bits. That's why ops like `index_add_`/`scatter_add_` on CUDA are nondeterministic and why `torch.use_deterministic_algorithms(True)` exists - see [Reproducibility](../training/reproducibility/README.md).
-- **False sharing**: caches move memory in **cache lines** (64 bytes on most x86 CPUs; 128 bytes on Apple M-series). If two threads on different cores write to *different* variables that happen to sit on the same cache line, the line ping-pongs between the cores' caches on every write, and both threads slow down dramatically - even though they share no data logically. The fix is padding or aligning per-thread data to separate cache lines (e.g. `alignas(64)` in C++). You'll meet it in custom C++/CUDA extensions, per-thread counters and lock-free queues; it's invisible from Python.
+- **CUDA kernels**: the GPU memory model is weak. (Background: a kernel launch runs many GPU threads, grouped into **thread blocks**; the threads of one block run on the same SM and share a small fast on-chip scratchpad called **shared memory**. `__syncthreads()` is a barrier for the threads of one block, and `atomicAdd`/`__threadfence()` are the GPU's atomic add and memory fence. The full hierarchy is in [the GPU execution model](../compute/accelerator/execution-model.md#the-hierarchy).) Threads in a block communicate through shared memory only after `__syncthreads()`; across blocks you need atomics and `__threadfence()`. Floating-point `atomicAdd` from many threads completes in nondeterministic order, and since float addition isn't associative, the result varies run to run in the last bits. That's why ops like `index_add_`/`scatter_add_` on CUDA are nondeterministic and why `torch.use_deterministic_algorithms(True)` exists - see [Reproducibility](../training/reproducibility/README.md).
+- **False sharing**: caches move memory in **cache lines** ([Cache lines and locality](computer-architecture.md#cache-lines-and-locality); 64 bytes on most x86 CPUs; 128 bytes on Apple M-series). If two threads on different cores write to *different* variables that happen to sit on the same cache line, the line ping-pongs between the cores' caches on every write, and both threads slow down dramatically - even though they share no data logically. The fix is padding or aligning per-thread data to separate cache lines (e.g. `alignas(64)` in C++). You'll meet it in custom C++/CUDA extensions, per-thread counters and lock-free queues; it's invisible from Python.
 
 
 
 ## Part 7: GPU concurrency
 
-This is where the earlier ideas pay off most directly.
+This is where the earlier ideas pay off most directly. It builds on [The host/device split](computer-architecture.md#the-hostdevice-split), which introduced kernels (functions that run on the GPU), asynchronous launches and streams; skim that section again if those words feel shaky.
 
 ### The host launches, the device executes, asynchronously
 
@@ -771,7 +788,7 @@ When you write `y = x @ w` with CUDA tensors, Python does **not** wait for the m
 
 That queue is a **CUDA stream**: an ordered sequence of GPU operations. Operations within one stream execute in issue order; operations in different streams may run concurrently. Unless told otherwise, PyTorch issues everything to one default stream per device, which is why ordinary PyTorch code is correct without you thinking about any of this: each kernel waits for the previous one in the stream.
 
-This asynchrony is a *producer/consumer pipeline* (Part 5) between CPU and GPU. In a healthy training loop, the CPU is several kernels ahead of the GPU, so the GPU never waits. If the CPU can't enqueue fast enough - many tiny kernels, each with a launch overhead of a few microseconds of CPU time, plus Python and dispatcher overhead - the GPU runs dry and you are **CPU-bound / launch-bound**. Remedies: bigger batches, fused kernels, `torch.compile`, and CUDA Graphs (record a sequence of launches once, replay them with a single launch).
+This asynchrony is a *producer/consumer pipeline* (Part 5) between CPU and GPU. In a healthy training loop, the CPU is several kernels ahead of the GPU, so the GPU never waits. If the CPU can't enqueue fast enough - many tiny kernels, each with a launch overhead of a few microseconds of CPU time, plus Python and dispatcher overhead - the GPU runs dry and you are **CPU-bound / launch-bound**. Remedies: bigger batches, fused kernels, `torch.compile` (PyTorch's compiler, which among other things fuses many small ops into fewer kernels), and CUDA Graphs (record a sequence of launches once, replay them with a single launch).
 
 ### Synchronization points
 
@@ -784,7 +801,7 @@ The CPU only waits for the GPU when it needs a result *on the host*. Each such p
 | `if t > 0:` / `bool(t)` / `while not converged:` on a CUDA tensor | Python needs a host boolean |
 | `torch.nonzero`, boolean-mask indexing `x[mask]`, `torch.unique` | Output *shape* depends on the data, so the host must learn it |
 | `torch.cuda.synchronize()`, `stream.synchronize()`, `event.synchronize()` | Explicitly |
-| Some memory operations (e.g. when the caching allocator must return memory to the driver) | `cudaFree` is synchronizing |
+| Some memory operations (e.g. when the caching allocator - PyTorch's pool that keeps freed GPU memory for reuse instead of handing it back - must return memory to the driver) | `cudaFree` is synchronizing |
 
 A single `loss.item()` per step for logging costs you the pipeline depth: the CPU can no longer queue the next step's kernels before the current step finishes, so the GPU idles while Python prepares the next step. Log every N steps, or accumulate on the GPU and sync rarely. PyTorch can warn about these: `torch.cuda.set_sync_debug_mode("warn")`.
 
@@ -801,7 +818,7 @@ y = x @ x
 print(f"{(time.perf_counter() - t0) * 1e3:.3f} ms")   # tiny: only the launch was timed
 ```
 
-Divide 2·8192³ ≈ 1.1 TFLOP by that "time" and you'll get a physically impossible FLOP/s figure. The opposite mistake happens too: a later, unrelated `.item()` absorbs all the queued work, and the profiler blames the wrong line. And the first call also includes one-off costs (CUDA context creation, cuBLAS handle creation, kernel selection, memory allocation).
+Divide 2·8192³ ≈ 1.1 TFLOP by that "time" and you'll get a physically impossible FLOP/s figure. The opposite mistake happens too: a later, unrelated `.item()` absorbs all the queued work, and the profiler blames the wrong line. And the first call also includes one-off costs (CUDA context creation; creating a handle for cuBLAS, NVIDIA's matmul library; kernel selection; memory allocation).
 
 The correct pattern: warm up, synchronize, record CUDA events *in the stream*, synchronize again, read the elapsed time between events.
 
@@ -840,7 +857,7 @@ A CUDA **event** is a marker you record into a stream. Besides timing, events ar
 
 ### Overlapping copy and compute: pinned memory and non_blocking
 
-A GPU has separate copy engines (DMA engines) that can move data over PCIe/NVLink while the SMs compute. To use them concurrently, you need two things:
+A GPU has separate copy engines ([DMA](computer-architecture.md#dma) engines) that can move data over PCIe/NVLink while the SMs compute. To use them concurrently, you need two things:
 
 1. **Pinned (page-locked) host memory.** Normal ("pageable") memory can be moved or swapped out by the OS at any time, so the GPU's DMA engine can't safely read from it directly. For a pageable source, the CUDA driver first copies the data into an internal pinned staging buffer on the CPU, then DMAs from there - extra memcpy, and the call effectively behaves synchronously with respect to the host. Pinned memory is guaranteed to stay put, so the DMA engine reads it directly and the copy can be truly asynchronous. This is what `pin_memory=True` in the DataLoader and `tensor.pin_memory()` provide. Pinned memory is a limited resource: pinning too much starves the OS of pageable memory.
 2. **`non_blocking=True`** on the copy, e.g. `x.to("cuda", non_blocking=True)`. This enqueues the copy into the stream and returns immediately. For host-to-device copies from pinned memory, that's safe: later kernels in the same stream wait for the copy automatically.
@@ -904,7 +921,7 @@ Three pieces of concurrency machinery are visible here:
 - `main.wait_stream(self.stream)` inserts a GPU-side dependency: the default stream won't run past this point until the side stream's queued work is done. The CPU doesn't block. Forget it and the model reads a half-copied batch - a GPU race condition, no error message.
 - `record_stream`: PyTorch's caching allocator associates each memory block with the stream it was allocated on, and considers it reusable as soon as it's freed *in that stream's order*. A tensor allocated on the side stream but consumed on the main stream could have its memory handed out again while the main stream is still reading it. `record_stream(main)` tells the allocator to wait for the main stream's pending work too.
 
-Multiple streams also let independent *compute* kernels overlap (if neither fills the GPU), and they're how frameworks overlap communication with compute: DDP and FSDP issue NCCL collectives on separate streams so gradient all-reduce for layer `k` runs while backward computes layer `k-1`. Overlap is bounded by shared resources - SMs, memory bandwidth, copy engines - so measure with the profiler rather than assuming.
+Multiple streams also let independent *compute* kernels overlap (if neither fills the GPU), and they're how frameworks overlap communication with compute: DDP (`DistributedDataParallel`, PyTorch's data-parallel wrapper) and FSDP (Fully Sharded Data Parallel, which additionally splits the weights across ranks; both derived in [Parallelism from first principles](../training/model-parallelism/derivations.md#data-parallelism-ddp)) issue NCCL collectives on separate streams so gradient all-reduce for layer `k` runs while backward computes layer `k-1`. Overlap is bounded by shared resources - SMs, memory bandwidth, copy engines - so measure with the profiler rather than assuming.
 
 
 
@@ -990,7 +1007,7 @@ Distributed training adds machines, but conceptually it adds surprisingly little
 
 ### SPMD: every rank runs the same program
 
-The standard model is **SPMD - Single Program, Multiple Data**. `torchrun --nproc-per-node 8 train.py` on each of 64 nodes starts 512 *independent* processes, each running the same `train.py`. There's no master process orchestrating them. Each process learns its identity from environment variables (`RANK`, `LOCAL_RANK`, `WORLD_SIZE`), picks its GPU and its shard of the data from that, and otherwise executes the same code. They coordinate *only* through collective operations: `all_reduce`, `all_gather`, `reduce_scatter`, `broadcast`, `barrier`.
+The standard model is **SPMD - Single Program, Multiple Data**. `torchrun --nproc-per-node 8 train.py` on each of 64 nodes starts 512 *independent* processes, each running the same `train.py`. There's no master process orchestrating them. Each process learns its identity from environment variables (`RANK`, `LOCAL_RANK`, `WORLD_SIZE`), picks its GPU and its shard of the data from that, and otherwise executes the same code. They coordinate *only* through collective operations: `all_reduce`, `all_gather`, `reduce_scatter`, `broadcast`, `barrier`. Besides all-reduce (Part 2): `all_gather` gives every rank a copy of every rank's tensor, concatenated; `reduce_scatter` sums like all-reduce but leaves each rank with only its own slice of the result; `broadcast` copies one rank's tensor to all others; `barrier` exchanges no data and just waits until every rank has arrived. [Networking](networking.md#collective-communication-an-intuitive-introduction) works through each with small arrays.
 
 A collective is a synchronization point across all participating ranks, matched by **order of issue**: the k-th collective call on rank 0 is matched with the k-th collective call on every other rank in that process group. Nothing checks that they are the same operation on the same shapes (unless you enable debug modes). This leads to the most important rule of distributed programming:
 
@@ -1016,7 +1033,7 @@ dist.barrier()                            # ...and its barrier is mismatched wit
 dist.destroy_process_group()
 ```
 
-Both ranks print the first all_reduce result (`1.0`), rank 0 prints "done", and then both sit there until the 10 s timeout fires and they crash with `Timed out waiting ...` errors - rank 1 inside its `all_reduce`, rank 0 inside its `barrier`. (If `torchrun`'s rendezvous hangs on a laptop, add `--master-addr 127.0.0.1` and, on macOS, `GLOO_SOCKET_IFNAME=lo0`.) Here a mismatched pair of collectives timed out; in other cases two mismatched calls of compatible shape can pair up and silently exchange the wrong tensors, which is worse.
+Both ranks print the first all_reduce result (`1.0`), rank 0 prints "done", and then both sit there until the 10 s timeout fires and they crash with `Timed out waiting ...` errors - rank 1 inside its `all_reduce`, rank 0 inside its `barrier`. (`init_process_group("gloo", ...)` joins the process group using the CPU backend; `torchrun` has already told it, through environment variables, where the other ranks are. If `torchrun`'s rendezvous - the start-up step where the ranks find each other - hangs on a laptop, add `--master-addr 127.0.0.1` and, on macOS, `GLOO_SOCKET_IFNAME=lo0`. `127.0.0.1` is the address that always means "this machine", and `lo0` is macOS's name for the loopback network interface that carries it; both are explained in [Networking](networking.md#interfaces-and-the-routing-table).) Here a mismatched pair of collectives timed out; in other cases two mismatched calls of compatible shape can pair up and silently exchange the wrong tensors, which is worse.
 
 With NCCL on GPUs the same thing happens, with two twists. First, NCCL operations are themselves asynchronous kernels on a CUDA stream, so the Python call returns immediately and the hang shows up later at a sync point - one more reason a stack trace of a hung job can point at an innocent line. Second, the default timeouts are long (minutes - 10 minutes for NCCL in recent PyTorch versions, as far as I know; check `torch.distributed.constants` for your version), so a hung 512-GPU job can burn thousands of GPU-minutes before it errors out. PyTorch's NCCL watchdog thread monitors collectives and aborts the process group on timeout; `TORCH_NCCL_ASYNC_ERROR_HANDLING` controls what happens then; and the flight recorder (`TORCH_NCCL_TRACE_BUFFER_SIZE`) records recent collectives per rank so you can see which rank diverged. `TORCH_DISTRIBUTED_DEBUG=DETAIL` adds checks that collectives match across ranks, at a performance cost. Verify these environment variable names against your PyTorch version; they have been renamed before (the `NCCL_*` prefixed forms were the older spelling).
 

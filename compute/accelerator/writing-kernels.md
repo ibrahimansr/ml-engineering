@@ -3,12 +3,17 @@
 ## Prerequisites
 
 - [GPU execution model](execution-model.md) - SMs, warps, occupancy, coalescing, bank conflicts, tensor cores, GEMM tiling, the FlashAttention derivation, roofline. This chapter does not explain that theory again. It links to the relevant section whenever a step depends on it.
-- [GPU software stack](../gpu-software-stack.md) - driver, CUDA toolkit, `nvcc`, PTX vs SASS, and how PyTorch finds CUDA.
-- [Concurrency](../../foundations/concurrency.md) - races, barriers, atomics. A kernel is a few thousand threads racing on shared memory.
-- [Computer architecture](../../foundations/computer-architecture.md) - caches, SIMD, why bytes cost more than FLOPs.
-- [Transformer architectures](../../models/architectures.md) - what softmax, RMSNorm, attention, cross-entropy and MoE layers compute.
+- [Toolkit](../../foundations/toolkit.md) - the "Reading C" section (pointers, arrays, structs, `#include`, compiling with a C compiler) and the Python-environment section (`venv`, `pip`). Every CUDA file here is C plus a few C++ features, which [Just enough C++ to read CUDA](#just-enough-c-to-read-cuda) below adds.
+- [Linux and the OS](../../foundations/linux-and-os.md) - the shell, [environment variables](../../foundations/linux-and-os.md#environment-variables-and-path) (`CUDA_LAUNCH_BLOCKING=1`, `TORCH_CUDA_ARCH_LIST`), [shared libraries](../../foundations/linux-and-os.md#shared-libraries-and-ld_library_path) (the `.so` a build produces), and [driver vs runtime vs toolkit](../../foundations/linux-and-os.md#cuda-driver-vs-runtime-vs-toolkit-why-cuda-version-mismatch-happens).
+- [Concurrency](../../foundations/concurrency.md) - races, barriers, atomics, and [streams and events](../../foundations/concurrency.md#part-7-gpu-concurrency). A kernel is a few thousand threads racing on shared memory.
+- [Computer architecture](../../foundations/computer-architecture.md) - caches, SIMD, floating point, why bytes cost more than FLOPs.
+- [Transformer architectures](../../models/architectures.md) - what softmax, RMSNorm, attention, cross-entropy, GQA and [MoE](../../models/architectures.md#mixture-of-experts) layers compute.
 
-[The execution model chapter](execution-model.md) explains why a kernel is fast or slow. This chapter is the workshop. You write kernels from an empty file, test them until they are correct, measure them, and use a profiler to pick the next optimization. It covers the two languages you will meet in any lab's kernel repository: CUDA C++ (full control, more code) and Triton (a Python DSL where you program whole tiles and the compiler maps them to threads). By the end you should be able to read and modify a production kernel repository (FlashAttention, Liger-Kernel, vLLM's `csrc/` and `fused_moe`, ThunderKittens, DeepGEMM), add a kernel with tests and benchmarks, and expose it to `torch.compile`.
+Forward links: [GPU software stack](../gpu-software-stack.md) (the next chapter) goes deeper into driver, CUDA toolkit, `nvcc`, PTX vs SASS, and how PyTorch finds CUDA; this chapter defines what it needs of those in place. [Serving engine internals](../../inference/serving-engine-internals.md) is where the inference-side kernels linked from here (paged and split-KV attention, ragged batching, DeepEP) are taught.
+
+[The execution model chapter](execution-model.md) explains why a kernel is fast or slow. This chapter is the workshop. You write kernels from an empty file, test them until they are correct, measure them, and use a profiler to pick the next optimization. It covers the two languages you will meet in any lab's kernel repository: CUDA C++ (full control, more code) and Triton (a Python DSL, or domain-specific language, where you program whole tiles and the compiler maps them to threads). By the end you should be able to read and modify a production kernel repository (FlashAttention, Liger-Kernel, vLLM's `csrc/` and `fused_moe`, ThunderKittens, DeepGEMM), add a kernel with tests and benchmarks, and expose it to `torch.compile`.
+
+Names you will see throughout: *vLLM* and *SGLang* are open-source LLM inference servers (taught in [serving engine internals](../../inference/serving-engine-internals.md)); *Liger-Kernel* is a library of Triton kernels for LLM training; *cuBLAS* is NVIDIA's closed-source matrix-multiply library, which is what `torch.matmul` calls on a GPU and the baseline every GEMM kernel is measured against. A *PR* (pull request) is a proposed change to a shared git repository that maintainers review before merging it, and *CI* (continuous integration) is the machine that automatically runs the repository's tests on every PR ([git basics are in the toolkit chapter](../../foundations/toolkit.md#git-from-zero)).
 
 The plan:
 
@@ -33,7 +38,7 @@ This chapter was written on an Apple Silicon Mac, which has no NVIDIA GPU. Here 
 - **CUDA C++: syntax-checked, never run.** No `nvcc` here. Every `.cu` file was type-checked with `clang++ -x cuda -fsyntax-only --cuda-gpu-arch=sm_90` against hand-written stub headers. That catches typos, type errors and bad template instantiations, but it is not the real CUDA headers and not a compile. The index arithmetic of the SGEMM kernels and the reduction trees was checked by [mirroring them thread by thread in Python](#checking-the-index-arithmetic-without-a-gpu). Running them on a GPU is untested.
 - **PyTorch integration: run on CPU.** `torch.utils.cpp_extension.load_inline` (with a C++ CPU function), `torch.library.custom_op`, `opcheck` and `torch.compile(fullgraph=True)` all work on a Mac and were run.
 
-Setup, all inside `/tmp`:
+Setup, all inside `/tmp` (virtual environments and `pip` are covered in the [toolkit chapter](../../foundations/toolkit.md#running-the-books-code); `ninja` is a small, fast build tool, a cousin of Make, that PyTorch uses to drive the C++ compiler):
 
 ```bash
 python3 -m venv /tmp/mle-venv
@@ -191,6 +196,69 @@ def autotune(configs, key, **_):
 
 ## CUDA C++ from zero
 
+### Just enough C++ to read CUDA
+
+CUDA C++ is C (as read in the [toolkit chapter](../../foundations/toolkit.md#reading-c)'s "Reading C" section) plus some C++ features and a handful of GPU keywords. You do not need to write general C++ to follow this chapter. You need to recognize these features when they appear:
+
+- **`a::b`** is a name `b` inside a *namespace* `a`, which is how C++ groups names, much like a Python module (`torch::Tensor`, `at::cuda::getCurrentCUDAStream`, `wmma::fragment`). `using namespace nvcuda;` makes the names in `nvcuda` usable without the prefix, like `from nvcuda import *`.
+- **Templates.** `template <typename T, int N>` before a function or struct makes it generic over a type `T` and a compile-time integer `N`. You pick the values in angle brackets at the call site, e.g. `sgemm_smem<32><<<grid, block>>>(...)` means "the version of `sgemm_smem` with `TILE = 32`". The compiler generates separate machine code for each choice, so `N` is a constant inside the function, and loops over it can be fully unrolled. That is why tile sizes are template parameters.
+- **`auto x = ...;`** lets the compiler infer the type. **`constexpr`** marks a value computed at compile time. **`static_assert(cond, "msg")`** is a check the compiler runs while compiling; it costs nothing at run time.
+- **Structs with functions.** A C++ `struct` can contain functions. `operator()` makes a struct callable like a function, so `struct Sum { float operator()(float a, float b) const { return a + b; } };` can be passed as an argument and then called as `merge(a, b)`. `Sum{}` creates one; `MD{x, 1.f}` builds a struct from its fields in order (*brace initialization*).
+- **`reinterpret_cast<T*>(p)`** reinterprets the bytes at pointer `p` as type `T`, with no conversion. It is how the code treats 8 adjacent bf16 values as one 16-byte `uint4` to load them in one instruction. `(float)i` is the ordinary C cast, which does convert.
+- **Preprocessor lines** start with `#` and are processed before compilation. `#include "file.cuh"` pastes a file in (`.cuh` is the CUDA header-file convention). `#pragma once` at the top of a header says "include this at most once". `#pragma unroll` asks the compiler to unroll the next loop. `#define NAME(args) ...` defines a *macro*, a text substitution; a trailing `\` continues it on the next line, and the `do { ... } while (0)` wrapper in `CUDA_CHECK` is the standard trick that makes a multi-statement macro behave like one statement. `__FILE__` and `__LINE__` expand to the current file name and line number.
+- **Small C syntax that Python lacks:** `cond ? a : b` is Python's `a if cond else b`; `1.f` and `0.5f` are `float` literals (`1.0` would be a `double`); `++i` adds one; `x >>= 1` halves an integer; `0xffffffffu` is an unsigned hexadecimal constant (all 32 bits set). Bitwise `&`, `|`, `^`, `<<`, `>>` mean the same as in Python.
+- **`asm volatile("...")`** embeds raw assembly (here PTX, the GPU's assembly language) inside C++; the `"=f"(d[0])` and `"r"(a[0])` lists say which C++ variables feed each `%0, %1, ...` placeholder. You will only read this, in the tensor core section.
+- **CUDA's built-in vector types**: `float4` is a struct of four floats with fields `.x .y .z .w` (16 bytes), `uint4` is four 32-bit unsigned integers (also 16 bytes, used as a raw 16-byte chunk), `dim3` and `uint3` are three integers `.x .y .z` (a `dim3` you do not fill in defaults to 1 in the missing axes), and `make_float4(a, b, c, d)` builds a `float4`. `half` and `__nv_bfloat16` are the fp16 and bf16 types; `__bfloat162float` and `__float2bfloat16` convert to and from `float`.
+
+The same features in a plain C++ program you can compile on any machine with a C++ compiler (run on this Mac with Apple clang 17; the GPU keywords are left out):
+
+```cpp
+// cpp_tour.cpp - the C++ features this chapter's CUDA code uses, in plain C++ (no GPU)
+// build: clang++ -std=c++17 -o cpp_tour cpp_tour.cpp && ./cpp_tour     (g++ works too)
+#include <cstdio>
+#include <cstdint>
+
+#define CHECK(cond)                                         \
+  do {                                                      \
+    if (!(cond)) { printf("failed at line %d\n", __LINE__); return 1; } \
+  } while (0)
+
+namespace demo {                                  // demo::sum is the full name
+template <typename T, int N>                      // a type and an int fixed at compile time
+T sum(const T* x) {
+  static_assert(N > 0, "N must be positive");      // checked by the compiler, costs nothing at run time
+  T acc = 0;
+#pragma unroll                                     // a hint; plain C++ compilers may ignore it
+  for (int i = 0; i < N; ++i) acc += x[i];
+  return acc;
+}
+}  // namespace demo
+
+struct Max {                                      // a "function object": a struct you can call
+  float operator()(float a, float b) const { return a > b ? a : b; }
+};
+
+struct Pair { float m, d; };
+
+int main() {
+  float x[4] = {1.f, 2.f, 3.f, 4.f};              // 1.f is a float literal (1.0 would be a double)
+  constexpr int n = 4;                             // compile-time constant
+  auto s = demo::sum<float, n>(x);                 // auto: the compiler infers the type (float)
+  float m = Max{}(3.f, 7.f);                       // build a Max with {}, then call it
+  Pair p{m, s};                                    // brace initialization of a struct
+  uint32_t bits = *reinterpret_cast<uint32_t*>(&p.d);   // view the same 4 bytes as another type
+  printf("sum=%.1f max=%.1f bits=0x%08x\n", p.d, p.m, bits);
+  CHECK(s == 10.f && m == 7.f);
+  return 0;
+}
+```
+
+```
+sum=10.0 max=7.0 bits=0x41200000
+```
+
+`0x41200000` is the IEEE 754 bit pattern of `10.0f` ([floating point](../../foundations/computer-architecture.md#floating-point-ieee-754)): `reinterpret_cast` changed how the bytes are read, not the bytes.
+
 ### The anatomy of a kernel
 
 A *kernel* is a C++ function marked `__global__`. The host (CPU) launches it and the device (GPU) runs it once per thread. The launch syntax `kernel<<<grid, block, smem_bytes, stream>>>(args...)` starts `grid.x * grid.y * grid.z` *blocks* (CTAs) of `block.x * block.y * block.z` threads each. Every thread runs the same function and finds out who it is from four built-in variables:
@@ -202,7 +270,7 @@ A *kernel* is a C++ function marked `__global__`. The host (CPU) launches it and
 | `blockDim` | `dim3` | the block shape (threads per block, per axis) |
 | `gridDim` | `dim3` | the grid shape (blocks per axis) |
 
-The other qualifiers you will see: `__device__` is a function callable only from GPU code (inlined helpers). `__host__ __device__` compiles for both sides. `__shared__` declares a variable in the block's shared memory (smem), visible to all threads of the block. `__restrict__` promises the compiler that pointers do not alias, which lets it use the read-only cache and reorder loads. `__syncthreads()` is a barrier for all threads of one block (there is no barrier across blocks inside a kernel, apart from cooperative launches).
+The other qualifiers you will see: `__device__` is a function callable only from GPU code (inlined helpers). `__host__ __device__` compiles for both sides. `__shared__` declares a variable in the block's shared memory (smem), visible to all threads of the block. `__restrict__` promises the compiler that pointers do not alias, which lets it use the read-only cache and reorder loads. `__syncthreads()` is a barrier for all threads of one block (there is no barrier across blocks inside a kernel, apart from *cooperative launches*, a special launch mode, `cudaLaunchCooperativeKernel`, that guarantees all blocks are resident at once so a grid-wide barrier cannot deadlock). `__forceinline__` forces a `__device__` helper to be inlined, and `__launch_bounds__(N)` on a kernel promises it is never launched with more than `N` threads per block, so the compiler can budget registers for that size ([occupancy](execution-model.md#occupancy-worked)).
 
 Limits worth memorizing (from the [CUDA programming guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html), compute capability 7.0 to 10.x): at most 1024 threads per block; `gridDim.x` up to `2^31 - 1`; `gridDim.y` and `gridDim.z` up to 65535; static `__shared__` up to 48 KB per block (more needs dynamic shared memory plus `cudaFuncSetAttribute`). Blocks should be a multiple of 32 threads, because the hardware runs 32-thread warps ([why](execution-model.md#sms-warps-and-schedulers)).
 
@@ -296,7 +364,7 @@ int main() {
 }
 ```
 
-Build and run (untested here; expected output sketched, numbers depend on the GPU):
+Build and run (untested here; expected output sketched, numbers depend on the GPU). `nvcc` is NVIDIA's compiler driver, used like the C compiler in the toolkit chapter: `-O3` optimizes, `-o vadd` names the output program, `-arch=sm_90` picks the GPU generation to generate machine code for, and `-lineinfo` keeps a map from machine code back to source lines for the profiler (more on all of these in the next section):
 
 ```bash
 nvcc -O3 -arch=sm_90 -lineinfo -o vadd vadd.cu     # sm_90 = H100; sm_80 = A100; sm_100 = B200
@@ -323,7 +391,7 @@ Unified memory (`cudaMallocManaged`) gives one pointer valid on both sides, with
 
 ### Compiling: nvcc, PTX, SASS
 
-`nvcc` splits a `.cu` file into host code (passed to the system C++ compiler) and device code. Device code is compiled to *PTX* (a virtual, forward-compatible ISA) and then by `ptxas` to *SASS* (the real machine code of one architecture). The executable embeds a *fatbinary* with SASS for each `-arch`/`-gencode` target and optionally PTX, which the driver can JIT-compile for newer GPUs. Details are in [the software stack chapter](../gpu-software-stack.md).
+`nvcc` splits a `.cu` file into host code (passed to the system C++ compiler) and device code. Device code is compiled to *PTX* (a virtual, forward-compatible ISA) and then by `ptxas` to *SASS* (the real machine code of one architecture). The executable embeds a *fatbinary* with SASS for each `-arch`/`-gencode` target and optionally PTX, which the driver can JIT-compile for newer GPUs. Details are in [the software stack chapter](../gpu-software-stack.md), which comes next; this section is enough to build the examples here.
 
 ```bash
 # SASS for H100 + PTX so future GPUs can JIT it
@@ -338,11 +406,11 @@ cuobjdump -sass vadd | grep -E "LDG|STG|FADD" | head
 #   LDG.E.CONSTANT R2, desc[UR4][R2.64] ; FADD R9, R4, R7 ; STG.E desc[UR4][R6.64], R9   <- sketch
 ```
 
-`-lineinfo` keeps the source-line mapping (no slowdown) so that Nsight Compute can attribute stalls to source lines. `-G` builds debug device code, which is very slow; use it only with `cuda-gdb`. `--use_fast_math` replaces `expf`/division with approximate versions and flushes denormals. Inside a kernel you can make that choice per call with intrinsics such as `__expf`.
+`-lineinfo` keeps the source-line mapping (no slowdown) so that Nsight Compute can attribute stalls to source lines. `-G` builds debug device code, which is very slow; use it only with `cuda-gdb` (NVIDIA's GPU-aware version of [gdb](../../foundations/linux-and-os.md#gdb-basics)). `--use_fast_math` replaces `expf`/division with approximate versions and flushes denormals ([subnormals](../../foundations/computer-architecture.md#floating-point-ieee-754)) to zero. Inside a kernel you can make that choice per call with intrinsics such as `__expf`.
 
 ### Loading a kernel into PyTorch: `load_inline`
 
-`torch.utils.cpp_extension.load_inline` writes your source strings to a build directory, generates a `build.ninja`, compiles with `nvcc`/`c++`, links against libtorch, and imports the result as a Python module. If you pass `functions=[...]`, it also generates the pybind11 bindings. It caches by a hash of the sources, so the second run is instant. The mechanics are the same for CPU-only C++, so this part runs on a Mac:
+`torch.utils.cpp_extension.load_inline` writes your source strings to a build directory, generates a `build.ninja`, compiles with `nvcc`/`c++`, links against libtorch, and imports the result as a Python module. If you pass `functions=[...]`, it also generates the pybind11 bindings (pybind11 is the C++ library that wraps a C++ function so Python can call it). libtorch is PyTorch's C++ library; `torch::Tensor` is the C++ type behind a Python `torch.Tensor`, and `#include <torch/extension.h>` brings in all of it. It caches by a hash of the sources, so the second run is instant. The mechanics are the same for CPU-only C++, so this part runs on a Mac:
 
 ```python
 # inline_cpu.py - the load_inline mechanics with a C++ CPU function (runs on a Mac; no CUDA needed)
@@ -381,7 +449,7 @@ scale_add OK
 TORCH_CHECK -> shape mismatch
 ```
 
-The first run compiles (the time above, with an empty cache). A second run prints `built + loaded in 0.0s`, because the build directory (`~/.cache/torch_extensions/<py>_<cuda>/<name>` on Linux, `~/Library/Caches/torch_extensions/...` here; override with `TORCH_EXTENSIONS_DIR`) holds the `.so`. `TORCH_CHECK` raises a Python `RuntimeError` with your message. Use it for every precondition your kernel assumes.
+The first run compiles (the time above, with an empty cache). A second run prints `built + loaded in 0.0s`, because the build directory (`~/.cache/torch_extensions/<py>_<cuda>/<name>` on Linux, `~/Library/Caches/torch_extensions/...` here; override with `TORCH_EXTENSIONS_DIR`) holds the `.so` (the compiled [shared library](../../foundations/linux-and-os.md#shared-libraries-and-ld_library_path) that Python imports). `TORCH_CHECK` raises a Python `RuntimeError` with your message. Use it for every precondition your kernel assumes.
 
 The CUDA version (untested). Three details separate a toy from a correct extension: launch on PyTorch's *current stream*, not the default stream, otherwise your kernel is unordered with respect to the surrounding PyTorch ops; set the *device guard* so a tensor on `cuda:1` launches on GPU 1; and check the launch:
 
@@ -426,7 +494,7 @@ x, y = torch.randn(10_000_001, device="cuda"), torch.randn(10_000_001, device="c
 torch.testing.assert_close(ext.vadd(x, y), x + y)
 ```
 
-`TORCH_CUDA_ARCH_LIST="9.0"` (environment variable) selects the architectures to build for; by default it builds for the GPUs it sees. For a real repository you would switch to `torch.utils.cpp_extension.CUDAExtension` in `setup.py`, or to a CMake build, and register the function as a proper operator ([below](#integrating-kernels-as-pytorch-custom-ops)) instead of a pybind function.
+`TORCH_CUDA_ARCH_LIST="9.0"` (environment variable) selects the architectures to build for; by default it builds for the GPUs it sees. For a real repository you would switch to `torch.utils.cpp_extension.CUDAExtension` in `setup.py` (the classic file that tells `pip install` how to build a package with compiled parts), or to a CMake build (CMake is a widely used generator of C/C++ build scripts), and register the function as a proper operator ([below](#integrating-kernels-as-pytorch-custom-ops)) instead of a pybind function.
 
 ### Elementwise fusion and vectorized loads
 
@@ -482,7 +550,7 @@ fused: 6 B/elem -> 2.33x fewer bytes, 3 launches -> 1
 
 ## Reductions
 
-A *reduction* combines many values into one (sum, max, mean, logsumexp). Elementwise kernels are embarrassingly parallel; reductions are not, because every input contributes to one output. They appear in every norm, softmax, loss, optimizer step and gradient-norm clip. The goal is the same as for elementwise kernels: a reduction is memory-bound, so a good one reads its input once at close to HBM bandwidth.
+A *reduction* combines many values into one (sum, max, mean, logsumexp). Elementwise kernels are embarrassingly parallel (each output depends only on its own inputs, so threads never need to talk); reductions are not, because every input contributes to one output. They appear in every norm, softmax, loss, optimizer step and gradient-norm clip. The goal is the same as for elementwise kernels: a reduction is memory-bound, so a good one reads its input once at close to HBM bandwidth.
 
 The canonical worklog is Mark Harris, "Optimizing Parallel Reduction in CUDA" (NVIDIA, 2007; [slides](https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf)). It runs on a G80 (peak 86.4 GB/s) with 2^22 integers. Its numbers, as published:
 
@@ -500,7 +568,7 @@ The ideas still hold. Two things changed: kernel 5's "warp-synchronous" trick, w
 
 ### v0 to v3
 
-All four versions are in one file. The shared `block_allreduce` helper is written once and reused by every later kernel in this chapter:
+All four versions are in one file. The shared `block_allreduce` helper is written once and reused by every later kernel in this chapter. "All-reduce" has the same meaning as the [collective](../../foundations/distributed-systems.md#collectives-the-workhorse-of-distributed-training) of that name, scaled down: every thread of the block (instead of every GPU) ends up holding the combined result:
 
 ```cuda
 // block_reduce.cuh - warp and block all-reduce for any struct of floats and any associative merge
@@ -709,7 +777,7 @@ welford merge: mean 100.0402787114 var 8.6659856771 | numpy: 100.0402787114 8.66
 online softmax merge: logsumexp 32.735291829949 | direct 32.735291829949
 ```
 
-Three lessons from the output. The block and multi-block trees agree with an fp64 reference to fp32 rounding. Summing the same 1M floats in different orders gives **different fp32 results**, because floating-point addition is not associative. That is why atomics (order depends on timing) and split-K style kernels whose split depends on the shape are non-deterministic, while a fixed two-pass tree is reproducible ([batch invariance](../../inference/serving-engine-internals.md#determinism-and-batch-invariance) for inference is the same issue). The Welford and online-softmax *merge* functions are associative, which is exactly what makes them usable inside a tree reduction: any split of the input, merged in any tree order, gives the same answer up to rounding.
+Three lessons from the output. The block and multi-block trees agree with an fp64 reference to fp32 rounding. Summing the same 1M floats in different orders gives **different fp32 results**, because floating-point addition is not associative. That is why atomics (order depends on timing) and split-K style kernels whose split depends on the shape are non-deterministic, while a fixed two-pass tree is reproducible ([batch invariance](../../inference/serving-engine-internals.md#determinism-and-batch-invariance) in a serving engine, a later chapter, is the same issue: the same request should give the same bits whatever else is in its batch). The Welford and online-softmax *merge* functions are associative, which is exactly what makes them usable inside a tree reduction: any split of the input, merged in any tree order, gives the same answer up to rounding.
 
 
 ## Softmax, RMSNorm and LayerNorm in CUDA
@@ -1811,14 +1879,14 @@ if __name__ == "__main__":
 flash_fwd: 3 shapes x causal/non-causal x fp16/bf16 OK (output and LSE)
 ```
 
-What this compact version leaves out, in the order you would add it: `num_stages` pipelining and autotuned `BLOCK_M/BLOCK_N` per head dim; splitting the causal loop into the full off-diagonal blocks (no mask needed) and the diagonal block (masked), which removes the `tl.where` from most iterations; GQA (index K/V by `head // group`); variable-length sequences (`cu_seqlens`, see [ragged batching](../../inference/serving-engine-internals.md#ragged-batching)); and the backward pass (recompute `P` from `Q, K` and the saved LSE). The Triton repository's tutorial 06 (fused attention) has forward + backward. The serving-side variants (split-KV, paged KV) are in [inference attention kernels](../../inference/serving-engine-internals.md#inference-attention-kernels).
+What this compact version leaves out, in the order you would add it: `num_stages` pipelining and autotuned `BLOCK_M/BLOCK_N` per head dim; splitting the causal loop into the full off-diagonal blocks (no mask needed) and the diagonal block (masked), which removes the `tl.where` from most iterations; GQA (index K/V by `head // group`); variable-length sequences packed into one tensor without padding (`cu_seqlens`, the cumulative sequence lengths that mark where each sequence starts; see [ragged batching](../../inference/serving-engine-internals.md#ragged-batching), a later chapter); and the backward pass (recompute `P` from `Q, K` and the saved LSE). The Triton repository's tutorial 06 (fused attention) has forward + backward. The serving-side variants (split-KV, paged KV) are in [inference attention kernels](../../inference/serving-engine-internals.md#inference-attention-kernels), a later chapter.
 
 ### Debugging and inspecting Triton
 
-These commands need Linux and real Triton (untested here; flags and environment variables as of Triton 3.x, check your version):
+These commands need Linux and real Triton (untested here; flags and environment variables as of Triton 3.x, check your version). `VAR=1 python ...` sets an [environment variable](../../foundations/linux-and-os.md#environment-variables-and-path) for that one command. MLIR is the compiler framework Triton is built on; TTIR and TTGIR are Triton's own intermediate representations, the stages between your Python and PTX:
 
 ```bash
-TRITON_INTERPRET=1 python flash_fwd.py      # CPU interpreter: pdb works inside kernels, prints show tiles
+TRITON_INTERPRET=1 python flash_fwd.py      # CPU interpreter: pdb (Python's debugger) works inside kernels, prints show tiles
 TRITON_DEBUG=1 python flash_fwd.py          # enables tl.device_assert checks
 MLIR_ENABLE_DUMP=1 python flash_fwd.py      # dump the MLIR passes (TTIR -> TTGIR -> LLVM)
 ls ~/.triton/cache/*/                        # per-kernel .ttir .ttgir .llir .ptx .cubin, and a .json with
@@ -1914,7 +1982,7 @@ rows per expert: [295, 52, 38, 57, 43, 54, 61, 0]
 grouped GEMM matches per-row reference
 ```
 
-Expert 0 received 295 of 600 routed rows and expert 7 received none. The schedule gives expert 0 five 64-row tiles and expert 7 zero, all in one launch. Production versions differ in where the schedule is built. vLLM's `fused_moe` computes the sorted, block-padded token ids on the GPU (`moe_align_block_size`), so the whole thing is CUDA-graph capturable with no host sync. MegaBlocks (Gale et al., arXiv 2211.15841) frames the same computation as block-sparse matmul. DeepGEMM (DeepSeek, 2025) provides FP8 grouped GEMMs in two layouts: "contiguous" (sorted rows, as here, for training and prefill) and "masked" (a fixed-capacity slot per expert, for CUDA-graph decode). The scatter back to token order, weighted by router probabilities, is usually fused into the next kernel or done with an `index_add_`. Expert parallelism across GPUs adds an all-to-all ([DeepEP](../../inference/serving-engine-internals.md#all-to-all-kernels-deepep)).
+Expert 0 received 295 of 600 routed rows and expert 7 received none. The schedule gives expert 0 five 64-row tiles and expert 7 zero, all in one launch. Production versions differ in where the schedule is built. vLLM's `fused_moe` computes the sorted, block-padded token ids on the GPU (`moe_align_block_size`), so the whole thing is CUDA-graph capturable with no host sync. MegaBlocks (Gale et al., arXiv 2211.15841) frames the same computation as block-sparse matmul. DeepGEMM (DeepSeek, 2025) provides FP8 grouped GEMMs in two layouts: "contiguous" (sorted rows, as here, for training and prefill) and "masked" (a fixed-capacity slot per expert, for CUDA-graph decode). Prefill and decode are the two phases of generation ([the KV cache](../../models/architectures.md#the-kv-cache)); [CUDA graphs](execution-model.md#cuda-graphs) need fixed shapes, hence the fixed-capacity slots. The scatter back to token order, weighted by router probabilities, is usually fused into the next kernel or done with an `index_add_`. *Expert parallelism* places different experts on different GPUs, so each token's row has to be sent to the GPU holding its expert and the result sent back: an [all-to-all](../../foundations/distributed-systems.md#collectives-the-workhorse-of-distributed-training) collective. Kernels for that exchange are covered later ([DeepEP](../../inference/serving-engine-internals.md#all-to-all-kernels-deepep); the collective itself in [collectives internals](../../network/collectives-internals.md)).
 
 
 ## Testing kernels
@@ -2011,7 +2079,7 @@ compute-sanitizer --tool initcheck python test_kernels.py   # reads of uninitial
 # ========= Invalid __global__ read of size 4 bytes ... by thread (24,0,0) in block (3,0,0)   <- sketch
 ```
 
-Run the shape sweep under memcheck once per kernel change. Many out-of-bounds reads land inside a valid allocation, never crash, and produce plausible numbers, so the sanitizer is the only thing that sees them. For kernel PRs, pytest's `@pytest.mark.parametrize` over `(shape, dtype, layout)` is the standard way to express the sweep. Keep the sweep small enough to run in CI on one GPU in minutes.
+Run the shape sweep under memcheck once per kernel change. Many out-of-bounds reads land inside a valid allocation, never crash, and produce plausible numbers, so the sanitizer is the only thing that sees them. For kernel PRs, pytest's `@pytest.mark.parametrize` over `(shape, dtype, layout)` is the standard way to express the sweep (pytest is the usual Python test runner: it finds functions named `test_*` and runs them, and `parametrize` runs one test function once per listed argument combination). Keep the sweep small enough to run in CI on one GPU in minutes.
 
 
 ## Benchmarking kernels
@@ -2138,7 +2206,7 @@ Habits that save days. Look at the **Source** page with SASS next to source: the
 
 ## Integrating kernels as PyTorch custom ops
 
-A raw Python function that launches a kernel works in eager mode. But `torch.compile` cannot trace through a pybind call or a Triton launch it does not understand, `torch.export` cannot serialize it, and autograd knows nothing about it. `torch.library` (PyTorch 2.4+; APIs as of 2.15) turns it into a real operator with a schema:
+A raw Python function that launches a kernel works in eager mode. But `torch.compile` cannot trace through a pybind call or a Triton launch it does not understand, `torch.export` (which saves a traced model graph for deployment without Python) cannot serialize it, and autograd knows nothing about it. `torch.library` (PyTorch 2.4+; APIs as of 2.15) turns it into a real operator with a schema:
 
 - `@torch.library.custom_op("ns::name", mutates_args=())` defines the op from type annotations. The op is **opaque** to `torch.compile`: it appears as one node, and Dynamo does not graph-break on it.
 - `register_fake` is the shape/dtype function used during tracing (on "fake" tensors that carry no data). If it is missing, `torch.compile` fails.
@@ -2200,7 +2268,7 @@ torch.compile(fullgraph=True) + backward match eager: 0.925124
 mlek::softmax(Tensor x) -> Tensor
 ```
 
-`mutates_args` must list every input the kernel writes to. The fused cross-entropy, which overwrites its logits, needs `mutates_args=("logits",)`. Getting it wrong breaks `torch.compile`'s functionalization silently.
+`mutates_args` must list every input the kernel writes to. The fused cross-entropy, which overwrites its logits, needs `mutates_args=("logits",)`. Getting it wrong breaks `torch.compile`'s functionalization (the pass that rewrites in-place ops into pure ones so the graph can be reordered; see [AOTAutograd](execution-model.md#aotautograd-joint-graph)) silently.
 
 For Triton kernels there is a better option: **`torch.library.triton_op` + `wrap_triton`**. Unlike `custom_op`, the op's body is visible to `torch.compile`, which can trace into the Triton launch, fuse around it and CUDA-graph it. You do not need a separate fake implementation if the body only allocates outputs with PyTorch ops. Untested (needs real Triton):
 
@@ -2221,7 +2289,7 @@ def softmax_t(x: torch.Tensor) -> torch.Tensor:
 # autograd: softmax_t.register_autograd(backward, setup_context=...) exactly as for custom_op
 ```
 
-For CUDA C++ in a package, register the operator in C++ so it exists without Python bindings, and add the fake in Python (untested):
+For CUDA C++ in a package, register the operator in C++ so it exists without Python bindings, and add the fake in Python (untested). `TORCH_LIBRARY` and `TORCH_LIBRARY_IMPL` are macros from libtorch: the first declares operator `mlek::vadd` and its schema, the second says "on CUDA tensors, run the C++ function `vadd`" (`&vadd` is a pointer to that function):
 
 ```cpp
 // in the extension's .cu file
@@ -2237,7 +2305,7 @@ def _(a, b):
 y = torch.ops.mlek.vadd(x, x)                       # now traceable by torch.compile
 ```
 
-Two more things for production. If the kernel uses no Python-specific features, build against the stable ABI subset so one wheel works across PyTorch versions; check the current state in the PyTorch docs, since this is moving (as of 2025-2026). And CUDA-graph-capture your op once in a test: anything that syncs or allocates per call (`.item()`, host-side counts like `n_valid` above) breaks capture.
+Two more things for production. If the kernel uses no Python-specific features, build against the stable ABI subset so one wheel works across PyTorch versions (the ABI, application binary interface, is the binary-level contract between compiled code and the library it calls; a wheel is the prebuilt package file `pip` installs); check the current state in the PyTorch docs, since this is moving (as of 2025-2026). And CUDA-graph-capture your op once in a test: anything that syncs or allocates per call (`.item()`, host-side counts like `n_valid` above) breaks capture.
 
 
 ## CUTLASS, CuTe, ThunderKittens and other kernel DSLs
@@ -2252,7 +2320,7 @@ You will meet these in other people's repositories. Status as of late 2025 to 20
 | [Triton](https://github.com/triton-lang/triton) | tile-level Python DSL, this chapter | most new ML kernels: Liger-Kernel, Inductor output, vLLM's `fused_moe`, Unsloth |
 | Gluon (in the Triton repo, 2025) | a lower-level Triton dialect that exposes layouts, shared memory and warp specialization explicitly | when Triton's compiler will not produce the Hopper/Blackwell schedule you need |
 | [ThunderKittens](https://github.com/HazyResearch/ThunderKittens) (Spector et al., arXiv 2410.20399) | small C++ embedded library built around 16x16 register and shared tiles, warp/warpgroup operations and a producer/consumer template | attention variants, linear attention, state-space kernels; the paper reports matching cuBLAS and FA3 on GEMM and attention inference |
-| TileLang (tile-ai; arXiv 2504.17577, id unverified) | Python tile DSL on TVM, separating dataflow from scheduling annotations | DeepSeek-style MLA and FP8 kernels; AMD and NVIDIA backends |
+| TileLang (tile-ai; arXiv 2504.17577, id unverified) | Python tile DSL on TVM (Apache TVM, an open-source ML compiler), separating dataflow from scheduling annotations | DeepSeek-style MLA and FP8 kernels; AMD and NVIDIA backends |
 | Helion (PyTorch, 2025) | higher-level Python DSL that compiles to Triton with heavy autotuning | PyTorch-native authoring where Triton tiling decisions are searched automatically |
 | NVIDIA cuTile / CUDA Tile IR (CUDA 13.x, late 2025) | NVIDIA's tile-based programming model and IR, with a Python front end | early; worth watching as NVIDIA's own answer to Triton |
 | [Pallas](https://docs.jax.dev/en/latest/pallas/index.html) (JAX) | JAX's kernel language for TPU and GPU (Triton or Mosaic GPU backends) | kernels in JAX codebases |

@@ -10,7 +10,10 @@ This chapter is the hands-on companion to two theory chapters. It does not repea
 - [Concurrency](../foundations/concurrency.md) - especially [asyncio](../foundations/concurrency.md#asyncio) and [producer/consumer and backpressure](../foundations/concurrency.md#producerconsumer-and-backpressure). Every client and server in this chapter is an asyncio program.
 - [Networking](../foundations/networking.md) - TCP, [HTTP/1.1](../foundations/networking.md#http11-from-raw-sockets), and why one long-lived connection per stream matters.
 - [Distributed Systems](../foundations/distributed-systems.md) - [tail latency](../foundations/distributed-systems.md#stragglers-and-tail-latency), [timeouts](../foundations/distributed-systems.md#heartbeats-timeouts-and-slow-vs-dead) and [consistent hashing](../foundations/distributed-systems.md#consistent-hashing-sharding-that-survives-membership-changes), all three of which the gateway uses.
-- Helpful for the deployment sections: [Containers and Virtualization](../foundations/containers-and-virtualization.md) and [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md).
+- [The Working Toolkit](../foundations/toolkit.md) - [running the book's code](../foundations/toolkit.md#running-the-books-code) (venvs, `uv`), [pipes, redirection and background jobs with `&`](../foundations/toolkit.md#exit-codes-pipes-redirection-variables-a-first-look), JSON and [YAML](../foundations/toolkit.md#yaml). Every command block below assumes the terminal basics from there.
+- [Linux and the OS](../foundations/linux-and-os.md) - [shell scripting essentials](../foundations/linux-and-os.md#scripting-essentials) (`for` loops, `$((...))` arithmetic) and `pkill`, used in the experiment loops, and `/dev/shm`.
+- Helpful for the deployment sections: [Containers and Virtualization](../foundations/containers-and-virtualization.md) ([the run flags that matter for ML](../foundations/containers-and-virtualization.md#the-run-flags-that-matter-for-ml)), [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md) (it already builds [a vLLM Deployment](../orchestration/kubernetes-from-zero.md#a-vllm-deployment)), and the [Observability section of Cluster Internals](../orchestration/internals.md#observability) for Prometheus and PromQL.
+- Forward links: [Control Planes](../platform/control-planes.md) (how gateway-style services are built and operated) and [RL Infrastructure](../platform/rl-infrastructure.md) (this stack used as a rollout generator).
 
 The theory chapters tell you what a serving engine should be able to do. This one is about running one: which flags to pass, how to put load on it, how to read the numbers that come back, how to put a router in front of several copies, and what breaks.
 
@@ -26,6 +29,8 @@ python3 -m venv /tmp/serving-lab/venv
 /tmp/serving-lab/venv/bin/pip install fastapi uvicorn httpx
 cd /tmp/serving-lab   # put the .py files from this chapter here
 ```
+
+The three packages are the only libraries this chapter adds to plain Python. **FastAPI** is a web framework: you write an `async def` function per URL, and it turns HTTP requests into calls to that function. **uvicorn** is the server process that owns the listening socket and runs FastAPI's functions on an [asyncio](../foundations/concurrency.md#asyncio) event loop. **httpx** is an HTTP *client* library, like the popular `requests` but with an asyncio version (`httpx.AsyncClient`), so one Python process can hold hundreds of open streams at once. Each is explained at its first real use below. Commands written `./venv/bin/python script.py` run from `/tmp/serving-lab`; each script reads its options with `argparse`, so `--port 8001` and the like are just that script's own flags.
 
 
 
@@ -100,7 +105,7 @@ docker run --gpus all --ipc=host -p 8000:8000 \
   vllm/vllm-openai:latest --model Qwen/Qwen3-8B
 ```
 
-`--ipc=host` is there because tensor-parallel workers exchange data through `/dev/shm` (shared memory), and Docker's default 64 MB shared-memory size is too small for that. Why this matters is covered in [Containers and Virtualization](../foundations/containers-and-virtualization.md).
+`--gpus all` exposes the host's GPUs, `-p 8000:8000` publishes the container's port 8000 on the host, `-v` mounts the host's Hugging Face download cache so weights are fetched once, and `-e HF_TOKEN=...` passes your Hugging Face access token (needed to download "gated" models such as Llama, whose licence you must accept on the website first). `--ipc=host` is there because tensor-parallel workers exchange data through `/dev/shm` (shared memory), and Docker's default 64 MB shared-memory size is too small for that. These flags are covered in [the run flags that matter for ML](../foundations/containers-and-virtualization.md#the-run-flags-that-matter-for-ml).
 
 ### The flags that matter
 
@@ -119,7 +124,7 @@ Each of these flags changes either *what fits in memory* or *how the scheduler f
 | `--enable-chunked-prefill` | Splits long prompts across steps | Always on in V1 |
 | `--quantization`, `--kv-cache-dtype` | Weight and KV formats ([arithmetic](arithmetic.md#quantization-internals)) | See below |
 | `--speculative-config` | Speculative decoding ([internals](serving-engine-internals.md#speculative-decoding)) | See below |
-| `--served-model-name`, `--api-key` | The name clients pass as `model`, and a bearer-token check | Always set both in anything shared |
+| `--served-model-name`, `--api-key` | The name clients pass as `model`, and a bearer-token check (every request must carry the HTTP header `Authorization: Bearer <key>`, which the `openai` SDK sends from its `api_key` argument) | Always set both in anything shared |
 
 `--max-num-seqs` and `--max-num-batched-tokens` have defaults that depend on the vLLM version and the GPU (older releases used 256 sequences; V1 picks larger values on large GPUs). Read the effective values from the startup log rather than assuming them.
 
@@ -141,7 +146,7 @@ vllm serve meta-llama/Llama-3.3-70B-Instruct \
 
 There are two ways to get quantized weights:
 
-1. **Pre-quantized checkpoints** (AWQ, GPTQ, FP8 or NVFP4 in `compressed-tensors` or ModelOpt format). vLLM reads `quantization_config` from the model's `config.json` and picks the kernel automatically. You pass no flag.
+1. **Pre-quantized checkpoints** (AWQ, GPTQ, FP8 or NVFP4 in `compressed-tensors` or ModelOpt format; these are the on-disk checkpoint layouts written by the LLM Compressor and NVIDIA TensorRT Model Optimizer quantization tools). vLLM reads `quantization_config` from the model's `config.json` and picks the kernel automatically. You pass no flag.
 2. **Online FP8**: `--quantization fp8` on a bf16 checkpoint quantizes the weights to FP8 at load time with per-tensor scales. This is convenient for experiments. For production, a checkpoint calibrated offline is the safer choice.
 
 ```bash
@@ -160,7 +165,8 @@ Which format pays off on which GPU (FP8 needs Hopper or newer; INT4 weight-only 
 vllm serve meta-llama/Llama-3.1-8B-Instruct \
   --speculative-config '{"method": "eagle3", "model": "yuhuili/EAGLE3-LLaMA3.1-Instruct-8B", "num_speculative_tokens": 3}'
 
-# n-gram / prompt-lookup speculation: no draft model, good for code edits and RAG that copy from the prompt
+# n-gram / prompt-lookup speculation: no draft model, good for code edits and RAG
+# (retrieval-augmented generation: retrieved documents pasted into the prompt) that copy from the prompt
 vllm serve meta-llama/Llama-3.1-8B-Instruct \
   --speculative-config '{"method": "ngram", "num_speculative_tokens": 4, "prompt_lookup_max": 4}'
 ```
@@ -233,11 +239,13 @@ How to choose between the two engines: both are fast, and either one's lead on a
 
 ## The OpenAI-compatible API and streaming
 
-Every engine in this chapter implements a subset of the OpenAI REST API. Three endpoints matter:
+Every engine in this chapter implements a subset of the OpenAI REST API. (REST, introduced in [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md), just means resources live at URLs and you act on them with the HTTP verbs; here every call is a `POST` whose body is a JSON object, sent with the header `Content-Type: application/json`, and the reply is JSON too. HTTP itself is in [Networking](../foundations/networking.md#http11-from-raw-sockets).) Three endpoints matter:
 
 - `POST /v1/chat/completions` - takes `messages`. The server applies the model's chat template (the Jinja template from `tokenizer_config.json` that turns messages into one prompt string).
 - `POST /v1/completions` - takes a raw `prompt` string and applies no template. Use it for base models and for benchmarks where you want exact control over the prompt.
 - `GET /v1/models`, plus the non-OpenAI `GET /health` and `GET /metrics`.
+
+The request body for `/v1/chat/completions` has a handful of fields you will see everywhere: `model` (the served model name), `messages` (a list of `{"role": ..., "content": ...}` objects, where `role` is `"system"` for standing instructions, `"user"` for the human's turns and `"assistant"` for the model's earlier replies), `max_tokens` (cap on generated tokens), optional sampling knobs such as `temperature`, and `stream`. A non-streaming reply is one JSON object whose `choices[0].message.content` holds the text and whose `usage` field counts prompt and completion tokens; the smoke test in the next section prints one. HTTP status codes you will meet: 200 OK, 400 Bad Request (your request is invalid, for example too long), 429 Too Many Requests and 503 Service Unavailable (the server is overloaded or down; try again later).
 
 A streaming request with `"stream": true` returns `text/event-stream`. This is the real wire format, captured from the mock server built in the next section (ran on Mac):
 
@@ -246,6 +254,8 @@ curl -sN localhost:8001/v1/chat/completions -H 'Content-Type: application/json' 
   "model": "mock-llm", "messages": [{"role": "user", "content": "hello there how are you"}],
   "max_tokens": 3, "stream": true, "stream_options": {"include_usage": true}}'
 ```
+
+[`curl`](../foundations/networking.md#curl) flags used throughout this chapter: `-s` silences the progress bar, `-N` turns off curl's output buffering so each event prints the moment it arrives, `-H` adds a request header, and `-d` sends the given string as the request body (which also makes the request a `POST`).
 
 ```
 data: {"id": "chatcmpl-1451727143f9", "object": "chat.completion.chunk", "created": 1793913301, "model": "mock-llm", "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]}
@@ -271,7 +281,7 @@ Things in that stream that trip people up:
 - `[DONE]` is a sentinel string, not JSON.
 - `finish_reason` is `"stop"` (EOS or stop string), `"length"` (`max_tokens` reached) or `"abort"`/`null` on cancellation, depending on the engine. For benchmarks you usually want a fixed output length. vLLM accepts the non-standard `ignore_eos: true` for this, and `vllm bench serve` sets it.
 
-The official `openai` Python SDK works against any of these servers, because it only needs a `base_url`:
+The official `openai` Python SDK (`pip install openai`) works against any of these servers, because it only needs a `base_url`:
 
 ```python
 # untested against a real engine here; same protocol as the mock
@@ -305,6 +315,18 @@ You need something to point a load generator at that behaves *qualitatively* lik
 - **Streaming in the OpenAI SSE format**, `--max-model-len` validation returning HTTP 400, a Prometheus-text `/metrics`, and **cancellation**: when the client disconnects, the sequence is removed from the batch.
 
 "Tokens" are whitespace-separated words, and the output is `tok1 tok2 ...`.
+
+Just enough FastAPI to read the server code:
+
+- `app = FastAPI(...)` creates the application. A decorator such as `@app.get("/health")` or `@app.post("/v1/chat/completions")` registers the function below it as the handler for that HTTP method and path.
+- A handler is an `async def`, so it runs on the event loop and must `await` rather than block. If it returns a `dict`, FastAPI sends it as a JSON body with status 200. `JSONResponse(status_code=..., content=...)` and `PlainTextResponse(...)` set the status code and body type explicitly.
+- `req: Request` gives the raw request; `await req.json()` parses its body.
+- `StreamingResponse(gen(), media_type="text/event-stream")` sends the body piece by piece. `gen()` is an **async generator**: an `async def` that contains `yield`. Each `yield` produces the next piece of the body, and the server iterates it with `async for`, sending each piece as soon as it is yielded. This is how the SSE stream is produced.
+- FastAPI is built on **Starlette**, a lower-level web toolkit; the disconnect handling described after the code is Starlette's.
+- `lifespan` is a hook for code that runs once when the server starts (before `yield`) and once when it stops (after). It is written with `@asynccontextmanager` from the standard library, which turns a one-`yield` async generator into an `async with`-style context manager. Here it starts the engine loop as a background task with `asyncio.create_task`.
+- `uvicorn.run(app, host=..., port=...)` at the bottom starts the server.
+
+The engine side uses two asyncio primitives beyond those in [Concurrency](../foundations/concurrency.md#asyncio): `asyncio.Queue`, the coroutine version of a [thread-safe queue](../foundations/concurrency.md#queues) (`await q.get()` pauses until an item arrives), and `asyncio.Event`, a flag that coroutines can `await ev.wait()` on until another sets it with `ev.set()`.
 
 ```python
 # mock_server.py - a fake OpenAI-compatible LLM server with a toy continuous-batching engine.
@@ -560,6 +582,8 @@ A production load generator needs both. Use closed loop to find the saturation t
 
 ### The code
 
+Just enough httpx to read the client: `httpx.AsyncClient(base_url=..., limits=..., timeout=...)` is one reusable client that keeps a pool of open TCP connections (`httpx.Limits` caps the pool size) and is closed by its `async with` block. `await client.post(url, json=body)` sends a request and waits for the whole response. `async with client.stream("POST", url, json=body) as r:` instead returns as soon as the status line and headers arrive; `r.status_code` is the status, and `async for line in r.aiter_lines():` yields the body line by line as it streams in, which is what lets us timestamp each SSE event. Network failures raise subclasses of `httpx.HTTPError`. The Poisson gaps come from `rng.expovariate(rate)`, which draws an exponentially distributed number with mean `1/rate`.
+
 ```python
 # loadgen.py - streaming load generator for any OpenAI-compatible /v1/chat/completions endpoint.
 # Closed loop (--concurrency N: N users, each sends the next request when the last finishes)
@@ -690,6 +714,8 @@ All the runs in this section were made on the Mac against the mock (default flag
 for c in 1 8 32 64; do ./venv/bin/python loadgen.py -c $c -n $((c*8>64?c*8:64)); echo; done
 ```
 
+(The trailing `&` runs the server in the background. `$((c*8>64?c*8:64))` is shell arithmetic with a C-style `condition ? a : b`, i.e. `max(8c, 64)` requests per point. Later loops stop the server with `pkill -f mock_server.py`, which kills processes whose command line matches. Both are covered in [Linux and the OS](../foundations/linux-and-os.md#scripting-essentials).)
+
 ```
 concurrency=1  ok=64 err=0  wall=78.1s  req/s=0.82  out_tok/s=105
 metric        p50      p90      p99      max   (ms)
@@ -722,7 +748,7 @@ How to read it, line by line:
 2. **From c=1 to c=8, throughput rises 6.7x (105 to 708 tok/s) while ITL rises 18% (9.3 to 11.0 ms).** This is the memory-bound regime: the weight read (`t0`) is shared across the batch, so throughput is almost free here.
 3. **At c=32 the batch fills `max-num-seqs`.** The model predicts a 16 ms step and a ceiling of `32 / 16 ms = 2000 tok/s`. We measured 17.1 ms and 1719 tok/s. The missing ~14% goes to steps that also carry prefill chunks, plus loop overhead.
 4. **At c=64 throughput is flat (1743 tok/s) and TTFT jumps 47x, from a p50 of 50.6 ms to 2397 ms.** Thirty-two requests sit in `waiting` at all times. Each waits for a full running request to finish (about `128 x 17 ms = 2.2 s`), and TTFT p50 is almost exactly that. *A TTFT that equals one E2E of another request is the signature of admission queueing*, and engine metrics show it as `num_requests_waiting > 0` and a large `request_queue_time_seconds`. More concurrency past the knee buys no throughput at all; it only adds latency.
-5. **The p99/max columns are noisy.** One spike of 124 ms at c=1 is one event in 8,000 gaps, probably a GC pause or a macOS scheduling hiccup. Before you build a theory on a max value, rerun.
+5. **The p99/max columns are noisy.** One spike of 124 ms at c=1 is one event in 8,000 gaps, probably a garbage-collection (GC) pause or a macOS scheduling hiccup. Before you build a theory on a max value, rerun.
 
 ### Open loop: what latency looks like at a given QPS
 
@@ -835,7 +861,7 @@ async def call(client, body):
         return await client.post("/v1/chat/completions", json=body, timeout=30)
 ```
 
-When the server says "slow down" (HTTP 429 Too Many Requests, or 503 Service Unavailable), back off **with jitter**. Without jitter, every client retries at the same instant and the retries arrive as a synchronized wave, a "thundering herd". Capped exponential backoff with full jitter, run against the gateway from the next section with its only upstream dead (ran on Mac):
+When the server says "slow down" (HTTP 429 Too Many Requests, or 503 Service Unavailable), back off **with jitter** (a random component in the wait; the mechanics are worked through in [Retries with exponential backoff and jitter](../foundations/distributed-systems.md#retries-with-exponential-backoff-and-jitter)). Without jitter, every client retries at the same instant and the retries arrive as a synchronized wave, a "thundering herd". Capped exponential backoff with full jitter, run against the gateway from the next section with its only upstream dead (ran on Mac):
 
 ```python
 # retry.py - client-side retry with capped exponential backoff and full jitter.
@@ -892,7 +918,7 @@ Rules for retries in LLM serving specifically:
 
 ## A gateway in front of several replicas
 
-Once you have more than one replica, something has to pick one for each request. That sounds like a solved problem (nginx, Envoy, a Kubernetes Service), but LLM requests differ from ordinary web requests in three ways that break the usual defaults:
+Once you have more than one replica, something has to pick one for each request. That sounds like a solved problem (nginx, Envoy, a Kubernetes Service; nginx and Envoy are general-purpose **reverse proxies**, servers that accept client connections and forward each request to one of several backend servers), but LLM requests differ from ordinary web requests in three ways that break the usual defaults:
 
 1. **Requests are long and wildly uneven.** A request lasts seconds to minutes, and costs differ by 100x between short and long prompts or outputs. Round robin assumes requests are similar in cost.
 2. **Replicas hold state that makes some requests cheaper on one replica than another.** That state is the prefix cache. Sending a conversation back to the replica that holds its KV skips its prefill.
@@ -1003,6 +1029,8 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 ```
+
+Two httpx calls here are new relative to the load generator. `client.build_request(...)` followed by `client.send(req, stream=True)` is the long form of `client.stream(...)`: it returns once the upstream's status and headers have arrived and leaves the body unread, so the gateway can decide (retry or relay) before committing. `r.aiter_raw()` then yields the body bytes exactly as received, without splitting into lines, and `r.aclose()` closes the upstream connection. `asyncio.wait_for(coro, t)` raises `asyncio.TimeoutError` if `coro` has not finished within `t` seconds. The `x-upstream` and `x-attempts` response headers are made-up names (custom headers conventionally start with `x-`) so clients can see which replica served them.
 
 The three policies:
 
@@ -1151,13 +1179,13 @@ A model that does not fit in one node's memory has to span several nodes. The [p
 
 ### vLLM on Ray
 
-vLLM uses Ray to place workers on other nodes. **Ray** is a distributed runtime: you start one head process and N worker processes, and Ray schedules Python actors onto them. Every node must have the *same* vLLM, torch and NCCL versions and the same model path, which in practice means the same container image.
+vLLM uses Ray to place workers on other nodes. **Ray** is a distributed runtime: you start one head process and N worker processes, and Ray schedules Python actors (objects whose methods run in a process Ray placed on some node) onto them. `ray start --head` makes this node the head and listens on the given port, `ray start --address=HEAD_IP:PORT` joins a node to it, and `ray status` lists the cluster's nodes and GPUs. Every node must have the *same* vLLM, torch and NCCL versions and the same model path, which in practice means the same container image.
 
 ```bash
 # untested. On every node: same image, model pre-downloaded to the same path.
 # Point NCCL and Gloo at the fast NIC, or they may pick a management interface
 export NCCL_SOCKET_IFNAME=eth0 GLOO_SOCKET_IFNAME=eth0   # interface names are site-specific
-export VLLM_HOST_IP=$(hostname -I | awk '{print $1}')
+export VLLM_HOST_IP=$(hostname -I | awk '{print $1}')    # this node's first IP address
 
 # node 0 (head)
 ray start --head --port=6379
@@ -1172,7 +1200,7 @@ vllm serve meta-llama/Llama-3.1-405B-Instruct \
   --distributed-executor-backend ray --max-model-len 16384
 ```
 
-vLLM's docs include a `run_cluster.sh` helper that starts the Ray head and workers inside the vLLM container. Diagnosing a multi-node NCCL setup that hangs at startup is a networking problem, not a vLLM problem. Run `nccl-tests` across the two nodes first ([network benchmarks](../network/benchmarks/README.md)), and set `NCCL_DEBUG=INFO` to see which interface and transport NCCL picked.
+How NCCL chooses an interface, and why `NCCL_SOCKET_IFNAME` matters, is in [Which interface does NCCL pick?](../foundations/networking.md#which-interface-does-nccl-pick). vLLM's docs include a `run_cluster.sh` helper that starts the Ray head and workers inside the vLLM container. Diagnosing a multi-node NCCL setup that hangs at startup is a networking problem, not a vLLM problem. Run `nccl-tests` across the two nodes first ([network benchmarks](../network/benchmarks/README.md)), and set `NCCL_DEBUG=INFO` to see which interface and transport NCCL picked.
 
 ### Multi-node data parallel (MoE)
 
@@ -1198,13 +1226,13 @@ python -m sglang.launch_server --model-path deepseek-ai/DeepSeek-V3 \
   --ep-size 16 --trust-remote-code
 ```
 
-The large-scale EP variants (DeepEP all-to-all, two-batch overlap, EPLB) have many version-specific flags. Follow the engine's DeepSeek deployment guide for the exact release you run.
+(`--trust-remote-code` allows the engine to run Python modelling code that ships inside the model's Hugging Face repository, which some architectures need. It executes code you downloaded, so use it only for repositories you trust.) The large-scale EP variants (DeepEP all-to-all, two-batch overlap, EPLB) have many version-specific flags. Follow the engine's DeepSeek deployment guide for the exact release you run.
 
 ### Disaggregated prefill and decode
 
 When disaggregation pays off is worked out in [Internals II](serving-engine-internals.md#disaggregated-prefill-and-decode). In short: long prompts, strict ITL, enough scale to keep two pools busy, and RDMA between the pools. As of November 2026, both engines ship it behind a KV-transfer layer and a router that sends each request first to a prefill instance and then to a decode instance.
 
-vLLM with the NIXL connector, following the `NixlConnector` usage docs (untested):
+vLLM with the NIXL connector, following the `NixlConnector` usage docs (untested). NIXL is NVIDIA's KV-transfer library ([Internals II](serving-engine-internals.md#disaggregated-prefill-and-decode)); it runs on UCX, a communication library that picks the transport (NVLink, RDMA or TCP), and `UCX_NET_DEVICES` tells UCX which network devices it may use. `CUDA_VISIBLE_DEVICES` pins each instance to one GPU, and the side-channel port is a small TCP port the two instances use to exchange connection metadata:
 
 ```bash
 # prefill instance (producer)
@@ -1220,7 +1248,7 @@ python toy_proxy_server.py --port 8192 \
   --prefiller-hosts localhost --prefiller-ports 8100 --decoder-hosts localhost --decoder-ports 8200
 ```
 
-SGLang with the Mooncake or NIXL transfer backend (untested):
+SGLang with the Mooncake or NIXL transfer backend (untested; `mlx5_0` is the usual Linux name of the first Mellanox/NVIDIA RDMA NIC, listed by `ibv_devices`):
 
 ```bash
 python -m sglang.launch_server --model-path Qwen/Qwen3-8B --port 30000 \
@@ -1239,7 +1267,7 @@ Benchmark disaggregation against a well-tuned colocated baseline with chunked pr
 
 ## Deploying on Kubernetes
 
-The Kubernetes concepts themselves (Pods, Deployments, Services, probes, GPU device plugins, node selectors) are covered in [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md). The LLM-specific parts of a manifest are what this section covers. Untested sketch:
+The Kubernetes concepts themselves (Pods, Deployments, Services, probes, GPU device plugins, node selectors) are covered in [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md), which already walks through [a vLLM Deployment](../orchestration/kubernetes-from-zero.md#a-vllm-deployment). The fields below that you may want to revisit there: [Deployment](../orchestration/kubernetes-from-zero.md#deployment-and-replicaset), [Secret](../orchestration/kubernetes-from-zero.md#configmap-and-secret) (`secretKeyRef`), [probes](../orchestration/kubernetes-from-zero.md#probes) (startup, readiness, liveness), and [PersistentVolumeClaim](../orchestration/kubernetes-from-zero.md#persistentvolume-persistentvolumeclaim-storageclass) (`hf-cache`). An `emptyDir` with `medium: Memory` is a RAM-backed scratch directory that lives as long as the pod; mounting it at `/dev/shm` is the Kubernetes equivalent of `--ipc=host`. The LLM-specific parts of a manifest are what this section covers. Untested sketch:
 
 ```yaml
 apiVersion: apps/v1
@@ -1290,7 +1318,7 @@ The parts that are specific to LLM serving:
 
 ## Monitoring engine metrics
 
-What each engine metric means and when to act on it is in the [Internals II observability table](serving-engine-internals.md#observability). The practical part is collecting the metrics and turning counters into rates.
+What each engine metric means and when to act on it is in the [Internals II observability table](serving-engine-internals.md#observability), and the same section explains the Prometheus text format (one `name{labels} value` line per series; counters, gauges and histograms) that `/metrics` returns. The practical part is collecting the metrics and turning counters into rates.
 
 A minimal watcher that scrapes Prometheus text and differentiates the counters (ran on Mac):
 
@@ -1376,6 +1404,8 @@ rate(vllm:generation_tokens_total[1m])
 # prefix cache hit rate
 rate(vllm:prefix_cache_hits_total[5m]) / rate(vllm:prefix_cache_queries_total[5m])
 ```
+
+Just enough Prometheus to read those two blocks. `prometheus.yml` is the server's YAML config: `scrape_configs` lists jobs, and this job fetches `/metrics` from the two `targets` (`host:port`) every 5 s. The second block is PromQL, Prometheus's query language (first met in [Cluster Internals](../orchestration/internals.md#job-level-signals)); `#` lines are comments. A bare metric name returns its latest value per series. `rate(x[5m])` turns a counter into a per-second rate averaged over the last 5 minutes, the server-side version of the `d(...)` differences in `watch_metrics.py`. A histogram metric `..._bucket` has one series per bucket boundary, labelled `le` ("less than or equal"); `sum by (le) (...)` adds those series across replicas while keeping the buckets separate, and `histogram_quantile(0.99, ...)` estimates the 99th percentile from the bucket counts.
 
 Engine histograms have fixed buckets. If your SLO is 300 ms and the nearest bucket boundaries are 250 ms and 500 ms, `histogram_quantile` interpolates between them, and the p99 it reports can be off by up to that gap. For SLO accounting, also log the client-side per-request numbers.
 

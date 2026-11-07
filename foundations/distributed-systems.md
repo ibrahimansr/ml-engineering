@@ -2,8 +2,13 @@
 
 ## Prerequisites
 
+- [The Toolkit](toolkit.md) - running commands in a terminal and setting up a Python environment for the scripts below.
+- [Computer Architecture](computer-architecture.md) - GPUs, HBM, FLOPS and the H100 numbers used in the opening arithmetic.
+- [Linux and the OS](linux-and-os.md) - processes, signals, environment variables, shell loops and redirection, `py-spy`.
 - [Concurrency and Parallelism](concurrency.md) - locks, deadlocks and SPMD carry over directly to many machines.
-- [Computer Networking](networking.md) - TCP, rendezvous and collectives are introduced there.
+- [Computer Networking](networking.md) - TCP, rendezvous, NCCL and collectives are introduced there.
+
+Forward links (taught later, defined briefly here where first used): [Slurm](../orchestration/slurm/from-zero.md), [Kubernetes](../orchestration/kubernetes-from-zero.md), [storage and object stores](storage-and-data.md), [collective algorithms](../network/collectives-internals.md), [parallelism derivations](../training/model-parallelism/derivations.md).
 
 This chapter is for readers who know the ML math and use PyTorch every day, but who have never had to think about programs that run on many machines at once. You can get a long way on one GPU without that knowledge. You cannot train a frontier model without it. The first time a 512-GPU job hangs with no error message, or one slow node drags the whole cluster down, or two ranks quietly end up with different weights, you are debugging a distributed system, whether you meant to build one or not.
 
@@ -52,7 +57,7 @@ one H100:                                    80 GB
 minimum GPUs just to hold the state:  1120 / 80 = 14
 ```
 
-Even the weights alone do not fit on one 80 GB card. The full training state needs at least 14 GPUs' worth of memory, *before* activations. Activation memory depends on batch size, sequence length and whether you recompute activations. For long sequences it can be as large as everything else combined. So the state of the model has to be split across devices. That splitting is model parallelism in its various forms (tensor, pipeline, ZeRO/FSDP sharding). It is not an optimization. Without it the model does not run at all.
+Even the weights alone do not fit on one 80 GB card. The full training state needs at least 14 GPUs' worth of memory, *before* activations. Activation memory depends on batch size, sequence length and whether you recompute activations. For long sequences it can be as large as everything else combined. So the state of the model has to be split across devices. That splitting is model parallelism in its various forms (tensor, pipeline, ZeRO/FSDP sharding). In one line each: tensor parallelism splits every weight matrix across GPUs, pipeline parallelism gives each GPU a different block of layers, and ZeRO/FSDP keeps one slice of every parameter, gradient and optimizer state per GPU and gathers the rest just in time. All three are explained properly in [Data parallel vs model parallel](#data-parallel-vs-model-parallel) below. It is not an optimization. Without it the model does not run at all.
 
 ### Time: one GPU vs a thousand
 
@@ -137,10 +142,16 @@ These terms show up in every launcher, log line and error message. Learn them on
 | **world size** | The total number of processes in the job. 2 nodes x 4 GPUs = 8. |
 | **node rank** | The node's id within the job. With uniform nodes, `rank = node_rank x nproc_per_node + local_rank`. |
 | **process group** | A subset of ranks that can do collectives together. The default group is "everyone". Model parallelism creates many smaller groups, for example "the 8 ranks holding shards of the same tensor" and "the ranks holding the same shard on different data replicas". |
-| **backend** | The library that actually moves bytes for a process group: `nccl` for NVIDIA GPUs, `gloo` for CPU (and as a fallback), and vendor equivalents such as RCCL on AMD. |
+| **backend** | The library that actually moves bytes for a process group: `nccl` for NVIDIA GPUs (NCCL, NVIDIA's collective-communication library, introduced in [networking](networking.md#step-2-nccl-builds-its-own-connections)), `gloo` for CPU (and as a fallback), and vendor equivalents such as RCCL on AMD. |
 | **SPMD** | Single Program, Multiple Data. Every rank runs *the same script*, and behaviour differs only through `rank` and the data it reads. This is the model PyTorch distributed, JAX and MPI all use. |
 | **coordinator / master** | The well-known address (`MASTER_ADDR:MASTER_PORT`) that ranks contact to find each other at startup. Usually it lives on rank 0's node. It is a bootstrap point, not a boss: after startup the ranks are peers. |
 | **launcher** | The thing that starts N copies of your script with the right environment variables: `torchrun`, `srun` (Slurm), `mpirun`, `deepspeed`, a Kubernetes operator. |
+
+The launcher names in the last row belong to tools taught later; for now you only need to know what each one is:
+
+- **Slurm** is the batch scheduler most HPC and AI clusters run: you ask it for, say, 4 nodes with 8 GPUs each for 12 hours, it queues your request until those nodes are free, and `srun` is its command for starting one copy of your program per task on the nodes it gave you. Taught in [Slurm From Zero](../orchestration/slurm/from-zero.md).
+- **Kubernetes** is the other common cluster manager, more common in cloud and serving setups. Its unit of work is a **pod**: one or more containers (packaged programs, see [Containers](containers-and-virtualization.md)) scheduled together on one node. An **operator** is a Kubernetes add-on that knows how to run one kind of workload, for example a "PyTorchJob" operator that creates one pod per node and sets `MASTER_ADDR`, `RANK` and friends. Taught in [Kubernetes From Zero](../orchestration/kubernetes-from-zero.md).
+- **MPI** (Message Passing Interface) is the decades-old HPC standard for message-passing programs; `mpirun` is its launcher. `deepspeed` is the launcher that ships with Microsoft's DeepSpeed training library.
 
 SPMD is worth dwelling on, because it is the source of a whole class of bugs. Since every rank runs the same code, any `if rank == 0:` that wraps a collective operation breaks the symmetry:
 
@@ -162,7 +173,7 @@ keys = ["RANK", "LOCAL_RANK", "WORLD_SIZE", "LOCAL_WORLD_SIZE", "GROUP_RANK", "M
 print(" ".join(f"{k}={os.environ.get(k)}" for k in keys), flush=True)
 ```
 
-Pretend to have two nodes with two GPUs each by starting two `torchrun` agents on one laptop, one per "node" (`GROUP_RANK` is torchrun's name for the node rank):
+Pretend to have two nodes with two GPUs each by starting two `torchrun` agents on one laptop, one per "node" (`GROUP_RANK` is torchrun's name for the node rank). The shell loop starts one `torchrun` per value of `n`, sends each one's output and errors to its own file (`> node$n.out 2>&1`), runs it in the background (`&`) and then `wait`s for both; these pieces are covered in [Linux: the shell](linux-and-os.md#2-the-shell):
 
 ```
 $ for n in 0 1; do
@@ -201,13 +212,13 @@ Each one has an ML version:
 | Fallacy | How it bites in ML training |
 |---|---|
 | Network is reliable | A flaky InfiniBand link or a switch reboot stalls an all-reduce. Thousands of GPUs wait on one cable. |
-| Latency is zero | Small collectives (for example per-layer all-reduces in tensor parallelism) are dominated by latency, not bandwidth. That is why TP is kept inside a node. |
+| Latency is zero | Small collectives (for example per-layer all-reduces in tensor parallelism, TP, which splits each layer's weight matrices across GPUs; see [below](#model-parallelism)) are dominated by latency, not bandwidth. That is why TP is kept inside a node. |
 | Bandwidth is infinite | Inter-node bandwidth is roughly an order of magnitude below intra-node NVLink. This sets which parallelism goes where. |
 | Topology doesn't change | A node gets drained and replaced, so your rank-to-host mapping changes on restart. |
 | One administrator | The cluster team, the storage team and the cloud provider each change things without telling you. |
 | Network is homogeneous | One node has a different driver, NIC firmware or NCCL version, and it is the one that hangs. |
 
-The first two fallacies are easy to put numbers on. Below is a toy network: each message has a 0.1% chance of being lost, usually takes about 10 microseconds, and once in a thousand messages takes a 200 ms detour (a TCP retransmit, a full switch queue, a GC pause on the receiver). A synchronous training step needs one message from *every* rank, so it waits for the slowest:
+The first two fallacies are easy to put numbers on. Below is a toy network: each message has a 0.1% chance of being lost, usually takes about 10 microseconds, and once in a thousand messages takes a 200 ms detour (a TCP retransmit, a full switch queue, a GC pause on the receiver; GC is garbage collection, when a language runtime such as Python's or the JVM's stops your code for a moment to free unused memory). A synchronous training step needs one message from *every* rank, so it waits for the slowest:
 
 ```python
 # fallacies.py -- what "the network is reliable" and "latency is zero" cost you
@@ -318,6 +329,56 @@ crashed  -> ConnectionRefusedError   after 0.00s
 
 Synchronous training makes partial failure worse in a particular way. Every step needs *every* rank. So one failed component does not slow the job down by 1/N. It stops the job. Most web services are designed so that losing a replica loses capacity. A training job is designed so that losing a replica loses the job. That is a deliberate trade, made for simplicity and for mathematical equivalence with single-device SGD, but you pay for it in failure rate.
 
+### The two generals problem: no certainty over a lossy network
+
+Partial failure has a sharper consequence than "you cannot tell slow from dead". Two parties connected only by a network that can lose messages **cannot both become certain that they agree**, however many messages they exchange. This is the *two generals problem* (Gray, 1978; the treatment here follows section 2.1 of Martin Kleppmann's Cambridge [Concurrent and Distributed Systems notes](https://www.cl.cam.ac.uk/teaching/2122/ConcDisSys/dist-sys-notes.pdf)).
+
+Two armies camp on opposite sides of a city. They win only if both attack at the same time. Their only channel is a messenger who may be captured. General A sends "attack at dawn". If the messenger gets through, B knows the plan, but A does not know that B knows, so A cannot safely attack. B sends back an acknowledgement. Now A knows, but B does not know whether the acknowledgement arrived, so B is unsure whether A will attack. A could acknowledge the acknowledgement, and the same question moves to B. Whatever the protocol, look at the *last* message it sends: its sender does not know whether it arrived, so the protocol must work without it, which means it was not needed. Remove it and repeat. No finite exchange produces certainty on both sides.
+
+You meet this every time two machines must agree that something happened:
+
+- A trainer tells a rollout worker "you are done, shut down". Did the worker get it? Its ack might be lost, and the ack of the ack, and so on.
+- A client asks a code-execution sandbox to run a test and the reply never comes. Did the test run?
+- Rank 0 writes the final checkpoint and tells the scheduler the job succeeded. If that message is lost, the scheduler may restart a job that already finished.
+
+Real systems do not solve the two generals problem. They step around it, in two ways that recur through this chapter. One is to make the action **safe to repeat** (idempotency, [below](#remote-procedure-calls-at-most-once-at-least-once-exactly-once)), so "I am not sure it happened" can be answered by doing it again. The other is to make the outcome **not depend on the last message**: record the decision in one durable place that both sides can read later (a checkpoint `COMPLETE` marker, a key in etcd, the replicated key-value store introduced in [Coordination](#key-value-stores-tcpstore-and-etcd)), instead of requiring both sides to be sure at the same moment.
+
+### The Byzantine generals problem: when nodes lie
+
+The two generals problem is about an unreliable *network*. The **Byzantine generals problem** (Lamport, Shostak and Pease, 1982) is about unreliable *nodes*. Now there are `n` generals, the messengers are reliable, but up to `f` of the generals are traitors who may say anything: tell one general "attack" and another "retreat", forge what a third general said, or stay quiet. The honest generals must still agree on one plan.
+
+The surprising result is that this needs **`n >= 3f + 1`**: strictly fewer than a third of the participants may be traitors (Kleppmann's notes, section 2.2). Three generals cannot tolerate one traitor. Say A is the commander and orders "attack", and B and C are lieutenants. If C is a traitor, C tells B "A told me to retreat". B now holds "attack" from A and "retreat" via C. If instead A is the traitor and sent "attack" to B and "retreat" to C, and C honestly reports "A told me to retreat", B holds exactly the same two messages. B cannot tell the two worlds apart, so it cannot know whether to follow A. A fourth general breaks the tie. The general counting argument: you can only wait for `n - f` replies, because `f` nodes may never answer. Up to `f` of the replies you do get may be lies, so for the honest ones to outnumber them you need `(n - f) - f > f`, which is `n > 3f`. (With crash faults alone, a node that fails is just silent and never lies, so a majority suffices: `2f + 1`, which is the etcd and Raft rule [below](#leader-election-and-consensus).) Digital signatures help, because a traitor can no longer forge what an honest general said, but the problem stays hard.
+
+Inside one datacenter, you trust your own ranks, and you never pay for Byzantine tolerance. You need it when you do not control the participants: decentralized training over the internet, where volunteers or rented GPUs contribute gradients, any one of which might be buggy, faulty or malicious. There the `3f + 1` bound tells you how much of the swarm an attacker may control before no protocol can save you, and robust aggregation ([When peers are untrusted](#when-peers-are-untrusted), later in this chapter) and [decentralized training](../training/decentralized-training.md) are the practical responses.
+
+### System models: what you assume about nodes, links and time
+
+Every distributed algorithm, and every timeout you set, rests on assumptions about what can go wrong. A **system model** writes those assumptions down, in three independent parts (Kleppmann's notes, section 2.3):
+
+| Part | Options, weakest guarantee last | What it means |
+|---|---|---|
+| **Nodes** | crash-stop | A faulty node stops forever. |
+| | crash-recovery | A node may crash and later restart. It loses memory but keeps what it wrote to disk. |
+| | Byzantine | A faulty node may do anything, including lie. |
+| **Network links** | reliable | Every message sent is delivered, possibly reordered. |
+| | fair-loss | Messages may be lost, duplicated or reordered, but if you keep resending, one eventually gets through. |
+| | arbitrary | An active adversary may also read, alter, inject or replay messages. |
+| **Timing** | synchronous | Message delay and the speed of every node have a known upper bound. |
+| | partially synchronous | The system behaves synchronously most of the time, but may be asynchronous for unknown periods. |
+| | asynchronous | No bounds on anything. Messages and nodes may be arbitrarily slow. |
+
+Links can be upgraded in software. Retrying until acknowledged and dropping duplicates on the receiver turns a fair-loss link into a reliable one, which is what TCP does inside one connection. Encryption and authentication (TLS, see [networking](networking.md#tls-basics)) turn an arbitrary link into a fair-loss one, because a tampered message is detected and discarded. What software cannot do is upgrade the timing model: no protocol makes a GC pause shorter.
+
+A distributed training job is best described as **crash-recovery nodes, fair-loss links made reliable by TCP or the RDMA transport, and partially synchronous timing**. Nodes crash and come back from a checkpoint. Messages normally arrive in microseconds, but a GC pause, a slow filesystem or a congested switch can stretch any delay without warning. Decentralized training over the internet adds Byzantine nodes and arbitrary links.
+
+These choices decide what a **failure detector** (the component that decides "that peer is dead") can promise:
+
+- In a **synchronous** system you could build a *perfect* detector: if no reply arrives within the known bound, the peer has crashed. Real data centers are not synchronous, so a fixed timeout always has a false-positive rate.
+- In a **partially synchronous** system the best you can have is an *eventually perfect* detector: it may wrongly suspect a slow node, or be slow to notice a dead one, but once the system settles down it is accurate. That is exactly what a timeout with heartbeats gives you, and the trade-off table in [Heartbeats, timeouts and "slow vs dead"](#heartbeats-timeouts-and-slow-vs-dead) is that imperfection in numbers.
+- In an **asynchronous** system no timeout means anything, and the FLP result (in [Leader election and consensus](#leader-election-and-consensus)) shows that consensus cannot be guaranteed to finish. Raft (the consensus algorithm behind etcd, [below](#leader-election-and-consensus)) assumes partial synchrony: it never gives a wrong answer, and it makes progress whenever the network is behaving.
+
+The practical rule: before you pick a timeout, name the model. If you assume synchrony ("a step never takes more than 2x the median"), you are betting that no pause will ever exceed the bound, and the bet will lose at scale. Design so that a wrong timeout costs you a restart or a retry, never a wrong answer. That is the same split as Raft's: timeouts affect only liveness (whether you make progress), never safety (whether you are correct).
+
 ### Failure arithmetic
 
 Suppose each node independently fails on average once every `M` days. That is its MTBF, mean time between failures. If failures are independent and memoryless (the usual exponential model), the failure rates of the nodes simply add:
@@ -348,6 +409,37 @@ at that per-GPU rate:
 ```
 
 Each GPU fails about once every 6 years. At scale you still lose a GPU every few hours. This is why the [fault tolerance chapter](../training/fault-tolerance/README.md) opens with "always plan to have more nodes than needed". At scale, failure is a steady background rate that you plan for, not a rare event.
+
+### Availability, SLOs and nines
+
+A training job measures failure as lost GPU-hours. A *service* (an inference endpoint, the sandbox pool your RL rollouts call, the control plane that schedules them) measures it as **availability**: the fraction of time, or of requests, for which it works. It is quoted in "nines" (Kleppmann's notes, section 2.4):
+
+```python
+# nines.py -- what "N nines" of availability allows, and what chaining dependencies does to it
+year_min = 365.25 * 24 * 60
+for n in range(2, 6):
+    a = 1 - 10 ** -n
+    down = (1 - a) * year_min
+    print(f"{a:.3%} up -> {down / 60:7.2f} h/year down ({down / 12:6.1f} min/month)")
+# a rollout request that must pass gateway, scheduler, sandbox pool, inference server, reward service:
+print(f"5 serial dependencies at 99.9% each -> {0.999 ** 5:.3%} for the whole path")
+# two independent replicas, either one suffices:
+print(f"2 redundant replicas at 99% each    -> {1 - 0.01 ** 2:.2%}")
+```
+
+```
+$ python3 nines.py
+99.000% up ->   87.66 h/year down ( 438.3 min/month)
+99.900% up ->    8.77 h/year down (  43.8 min/month)
+99.990% up ->    0.88 h/year down (   4.4 min/month)
+99.999% up ->    0.09 h/year down (   0.4 min/month)
+5 serial dependencies at 99.9% each -> 99.501% for the whole path
+2 redundant replicas at 99% each    -> 99.99%
+```
+
+Two rules fall out. Dependencies in series multiply, so a request path through five "three nines" services is barely two and a half nines. Redundancy in parallel multiplies the *unavailability*, so two independent 99% replicas give 99.99%, if their failures really are independent (same rack, same bad config push, same bug: then they are not). Four minutes a month at four nines is less than one restart of most services, which is why that level needs automatic failover rather than a human being paged.
+
+A **service-level objective (SLO)** makes the target precise and includes latency, for example "99.9% of rollout requests in a 30-day window get a sandbox within 2 s". The 0.1% the SLO allows to fail is the **error budget**: while you are inside it you can ship risky changes, and when you have spent it you slow down. An **SLA** is an SLO written into a contract with a penalty. Note that 99.9% of *requests* is not the same as 99.9% of *time*: an outage at peak traffic burns the budget faster.
 
 ### How often to checkpoint
 
@@ -413,6 +505,8 @@ The minimum is at Young's interval, and the simulated 9.0% is close to the first
 1. Add a restart cost (say 15 minutes of scheduling and loading after each failure) to `wall_time`. How much does the overhead go up, and does the best `T` move?
 2. Cut `C` to 0.5 minutes (an async checkpoint) and find the new best `T`. Compare with `sqrt(2 x 0.5 x 1440)`.
 3. In `partial.py`, change the client timeout to 3 seconds. Which of the four peers changes category? Now make the "slow" server sleep 5 seconds. There is no timeout value that is right for every peer, and that is the heartbeat section's point.
+4. In `nines.py`, give each of the five services on the rollout path two independent replicas at 99.9% each. What is the path's availability now? Then assume the two replicas of the sandbox pool share one network switch that is up 99.95% of the time. Which number dominates?
+5. Write down the system model (nodes, links, timing) for three things you use: a single-node `torchrun` job, a Kubernetes cluster's etcd, and a decentralized training swarm over the internet. For each, which failure detector could you build?
 
 
 ## Communication models
@@ -455,6 +549,61 @@ parent sees lr = 0.1
 
 Rank 0's change is invisible to ranks 1 and 2 and to the parent. The only thing that crossed a process boundary is what went into the queue. In a training job the "queue" is a collective. If rank 0 decides something (say, an early-stopping flag or a learning-rate change computed from an eval), it has to `broadcast` the value. Otherwise ranks silently disagree, and the next mismatched collective hangs.
 
+### Remote procedure calls: at-most-once, at-least-once, exactly-once
+
+Collectives are message passing among equals. Most of the rest of an ML system (an RL trainer asking an inference server for completions, a rollout worker asking a sandbox to run generated code, a launcher asking the cluster scheduler for nodes, a worker registering itself with a coordination service) uses the other common shape: a **remote procedure call (RPC)**. The [networking chapter](networking.md#osi-vs-tcpip) introduced the term: calling a function that runs on another machine as if it were local. An RPC framework (gRPC, or plain JSON over HTTP) packs the function name and arguments into a request message, sends it, and the server unpacks it, runs the function and sends back a reply message.
+
+The illusion breaks the moment something fails. A local call either returns or raises. A remote call can also produce *nothing*, and then the client cannot tell which of three things happened: the request was lost (the work was not done), the server crashed partway (the work may be half done), or the reply was lost (the work was done). This is partial failure again, and the two generals problem in miniature. The client's only tool is a **timeout**, and after a timeout it has to choose a policy:
+
+- **At-most-once:** never retry. The work happens zero or one times, and after a timeout you do not know which. Fine for "log this metric", wrong for "record this rollout".
+- **At-least-once:** retry until a reply arrives. The work happens one or more times. Correct only if doing it twice is harmless.
+- **Exactly-once:** impossible to guarantee for the *delivery* of messages over a lossy network, but achievable for the *effect*: retry (at-least-once) and have the server recognise repeats by a request id and skip them. Doing an operation twice then has the same effect as doing it once, which is called **idempotency** and gets its own section [later](#idempotency).
+
+The dangerous case is the lost reply, because the server did the work. Here it is with one RPC whose first reply is lost:
+
+```python
+# rpc.py -- one remote call, one lost reply, three retry policies
+# The "network" delivers the request, the server does the work, then the reply is lost.
+class Server:                                   # e.g. a trainer's "record these rollouts" endpoint
+    def __init__(self):
+        self.rows, self.done = [], {}           # done: request id -> stored reply
+    def append(self, req_id, rows, dedup):
+        if dedup and req_id in self.done:
+            return self.done[req_id]            # seen this id: replay the reply, no side effect
+        self.rows += rows                       # the side effect
+        self.done[req_id] = f"ok, {len(self.rows)} rows"
+        return self.done[req_id]
+
+def call(server, req_id, rows, dedup, lose_reply):
+    reply = server.append(req_id, rows, dedup)  # request arrives, work happens
+    if lose_reply:
+        raise TimeoutError("no reply within 1 s")   # all the client ever sees
+    return reply
+
+for policy in ("at-most-once", "at-least-once", "exactly-once effect"):
+    s = Server()
+    dedup = policy == "exactly-once effect"
+    attempts = 1 if policy == "at-most-once" else 3
+    outcome = "gave up: did it happen? unknown"
+    for attempt in range(attempts):
+        try:
+            outcome = call(s, "req-42", ["rollout-7"], dedup, lose_reply=(attempt == 0))
+            break
+        except TimeoutError:
+            pass
+    print(f"{policy:20s} client sees: {outcome:32s} server rows: {s.rows}")
+    assert len(s.rows) == (2 if policy == "at-least-once" else 1)
+```
+
+```
+$ python3 rpc.py
+at-most-once         client sees: gave up: did it happen? unknown  server rows: ['rollout-7']
+at-least-once        client sees: ok, 2 rows                       server rows: ['rollout-7', 'rollout-7']
+exactly-once effect  client sees: ok, 1 rows                       server rows: ['rollout-7']
+```
+
+At-most-once left the client unsure about work that had in fact happened. At-least-once recorded the rollout twice, which in RL means a duplicated sample in the training batch and a wrong sample count. The request id fixed it. Three details carry over to real systems: the id must be created once per logical operation and reused on every retry; the server's table of seen ids must be saved together with the side effect, or a server crash between the two brings duplicates back; and a timeout should be set from measured latency (several times the p99.9), not guessed, because too short a timeout turns every slow call into a duplicate. [Idempotency](#idempotency) and [Retries with exponential backoff and jitter](#retries-with-exponential-backoff-and-jitter) below build this out, and [services and control planes](../platform/control-planes.md#idempotency-keys) applies it to real APIs.
+
 ### Synchronous vs asynchronous
 
 - **Synchronous:** a sender waits until the communication completes, and everyone proceeds in lockstep.
@@ -463,9 +612,9 @@ Rank 0's change is invisible to ranks 1 and 2 and to the parent. The only thing 
 There are two separate meanings here. Keep them apart:
 
 1. **Algorithmic synchrony.** Do all workers apply the same gradient at the same step (synchronous SGD), or does each worker apply whatever possibly-stale gradient it has (asynchronous SGD, Hogwild-style)? Modern LLM training is almost entirely synchronous.
-2. **API-level asynchrony.** Does the *function call* block? In PyTorch, `dist.all_reduce(t, async_op=True)` returns a handle immediately, and you call `.wait()` later. With NCCL, even "blocking" collectives are only enqueued on a CUDA stream, so the CPU runs ahead of the GPU. This is how frameworks overlap communication with computation. DDP starts all-reducing the gradients of the last layers while backward is still computing the gradients of earlier ones.
+2. **API-level asynchrony.** Does the *function call* block? In PyTorch, `dist.all_reduce(t, async_op=True)` returns a handle immediately, and you call `.wait()` later. With NCCL, even "blocking" collectives are only enqueued on a CUDA stream (the GPU's in-order work queue, see [Concurrency: multiple streams](concurrency.md#multiple-streams-in-pytorch)), so the CPU runs ahead of the GPU. This is how frameworks overlap communication with computation. DDP (`DistributedDataParallel`, PyTorch's data-parallel wrapper, run end to end at the [end of this chapter](#a-runnable-minimal-example)) starts all-reducing the gradients of the last layers while backward is still computing the gradients of earlier ones.
 
-So a training job is algorithmically synchronous (everyone agrees on every step) and implemented asynchronously underneath (communication overlapped with compute).
+So a training job is algorithmically synchronous (everyone agrees on every step) and implemented asynchronously underneath (communication overlapped with compute). Neither meaning is the *timing model* from [System models](#system-models-what-you-assume-about-nodes-links-and-time), where "synchronous" means "delays have a known upper bound". The same word is used for three different things, so check which one a paper or a doc means.
 
 Here is the API-level difference with two CPU processes and the gloo backend **[torch]**:
 
@@ -603,6 +752,7 @@ Two effects show up. At 8 ranks the step is already 8 ms slower with no hiccups 
 1. Make one rank persistently 10% slow (`if r == 0: t *= 1.1`, passing the rank index in). What is the job slowdown at 8 ranks and at 1,024 ranks?
 2. Make the hiccup probability 1e-4 instead of 1e-3. At what rank count does the mean step reach 400 ms now?
 3. Asynchronous SGD removes the max: each worker applies its gradient whenever it is ready. Write down what you give up (hint: the "identical replicas" argument in the CAP section).
+4. In `rpc.py`, lose the *request* on the first attempt instead of the reply (the server never sees it). Which of the three policies now gives the right answer, and why can the client not tell this case from the lost-reply case?
 
 
 ## Time and ordering
@@ -706,10 +856,15 @@ The theoretical answer to "what happened before what" without synchronized clock
 
 ### Logical clocks: Lamport and vector clocks
 
-Two definitions first:
+Physical timestamps cannot order events reliably, so distributed systems use a different notion of order, based on what *could have influenced* what. Formally (Lamport, 1978; Kleppmann's notes, section 3.3), model each process as a sequence of events: local computation, sending a message, receiving a message. The **happens-before** relation `->` is the smallest relation such that:
 
-- Event `a` **happened before** event `b` (written `a -> b`) if `a` came before `b` on the same process, or `a` was the sending of a message that `b` received, or there is a chain of such steps from `a` to `b`. This is the only ordering a distributed system can actually observe.
-- Two events are **concurrent** if neither happened before the other. Nothing that one process did could have influenced the other, so "which came first" has no meaningful answer.
+1. if `a` and `b` are on the same process and `a` comes first in that process's sequence, then `a -> b`;
+2. if `a` is the sending of a message `m` and `b` is the receipt of `m`, then `a -> b`;
+3. if `a -> b` and `b -> c`, then `a -> c` (transitivity).
+
+Two events are **concurrent**, written `a || b`, if neither `a -> b` nor `b -> a`. So `->` is a *partial* order: some pairs of events have no order at all, and "which came first" has no meaningful answer for them. "Concurrent" here is about information flow, not about time: two events a second apart on different machines are concurrent if no chain of messages connects them.
+
+Happens-before captures **potential causality**. If `a -> b`, then `a` might have influenced `b`, because information could have flowed from one to the other. If `a || b`, it could not have. That is why it is the right order for debugging and replication: a replica that applies "rank 3 sent the tensor" after "rank 12 received it" has violated causality, whatever the clocks said. The two clocks below are ways of computing `->` from timestamps attached to messages.
 
 A **Lamport clock** guarantees one direction: if `a -> b` then `L(a) < L(b)`. The converse does not hold. `L(a) < L(b)` does *not* tell you that `a` caused `b`. A **vector clock** (Fidge and Mattern, 1988) fixes that by keeping one counter *per process*. Each process increments its own entry on every event, and on receive takes the elementwise max with the incoming vector, then increments its own entry. Then `a -> b` exactly when `V(a) <= V(b)` elementwise and `V(a) != V(b)`. If neither vector is `<=` the other, the events are concurrent.
 
@@ -774,6 +929,8 @@ A's first local event vs C's last local event:
 ```
 
 The Lamport clock puts A's first event "before" C's last one, but no message chain connects them. The vector clock correctly reports them as concurrent.
+
+Lamport clocks are still useful, for a different job. Sorting events by the pair `(L(e), process id)` gives a **total order**, every pair of events ordered and ties broken by process id, that is *consistent with causality*: if `a -> b`, `a` sorts first. Every process that sees the same set of timestamped events sorts them into the same sequence. That idea, everyone processing the same events in the same order, is the foundation of [total-order broadcast](#total-order-broadcast-and-state-machine-replication) below.
 
 Where you meet these in practice: replicated stores such as Dynamo and Riak used vector clocks (or the related "version vectors") to detect conflicting concurrent writes instead of silently picking one. Vector clocks cost O(number of processes) per message, which is why training stacks use the cheaper version: a single per-communicator sequence number. Every rank issues collectives in the same order (SPMD), so "collective #81,234" names the same logical event on every rank, and a rank stuck at #81,233 is the one behind.
 
@@ -1004,7 +1161,7 @@ round 22: 63/63 live nodes suspect node 13; false suspicions: 0
 log2(N) = 6: gossip spreads news in O(log N) rounds, each node sends only 2 msgs/round
 ```
 
-`T_FAIL = 8` is the same timeout trade-off as before, now measured in rounds: too small and the randomness of who-talks-to-whom produces false suspicions, too large and detection is slow. **SWIM** (Das et al., 2002), used in HashiCorp's memberlist (and so in Consul and Serf), improves on this. A node *pings* a random peer directly, and if there is no answer, asks k other peers to ping it *indirectly* before suspecting it. That separates "the peer is dead" from "my own link to it is bad", which matters a lot on the internet. Decentralized training systems that run over the public internet (for example the Hivemind library, which uses a Kademlia distributed hash table for peer discovery) live in this world rather than the TCPStore one. See [decentralized training](../training/decentralized-training.md).
+`T_FAIL = 8` is the same timeout trade-off as before, now measured in rounds: too small and the randomness of who-talks-to-whom produces false suspicions, too large and detection is slow. **SWIM** (Das et al., 2002), used in HashiCorp's memberlist (and so in Consul and Serf), improves on this. A node *pings* a random peer directly, and if there is no answer, asks k other peers to ping it *indirectly* before suspecting it. That separates "the peer is dead" from "my own link to it is bad", which matters a lot on the internet. Decentralized training systems that run over the public internet (for example the Hivemind library, which uses a Kademlia distributed hash table, a key-value store spread across all the peers with no central server, for peer discovery) live in this world rather than the TCPStore one. See [decentralized training](../training/decentralized-training.md).
 
 ### Leader election and consensus
 
@@ -1029,7 +1186,7 @@ Where consensus shows up in ML stacks:
 - **Kubernetes:** etcd (Raft) holds all cluster state. Every pod, job and node object lives there. See [orchestration](../orchestration/README.md) and [orchestration internals](../orchestration/internals.md).
 - **torchrun with the etcd backend:** rendezvous membership is agreed through etcd, so the rendezvous survives the loss of any single host.
 - **torchrun with the c10d backend:** there is no consensus. A single TCPStore acts as a de facto leader. That is simpler, but if the host running the store dies, the rendezvous dies too.
-- **Slurm:** the controller (`slurmctld`) can have a backup controller that takes over. That is primary/backup failover, not majority consensus.
+- **Slurm:** the controller (`slurmctld`, the central daemon that holds the queue and decides which job gets which nodes) can have a backup controller that takes over. That is primary/backup failover, not majority consensus.
 
 Your training loop itself does *not* run consensus. All ranks deterministically compute the same thing, so there is nothing to vote on. That is the next section's point.
 
@@ -1042,7 +1199,7 @@ Reading about Raft is less convincing than watching it. Below is the election ha
 
 ```python
 # raft_election.py -- Raft leader election (no log replication) as a discrete-event simulation
-# Note: election + heartbeats only; log replication and the "up-to-date log" vote rule are omitted
+# Note: election + heartbeats only; log replication and the "up-to-date log" vote rule come in raft_log.py below
 import heapq, random
 random.seed(4)
 N = 5
@@ -1179,11 +1336,209 @@ Walk through it:
 3. **Partition.** Node 4 (the leader) ended up on the 2-node side. The 3-node side elected node 3 for term 3. **Node 4 still believes it is the leader of term 2.** For about a second there were two "leaders" at once (see the `leaders now: [3, 4]` line), but in *different terms*, and the old one cannot commit anything because it cannot reach a majority. That is the safety argument in action: two majorities of 5 must share a node, so two leaders can never both commit.
 4. **Heal.** Node 4 got a message carrying term 3 and stepped down.
 
-What the simulation leaves out, on purpose: the log. In full Raft a node also refuses its vote to a candidate whose log is less up-to-date than its own, which is what guarantees that a new leader holds every committed entry. The MIT 6.5840 labs (in Further reading) build the whole thing in Go.
+What the simulation leaves out, on purpose: the log. Electing a leader is only useful because the leader then orders everyone's writes. The next two sections explain why ordering writes is the real problem, and then add the log to the simulation.
+
+### Total-order broadcast and state machine replication
+
+Why does etcd need a leader and a log at all? Because of one idea that underlies almost every strongly consistent replicated system.
+
+A **state machine** here means any deterministic program that takes commands one at a time and updates its state: a key-value store applying `put` and `delete`, a scheduler applying "job submitted" and "node failed", a model applying optimizer steps. If several replicas start in the same state and apply **the same commands in the same order**, they pass through the same sequence of states and never disagree. That is **state machine replication** (Kleppmann's notes, section 5.3). You have already seen it once: [Why training mostly sidesteps this](#why-training-mostly-sidesteps-this) below explains data-parallel training as state machine replication, where the all-reduce makes every replica receive the same gradient each step.
+
+The hard part is "the same commands in the same order", when commands come from many clients, replicas crash, and messages are lost and reordered. The communication primitive that provides it is **total-order broadcast** (also called *atomic broadcast*): a node sends a message to the whole group, and every correct node *delivers* (hands to its state machine) the same messages in the same order. Delivery is different from receipt: a node may receive messages in any order off the network, and must hold them back until it knows where they go in the agreed sequence.
+
+The simple implementation is a **sequencer**: send everything to one leader, which stamps each message with the next sequence number, and every replica delivers in sequence-number order. That works until the leader crashes. Then the survivors must pick a new leader *and* agree on exactly which messages the old one had already numbered, which is an agreement problem again.
+
+That is not a coincidence. **Total-order broadcast and consensus are equivalent**: each can be built from the other.
+
+- **Consensus from total-order broadcast:** every node broadcasts its proposed value, and every node decides on the *first* value delivered. All nodes deliver in the same order, so they all decide the same value.
+- **Total-order broadcast from consensus:** run one consensus instance per position in the sequence. Instance 1 decides which message is first, instance 2 which is second, and so on. The sequence of decisions is the agreed order.
+
+So a replicated **log** (an append-only list of commands, where position `i` holds the `i`-th command) is total-order broadcast, which is repeated consensus. Raft is exactly this: an algorithm for agreeing on a log, with a leader as the sequencer and elections plus the rules below to survive the sequencer's death. It also means the FLP impossibility result applies to total-order broadcast too: no algorithm can guarantee it always makes progress in a fully asynchronous system, and Raft, like every practical system, relies on partial synchrony (timeouts) for liveness only.
+
+Two consequences for ML infrastructure:
+
+- **Commands must be deterministic.** If a replica's `apply` reads the wall clock, calls `random()` or depends on dictionary order across processes, replicas diverge even with a perfect log. Put the timestamp or random seed *into* the command, decided once by the leader. The same rule makes an RL experience stream replayable: log the sampled actions and seeds, not just the outcomes.
+- **Anything you want to be the single source of truth should be one log.** A training control plane that records "job started", "node 17 failed", "checkpoint 5000 complete" as events in one ordered log can rebuild its state after a crash by replaying the log. One that updates three databases independently cannot.
+
+### Raft log replication: the commit index and the safety rules
+
+Here is the rest of Raft (Ongaro and Ousterhout's paper, sections 5.3 and 5.4; Kleppmann's notes, section 6.2). Each server keeps a **log** of entries, each entry a pair `(term, command)`, indexed from 1. The leader accepts client writes, appends them to its own log, and sends them to followers in **AppendEntries** messages (the same message that serves as a heartbeat when it carries no entries).
+
+**1. The consistency check (Log Matching).** Each AppendEntries carries `prev_index` and `prev_term`: the index and term of the entry just before the new ones. A follower accepts only if its own log has an entry at `prev_index` with term `prev_term`. If not, it refuses, and the leader retries with `prev_index` one lower, until it finds the point where the two logs agree. The follower then deletes everything after that point that conflicts and appends the leader's entries. By induction, if two logs have an entry with the same index and term, the logs are identical up to that index. The leader keeps, per follower, `next_index` (what to send next) and `match_index` (how much of the follower's log is known to match its own).
+
+**2. The commit index.** An entry is **committed** once the leader knows it is stored on a majority of servers. The leader tracks the highest such index as its `commit_index` and includes it in every AppendEntries, so followers learn it too. Each server applies entries to its state machine strictly in order up to its commit index, and never applies uncommitted ones. A client's write succeeds when its entry is committed, not when the leader received it.
+
+**3. The election restriction (the up-to-date vote rule).** A server refuses to vote for a candidate whose log is *less up-to-date* than its own: compare the term of the last entry first, and the length of the log if the terms are equal. A committed entry is on a majority, and a winning candidate needs votes from a majority. Any two majorities share a server, and that server will only vote for a candidate whose log is at least as up-to-date as its own, which (with rule 4) means one that contains the committed entry. So **every new leader already holds every committed entry** (Leader Completeness), and a leader never deletes entries from its own log, only followers' uncommitted ones.
+
+**4. Only commit entries from the current term by counting.** A new leader does not mark an *older* term's entry committed just because it now sits on a majority. It commits an entry from its own term, and the older entries before it become committed along with it. Without this rule there is a known interleaving (Figure 8 in the Raft paper) where an old-term entry sitting on a majority is still overwritten by a later leader.
+
+**5. Persist before you answer.** `term`, `voted_for` and the log must be written to disk before a server replies to a vote or an AppendEntries. Raft assumes the crash-recovery model from [System models](#system-models-what-you-assume-about-nodes-links-and-time): a server that forgot its vote after a restart could vote twice in one term. The commit index and the leader's per-follower bookkeeping can be lost and recomputed.
+
+The simulation below implements those rules for 5 servers. Instead of simulated time it uses a randomized adversary: at every step it picks one action, such as delivering a random in-flight message (so messages are reordered), dropping it, firing an election timeout, a client write, crashing a server (keeping only its persistent state), restarting one, or partitioning the network. After **every** step it checks the property that matters: no two servers ever commit different entries at the same index. It then switches off rule 3 and, separately, rule 4, and looks for counterexamples:
+
+```python
+# raft_log.py -- Raft log replication under crashes, partitions, loss and reordering.
+# A randomized schedule (not wall-clock time): each step the "adversary" picks one action.
+# Safety property checked after EVERY step: no two nodes ever commit different entries at the same index.
+import random
+
+N, MAJ = 5, 3
+
+class Node:
+    def __init__(self, i):
+        self.i, self.up = i, True
+        self.term, self.voted_for, self.log = 0, None, []   # persistent: survives a crash
+        self.reset_volatile()
+    def reset_volatile(self):                                 # lost on crash (crash-recovery model)
+        self.role, self.commit, self.votes, self.heard = "follower", 0, set(), -10**9
+        self.next, self.match = {}, {}
+    def last(self):                                           # (last log index, its term); 1-based
+        return len(self.log), (self.log[-1][0] if self.log else 0)
+
+def run(seed, steps=3000, safe_vote=True, safe_commit=True):
+    rng = random.Random(seed)
+    nodes = [Node(i) for i in range(N)]
+    net, side = [], None                     # in-flight messages; partition: set of ids on one side
+    committed = {}                           # index -> (term, cmd) the first time ANY node commits it
+    stats = dict(leaders=0, crashes=0, partitions=0)
+
+    def send(src, dst, **m):
+        net.append((src, dst, m))
+        if len(net) > 40:                    # bounded network buffers: overflow drops a random message
+            net.pop(rng.randrange(len(net)))
+    def step_down(n, term):
+        n.term, n.voted_for, n.role = term, None, "follower"
+    def up_to_date(n, last_idx, last_term):  # the election restriction (Raft paper sec. 5.4.1)
+        my_idx, my_term = n.last()
+        return (last_term, last_idx) >= (my_term, my_idx)
+    def replicate(L, j):
+        prev = L.next.get(j, len(L.log) + 1) - 1
+        send(L.i, j, kind="Append", term=L.term, prev=prev,
+             prev_term=L.log[prev - 1][0] if prev else 0, entries=L.log[prev:], commit=L.commit)
+
+    def handle(n, src, m):
+        if m["term"] > n.term:
+            step_down(n, m["term"])
+        k = m["kind"]
+        if k == "Vote?":
+            ok = (m["term"] == n.term and n.voted_for in (None, src)
+                  and (not safe_vote or up_to_date(n, m["last_idx"], m["last_term"])))
+            if ok: n.voted_for = src
+            send(n.i, src, kind="Vote", term=n.term, granted=ok)
+        elif k == "Vote" and n.role == "candidate" and m["term"] == n.term and m["granted"]:
+            n.votes.add(src)
+            if len(n.votes) >= MAJ:
+                n.role, stats["leaders"] = "leader", stats["leaders"] + 1
+                n.next = {j: len(n.log) + 1 for j in range(N)}
+                n.match = {j: 0 for j in range(N)}
+        elif k == "Append":
+            if m["term"] < n.term:
+                return send(n.i, src, kind="AppendOK", term=n.term, ok=False, match=0)
+            n.role, n.heard = "follower", step                    # a current leader exists: reset timer
+            p = m["prev"]
+            if p > len(n.log) or (p and n.log[p - 1][0] != m["prev_term"]):
+                return send(n.i, src, kind="AppendOK", term=n.term, ok=False, match=0)
+            for k_, e in enumerate(m["entries"]):                 # append, truncating on conflict
+                idx = p + 1 + k_
+                if idx <= len(n.log) and n.log[idx - 1][0] != e[0]:
+                    del n.log[idx - 1:]
+                if idx > len(n.log):
+                    n.log.append(e)
+            last_new = p + len(m["entries"])
+            n.commit = max(n.commit, min(m["commit"], last_new))
+            send(n.i, src, kind="AppendOK", term=n.term, ok=True, match=last_new)
+        elif k == "AppendOK" and n.role == "leader" and m["term"] == n.term:
+            if m["ok"]:
+                n.match[src] = max(n.match[src], m["match"]); n.next[src] = n.match[src] + 1
+            else:
+                n.next[src] = max(1, n.next[src] - 1)             # back up and retry
+            n.match[n.i] = len(n.log)
+            for idx in range(len(n.log), n.commit, -1):           # highest majority-replicated index
+                if sum(v >= idx for v in n.match.values()) >= MAJ and \
+                   (not safe_commit or n.log[idx - 1][0] == n.term):   # only commit own-term entries
+                    n.commit = idx
+                    break
+
+    for step in range(steps):
+        r = rng.random()
+        up = [n for n in nodes if n.up]
+        if r < 0.70 and net:                                      # deliver one message, any order
+            src, dst, m = net.pop(rng.randrange(len(net)))
+            if nodes[dst].up and (side is None or (src in side) == (dst in side)) and rng.random() > 0.1:
+                handle(nodes[dst], src, m)                        # else: lost (10%, partition, or crash)
+        elif r < 0.73:                                            # election timeout on a random node
+            n = rng.choice(up)
+            if n.role != "leader" and step - n.heard > 20:        # only if no leader heard recently
+                n.term += 1; n.role, n.voted_for, n.votes = "candidate", n.i, {n.i}
+                li, lt = n.last()
+                for j in range(N):
+                    if j != n.i: send(n.i, j, kind="Vote?", term=n.term, last_idx=li, last_term=lt)
+        elif r < 0.88:                                            # leaders replicate / heartbeat
+            for L in up:
+                if L.role == "leader":
+                    for j in range(N):
+                        if j != L.i: replicate(L, j)
+        elif r < 0.95:                                            # a client write reaches a leader
+            for L in up:
+                if L.role == "leader":
+                    L.log.append((L.term, f"cmd{step}"))
+        elif r < 0.965 and len(up) > 2:                            # crash a node
+            n = rng.choice(up); n.up = False; n.reset_volatile(); stats["crashes"] += 1
+        elif r < 0.985:                                           # restart a crashed node
+            for n in nodes:
+                if not n.up: n.up = True; break
+        else:                                                     # new partition, or heal
+            side = None if side else set(rng.sample(range(N), rng.choice([1, 2])))
+            stats["partitions"] += side is not None
+        for n in nodes:                                           # THE SAFETY CHECK
+            for idx in range(1, n.commit + 1):
+                e = n.log[idx - 1]
+                if committed.setdefault(idx, e) != e:
+                    return dict(stats, violation=f"step {step}: node {n.i} committed {e} at index {idx}, "
+                                                 f"but {committed[idx]} was committed there before")
+    return dict(stats, committed=len(committed), violation=None)
+
+if __name__ == "__main__":
+    for label, kw, seeds in [("full Raft", {}, 1000),
+                             ("no up-to-date vote rule", dict(safe_vote=False), 1000),
+                             ("commit old-term entries by counting", dict(safe_commit=False), 3000)]:
+        res = [run(seed, **kw) for seed in range(seeds)]
+        bad = [(seed, r) for seed, r in enumerate(res) if r["violation"]]
+        tot = lambda k: sum(r[k] for r in res)
+        print(f"{label}: {seeds} seeds, {tot('leaders')} leaders elected, {tot('crashes')} crashes, "
+              f"{tot('partitions')} partitions -> {len(bad)} runs with a safety violation")
+        if label == "full Raft":
+            c = sorted(r["committed"] for r in res)
+            print(f"   committed entries per run: median {c[len(c) // 2]}, max {c[-1]}")
+            assert not bad, "Raft safety violated!"
+        elif bad:
+            print(f"   seed {bad[0][0]}, {bad[0][1]['violation']}")
+```
+
+```
+$ python3 raft_log.py
+full Raft: 1000 seeds, 21097 leaders elected, 40798 crashes, 22892 partitions -> 0 runs with a safety violation
+   committed entries per run: median 40, max 165
+no up-to-date vote rule: 1000 seeds, 14483 leaders elected, 21191 crashes, 11873 partitions -> 823 runs with a safety violation
+   seed 0, step 1379: node 3 committed (32, 'cmd1362') at index 1, but (5, 'cmd185') was committed there before
+commit old-term entries by counting: 3000 seeds, 63131 leaders elected, 122411 crashes, 68102 partitions -> 1 runs with a safety violation
+   seed 1905, step 1976: node 3 committed (1, 'cmd12') at index 1, but (2, 'cmd22') was committed there before
+```
+
+(About 30 s on a laptop.) With all the rules, 1,000 randomized runs, about 41,000 crashes and 23,000 partitions produced no safety violation, while still committing a median of 40 entries per run, so the check is not passing because nothing ever commits. Remove the up-to-date vote rule and 823 of 1,000 runs break: a server with a short or stale log wins an election and overwrites entries that a majority had already committed. Remove rule 4 and the bug becomes rare. One run in 3,000 hit the Figure 8 interleaving. That is the usual shape of distributed-systems bugs: one rule matters constantly, another protects against a schedule you would never think to write a test for, which is why randomized testing (as here, and in tools such as Jepsen) finds bugs that hand-written tests miss. The simulation still omits things a real implementation needs: log compaction and snapshots, membership changes, and client request deduplication.
+
+**What etcd adds on top.** Raft gives etcd an ordered, replicated, crash-safe log. etcd turns it into the service Kubernetes and torchrun use:
+
+- **A key-value API applied from the log.** Every write is a log entry; every server applies committed entries to its local key-value store in order (state machine replication).
+- **Revisions.** Every committed write gets a cluster-wide, monotonically increasing **revision** number, and every key records the revision that last modified it. That is a ready-made fencing token (a number that only goes up, used to reject requests from a holder that has been replaced; explained in [Leases and fencing tokens](#leases-and-fencing-tokens) just below), and it is what Kubernetes exposes as an object's `resourceVersion`.
+- **Transactions.** "If key `k` still has revision `r`, then write `v`, else do nothing", evaluated atomically in the log. This compare-and-swap is how controllers (Kubernetes' background loops that keep the cluster matching what you asked for; see [Two-phase commit](#two-phase-commit-and-why-control-planes-avoid-it) below) do optimistic concurrency (read, compute, then write only if nobody changed the key in between, retrying if they did) and how leader election on top of etcd works.
+- **Linearizable reads by default.** A read must not be answered by an old leader that has been replaced without knowing it (the partition case in `raft_election.py`). etcd's leader confirms it is still leader with a round of heartbeats to a majority before answering (the "ReadIndex" technique). `etcdctl get --consistency=s` asks for a cheaper *serializable* read instead, served from the local replica and possibly stale. Linearizable vs serializable is defined in [the consistency section](#linearizability-serializability-and-eventual-consistency) below.
+- **Leases and watches.** Keys can be attached to a lease with a TTL, and clients can watch a key prefix and receive every change in revision order: the membership mechanism shown in the `etcdctl` example in [Key-value stores](#key-value-stores-tcpstore-and-etcd).
+- **Operations.** Snapshots and log compaction (so the log does not grow forever), and adding or removing members one at a time.
 
 ### Leases and fencing tokens
 
-The partition above shows a hazard that has nothing to do with Raft specifically: **a node can believe it is in charge after it has been replaced.** Any "only one worker may do X" scheme (one writer of the checkpoint, one job controller, one rank allowed to publish new weights to the inference fleet) has to deal with it.
+The partition in `raft_election.py` shows a hazard that has nothing to do with Raft specifically: **a node can believe it is in charge after it has been replaced.** Any "only one worker may do X" scheme (one writer of the checkpoint, one job controller, one rank allowed to publish new weights to the inference fleet) has to deal with it.
 
 A **lease** is a lock with an expiry time: "you are the leader until t = 10 s, unless you renew". If the holder dies, the lease simply runs out and someone else can take it, with no need to detect the death. The flaw is that the *holder* decides whether its lease is still valid by reading its own clock, and a process can be paused for an arbitrary time (a GC pause, a VM migration, a laptop lid, a `SIGSTOP`) between checking "is my lease still valid?" and acting on the answer.
 
@@ -1247,6 +1602,8 @@ Without fencing, the paused worker overwrote a newer checkpoint with an older on
 3. Change `MAJORITY` to `N // 2` (a "majority" of 2 out of 5) and add `partition = {0, 1}` before the first `run_until`, so the cluster starts out split. Both sides elect a leader *in term 1*, and the final `assert` catches it. (With the original partition the bug stays hidden, because the old leader never runs a new election. Broken quorum logic can pass a test that does not exercise it.)
 4. In `store.py`, make rank 2 sleep 15 s before `add` while the store timeout is 10 s. Which ranks fail, and with what error?
 5. In `gossip.py`, set `FANOUT = 1` and then `T_FAIL = 3`. Find the smallest `T_FAIL` with zero false suspicions over 40 rounds at each fanout.
+6. In `raft_log.py`, break rule 5: make `reset_volatile` also wipe `term`, `voted_for` and `log` (a server that forgets everything when it crashes, as if it never wrote to disk). How many of the first 200 seeds now violate safety? (We counted 199.)
+7. In `raft_log.py`, set `MAJ = 2`. Which property fails, and how quickly? Compare with exercise 3 above, where the same bug needed a carefully chosen partition to show up in `raft_election.py`.
 
 
 ## Consistency, replication and CAP
@@ -1294,6 +1651,101 @@ N=3 W=3 R=1 (R+W>N ): stale reads right after write =   0.0%
 ```
 
 The stale fractions match the counting argument. With W=1 and R=1, you read the one fresh replica only 1 time in 3. As soon as `R + W > N`, staleness drops to zero. The knobs trade read latency against write latency: W=3, R=1 makes writes wait for the slowest replica and reads fast, and W=1, R=3 does the reverse. (Real quorum systems have further corner cases, such as concurrent writes and "sloppy" quorums during failures, so `R + W > N` alone is not full linearizability.)
+
+### Linearizability, serializability and eventual consistency
+
+"Strong consistency" above was informal. Three precise terms come up constantly, and they are easy to mix up (Kleppmann's notes, sections 7.2 and 7.3):
+
+- **Linearizability** is about single operations on single objects (a key, a register, a lease). Every operation appears to take effect atomically at one instant somewhere between its invocation and its response, and those instants are consistent with **real time**: if operation `a` finished before operation `b` started, `b` must see `a`'s effect. It is the formal version of "behaves as if there were a single copy". etcd's default reads and writes are linearizable.
+- **Serializability** is about *transactions* (a group of reads and writes that must happen all-or-nothing, as in a database). The result must equal *some* serial order of the transactions, one after another, but that order need not match real time. A serializable database may legally show you a state from before your own transaction committed, as long as some serial order explains it. "Strict serializability" is both together. etcd's `--consistency=s` reads are called "serializable" because they are served from a replica's local state, which corresponds to some point in the agreed order but possibly an old one.
+- **Eventual consistency** only promises that replicas converge once writes stop. Reads may be stale or out of order in the meantime.
+
+Linearizability is the property that makes leases, locks and leader election correct. "Is the lease free?" answered from a stale replica is how two workers both end up believing they hold it.
+
+You can check linearizability mechanically. Record a **history**: each operation with its invocation time, response time and result. Then search for an order of the operations that respects real time (if `a` responded before `b` was invoked, `a` goes first) and in which every operation returns what a single, sequential copy would have returned. If no such order exists, the history is not linearizable. The search is exponential, but for a handful of operations brute force is fine, and it is the same idea that testing tools such as Jepsen's Knossos and Porcupine use with heavy pruning. Below, three clients use a register as a lease (`cas(None, me)` is "acquire if free") against two implementations: a single primary that applies every operation atomically at one instant, and a primary that serves reads from a replica lagging 3 time units behind:
+
+```python
+# lin.py -- a brute-force linearizability checker, run on a correct and a broken replicated register
+# The register is what a lease/lock service is built on: acquire = cas(None, me), release = write(None).
+import random
+
+def apply(state, op, arg):                     # the SEQUENTIAL spec: one copy, one op at a time
+    if op == "write": return arg, "ok"
+    if op == "read":  return state, state
+    if op == "cas":   return (arg[1], True) if state == arg[0] else (state, False)
+
+def linearizable(history, state=None):
+    """history: list of (client, op, arg, result, t_invoke, t_response).
+    Search for a total order that (1) respects real time: if a responded before b was invoked,
+    a comes first, and (2) gives every op the result the sequential spec would."""
+    if not history:
+        return True
+    first_resp = min(h[5] for h in history)
+    for i, (c, op, arg, res, t0, t1) in enumerate(history):
+        if t0 > first_resp:                    # some op finished before this one started: not next
+            continue
+        new_state, expected = apply(state, op, arg)
+        if expected == res and linearizable(history[:i] + history[i + 1:], new_state):
+            return True
+    return False                               # exponential in the number of ops: fine for ~10
+
+def simulate(rng, stale_reads, clients="ABC", ops_per_client=2, lag=3.0):
+    """Each op takes effect atomically at one instant inside [invoke, response] on the primary.
+    The broken store sends reads to a replica that applies the primary's writes `lag` time units late."""
+    ops = []
+    for c in clients:
+        t = rng.uniform(0, 2)
+        for _ in range(ops_per_client):
+            op = rng.choice(["write", "read", "read", "cas"])
+            arg = {"write": rng.choice([None, "A", "B"]), "read": None,
+                   "cas": (None, c)}[op]               # cas(None, c): "acquire the lease for c"
+            d = rng.uniform(0.5, 2)
+            ops.append([c, op, arg, None, t, t + d, t + rng.uniform(0, d)])   # last: apply point
+            t += d + rng.uniform(0, 1)
+    timeline, state = [(-1e9, None)], None             # primary's value over time
+    for o in sorted(ops, key=lambda o: o[6]):
+        if o[1] == "read" and stale_reads:
+            o[3] = [v for t, v in timeline if t <= o[6] - lag][-1]   # replica is `lag` behind
+        else:
+            state, o[3] = apply(state, o[1], o[2])
+            timeline.append((o[6], state))
+    return [tuple(o[:6]) for o in ops]
+
+rng = random.Random(0)
+for name, stale in [("single primary", False), ("reads from lagging replica", True)]:
+    hists = [simulate(rng, stale) for _ in range(300)]
+    bad = [h for h in hists if not linearizable(h)]
+    print(f"{name:27s}: {len(hists) - len(bad)}/300 histories linearizable")
+    if stale:
+        assert bad
+        h = min(bad, key=len)
+        print("  one that is not (time ->):")
+        for c, op, arg, res, t0, t1 in sorted(h, key=lambda h: h[4]):
+            a = {"read": "", "write": arg, "cas": f"{arg[0]} -> {arg[1]}" if op == "cas" else ""}[op]
+            print(f"    client {c}  [{t0:5.2f}, {t1:5.2f}]  {op}({a}) returned {res}")
+    else:
+        assert not bad
+
+# sanity checks on the checker itself
+assert linearizable([("A", "write", 1, "ok", 0, 1), ("B", "read", None, 1, 2, 3)])
+assert not linearizable([("A", "write", 1, "ok", 0, 1), ("B", "read", None, None, 2, 3)])  # stale read
+assert linearizable([("A", "write", 1, "ok", 0, 3), ("B", "read", None, None, 1, 2)])      # overlapping: ok
+```
+
+```
+$ python3 lin.py
+single primary             : 300/300 histories linearizable
+reads from lagging replica : 151/300 histories linearizable
+  one that is not (time ->):
+    client C  [ 0.00,  1.25]  read() returned None
+    client A  [ 1.39,  1.96]  read() returned None
+    client B  [ 1.94,  3.93]  cas(None -> B) returned True
+    client C  [ 2.20,  3.61]  read() returned None
+    client A  [ 2.74,  3.48]  read() returned None
+    client B  [ 4.83,  5.34]  read() returned None
+```
+
+The checker accepted all 300 single-primary histories and rejected half of the replica-read ones. Follow client B in the printed history. Its `cas(None -> B)` returned `True` at t = 3.93: B now holds the lease, and that response is a promise to every later observer. At t = 4.83, after the `cas` had completed, B asks who holds the lease and is told `None`. No single copy could produce that, because the `cas` that set it to B had already finished. A different client making the same stale read would conclude the lease is free and try to take it. Notice also that each individual answer from the broken store was a value the register really held at some point. Staleness looks plausible operation by operation, and it takes the history, with real time, to see it is wrong. That is also why the `R + W > N` quorum above is not on its own enough for linearizability: a read concurrent with a write can see the new value while a later read sees the old one, unless readers also write back what they read.
 
 ### CAP, briefly
 
@@ -1357,9 +1809,9 @@ This is state-machine replication with the "agree on the inputs" part done by th
 Once you leave the training loop, the usual distributed-systems trade-offs come back:
 
 - **Model serving:** many replicas behind a load balancer. During a rollout, some replicas serve model v1 and some v2. That is eventual consistency, and users may see both. Choosing between "keep serving" and "refuse until consistent" is a real product decision.
-- **Feature stores and embedding tables:** online features are written by streaming pipelines and read at inference time. Staleness, read-your-writes and training/serving skew are consistency problems.
+- **Feature stores and embedding tables:** a feature store is a database of precomputed model inputs (for example "this user's clicks in the last hour"); online features are written by streaming pipelines and read at inference time. Staleness, read-your-writes (a client must see its own earlier writes) and training/serving skew (the model was trained on features computed one way and is served features computed another) are consistency problems.
 - **Asynchronous or parameter-server training** (recommendation models with huge sparse embeddings still use it): workers read possibly-stale parameters on purpose, trading consistency for throughput.
-- **Checkpoint storage:** an object store may be eventually consistent for listings, or a checkpoint may be half-written when a node dies. Write to a temporary name, then rename or write a "complete" marker last.
+- **Checkpoint storage:** an object store (a cloud storage service such as Amazon S3 or Google Cloud Storage that holds whole files, called objects, under string keys and is accessed over HTTP rather than mounted like a disk; see [storage and data](storage-and-data.md#object-storage)) may be eventually consistent for listings, or a checkpoint may be half-written when a node dies. Write to a temporary name, then rename or write a "complete" marker last.
 
 The checkpoint case is the one you will write yourself, so here it is in code. `os.replace` is atomic on a local POSIX filesystem: a reader sees either the old file or the new one, never a mix:
 
@@ -1452,6 +1904,8 @@ Modulo hashing moved 91% of the keys, which for a cache means a near-total miss 
 2. In `cap.py`, implement last-writer-wins on heal using a timestamp per write, then give the left side's clock a +5 s skew. Whose write survives, and is that the one that actually happened last?
 3. In `chash.py`, *remove* a node instead of adding one. Check that only that node's keys move, and where they go.
 4. Print `hash("shard-000001")` in two separate `python3 -c` invocations. Then do it again with `PYTHONHASHSEED=0` set for both.
+5. In `lin.py`, set `lag=0.0` for the replica-read store. Do all histories become linearizable, and why? Then add a second replica with its own lag and send each read to a random replica.
+6. Hand-write a history for `linearizable` in which two clients both get `True` from `cas(None, ...)` with no `write(None)` in between, overlapping in time. Confirm the checker rejects it: that is "two workers both hold the lease".
 
 
 ## Collectives: the workhorse of distributed training
@@ -1466,6 +1920,8 @@ Point-to-point messages ("rank 3 sends this tensor to rank 7") are the primitive
 | all-gather | every rank contributes a slice, every rank gets the concatenation | gathering sharded weights in ZeRO/FSDP |
 | all-to-all | every rank sends a distinct chunk to every other rank | Mixture-of-Experts token routing, sequence parallelism |
 | barrier | nobody proceeds until all arrive | coordination |
+
+(TP, ZeRO and FSDP are defined in [Data parallel vs model parallel](#data-parallel-vs-model-parallel) below. Mixture-of-Experts models route each token to a few of many expert sub-networks, which may live on different GPUs; sequence parallelism splits one long sequence across GPUs. Both are covered in [architectures](../models/architectures.md#mixture-of-experts) and [model parallelism](../training/model-parallelism/README.md).)
 
 All-reduce - every rank ends with the sum of all ranks' inputs:
 
@@ -1518,7 +1974,7 @@ Why all-reduce won for LLMs:
 Build the ring all-reduce yourself and check the bandwidth claim. Each rank's vector is cut into n chunks. In the **reduce-scatter** phase, every rank passes one chunk to its right-hand neighbour, which adds it to its own copy. After n-1 steps each rank holds one chunk of the full sum. In the **all-gather** phase the finished chunks travel around the ring once more, n-1 steps, until everyone has all of them:
 
 ```python
-# ring.py -- ring all-reduce = reduce-scatter + all-gather, simulated with numpy
+# ring_sim.py -- ring all-reduce = reduce-scatter + all-gather, simulated with numpy
 import numpy as np
 
 def ring_allreduce(xs):
@@ -1545,7 +2001,7 @@ for n in (2, 4, 8, 16):
 ```
 
 ```
-$ python ring.py
+$ python ring_sim.py
 n= 2: per-rank sent 1.000 x S   (2(n-1)/n = 1.000)
 n= 4: per-rank sent 1.500 x S   (2(n-1)/n = 1.500)
 n= 8: per-rank sent 1.750 x S   (2(n-1)/n = 1.750)
@@ -1635,7 +2091,7 @@ Every parallelism strategy trades among three resources:
 | ZeRO-3 / FSDP | about 1/N of state | about 1.5x DP: all-gather params in fwd and bwd, reduce-scatter grads | moderate, needs prefetch overlap |
 | TP | about 1/N of each layer | collectives in every layer, latency-bound | high if run over slow links |
 | PP | about 1/N of the layers | small activations, point-to-point | pipeline bubble |
-| activation recomputation | lower activations | none | about 30% more compute |
+| activation recomputation (drop activations in forward, recompute them in backward) | lower activations | none | about 30% more compute |
 
 You can almost always trade one resource for another. You cannot get all three for free. The job of a distributed training configuration is to pick the cheapest trade for your hardware: how much memory per GPU, how fast the links inside and between nodes, how many GPUs. The [model parallelism chapter](../training/model-parallelism/README.md) covers each strategy in detail, and [Parallelism From First Principles](../training/model-parallelism/derivations.md) derives the memory and communication cost of each so you can do this arithmetic yourself.
 
@@ -1743,7 +2199,7 @@ See the [checkpoints chapter](../training/checkpoints/README.md).
 
 ### Idempotency
 
-An operation is **idempotent** if doing it twice has the same effect as doing it once. In a distributed system with retries, you cannot always know whether an operation that "failed" actually happened. The network may have lost the reply, not the request. If the operation is idempotent, you can just retry it.
+An operation is **idempotent** if doing it twice has the same effect as doing it once. In a distributed system with retries, you cannot always know whether an operation that "failed" actually happened. The network may have lost the reply, not the request. If the operation is idempotent, you can just retry it. (`rpc.py` in [Remote procedure calls](#remote-procedure-calls-at-most-once-at-least-once-exactly-once) showed the single-call version; this section scales it up.)
 
 In ML jobs:
 
@@ -1796,7 +2252,7 @@ A lost reply is the dangerous case. The server did the work, the client cannot t
 
 ### Retries with exponential backoff and jitter
 
-Transient failures (an object-store request failing with a 503, a DNS lookup timing out, the rendezvous store not up yet) should be retried. Retry naively and you can make things worse: 4,000 ranks retrying a struggling storage server every 100 ms is a self-inflicted denial-of-service attack.
+Transient failures (an object-store request failing with HTTP status 503, "service unavailable / slow down", a DNS lookup timing out, the rendezvous store not up yet) should be retried. Retry naively and you can make things worse: 4,000 ranks retrying a struggling storage server every 100 ms is a self-inflicted denial-of-service attack.
 
 The standard pattern:
 
@@ -1872,7 +2328,75 @@ exponential  peak load:  1000 requests in one 100 ms window (spread over  61.0 s
 full jitter  peak load:   162 requests in one 100 ms window (spread over  55.9 s)
 ```
 
-Exponential backoff *without* jitter spreads the retries over a minute, but all 1,000 clients still arrive in the same instant every time. It delays the thundering herd without breaking it up. Full jitter cuts the peak about 6x. (The "full jitter" name and the comparison come from the AWS Architecture Blog post "Exponential Backoff And Jitter", 2015.) Two more rules from production: put a cap on the *total* retry time, so a permanently failed dependency surfaces as an error instead of an invisible stall, and log every retry, because a job that is quietly retrying is often the explanation for a slow step.
+Exponential backoff *without* jitter spreads the retries over a minute, but all 1,000 clients still arrive in the same instant every time. It delays the thundering herd (many clients hitting a service in the same instant) without breaking it up. Full jitter cuts the peak about 6x. (The "full jitter" name and the comparison come from the AWS Architecture Blog post "Exponential Backoff And Jitter", 2015.) Two more rules from production: put a cap on the *total* retry time, so a permanently failed dependency surfaces as an error instead of an invisible stall, and log every retry, because a job that is quietly retrying is often the explanation for a slow step.
+
+### Two-phase commit, and why control planes avoid it
+
+Sometimes one logical change must land in several independent systems, all or nothing. Publishing checkpoint step 5000 might mean a row in the metadata database, a manifest in the object store and a new version in the model registry. If two succeed and one fails, readers see a checkpoint that half exists. The classic protocol for this is **two-phase commit (2PC)** (Kleppmann's notes, section 7.1). A **coordinator** talks to every **participant**:
+
+1. **Prepare.** The coordinator asks each participant "can you commit?". A participant that votes yes must first make the change durable but invisible and hold any locks it needs, because from that moment it has *promised* to commit if told to. It can no longer decide on its own.
+2. **Commit or abort.** If every participant voted yes, the coordinator writes "commit" to its own log and tells everyone to commit. If anyone voted no, or did not answer in time, it tells everyone to abort.
+
+It is correct, and it has one well-known weakness: **if the coordinator dies after the participants have voted yes and before they hear the decision, they are stuck.** A prepared participant cannot commit (the coordinator may have decided to abort, say because another vote timed out) and cannot abort (the coordinator may have decided to commit and told someone else already). The participants cannot even work it out among themselves:
+
+```python
+# two_pc.py -- two-phase commit, and why it blocks when the coordinator dies
+# Atomically publish checkpoint step 5000 to three services: all of them or none of them.
+class Participant:
+    def __init__(self, name, will_vote_yes=True):
+        self.name, self.yes, self.state = name, will_vote_yes, "idle"
+    def prepare(self):                    # phase 1: make the change durable but invisible, hold locks
+        self.state = "prepared" if self.yes else "aborted"
+        return self.yes
+    def decide(self, commit):             # phase 2
+        self.state = "committed" if commit else "aborted"
+
+def two_pc(parts, crash_after_votes=False, coordinator_decides=None):
+    votes = [p.prepare() for p in parts]                          # phase 1: "can you commit?"
+    decision = all(votes) if coordinator_decides is None else coordinator_decides
+    coord_log = "COMMIT" if decision else "ABORT"                 # decision is durable at the coordinator...
+    if crash_after_votes:
+        return coord_log                                          # ...and dies before telling anyone
+    for p in parts:
+        p.decide(decision)                                        # phase 2: "commit" / "abort"
+    return coord_log
+
+def run(label, **kw):
+    parts = [Participant("metadata-db"), Participant("object-store manifest"),
+             Participant("model-registry", kw.pop("last_yes", True))]
+    log = two_pc(parts, **kw)
+    view = tuple(p.state for p in parts)
+    print(f"{label:45s} coordinator log: {log:6s}  participants: {view}")
+    return view
+
+run("all vote yes")
+run("model-registry votes no", last_yes=False)
+# The coordinator crashes after collecting three YES votes. Did it log COMMIT or ABORT
+# (e.g. a coordinator-side timeout) first? The participants cannot tell the two worlds apart:
+v1 = run("crash after votes, coordinator chose COMMIT", crash_after_votes=True, coordinator_decides=True)
+v2 = run("crash after votes, coordinator chose ABORT", crash_after_votes=True, coordinator_decides=False)
+assert v1 == v2 == ("prepared",) * 3
+print("participants' view is identical in both worlds -> no participant may decide alone;"
+      " all stay prepared, holding locks, until the coordinator recovers")
+```
+
+```
+$ python3 two_pc.py
+all vote yes                                  coordinator log: COMMIT  participants: ('committed', 'committed', 'committed')
+model-registry votes no                       coordinator log: ABORT   participants: ('aborted', 'aborted', 'aborted')
+crash after votes, coordinator chose COMMIT   coordinator log: COMMIT  participants: ('prepared', 'prepared', 'prepared')
+crash after votes, coordinator chose ABORT    coordinator log: ABORT   participants: ('prepared', 'prepared', 'prepared')
+participants' view is identical in both worlds -> no participant may decide alone; all stay prepared, holding locks, until the coordinator recovers
+```
+
+The two crash scenarios end in different decisions but look identical from every participant, so the only safe thing is to wait, holding locks, until the coordinator comes back and reads its log. This is the two generals problem again, now with the coordinator as the single place the decision lives. You can make the coordinator fault-tolerant by running it on Raft (the decision becomes a committed log entry, so a new coordinator can read it), and that is what distributed databases do. It makes 2PC non-blocking but not cheap: every transaction pays several round trips, and participants hold locks across them.
+
+Control planes for ML (job schedulers, sandbox and inference-fleet managers, RL rollout orchestrators) usually avoid cross-service atomic commit altogether, with two patterns that need only a single store to be transactional:
+
+- **Desired state plus reconciliation.** Write the *intent* ("job 42 should have 8 workers running checkpoint 5000") to one strongly consistent store, such as etcd or a database. Separate controllers repeatedly compare the world with that intent and take idempotent steps to close the gap: create a missing pod, delete an orphaned sandbox, retry a failed upload. A crash halfway leaves the world temporarily behind the intent, never inconsistent with it, and the next loop fixes it. This is how Kubernetes works.
+- **The transactional outbox.** When a service must both update its database and tell another system, it writes the state change *and* an "outgoing message" row in one local database transaction. A separate relay process reads the outbox and delivers the messages at-least-once, with idempotency keys so the receiver drops duplicates. Either both the state change and the message exist or neither does, without the receiver ever taking part in a commit protocol.
+
+Both trade "all systems change at the same instant" for "all systems converge, and every step can be safely repeated". For infrastructure that is almost always the better trade. [Services and control planes](../platform/control-planes.md#desired-state-and-reconciliation) builds both patterns ([outbox](../platform/control-planes.md#at-least-once-delivery-dedup-and-the-outbox)).
 
 ### Elastic training
 
@@ -1899,7 +2423,7 @@ How many spares is "a pool"? Treat failures as random arrivals (a Poisson proces
 import math
 gpu_mtbf_days = 2112                   # per-GPU, from the Llama 3 numbers above
 node_mtbf = gpu_mtbf_days / 8          # 8 GPUs per node, any GPU failure takes the node out
-nodes, repair_days = 1000, 3.0         # a failed node is gone ~3 days (RMA, reboot, burn-in)
+nodes, repair_days = 1000, 3.0         # a failed node is gone ~3 days (RMA = return a part to the vendor, reboot, burn-in = stress test before reuse)
 
 lam = nodes * repair_days / node_mtbf  # expected nodes broken at any moment (Poisson mean)
 def poisson_cdf(k, lam):
@@ -1965,7 +2489,7 @@ max abs difference: 1.19e-07   (values ~ 9.91e-02)
 same world size, same order -> bit-identical: True
 ```
 
-70% of the gradient entries differ in their last bits, by about one float32 ulp (unit in the last place). That is harmless for convergence, but it means a run resumed on a different world size will *not* reproduce the original loss curve bit for bit, and it slowly diverges after that. The seeding rule as code:
+70% of the gradient entries differ in their last bits: the largest difference is about 1.2e-7, which is one float32 ulp (unit in the last place) for values near 1.0 and several ulps for the smaller values typical here. That is harmless for convergence, but it means a run resumed on a different world size will *not* reproduce the original loss curve bit for bit, and it slowly diverges after that. The seeding rule as code:
 
 ```python
 # seeding.py -- same seed where ranks must agree, rank-offset seed where they must differ
@@ -1995,7 +2519,7 @@ Bitwise reproducibility at scale is expensive and often not achievable. A realis
 
 ### When peers are untrusted
 
-Everything above assumes ranks fail by *stopping* or *slowing down*. These are **crash faults**. In decentralized training, where volunteers or untrusted providers on the internet contribute compute, a peer can also send *wrong* data, because of broken hardware, a bug, or on purpose. A peer that can behave arbitrarily is said to have a **Byzantine fault** (after Lamport, Shostak and Pease's 1982 "Byzantine Generals" paper). Byzantine-tolerant consensus needs `3f + 1` nodes to tolerate `f` bad ones, against `2f + 1` for crash faults. Training systems usually do not run consensus. Instead they defend the aggregation step. A plain mean is destroyed by a single bad gradient. Robust aggregators such as the coordinate-wise median or the trimmed mean bound the damage **[torch]**:
+Everything above assumes ranks fail by *stopping* or *slowing down*. These are **crash faults**. In decentralized training, where volunteers or untrusted providers on the internet contribute compute, a peer can also send *wrong* data, because of broken hardware, a bug, or on purpose. A peer that can behave arbitrarily is said to have a **Byzantine fault**, the node model from [the Byzantine generals problem](#the-byzantine-generals-problem-when-nodes-lie) earlier in this chapter. Byzantine-tolerant consensus needs `3f + 1` nodes to tolerate `f` bad ones, against `2f + 1` for crash faults. Training systems usually do not run consensus. Instead they defend the aggregation step. A plain mean is destroyed by a single bad gradient. Robust aggregators such as the coordinate-wise median or the trimmed mean bound the damage **[torch]**:
 
 ```python
 # robust.py -- averaging gradients from untrusted peers: mean vs coordinate-wise median vs trimmed mean
@@ -2033,6 +2557,7 @@ One peer out of 16 sending `-100 x` the gradient turned the averaged update into
 3. In `backoff.py`, implement "decorrelated jitter" (`d = min(CAP, random.uniform(BASE, prev * 3))`) and compare its peak with full jitter.
 4. In `robust.py`, increase the number of bad peers from 1 to 7, then to 8 of 16. At what point does the median break, and why exactly there?
 5. In `spares.py`, set `repair_days = 14`. How many spares do you need now for 99%?
+6. In `two_pc.py`, let one participant vote *no* and then crash the coordinator after the votes. Can the participants now decide without the coordinator? (A participant that voted no, or was never asked, knows the outcome must be abort. Only "everyone prepared" is stuck.)
 
 
 ## The distributed debugging mindset
@@ -2080,18 +2605,18 @@ if __name__ == "__main__":
 
 ```
 $ python3 ranklog.py
-[rank00 Ibrahims-MacBook-Pro pid=49132] 16:18:05 INFO step=0 loss=1.000
-[rank00 Ibrahims-MacBook-Pro pid=49132] 16:18:05 INFO step=1 loss=0.500
-[rank01 Ibrahims-MacBook-Pro pid=49133] 16:18:05 INFO step=0 loss=0.500
-[rank01 Ibrahims-MacBook-Pro pid=49133] 16:18:05 INFO step=1 loss=0.333
-[rank02 Ibrahims-MacBook-Pro pid=49134] 16:18:05 INFO step=0 loss=0.333
-[rank02 Ibrahims-MacBook-Pro pid=49134] 16:18:05 INFO step=1 loss=0.250
+[rank00 my-laptop pid=49132] 16:18:05 INFO step=0 loss=1.000
+[rank00 my-laptop pid=49132] 16:18:05 INFO step=1 loss=0.500
+[rank01 my-laptop pid=49133] 16:18:05 INFO step=0 loss=0.500
+[rank01 my-laptop pid=49133] 16:18:05 INFO step=1 loss=0.333
+[rank02 my-laptop pid=49134] 16:18:05 INFO step=0 loss=0.333
+[rank02 my-laptop pid=49134] 16:18:05 INFO step=1 loss=0.250
 $ ls logs; cat logs/rank01.log
 rank00.log
 rank01.log
 rank02.log
-[rank01 Ibrahims-MacBook-Pro pid=49133] 16:18:05 INFO step=0 loss=0.500
-[rank01 Ibrahims-MacBook-Pro pid=49133] 16:18:05 INFO step=1 loss=0.333
+[rank01 my-laptop pid=49133] 16:18:05 INFO step=0 loss=0.500
+[rank01 my-laptop pid=49133] 16:18:05 INFO step=1 loss=0.333
 ```
 
 In a real job, take the rank from `os.environ["RANK"]`. The hostname is what lets you map "rank 417 is slow" to "node gpu-st-p5-0052 is bad", and the PID is what you pass to `py-spy`. Zero-padding the rank (`rank01`) makes the log files sort correctly.
@@ -2158,7 +2683,7 @@ For hangs, the most useful tool is a stack dump of every rank. [`py-spy`](https:
 pgrep -f train.py | xargs -I {} py-spy dump --pid {}
 ```
 
-Run it on all nodes (through `srun`, `pdsh` or similar), then look for the odd one out: 63 stacks in `all_reduce` and one in `torch.load` tells you where to look. The [PyTorch debugging chapter](../debug/pytorch.md#py-spy) shows how to run py-spy [across processes](../debug/pytorch.md#multi-process-py-spy) and across nodes, and covers [NCCL hang diagnosis](../debug/pytorch.md#diagnosing-nccl-collective-hangs) with the flight recorder.
+`pgrep -f train.py` prints the PID of every process whose command line contains `train.py`, and `xargs -I {}` runs the `py-spy` command once per PID, substituting it for `{}`. Run it on all nodes (through `srun`, `pdsh`, a tool that runs one command on many hosts over ssh, or similar), then look for the odd one out: 63 stacks in `all_reduce` and one in `torch.load` tells you where to look. The [PyTorch debugging chapter](../debug/pytorch.md#py-spy) shows how to run py-spy [across processes](../debug/pytorch.md#multi-process-py-spy) and across nodes, and covers [NCCL hang diagnosis](../debug/pytorch.md#diagnosing-nccl-collective-hangs) with the flight recorder.
 
 Other debugging habits that pay off:
 
@@ -2299,6 +2824,7 @@ Each of these teaches one of this chapter's lessons:
 - [Fault tolerance](../training/fault-tolerance/README.md). Spare nodes, watchdogs and the automation around them. You can now compute why they are necessary from a per-node failure rate.
 - [Orchestration](../orchestration/README.md), [Slurm](../orchestration/slurm/README.md) and [Kubernetes](../orchestration/kubernetes/README.md). How launchers allocate nodes and start one process per GPU, then rendezvous.
 - [Orchestration internals](../orchestration/internals.md). Schedulers, controllers and their state stores. You know what etcd and Raft are doing underneath.
+- [Services and control planes](../platform/control-planes.md) and [RL infrastructure](../platform/rl-infrastructure.md). RPC timeouts, idempotency keys, reconciliation and the outbox instead of two-phase commit, and linearizable leases.
 - [Checkpoints](../training/checkpoints/README.md) and [reproducibility](../training/reproducibility/README.md). Checkpoint/restart, atomic saves and the limits of determinism across ranks.
 - [Debugging PyTorch programs](../debug/pytorch.md). py-spy across nodes, NCCL flight recorder, hang diagnosis.
 - [Communication patterns](../network/comms.md) and [collective internals](../network/collectives-internals.md). The collective algorithms and their cost models.
@@ -2306,6 +2832,8 @@ Each of these teaches one of this chapter's lessons:
 
 ## Further reading
 
+- Martin Kleppmann, *Concurrent and Distributed Systems* lecture notes, University of Cambridge (2021/22), https://www.cl.cam.ac.uk/teaching/2122/ConcDisSys/dist-sys-notes.pdf. A free, compact course covering RPC, the two generals and Byzantine generals problems, system models, happens-before, broadcast, Raft, two-phase commit and linearizability, with recorded lectures. The source for several sections of this chapter.
+- Maurice Herlihy and Jeannette Wing, *Linearizability: A Correctness Condition for Concurrent Objects* (ACM TOPLAS 1990). The definition used in `lin.py`.
 - Martin Kleppmann, *Designing Data-Intensive Applications* (O'Reilly). The best single book on replication, consistency, consensus, clocks and "the trouble with distributed systems" (chapters 5, 8 and 9 are the relevant ones).
 - MIT 6.824 / 6.5840 *Distributed Systems* (Robert Morris), lecture videos and notes at https://pdos.csail.mit.edu/6.824/. The labs build Raft and MapReduce from scratch.
 - PyTorch distributed documentation: `torch.distributed` (https://pytorch.org/docs/stable/distributed.html), `torchrun` and elastic rendezvous (https://pytorch.org/docs/stable/elastic/run.html), and the DDP design notes (https://pytorch.org/docs/stable/notes/ddp.html).

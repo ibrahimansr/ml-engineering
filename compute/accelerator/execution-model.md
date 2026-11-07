@@ -2,10 +2,13 @@
 
 ## Prerequisites
 
-- [Computer architecture](../../foundations/computer-architecture.md) - caches, memory bandwidth vs latency, SIMD, and what an instruction pipeline is; this chapter assumes all of it.
-- [Concurrency](../../foundations/concurrency.md) - threads, synchronization, barriers, atomics and asynchronous execution, which is how GPU kernels and CUDA streams behave.
-- [Linux and the OS](../../foundations/linux-and-os.md) - processes, system calls and drivers, needed for the launch-overhead and profiling sections where the CPU side matters.
-- [Transformer architectures](../../models/architectures.md) - attention, GQA, RMSNorm and the MLP block, the ops whose kernels this chapter dissects.
+- [Toolkit](../../foundations/toolkit.md) - the "Reading C" part (pointers, arrays, structs, `#include`, compiling with a compiler) for the CUDA C++ snippets, and the Python-environment part for running the scripts.
+- [Computer architecture](../../foundations/computer-architecture.md) - caches, memory bandwidth vs latency, [Little's law](../../foundations/computer-architecture.md#bandwidth-vs-latency), SIMD, [the GPU](../../foundations/computer-architecture.md#the-gpu) (SMs, warps, tensor cores) and [the roofline model](../../foundations/computer-architecture.md#arithmetic-intensity-and-the-roofline-model); this chapter assumes all of it.
+- [Linux and the OS](../../foundations/linux-and-os.md) - processes, system calls, [environment variables](../../foundations/linux-and-os.md#environment-variables-and-path) (the `TORCH_LOGS=... python script.py` form used below) and [driver vs runtime vs toolkit (`nvcc`)](../../foundations/linux-and-os.md#cuda-driver-vs-runtime-vs-toolkit-why-cuda-version-mismatch-happens), needed for the launch-overhead, compile and profiling sections.
+- [Concurrency](../../foundations/concurrency.md) - threads, synchronization, barriers, atomics and [GPU concurrency](../../foundations/concurrency.md#part-7-gpu-concurrency) (asynchronous launches, streams, synchronization points, CUDA graphs), which is how GPU kernels and CUDA streams behave.
+- [Transformer architectures](../../models/architectures.md) - attention, [the KV cache and prefill vs decode](../../models/architectures.md#the-kv-cache), [GQA/MQA](../../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic), RMSNorm and the MLP block, the ops whose kernels this chapter dissects.
+
+Forward links (later chapters that go deeper on terms this chapter only touches): [Writing GPU kernels](writing-kernels.md) teaches CUDA C++ and Triton from zero; [Model parallelism derivations](../../training/model-parallelism/derivations.md) covers tensor parallelism; [Serving engine internals](../../inference/serving-engine-internals.md) covers continuous batching and paged KV caches; [Profiling and optimization](../../training/profiling-and-optimization.md) covers `torch.compile` and activation checkpointing as tools.
 
 The [Accelerators](README.md) chapter tells you what a GPU is rated at - [TFLOPS](README.md#tflops), [memory bandwidth](README.md#accelerator-memory-size-and-speed), [caches](README.md#caches), and how much of the peak is [actually achievable](README.md#maximum-achievable-and-sustainable-flops). This chapter is about *why* a given kernel (a function compiled for the GPU and launched from the CPU to run across thousands of GPU threads at once) gets the fraction it gets: how the hardware schedules threads (independent streams of instructions, each with its own registers), where the bytes live, what a tensor core instruction looks like, and how the kernels that dominate an LLM step (GEMM, attention, normalization) are structured to hit or miss the roofline (the performance ceiling set by whichever of compute or memory bandwidth runs out first, [defined below](#roofline-per-op)). It ends with the tools that tell you which case you are in.
 
@@ -13,7 +16,7 @@ Two terms used throughout: *HBM* (High Bandwidth Memory) is the GPU's main memor
 
 ## How to follow this chapter without a GPU
 
-Every calculator and simulator below is plain Python (stdlib, numpy or CPU PyTorch) and was run on an Apple M4 laptop while writing this chapter; their output is pasted as-is. Code that needs an NVIDIA GPU (CUDA C++, Triton, Nsight) is marked "untested". To reproduce:
+Every calculator and simulator below is plain Python (stdlib, numpy or CPU PyTorch) and was run on an Apple M4 laptop while writing this chapter; their output is pasted as-is. Code that needs an NVIDIA GPU (CUDA C++, Triton, Nsight) is marked "untested". To reproduce (virtual environments and `pip` are covered in the [toolkit](../../foundations/toolkit.md#running-the-books-code) chapter):
 
 ```bash
 python3 -m venv /tmp/mle-venv
@@ -32,9 +35,15 @@ Nothing in this chapter is a benchmark result. The one kernel in it comes with a
 ## Glossary
 
 - CTA: Cooperative Thread Array - the hardware name for a thread block
+- cuBLAS / cuBLASLt: NVIDIA's closed-source GEMM libraries; `torch.matmul` on a GPU ends up here. CUTLASS: NVIDIA's open-source C++ template library for writing your own GEMM-like kernels.
 - DSMEM: Distributed Shared Memory - shared memory of other CTAs in the same cluster
+- epilogue: the code at the end of a GEMM (or attention) kernel that post-processes the finished output tile (scale, bias, activation, cast) and writes it to memory
+- GEMM: GEneral Matrix Multiply, `C = A @ B` (optionally scaled and added to an existing `C`); the operation behind every `nn.Linear`. GEMV is the matrix-vector special case (one row of activations).
 - GPC: Graphics Processing Cluster - a group of SMs; a thread block cluster is co-scheduled within one
 - ILP: Instruction-Level Parallelism
+- MAC / MMA: multiply-accumulate (`c += a * b`, 2 FLOPs) / matrix multiply-accumulate (`C += A @ B` on a small tile, one tensor core instruction)
+- PTX: NVIDIA's virtual assembly language - what CUDA C++ and Triton compile to first; portable across GPU generations
+- SASS: the real machine code for one GPU generation, produced from PTX by the `ptxas` assembler (part of `nvcc`) or by the driver at load time
 - LDS: Local Data Share - AMD's counterpart of shared memory
 - MUFU: Multi-Function Unit - the special function unit (`exp2`, `rsqrt`, `sin`, ...)
 - SIMT: Single Instruction Multiple Threads
@@ -73,6 +82,15 @@ int main() {
     printf("c[0]=%f c[n-1]=%f\n", c[0], c[n - 1]);             // expected: 3.000000 3.000000
 }
 ```
+
+Just enough C/CUDA to read this (C syntax itself - pointers, arrays, `#include`, `main`, compiling - is in the "Reading C" part of the [toolkit](../../foundations/toolkit.md#reading-c); CUDA C++ is taught properly in [CUDA C++ from zero](writing-kernels.md#cuda-c-from-zero)):
+
+- `nvcc -O3 -arch=sm_90 vadd.cu -o vadd` compiles with NVIDIA's compiler: `-O3` optimize, `-arch=sm_90` generate code for H100 (compute capability 9.0), `-o vadd` name the executable. Running `./vadd` prints the line.
+- `float* a` is a pointer: the address of the first of many `float`s in memory, indexed like a Python list (`a[i]`). `const float*` means the kernel only reads through it.
+- `__global__` marks `vadd` as a kernel: it runs on the GPU, is called from the CPU, and every thread runs the whole function body once with its own `blockIdx`/`threadIdx`.
+- `cudaMallocManaged(&a, n * 4)` allocates `n * 4` bytes (4 bytes per `float`) of *unified memory*, readable by both CPU and GPU, and writes its address into `a` (`&a` passes "where to store the pointer"). Real code usually uses `cudaMalloc` (GPU-only) plus explicit copies.
+- `vadd<<<blocks, threads>>>(...)` is the CUDA launch syntax: run `blocks` CTAs of `threads` threads each. It only enqueues the work, which is why `cudaDeviceSynchronize()` is needed before reading `c` on the CPU - the same asynchrony as in [GPU concurrency](../../foundations/concurrency.md#part-7-gpu-concurrency).
+- `1 << 24` is `2**24`; `(n + threads - 1) / threads` is integer ceil-division.
 
 The index arithmetic the hardware does for you, and where any given thread ends up:
 
@@ -159,7 +177,7 @@ for k in ("max_threads_per_multi_processor", "regs_per_multiprocessor",
 
 A GPU does not hide memory latency with caches and out-of-order execution as a CPU does. (Latency is the time from issuing a load until its data arrives; bandwidth is how many bytes per second arrive once the pipe is full.) It hides it by having many warps resident and switching between them for free: every resident warp's registers are permanently allocated in the register file, so a "context switch" is the scheduler picking a different warp on the next clock. When warp A issues a global load and its next instruction depends on the result, A stalls (in Nsight Compute vocabulary, on the *long scoreboard*) and the scheduler issues from warp B.
 
-How much parallelism you need is Little's law: `bytes in flight = bandwidth * latency`. NVIDIA does not publish DRAM latency; microbenchmark studies of Hopper (e.g. Luo et al., "Benchmarking and Dissecting the Nvidia Hopper GPU Architecture", arXiv:2402.13499 (id unverified)) report several hundred ns. Taking 500ns as an assumption:
+How much parallelism you need is [Little's law](../../foundations/computer-architecture.md#bandwidth-vs-latency): `bytes in flight = bandwidth * latency`. NVIDIA does not publish DRAM latency; microbenchmark studies of Hopper (e.g. Luo et al., "Benchmarking and Dissecting the Nvidia Hopper GPU Architecture", arXiv:2402.13499 (id unverified)) report several hundred ns. Taking 500ns as an assumption:
 
 ```
 3.35e12 B/s * 500e-9 s = 1.675 MB in flight across the GPU
@@ -224,7 +242,7 @@ Shared memory is the binding limit. Some variants:
 | regs/thread | smem/CTA | CTAs/SM | occupancy | binding limit  |
 | ----------: | -------: | ------: | --------: | :------------- |
 |          96 |     48KB |       4 |       25% | smem           |
-|          96 |     32KB |       5 |     31.3% | registers      |
+|          96 |     32KB |       5 |     31.2% | registers      |
 |          64 |     32KB |       6 |     37.5% | smem           |
 |         128 |     48KB |       4 |       25% | registers/smem |
 |         168 |        0 |       3 |     18.8% | registers      |
@@ -279,7 +297,9 @@ The `384 / 168 / 192KB` row is the shape of a Hopper warp-specialized GEMM: one 
 
 The ceiling for 100% occupancy is `65536 / 2048 = 32` registers per thread, which almost no compute-heavy kernel meets. That is fine. High occupancy is a means (latency hiding) and not a goal: a Hopper GEMM typically runs 1 CTA of 384 threads per SM, 12 of 64 warps, about 19% occupancy, and sits near the tensor core roofline because TMA does the loads and each consumer thread holds a large accumulator tile in registers. Conversely, a memory-bound elementwise kernel at 25% occupancy with one scalar load per thread will not saturate HBM. Read occupancy together with the stall reasons ([Profiling](#profiling-nsys-and-ncu)), not on its own.
 
-In code you control the register count with `__launch_bounds__(maxThreads, minBlocks)` or `-maxrregcount`, in Triton with `num_warps` (and the compiler's register allocation follows from the block size), and the shared memory with the tile sizes and `num_stages`. Forcing registers down below what the kernel needs causes *spills* to local memory, which lives in L1/L2/HBM - check `ptxas -v` output or the Nsight Compute "Launch Statistics" section.
+[Triton](https://triton-lang.org), which appears from here on, is a Python-embedded language for writing GPU kernels: you decorate a Python function with `@triton.jit`, write it in terms of whole blocks of data (`tl.load`, `tl.sum`, ...), and launch it as `kernel[grid](args...)`; the compiler handles the per-thread details. Read the Triton snippets here as sketches; the [Triton learning path](#a-triton-learning-path) at the end of this chapter and [Triton from zero](writing-kernels.md#triton-from-zero) in the next chapter teach it.
+
+In code you control the register count with `__launch_bounds__(maxThreads, minBlocks)` (an annotation on the CUDA kernel) or the `nvcc` flag `-maxrregcount`, in Triton with `num_warps` (and the compiler's register allocation follows from the block size), and the shared memory with the tile sizes and `num_stages`. Forcing registers down below what the kernel needs causes *spills* to local memory, which lives in L1/L2/HBM - check `ptxas -v` output (`ptxas` is the PTX-to-SASS assembler step inside `nvcc`, see the [glossary](#glossary); `-Xptxas -v` passes `-v` to it) or the Nsight Compute "Launch Statistics" section.
 
 What that looks like in source (untested; CUDA C++ and Triton):
 
@@ -304,7 +324,7 @@ kernel[grid](x, y, N, BLOCK=1024, num_warps=8, num_stages=3)
 
 The 32 threads of a warp share an instruction stream (one sequence of instructions). When a branch condition differs across the warp, both sides execute with inactive lanes masked off, so the cost is the sum of both paths. Since Volta each thread has its own program counter ("independent thread scheduling"), which makes divergent code *correct* in more cases (e.g. intra-warp locks), but it does not make it faster - divergent paths are still serialized.
 
-For ML kernels divergence is rarely the bottleneck, because the data-dependent control flow is usually a boundary mask (`if (col < N)`) that diverges in at most one warp per row, or a causal mask in attention. The standard remedy for the latter is structural: FlashAttention skips fully-masked K/V blocks entirely and applies the elementwise mask only on the diagonal block, so only one block per row of blocks pays for the mask. Prefer predication (`tl.where`, masked loads) over branches for anything per-element.
+For ML kernels divergence is rarely the bottleneck, because the data-dependent control flow is usually a boundary mask (`if (col < N)`) that diverges in at most one warp per row, or a causal mask in attention. The standard remedy for the latter is structural: FlashAttention skips fully-masked K/V blocks entirely and applies the elementwise mask only on the diagonal block, so only one block per row of blocks pays for the mask. Prefer predication (every lane executes the instruction, and a per-lane true/false flag decides whether its result is kept or its load/store happens - no jump, so nothing to diverge; `tl.where`, masked loads) over branches for anything per-element.
 
 A toy cost model makes the rule concrete: a warp executes every path that *any* lane takes, so the cost is the sum over distinct paths, not the per-lane average.
 
@@ -530,10 +550,10 @@ Why the XOR works: for column `c`, row `r` lands in bank `c ^ r`, and as `r` run
 The Tensor Memory Accelerator (Hopper and later) is a DMA engine (a hardware unit that copies memory on its own while the processor does other work) per SM that copies 1D-5D tiles between global and shared memory. You describe the global tensor once on the host with a *tensor map* (`cuTensorMapEncodeTiled`: base address, dims, strides, box size, swizzle mode, OOB fill), and then a single thread issues `cp.async.bulk.tensor` with tile coordinates. Properties that change how kernels are written:
 
 - **One thread issues a whole tile.** No address arithmetic per thread, no registers held for the data, so the loading warps can be few and lightweight ([warp specialization](#flashattention-3-on-hopper)).
-- **Completion via mbarrier with transaction counts.** The consumer waits on an `mbarrier` (a barrier object in shared memory: threads block on it until a set number of arrivals or bytes have been recorded) that tracks the expected byte count, rather than a `__syncthreads()`.
+- **Completion via mbarrier with transaction counts.** The consumer waits on an `mbarrier` (a barrier object in shared memory: threads block on it until a set number of arrivals or bytes have been recorded) that tracks the expected byte count, rather than a `__syncthreads()` (the CUDA barrier that makes every thread of the CTA wait until all of them reach it).
 - **Bounds handling in hardware**: out-of-bounds elements are filled (zero or NaN), so tails need no masking code.
 - **Constraints**: global strides must be multiples of 16 bytes and the global base address 16-byte aligned ([CUDA Driver API, `cuTensorMapEncodeTiled`](https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html)). A bf16 tensor whose row has an odd number of elements cannot use TMA directly and falls back to slower paths.
-- **Multicast**: within a cluster, one TMA load can be written into the shared memory of several CTAs at once.
+- **Multicast**: within a cluster (a group of co-scheduled CTAs, [next section](#thread-block-clusters-and-distributed-shared-memory)), one TMA load can be written into the shared memory of several CTAs at once.
 
 The alignment constraint is the one that bites ML code, because it depends on tensor shapes you chose for other reasons. A checker you can run on the host before blaming a kernel:
 
@@ -565,7 +585,7 @@ for shape, dtype in [((4096, 4096), torch.bfloat16), ((4096, 50257), torch.bfloa
 
 (An odd vocabulary or a 100-wide FP8 row silently routes you to a non-TMA kernel; there is no error, only a slower kernel name in the trace.)
 
-What the host and device sides look like, heavily abridged (untested; CUDA 12.x driver API and PTX names as in the linked docs):
+What the host and device sides look like, heavily abridged (untested; CUDA 12.x driver API and PTX names as in the linked docs). Reading the C: `CUtensorMap map;` declares a struct variable, `cuuint64_t dims[2] = {...}` is a 2-element array of 64-bit unsigned integers, and `&map` passes the struct's address so the function can fill it in; the device part is a PTX instruction shown as a comment:
 
 ```cpp
 // host: describe a (rows, cols) bf16 row-major tensor and a 128x64 box with 128B swizzle
@@ -582,7 +602,7 @@ cuTensorMapEncodeTiled(&map, CU_TENSOR_MAP_DATA_TYPE_BFLOAT16, 2, ptr, dims, str
 // and consumers wait on the mbarrier for 128*64*2 bytes to land.
 ```
 
-In practice you get TMA through CUTLASS/CuTe, Triton's tensor-descriptor API on Hopper, or ThunderKittens, rather than by writing this.
+In practice you get TMA through CUTLASS/CuTe (CuTe is CUTLASS's layout library, [below](#cutlass-and-cute-in-one-screen)), Triton's tensor-descriptor API on Hopper, or ThunderKittens (a small open-source C++ library of tile-level GPU primitives from Stanford), rather than by writing this.
 
 TMA vs Ampere's per-thread async copies:
 
@@ -606,7 +626,7 @@ Grids of clusters of thread blocks:
 
 The GEMM use: CTAs computing output tiles in the same row of `C` all need the same `A` tile. With a 2x1 cluster, one TMA multicast fetches `A` once for both CTAs, halving that operand's L2 traffic. CUTLASS exposes this as the `ClusterShape` template parameter. On Blackwell, the 2-SM `tcgen05` MMA builds directly on clusters (below).
 
-What the programming model looks like (untested; CUDA 12 cooperative groups API):
+What the programming model looks like (untested; CUDA 12 cooperative groups API). New syntax: `namespace cg = cooperative_groups;` is a C++ alias so `cg::` can stand for the long library prefix, `__cluster_dims__(2, 1, 1)` fixes the cluster shape at compile time, and `__shared__ float buf[256];` declares an array in the CTA's shared memory (one copy per CTA, visible to all its threads):
 
 ```cpp
 #include <cooperative_groups.h>
@@ -636,7 +656,7 @@ __global__ void __cluster_dims__(2, 1, 1) pair_kernel(float* out) {
 | Hopper `sm_90a` | `wgmma.mma_async`              | 1 warpgroup (4 warps), async     | A in registers or smem, B in smem          | registers           | `m64nNk16`, N = 8..256 step 8 |
 | Blackwell `sm_100a` | `tcgen05.mma`              | 1 thread, async                  | A in smem or TMEM, B in smem               | TMEM                | M = 64/128 (1 SM), 128/256 (2 SM); N up to 256 |
 
-Sources: [PTX ISA](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html) sections on `mma`, `wgmma` and `tcgen05`. The K extent is 32 bytes of the input type throughout: `k16` for 16-bit types, `k32` for FP8, `k8` for TF32. The Blackwell M/N ranges above are from my reading of the PTX ISA and should be checked against your CUDA version's documentation (uncertain on the exact allowed N steps per M).
+Sources: [PTX ISA](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html) sections on `mma`, `wgmma` and `tcgen05`. The K extent is 32 bytes of the input type throughout: `k16` for 16-bit types, `k32` for FP8, `k8` for TF32 (TensorFloat-32: NVIDIA's tensor-core format with fp32's 8-bit exponent and a 10-bit mantissa, stored in 32 bits). The Blackwell M/N ranges above are from my reading of the PTX ISA and should be checked against your CUDA version's documentation (uncertain on the exact allowed N steps per M).
 
 Note the `a` suffix: `sm_90a` and `sm_100a` are *architecture-specific* targets. `wgmma` and `tcgen05` code compiled for them does not run on any other architecture, including later ones, which is why libraries ship separate kernels per generation and why a Hopper-tuned FlashAttention-3 binary does not run on Blackwell.
 
@@ -678,7 +698,7 @@ print(torch.cuda.get_arch_list())             # e.g. ['sm_80', 'sm_86', 'sm_90',
 
 A warp collectively holds fragments of A (16x16), B (16x8) and C (16x8) in registers, in a fixed thread-to-element mapping, and issues a synchronous MMA. Operands come from shared memory via `ldmatrix`. The whole pipeline - global to shared (`cp.async`), shared to registers (`ldmatrix`), MMA - is driven by the same warps, so register pressure and instruction issue bandwidth both limit how large a tile each warp can own.
 
-"Fixed thread-to-element mapping" is concrete: each lane owns specific accumulator elements, and the epilogue must know which. The mapping for the FP32 accumulator of `m16n8k16`, from the PTX ISA fragment tables:
+"Fixed thread-to-element mapping" is concrete: each lane owns specific accumulator elements, and the epilogue (the end-of-kernel code that writes the result tile out, see [Epilogue fusion](#epilogue-fusion)) must know which. The mapping for the FP32 accumulator of `m16n8k16`, from the PTX ISA fragment tables:
 
 ```python
 # mma_layout.py - who owns which accumulator element of mma.sync m16n8k16 (f32 C/D)?
@@ -707,7 +727,7 @@ row 15:  T28.c2  T28.c3  T29.c2  T29.c3  T30.c2  T30.c3  T31.c2  T31.c3
 each of 32 lanes holds 4 fp32 values -> 16*8 = 128 elements, no duplicates
 ```
 
-The instruction itself, as inline PTX (untested; operand counts follow from the layout: A is 8 bf16 = 4 32-bit registers per lane, B is 4 bf16 = 2 registers, C/D are 4 fp32):
+The instruction itself, as inline PTX (untested; operand counts follow from the layout: A is 8 bf16 = 4 32-bit registers per lane, B is 4 bf16 = 2 registers, C/D are 4 fp32). `asm volatile("...")` pastes a PTX instruction into C++ code; the string's `%0..%9` are placeholders bound, in order, to the C variables listed after the colons (`"+f"` = an fp32 register that is read and written, `"r"` = a 32-bit register that is only read):
 
 ```cpp
 asm volatile(
@@ -766,6 +786,8 @@ setmaxnreg split: 128*40 + 256*232 = 64512 <= 65536
 TMEM = 256KB/SM; a 128x256 fp32 accumulator uses 256/512 columns -> 2 accumulators can be double-buffered
 ```
 
+(The smem, `setmaxnreg` and TMEM lines are explained in [Resource arithmetic for a Hopper tile](#resource-arithmetic-for-a-hopper-tile) and the next subsection.)
+
 ### Blackwell: `tcgen05` and TMEM
 
 Blackwell datacenter parts (`sm_100`) add **Tensor Memory**: a 256KB per-SM on-chip memory organised as 128 lanes x 512 columns of 32-bit cells, allocated explicitly by a CTA (`tcgen05.alloc` / `tcgen05.dealloc`, in units of columns). The MMA:
@@ -773,13 +795,13 @@ Blackwell datacenter parts (`sm_100`) add **Tensor Memory**: a 256KB per-SM on-c
 - is issued by **a single thread**, not a warp or warpgroup
 - writes its accumulator to TMEM rather than registers; the epilogue moves it out with `tcgen05.ld` (TMEM to registers)
 - can pair the two SMs of a cluster (`cta_group::2`) to compute a 256-row tile, each SM holding half of the operands and half of the accumulator
-- supports block-scaled low-precision formats (MXFP8/MXFP6/MXFP4 and NVFP4) with scale factors also held in TMEM
+- supports block-scaled low-precision formats (MXFP8/MXFP6/MXFP4 and NVFP4: 8-, 6- and 4-bit floats where each small block of consecutive values shares one scale factor; covered in [NVFP4 and MXFP4](../../inference/arithmetic.md#nvfp4-and-mxfp4)) with scale factors also held in TMEM
 
 The practical effect: the accumulator no longer competes with softmax / epilogue state for the register file. A `128 x 256` FP32 accumulator is exactly 128 lanes x 256 columns, half of TMEM, which leaves room for double-buffering accumulators so the epilogue of tile `i` overlaps the MMAs of tile `i+1` without register pressure.
 
 To my knowledge consumer Blackwell (`sm_120`, RTX 50-series) does not have TMEM or `tcgen05` and uses an extended `mma.sync` path instead - check before assuming a datacenter-Blackwell kernel ports.
 
-A quick way to see which instruction family a library actually uses is to look at the kernel names in a profile: cuBLAS/CUTLASS Hopper kernels carry `sm90` and `gmma`/`wgmma`-style tags, Ampere ones `sm80` and `mma`/`s16816`-style tags (naming conventions are internal and change between releases; untested):
+A quick way to see which instruction family a library actually uses is to look at the kernel names in a profile (`nsys` is Nsight Systems, NVIDIA's command-line timeline profiler, covered in [Profiling](#profiling-nsys-and-ncu) below): cuBLAS/CUTLASS Hopper kernels carry `sm90` and `gmma`/`wgmma`-style tags, Ampere ones `sm80` and `mma`/`s16816`-style tags (naming conventions are internal and change between releases; untested):
 
 ```bash
 nsys profile -o gemm python -c "import torch; a=torch.randn(8192,8192,device='cuda',dtype=torch.bfloat16); [a@a for _ in range(10)]"
@@ -1029,7 +1051,7 @@ Cases, bf16 (`b = 2`):
 |        512 |                       410 |
 |       1024 |                       683 |
 
-Solving `AI(M) = 295` gives `M = 345`: a `4096 x 4096` bf16 projection on H100 is memory-bound below ~345 tokens. With FP8 weights *and* activations (`b = 1`) both AI and ridge double, so the crossover stays at ~345 tokens; with FP8 weights and bf16 activations the weight bytes halve and the crossover moves down. This is the arithmetic behind continuous batching in inference: a decode step at batch 1 is a GEMV with `AI ~ 1`, bound by reading the weights. For an 8B model in bf16 (16.06GB of weights), that floor is `16.06e9 / 3.35e12 = 4.8ms` per token on H100 regardless of kernel quality.
+Solving `AI(M) = 295` gives `M = 345`: a `4096 x 4096` bf16 projection on H100 is memory-bound below ~345 tokens. With FP8 weights *and* activations (`b = 1`) both AI and ridge double, so the crossover stays at ~345 tokens; with FP8 weights and bf16 activations the weight bytes halve and the crossover moves down. This is the arithmetic behind continuous batching in inference (a serving engine adds new requests to the running batch at every decode step so `M` stays large; see [Continuous batching and the scheduler](../../inference/serving-engine-internals.md#continuous-batching-and-the-scheduler)): a decode step at batch 1 is a GEMV with `AI ~ 1`, bound by reading the weights. For an 8B model in bf16 (16.06GB of weights), that floor is `16.06e9 / 3.35e12 = 4.8ms` per token on H100 regardless of kernel quality.
 
 On a CPU you can see the same skinny-GEMM collapse, just with a lower ridge. Real output on an Apple M4 CPU (fp32, PyTorch 2.15, other jobs were running so treat as approximate):
 
@@ -1113,7 +1135,7 @@ attn naive N=8192 d=128   AI=    63.0  memory   floor    162.8 us  attainable  2
 attn fused N=8192 d=128   AI=  4096.0  compute  floor     34.7 us  attainable  989.0 TFLOPS
 ```
 
-**Decode attention** (one query row against a KV cache of length `L`): `F = 4*L*d`, `B ~ 2*L*d*2` (read K and V) so `AI ~ 1` per query head. With GQA, `g` query heads share each KV head, so `AI ~ g`. Still far below the ridge: decode attention is bound by reading the KV cache, which is why paged KV layout (storing the cache in fixed-size blocks, like OS memory pages, so a sequence need not be contiguous), KV quantization and MQA/GQA/MLA matter for serving and FLOP-saving attention tricks do not.
+**Decode attention** (one query row against a [KV cache](../../models/architectures.md#the-kv-cache) of length `L`): `F = 4*L*d`, `B ~ 2*L*d*2` (read K and V) so `AI ~ 1` per query head. With GQA, `g` query heads share each KV head, so `AI ~ g`. Still far below the ridge: decode attention is bound by reading the KV cache, which is why paged KV layout (storing the cache in fixed-size blocks, like OS memory pages, so a sequence need not be contiguous), KV quantization and [MQA/GQA](../../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic)/[MLA](../../models/architectures.md#mla-multi-head-latent-attention-deepseek-v2v3) matter for serving and FLOP-saving attention tricks do not.
 
 ### Summary for an LLM step
 
@@ -1127,7 +1149,7 @@ attn fused N=8192 d=128   AI=  4096.0  compute  floor     34.7 us  attainable  9
 | softmax over vocab / cross-entropy  | memory-bound       | memory-bound |
 | optimizer step (AdamW)              | memory-bound       | -                    |
 
-AdamW is worth a line of arithmetic: per parameter it reads param, grad, `m`, `v` and writes param, `m`, `v`; with fp32 master weights and states that is `4*4 + 3*4 = 28` bytes (plus bf16 grad/param copies depending on the setup) for ~10-15 FLOPs. Multi-tensor-apply / fused optimizers win by reducing launch count, not FLOPs.
+AdamW is worth a line of arithmetic: per parameter it reads param, grad, `m`, `v` and writes param, `m`, `v`; with fp32 master weights (in bf16 mixed-precision training the optimizer updates an fp32 copy of the weights, and forward/backward use a bf16 copy) and states that is `4*4 + 3*4 = 28` bytes (plus bf16 grad/param copies depending on the setup) for ~10-15 FLOPs. Multi-tensor-apply / fused optimizers (one kernel launch that updates many parameter tensors at once - PyTorch's `foreach=True` / `fused=True` options on `torch.optim.AdamW`) win by reducing launch count, not FLOPs.
 
 The whole table, with numbers, for one Llama-3-8B-shaped layer (hidden 4096, MLP 14336, 32 query / 8 KV heads, bf16, non-causal attention FLOPs; halve attention for causal):
 
@@ -1296,7 +1318,7 @@ AI_tile = 2*BM*BN*BK / (b * (BM*BK + BK*BN)) = 2*BM*BN / (b * (BM + BN))
 128 x 256, bf16:  2*128*256 / (2*384) = 85 FLOP/B
 ```
 
-85 is below H100's 295 ridge with respect to HBM - which is fine, because most of those reads hit L2 (neighbouring CTAs read the same `A` rows and `B` columns). This is why tile *rasterization* (the order CTAs are launched in, e.g. CUTLASS's swizzled tile schedulers or Triton's `GROUP_SIZE_M` trick) affects GEMM throughput: it controls L2 hit rate. Clusters with TMA multicast push the effective tile larger still.
+85 is below H100's 295 ridge with respect to HBM - which is fine, because most of those reads hit L2 (neighbouring CTAs read the same `A` rows and `B` columns). This is why tile *rasterization* (the order CTAs are launched in, e.g. CUTLASS's swizzled tile schedulers or Triton's `GROUP_SIZE_M` trick of launching CTAs in groups of `GROUP_SIZE_M` tile-rows so consecutive CTAs share `B` tiles) affects GEMM throughput: it controls L2 hit rate. Clusters with TMA multicast push the effective tile larger still.
 
 ### Resource arithmetic for a Hopper tile
 
@@ -1385,7 +1407,7 @@ triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64}, num_stages=4, num
 
 Wave quantization is worst when there are few output tiles: a GEMM with `M = 64, N = 4096, K = 16384` has only `1 * 16` tiles of `64 x 256` - 16 CTAs on 132 SMs.
 
-- **Split-K**: partition K into `s` chunks, give each to a different CTA, then reduce the `s` partial `C` tiles (through a global workspace and a second reduction kernel, or atomics, or a serialized "fixup" in the last CTA). Raises CTA count by `s` at the cost of `s` extra FP32 tile writes/reads. cuBLAS and Triton (`SPLIT_K`) pick it heuristically for small-`M*N` / large-`K` shapes - common after tensor-parallel sharding (splitting each weight matrix across GPUs, which shrinks N or K per GPU).
+- **Split-K**: partition K into `s` chunks, give each to a different CTA, then reduce the `s` partial `C` tiles (through a global workspace and a second reduction kernel, or atomics, or a serialized "fixup" in the last CTA). Raises CTA count by `s` at the cost of `s` extra FP32 tile writes/reads. cuBLAS and Triton (`SPLIT_K`) pick it heuristically for small-`M*N` / large-`K` shapes - common after tensor-parallel sharding (splitting each weight matrix across GPUs, which shrinks N or K per GPU; derived in [Tensor parallelism](../../training/model-parallelism/derivations.md#tensor-parallelism-megatron)).
 - **Stream-K** (Osama et al., "Stream-K: Work-centric Parallel Decomposition for Dense Matrix-Matrix Multiplication on the GPU", arXiv:2301.03598): launch exactly as many CTAs as SMs and divide the *total* MAC-loop iterations `tiles * ceil(K/BK)` evenly among them, so a CTA may finish one tile's K range and start partway through another. Tiles split across CTAs are fixed up with partial-sum exchange. This removes the tail wave in general rather than per shape. CUTLASS ships stream-K tile schedulers.
 - **Persistent kernels**: launch `#SMs` (times CTAs-per-SM) CTAs that loop over tiles from a tile scheduler instead of one CTA per tile. This amortizes prologue (barrier init, TMA descriptor prefetch) over many tiles and, more importantly, lets the epilogue of tile `i` overlap the mainloop of tile `i+1`. On Hopper CUTLASS offers two schedules:
   - *cooperative*: both consumer warpgroups work on the same tile (split along M), epilogue not overlapped
@@ -1453,8 +1475,8 @@ CTAs 1, 2 and 4 each straddle a tile boundary; the partial sums for the tiles th
 The epilogue is the only point where the output tile is in registers before it hits HBM, so anything elementwise on `C` should happen there: scaling (`alpha`, FP8 dequant scales), bias, activation, residual add, dtype cast, computing `amax` for the next FP8 scale, even writing an auxiliary output (the pre-activation, for backward). Each op fused saves a full `M*N` round trip. Mechanisms:
 
 - cuBLASLt epilogues (`CUBLASLT_EPILOGUE_BIAS`, `_GELU_BIAS`, `_GELU_AUX`, ...) - a fixed menu
-- CUTLASS 3.x Epilogue Visitor Trees (EVT) - arbitrary DAGs of elementwise/broadcast/reduction nodes compiled into the epilogue
-- Triton - write the epilogue yourself after the K loop; Inductor's `max-autotune` does this with its Triton GEMM templates
+- CUTLASS 3.x Epilogue Visitor Trees (EVT) - arbitrary DAGs (directed acyclic graphs) of elementwise/broadcast/reduction nodes compiled into the epilogue
+- Triton - write the epilogue yourself after the K loop; Inductor's (the code generator inside `torch.compile`, see [torch.compile internals](#torchcompile-internals)) `max-autotune` does this with its Triton GEMM templates
 
 What fusing buys, for an MLP up-projection with bias and GELU:
 
@@ -1486,7 +1508,7 @@ What does *not* fuse into a GEMM epilogue: anything needing a full row of `C` wh
 
 ### CUTLASS and CuTe in one screen
 
-CUTLASS 3.x is built on **CuTe**, whose core abstraction is a `Layout = (Shape, Stride)`: a function from logical coordinates to offsets, composable and hierarchical. `((8, 16), 4) : ((1, 32), 8)` is a valid layout; swizzles are layouts; a thread-value partition is a layout. On top of layouts:
+CUTLASS 3.x is built on **CuTe**, whose core abstraction is a `Layout = (Shape, Stride)`: a function from logical coordinates to offsets, composable and hierarchical. `((8, 16), 4) : ((1, 32), 8)` is a valid layout; swizzles are layouts; a thread-value partition is a layout.
 
 A layout is just a function, and it fits in a dozen lines of Python. CuTe's convention is colexicographic (the leftmost mode varies fastest):
 
@@ -1531,6 +1553,8 @@ index -> offset (first 8):
 ```
 
 The hierarchical example is a bijection onto `0..511`: the inner `(8, 16)` mode walks 8 contiguous elements, then jumps by 32, while the outer `4` mode fills the gaps at stride 8. This is the kind of interleaved layout an MMA fragment or a swizzled smem tile has, and CuTe lets you compose and slice such layouts algebraically instead of writing index arithmetic by hand.
+
+On top of layouts, CuTe provides:
 
 - **Atoms**: `MMA_Atom` (one tensor core instruction with its thread/value layout, e.g. `SM90_64x256x16_F32BF16BF16_SS`) and `Copy_Atom` (one copy instruction: `SM90_TMA_LOAD`, `SM75_U32x4_LDSM_N`, ...)
 - **TiledMMA / TiledCopy**: atoms tiled over threads and values to cover a CTA tile
@@ -1781,9 +1805,9 @@ The paper reports up to 73% of theoretical max FLOPs on A100 for the forward pas
 FA2 on H100 reaches only ~35% utilization according to the FA3 paper (Shah et al., arXiv:2407.08608), because it uses `mma.sync` and synchronous loads and so cannot use `wgmma` and TMA. FA3's changes:
 
 - **Warp specialization**: within a CTA, a *producer* warpgroup issues TMA loads of K/V into a shared-memory ring buffer; *consumer* warpgroups issue `wgmma` and do softmax. `setmaxnreg` moves registers from the producer to the consumers. The producer/consumer handshake is `mbarrier`-based, as in a CUTLASS Hopper GEMM.
-- **Ping-pong scheduling between warpgroups**: with 2 consumer warpgroups, named barriers force warpgroup 1's GEMMs to run while warpgroup 2 does its softmax, and vice versa. The motivation is the MUFU arithmetic above: per the paper, for `d = 128` there are 512x more matmul FLOPs than exponentials but exponentials have 256x lower throughput, so the `exp` can take ~50% of the cycles of the matmuls. Overlapping hides it.
+- **Ping-pong scheduling between warpgroups**: with 2 consumer warpgroups, named barriers (hardware barriers that only a chosen subset of warps waits on, unlike `__syncthreads()`) force warpgroup 1's GEMMs to run while warpgroup 2 does its softmax, and vice versa. The motivation is the MUFU arithmetic above: per the paper, for `d = 128` there are 512x more matmul FLOPs than exponentials but exponentials have 256x lower throughput, so the `exp` can take ~50% of the cycles of the matmuls. Overlapping hides it.
 - **Intra-warpgroup pipelining**: within one warpgroup, issue `S_{j+1} = Q K_{j+1}^T` asynchronously (`wgmma` is async), then compute softmax of `S_j` while it runs, then `P_j V_j`. Costs extra registers for the second `S` tile.
-- **FP8**: `wgmma` FP8 requires K-major operands, so V (which is MN-major for `P @ V`) is transposed in shared memory inside the kernel; the register layout of the FP32 accumulator of the first GEMM does not match the operand layout FP8 `wgmma` needs for `P`, so a register permutation is done. To limit quantization error: **block quantization** (one scale per block rather than per tensor) and **incoherent processing** (multiply Q and K by a random orthogonal - Hadamard with random signs - matrix, which leaves `Q K^T` unchanged but spreads outliers).
+- **FP8**: `wgmma` FP8 requires K-major operands, so V (which is MN-major - N contiguous - for `P @ V`) is transposed in shared memory inside the kernel; the register layout of the FP32 accumulator of the first GEMM does not match the operand layout FP8 `wgmma` needs for `P`, so a register permutation is done. To limit quantization error: **block quantization** (one scale per block rather than per tensor) and **incoherent processing** (multiply Q and K by a random orthogonal matrix - a Hadamard matrix, whose entries are all +-1 scaled by `1/sqrt(d)` and which can be applied in `O(d log d)`, with random signs - which leaves `Q K^T` unchanged but spreads outliers).
 
 FA3's ping-pong schedule - one warpgroup's softmax overlaps the other's GEMMs:
 
@@ -1829,7 +1853,7 @@ for each (i, j) block pair:
     dK_j += dS^T @ Q_i * scale               # (Bc, d)
 ```
 
-`D_i = rowsum(dO_i * O_i)` equals `rowsum(P * dP)` and is what makes the softmax backward local to a block. The backward does 5 matmuls per block (`S`, `dV`, `dP`, `dQ`, `dK`) versus 2 in the forward, so it is ~2.5x the forward FLOPs, and recomputing `S` is one of those five - recomputation costs ~20% more backward FLOPs but saves `O(N^2)` memory and the HBM traffic of reading `P`, which is a net speed win. FA2's backward parallelizes over K/V blocks (each CTA owns `dK_j, dV_j` and loops over Q blocks), so `dQ` contributions from different CTAs are accumulated with atomic adds in FP32.
+`D_i = rowsum(dO_i * O_i)` equals `rowsum(P * dP)` and is what makes the softmax backward local to a block. The backward does 5 matmuls per block (`S`, `dV`, `dP`, `dQ`, `dK`) versus 2 in the forward, so it is ~2.5x the forward FLOPs, and recomputing `S` is one of those five - recomputation is ~20% of the backward FLOPs (25% more than a backward that read a stored `P`) but saves `O(N^2)` memory and the HBM traffic of reading `P`, which is a net speed win. FA2's backward parallelizes over K/V blocks (each CTA owns `dK_j, dV_j` and loops over Q blocks), so `dQ` contributions from different CTAs are accumulated with atomic adds in FP32.
 
 The `flash_bwd` function in [the PyTorch implementation above](#online-softmax) is this pseudocode line for line, loop order included, and its gradients match autograd to 1e-15. Using a production kernel from PyTorch, which dispatches to FlashAttention or cuDNN attention on NVIDIA GPUs (untested here; backend enum names as of PyTorch 2.x):
 
@@ -1849,9 +1873,11 @@ print(torch.cuda.max_memory_allocated() / 2**30, "GiB")         # no (N, N) tens
 
 The [torch.compile section](../../training/performance/README.md#torchcompile) of the performance chapter covers when it pays off, with measurements. This is what happens under the hood, so you can reason about the failure modes.
 
+What it is, in one paragraph: `torch.compile(fn)` (or `@torch.compile` on a function or `nn.Module`) returns a wrapped version of `fn`. On the first call it captures the PyTorch operations `fn` performs into a graph, generates fused kernels for that graph, and caches them; later calls with compatible inputs run the cached kernels. Three stages do the work: **Dynamo** captures the graph from Python, **AOTAutograd** adds the backward pass, **Inductor** generates the kernels (Triton on GPU, C++ on CPU). The tool-level view - when to use it and what it buys - is in [Profiling and optimization](../../training/profiling-and-optimization.md#torchcompile).
+
 ### Dynamo: capture
 
-TorchDynamo hooks CPython's frame evaluation (PEP 523, the interpreter API that lets a library intercept each Python function call before it runs). When a compiled function is called, Dynamo symbolically executes its *bytecode* (the low-level instruction list CPython compiles each function into), recording tensor operations into an FX graph and keeping everything else (Python ints, lists, attribute lookups, module structure) as compile-time constants or guarded values.
+TorchDynamo hooks CPython's frame evaluation (PEP 523, the interpreter API that lets a library intercept each Python function call before it runs). When a compiled function is called, Dynamo symbolically executes its *bytecode* (the low-level instruction list CPython compiles each function into), recording tensor operations into an FX graph (`torch.fx.GraphModule`: PyTorch's Python data structure for a computation graph - a list of nodes, each one op with references to its inputs - that can be printed, edited and run) and keeping everything else (Python ints, lists, attribute lookups, module structure) as compile-time constants or guarded values.
 
 - **Graph breaks**: when Dynamo hits something it cannot trace - a call into an unsupported C extension, `print`, `.item()` / `.tolist()` used for control flow, data-dependent Python branching on tensor values, some generators - it compiles the graph so far, emits bytecode that runs the offending code in plain Python, and resumes tracing after it. Each break is a fusion boundary and a graph launch boundary. `fullgraph=True` makes breaks errors; `torch._dynamo.explain(fn)(*args)` summarizes them; `TORCH_LOGS="graph_breaks"` prints each one with its source line.
 - **Guards**: every assumption baked into the graph becomes a guard checked on each call - tensor dtype, device, rank, sizes and strides (or symbolic constraints on them), `requires_grad`, identity/value of globals and module attributes used, Python scalars that were specialized. Guard evaluation itself costs CPU time per call (a small, but non-zero, term in launch-bound regimes).
@@ -1920,11 +1946,11 @@ Line by line: `if y.sum() > 0` is a jump on a tensor value, so Dynamo breaks the
 
 ### AOTAutograd: joint graph
 
-For training, AOTAutograd traces the forward graph through the autograd engine via `__torch_dispatch__` to produce a single *joint* forward+backward graph of ATen ops, then:
+For training, AOTAutograd traces the forward graph through the autograd engine via `__torch_dispatch__` (the hook PyTorch provides for intercepting every low-level op call) to produce a single *joint* forward+backward graph of ATen ops (ATen is PyTorch's C++ tensor library; every `torch.*` call ends up as one or more `aten::` ops, the names you see in profiler tables), then:
 
 - **functionalizes** it (in-place ops and views rewritten as pure functions plus copy-backs), so the compiler can reorder and fuse freely
-- **decomposes** composite ops into a smaller core ATen / prims op set
-- **partitions** the joint graph into forward and backward with a min-cut *rematerialization* partitioner: it decides which intermediates to save for backward and which to recompute, and prefers recomputing cheap pointwise ops (whose recompute is fused into backward kernels for free) over saving their outputs. This is automatic, local activation checkpointing; it is one reason compiled models often use less activation memory.
+- **decomposes** composite ops into a smaller core ATen / prims (primitive ops) op set
+- **partitions** the joint graph into forward and backward with a min-cut *rematerialization* partitioner: it decides which intermediates to save for backward and which to recompute, and prefers recomputing cheap pointwise ops (whose recompute is fused into backward kernels for free) over saving their outputs. This is automatic, local activation checkpointing (activation checkpointing = not storing some forward activations and recomputing them during backward, trading FLOPs for memory; the manual version is in [Profiling and optimization](../../training/profiling-and-optimization.md#activation-checkpointing)); it is one reason compiled models often use less activation memory.
 
 You can see the partitioner's decision by giving AOTAutograd compilers that print the graphs. Real output (CPU, PyTorch 2.15), for RMSNorm followed by SiLU:
 
@@ -1980,10 +2006,10 @@ Inductor lowers the ATen graph to its own loop-level IR, then a scheduler groups
 
 - **pointwise and reduction fusion**: chains of elementwise ops, and elementwise ops feeding/following a reduction, become one Triton kernel. RMSNorm becomes one kernel, the RoPE + reshape becomes one, a residual add + norm becomes one. This is the memory-bound win from the [roofline section](#normalization-softmax-and-elementwise).
 - **matmuls and convolutions** go by default to `extern` calls (cuBLAS / cuDNN), and the surrounding pointwise ops become separate Triton kernels before/after.
-- **`mode="max-autotune"`**: benchmarks Triton GEMM templates (and optionally the CUTLASS backend) against cuBLAS at compile time, per shape, and can fuse pointwise epilogues into the chosen template. It also enables CUDA graphs. Compile time is much longer (see the cold-start numbers in the performance chapter). `max-autotune-no-cudagraphs` exists for when graphs are the problem.
+- **`mode="max-autotune"`**: benchmarks Triton GEMM templates (and optionally the CUTLASS backend) against cuBLAS at compile time, per shape, and can fuse pointwise epilogues into the chosen template. It also enables CUDA graphs. Compile time is much longer (see the cold-start numbers in the [performance chapter's torch.compile section](../../training/performance/README.md#torchcompile)). `max-autotune-no-cudagraphs` exists for when graphs are the problem.
 - Triton kernels are themselves autotuned over a small set of block sizes / `num_warps` per kernel; `torch._inductor.config.coordinate_descent_tuning = True` searches further.
 
-To see what you got: `TORCH_LOGS="output_code"` prints the generated Python/Triton; `TORCH_COMPILE_DEBUG=1` dumps the IR and code per graph; `TORCH_TRACE=/tmp/trace` plus `tlparse` gives a browsable report of every graph, guard set, break and recompile. Reading the generated code is the fastest way to answer "did it fuse X into Y?".
+To see what you got: `TORCH_LOGS="output_code"` prints the generated Python/Triton; `TORCH_COMPILE_DEBUG=1` dumps the IR and code per graph; `TORCH_TRACE=/tmp/trace` plus `tlparse` (a separate `pip install tlparse` tool that turns the trace directory into HTML) gives a browsable report of every graph, guard set, break and recompile. Reading the generated code is the fastest way to answer "did it fuse X into Y?".
 
 On a CPU, Inductor emits C++/OpenMP instead of Triton, but the fusion decisions are the same. Residual add + RMSNorm:
 
@@ -2005,7 +2031,7 @@ torch.testing.assert_close(y, block(x, r, w)[0])
 print("ok")
 ```
 
-`TORCH_LOGS="output_code" python inductor_demo.py`, real output trimmed to the kernel signature and the host-side `call`:
+`TORCH_LOGS="output_code" python inductor_demo.py`, real output trimmed to the kernel signature and the host-side `call`. You do not need to read the C++: note that there is one `kernel` function taking three input pointers (`const float*`) and three output pointers (`float*`), that `extern "C"` just keeps its name simple so Python can find it, and that `#pragma omp parallel num_threads(4)` asks OpenMP (a standard C/C++ extension for multithreaded loops) to split the loop over 4 CPU threads:
 
 ```
 cpp_fused_add_mean_mul_pow_rsqrt_0 = async_compile.cpp_pybinding(['const float*', 'const float*', 'const float*', 'float*', 'float*', 'float*'], r'''
@@ -2076,7 +2102,7 @@ Triton does not run on macOS (there are no wheels for it), so nothing in this se
 
 ### The kernel
 
-One program per row: a row of up to ~16K bf16 elements fits in registers across the CTA's threads.
+One program per row: a row of up to ~16K bf16 elements fits in registers across the CTA's threads. (If Triton syntax is new, read the vector-add in [A Triton learning path](#a-triton-learning-path) first: `@triton.jit` marks a GPU kernel, `tl.program_id(0)` is the block index, pointer arguments like `X` are tensors' base addresses, and `tl.constexpr` arguments are compile-time constants.)
 
 ```python
 # rmsnorm_triton.py
@@ -2260,7 +2286,7 @@ Workflow that pays off at every step:
 ```bash
 # 1. correctness without a GPU (Linux): interpreter mode, set before importing triton
 TRITON_INTERPRET=1 python vadd_triton.py
-# 2. inspect what was generated: TTIR -> TTGIR -> LLIR -> PTX -> cubin are cached here
+# 2. inspect what was generated: Triton IR (TTIR) -> Triton GPU IR (TTGIR) -> LLVM IR (LLIR) -> PTX -> cubin (the SASS binary) are cached here
 ls ~/.triton/cache/*/
 # 3. see Inductor's Triton for the eager reference you are trying to beat
 TORCH_LOGS="output_code" python -c "import torch; f=torch.compile(lambda x: torch.softmax(x, -1)); f(torch.randn(4096, 4096, device='cuda'))"
@@ -2377,7 +2403,7 @@ aten::native_layer_no...        13.64%       1.322ms        23.10%       2.239ms
 Self CPU time total: 9.696ms
 ```
 
-Each `addmm` is a 256x256 GEMV - 131K FLOPs - taking 5.7us, i.e. ~23 GFLOP/s on a core that does several hundred on a large matmul. `aten::empty`, `aten::t` and `aten::copy_` are pure overhead (allocations, a transpose view, a copy) and together are 15% of the time. On a GPU you would add `ProfilerActivity.CUDA` and export a timeline with `prof.export_chrome_trace("trace.json")`, then look for the gaps described above.
+Each `addmm` is a 256x256 GEMV - 131K FLOPs - taking 5.7us, i.e. ~23 GFLOP/s on a core that does several hundred on a large matmul. `aten::empty`, `aten::t` and `aten::copy_` are pure overhead (allocations, a transpose view, a copy) and together are 15% of the time. On a GPU you would add `ProfilerActivity.CUDA` and export a timeline with `prof.export_chrome_trace("trace.json")` (open it at https://ui.perfetto.dev or `chrome://tracing`), then look for the gaps described above.
 
 A synchronization point you can find in your own code by asking PyTorch to warn about it (CUDA only; untested here):
 
@@ -2439,6 +2465,8 @@ nsys profile -t cuda,nvtx,osrt,cublas,cudnn --cuda-graph-trace=node \
 nsys stats --report cuda_gpu_kern_sum step_profile.nsys-rep     # kernel time summary
 ```
 
+Flags: `-t` picks what to trace (CUDA API calls and kernels, NVTX ranges, `osrt` = OS runtime calls such as `read` and `pthread` waits, cuBLAS and cuDNN calls), `--cuda-graph-trace=node` shows each kernel inside a replayed CUDA graph instead of one opaque block, `-o` names the `.nsys-rep` report file, and `--force-overwrite true` replaces an existing one. Open the report in the Nsight Systems GUI to see the timeline, or summarize it with `nsys stats`.
+
 Wrap regions with NVTX (NVIDIA's API for named ranges that show up on the timeline; `torch.cuda.nvtx.range_push("fwd")` / `range_pop()`, or `torch.autograd.profiler.emit_nvtx()`) so the timeline is readable, and limit the capture to a few steady-state steps (`--capture-range=cudaProfilerApi` with `torch.cuda.profiler.start()/stop()`), since the first steps include compilation and allocator warmup.
 
 What to read off it:
@@ -2471,7 +2499,7 @@ ncu --set full -k regex:rmsnorm --launch-skip 10 --launch-count 1 \
     -o rmsnorm_report python rmsnorm_triton.py
 ```
 
-`ncu` replays each profiled kernel many times to collect all counters, so profile one or a few launches (`-k`, `--launch-skip`, `--launch-count`, or `--nvtx --nvtx-include`). By default it locks clocks to base (`--clock-control base`), so its durations are not directly comparable to an unprofiled run; use `--clock-control none` when you care about absolute time.
+`ncu` replays each profiled kernel many times to collect all counters, so profile one or a few launches (`-k regex:rmsnorm` keeps only kernels whose name matches, `--launch-skip 10` skips the first 10 matching launches as warmup, `--launch-count 1` profiles one; `--nvtx --nvtx-include` filters by NVTX range instead). `--set full` collects every report section listed below, and `-o` writes a `.ncu-rep` file you open in the Nsight Compute GUI. By default it locks clocks to base (`--clock-control base`), so its durations are not directly comparable to an unprofiled run; use `--clock-control none` when you care about absolute time.
 
 Pulling specific metrics on the command line instead of opening the GUI (untested; metric names as in the Nsight Compute profiling guide, check `ncu --query-metrics` on your device):
 
@@ -2499,7 +2527,7 @@ The sections and how to read them:
 
 | stall reason          | meaning                                                         | typical fix                                                       |
 | :-------------------- | :-------------------------------------------------------------- | :---------------------------------------------------------------- |
-| Long Scoreboard       | waiting on an L1TEX (global/local) memory result                | more memory parallelism (occupancy, ILP, async copies); fewer bytes; check for register spills (local memory) |
+| Long Scoreboard       | waiting on an L1TEX (the L1/texture unit that serves global and local loads) memory result                | more memory parallelism (occupancy, ILP, async copies); fewer bytes; check for register spills (local memory) |
 | Short Scoreboard      | waiting on shared memory or MUFU result                         | bank conflicts; fewer transcendental ops                          |
 | MIO Throttle          | shared memory / special-op instruction queue full               | fewer, wider shared memory accesses; reduce bank conflicts        |
 | LG Throttle           | local/global memory instruction queue full                      | vectorize (16B per thread), fewer memory instructions             |
@@ -2509,14 +2537,14 @@ The sections and how to read them:
 | Not Selected / Selected | warp was ready but another was issued / was issued            | not stalls - plenty of eligible warps                             |
 | Membar / Drain        | memory fence / draining stores at exit                          | fewer fences; usually minor                                       |
 
-- **Source Counters**: stalls attributed to SASS (and source) lines, so you can see which load or `exp` is responsible. Compile with `-lineinfo` (Triton kernels carry line info by default) to get source correlation.
+- **Source Counters**: stalls attributed to SASS (and source) lines, so you can see which load or `exp` is responsible. Compile with `nvcc -lineinfo` (Triton kernels carry line info by default) to get source correlation.
 
 For tensor core kernels look at the tensor pipe utilization in Compute Workload Analysis (metric names differ by architecture, e.g. `sm__pipe_tensor_op_hmma_cycles_active` on Ampere; Hopper `wgmma` uses a separate `gmma` pipe counter - check `ncu --query-metrics` on your device rather than trusting a name from this page).
 
 
 ## AMD differences
 
-The same concepts apply to AMD Instinct (CDNA) GPUs with different names and numbers. For tuning specifics see [AMD GPUs Performance](amd/performance.md).
+The same concepts apply to AMD Instinct (CDNA) GPUs with different names and numbers. ROCm is AMD's counterpart of the CUDA software stack, HIP its counterpart of CUDA C++, an XCD (accelerator complex die) is one of the compute chiplets an MI300X is built from, and VGPRs are vector registers (one value per lane). For tuning specifics see [AMD GPUs Performance](amd/performance.md).
 
 | concept               | NVIDIA (H100)                         | AMD (MI300X, CDNA3)                                       |
 | :-------------------- | :------------------------------------ | :-------------------------------------------------------- |
