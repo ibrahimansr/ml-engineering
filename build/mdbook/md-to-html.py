@@ -5,14 +5,28 @@ import re
 from functools import partial
 from markdown_it import MarkdownIt
 from mdit_py_plugins.anchors import anchors_plugin
+from mdit_py_plugins.dollarmath import dollarmath_plugin
+import latex2mathml.converter
+import sys
 from pathlib import Path
 
 from utils.github_md_utils import md_header_to_anchor, md_process_local_links, md_expand_links, md_convert_md_target_to_html
 from utils.build_utils import get_markdown_files
 
+def render_math(latex, options):
+    # $...$ and $$...$$ (the same syntax GitHub renders) become MathML, which prince typesets natively
+    display = "block" if options.get("display_mode") else "inline"
+    try:
+        return latex2mathml.converter.convert(latex, display=display)
+    except Exception as e:
+        print(f"math render failed ({e}): {latex[:80]}", file=sys.stderr)
+        return f"<code>{latex}</code>"
+
 mdit = (
     MarkdownIt('commonmark', {'breaks':True, 'html':True})
     .use(anchors_plugin, max_level=7, permalink=False, slug_func=md_header_to_anchor)
+    # allow_digits=False keeps prices like $5 or $1.39 as plain text
+    .use(dollarmath_plugin, allow_space=False, allow_digits=False, double_inline=True, renderer=render_math)
     .enable('table')
 )
 

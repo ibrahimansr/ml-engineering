@@ -379,12 +379,17 @@ $ python -c "from safetensors import safe_open; f = safe_open('/mnt/s3/models/x.
 
 The three numbers (defined in the Storage chapter's [Metrics](../storage/README.md#metrics) section) are bandwidth (bytes/s), IOPS (operations/s) and latency (time per operation). Two equations connect them:
 
-```
-bandwidth   = IOPS x block_size
-outstanding = IOPS x latency        (Little's law: requests in flight = rate x time each spends inside)
-```
+$$
+\text{bandwidth} = \text{IOPS} \times \text{block size}
+$$
 
-The second equation explains almost every storage benchmark. If a device has 100 µs latency and you keep 1 request in flight, you get 10k IOPS. To get 1M IOPS from the same device you need 100 requests in flight. "The storage is slow" very often means "the application keeps too few requests in flight". The fix then is more DataLoader workers, a thread pool, `iodepth`, or multipart concurrency, not new hardware. The fio run below checks the law: 4 jobs × iodepth 32 = 128 outstanding requests, 128 / 3.143 ms = 40.7k IOPS, and fio measured 40.6k.
+$$
+\text{outstanding} = \text{IOPS} \times \text{latency}
+$$
+
+The second is Little's law: requests in flight = rate $\times$ time each spends inside.
+
+The second equation explains almost every storage benchmark. If a device has 100 µs latency and you keep 1 request in flight, you get 10k IOPS. To get 1M IOPS from the same device you need 100 requests in flight. "The storage is slow" very often means "the application keeps too few requests in flight". The fix then is more DataLoader workers, a thread pool, `iodepth`, or multipart concurrency, not new hardware. The fio run below checks the law: $4\ \text{jobs} \times \text{iodepth } 32 = 128$ outstanding requests, $128 / 3.143\ \text{ms} = 40.7\text{k}$ IOPS, and fio measured 40.6k.
 
 ### fio, flag by flag
 
@@ -771,7 +776,7 @@ __0_0.distcp           525,865 bytes
 __1_0.distcp           527,126 bytes
 ```
 
-Each `.distcp` file is one rank's 512 × 256 × 4 B = 524,288 bytes of tensor data plus a little framing. With FSDP2 you'd use `torch.distributed.checkpoint.state_dict.get_state_dict(model, optimizer)` to get sharded model and optimizer state in this form, and `set_state_dict` after loading. DCP's `StorageWriter`/`StorageReader` interfaces are how you plug in an object-store backend (an `fsspec`-based writer ships with PyTorch). To export a final model for inference, convert DCP to a single `torch.save` file with `torch.distributed.checkpoint.format_utils.dcp_to_torch_save`, and from there to safetensors. API surface as of torch 2.15. DCP has moved quickly, so check the [docs](https://pytorch.org/docs/stable/distributed.checkpoint.html) for your version.
+Each `.distcp` file is one rank's $512 \times 256 \times 4\ \text{B} = 524{,}288$ bytes of tensor data plus a little framing. With FSDP2 you'd use `torch.distributed.checkpoint.state_dict.get_state_dict(model, optimizer)` to get sharded model and optimizer state in this form, and `set_state_dict` after loading. DCP's `StorageWriter`/`StorageReader` interfaces are how you plug in an object-store backend (an `fsspec`-based writer ships with PyTorch). To export a final model for inference, convert DCP to a single `torch.save` file with `torch.distributed.checkpoint.format_utils.dcp_to_torch_save`, and from there to safetensors. API surface as of torch 2.15. DCP has moved quickly, so check the [docs](https://pytorch.org/docs/stable/distributed.checkpoint.html) for your version.
 
 | Format | Code on load | Partial / lazy reads | Sharded save from many ranks | Reshard on load | Use for |
 |---|---|---|---|---|---|
@@ -853,11 +858,17 @@ What the bandwidth columns correspond to (orders of magnitude, not quotes):
 - **100 GB/s**: the aggregate of tens of nodes writing to a strong parallel FS at once. The Storage chapter's [JeanZay case study](../storage/README.md#which-file-system-to-choose), 2.3 TB in 40 s from 384 processes, works out to about 58 GB/s.
 - **1 TB/s**: hundreds of nodes each writing to *their own local NVMe* at a few GB/s. This is why fast checkpointing systems write locally first.
 
-The bottleneck is usually the smallest of: per-GPU device-to-host copy, per-node NIC to storage (for example 2 × 200 Gb/s = 50 GB/s), storage-side aggregate bandwidth, and metadata (file creates). Do the division for each and take the minimum.
+The bottleneck is usually the smallest of: per-GPU device-to-host copy, per-node NIC to storage (for example $2 \times 200\ \text{Gb/s} = 50\ \text{GB/s}$), storage-side aggregate bandwidth, and metadata (file creates). Do the division for each and take the minimum.
 
 ### How often to checkpoint
 
-The Young/Daly formula (Young 1974; Daly 2006; first met in [Distributed Systems](distributed-systems.md#how-often-to-checkpoint)) balances two costs. Checkpointing often wastes the blocking time `C` on every save. Checkpointing rarely loses on average half an interval of work per failure. With mean time between failures `M`, the optimum interval is about `sqrt(2 C M)`. The script plugs in the failure rate reported for Llama 3 405B pre-training on 16k H100s: 466 job interruptions in a 54-day snapshot ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783). (Distributed Systems used 419 from the same table: that is the *unexpected* interruptions only; the other 47 were planned, such as maintenance. For checkpoint planning every interruption costs you work, so this chapter uses the total.) That gives an MTBF of 2.8 hours. The numbers are first-order: they ignore restart time, which at this scale is often minutes and adds to every failure. The conclusion still holds. Cutting the blocking cost from 10 minutes to 5 seconds cuts the overhead from about 35% to about 3%, and that is what async checkpointing buys.
+The Young/Daly formula (Young 1974; Daly 2006; first met in [Distributed Systems](distributed-systems.md#how-often-to-checkpoint)) balances two costs. Checkpointing often wastes the blocking time $C$ on every save. Checkpointing rarely loses on average half an interval of work per failure. With mean time between failures $M$, the optimum interval is about
+
+$$
+\tau \approx \sqrt{2 C M}
+$$
+
+The script plugs in the failure rate reported for Llama 3 405B pre-training on 16k H100s: 466 job interruptions in a 54-day snapshot ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783). (Distributed Systems used 419 from the same table: that is the *unexpected* interruptions only; the other 47 were planned, such as maintenance. For checkpoint planning every interruption costs you work, so this chapter uses the total.) That gives an MTBF of 2.8 hours. The numbers are first-order: they ignore restart time, which at this scale is often minutes and adds to every failure. The conclusion still holds. Cutting the blocking cost from 10 minutes to 5 seconds cuts the overhead from about 35% to about 3%, and that is what async checkpointing buys.
 
 ### Async checkpointing
 
@@ -1176,13 +1187,13 @@ samples consumed by training: 136
 samples drawn from sampler:   200
 ```
 
-The difference is 64 = `num_workers × prefetch_factor × batch_size` = 2 × 4 × 8, the in-flight batches. Saving `sampler.state_dict()` here would skip 64 samples on resume. The fixes: count consumed samples in the training loop (`samples_seen += B` after each step) and checkpoint that, or use `torchdata`'s `StatefulDataLoader` (`from torchdata.stateful_dataloader import StatefulDataLoader`, torchdata 0.8+), which tracks what was actually delivered and has `state_dict()`/`load_state_dict()`. The StatefulDataLoader is untested here.
+The difference is 64 = `num_workers × prefetch_factor × batch_size` = $2 \times 4 \times 8$, the in-flight batches. Saving `sampler.state_dict()` here would skip 64 samples on resume. The fixes: count consumed samples in the training loop (`samples_seen += B` after each step) and checkpoint that, or use `torchdata`'s `StatefulDataLoader` (`from torchdata.stateful_dataloader import StatefulDataLoader`, torchdata 0.8+), which tracks what was actually delivered and has `state_dict()`/`load_state_dict()`. The StatefulDataLoader is untested here.
 
 ### Shuffling at scale
 
 A full random permutation is the gold standard, but it doesn't always fit:
 
-- **Materializing the permutation.** 10^10 windows × 8 bytes (int64) = 80 GB per rank. Alternatives: a permutation computed on demand (a seeded bijection on `[0, N)` such as a Feistel network, which gives `perm(i)` in O(1) memory), or a two-level shuffle.
+- **Materializing the permutation.** $10^{10}$ windows $\times$ 8 bytes (int64) = 80 GB per rank. Alternatives: a permutation computed on demand (a seeded bijection on `[0, N)` such as a Feistel network, which gives `perm(i)` in $O(1)$ memory), or a two-level shuffle.
 - **Random access on remote storage** is slow (see above), so streaming formats read sequentially and shuffle approximately.
 
 The standard approximate scheme is **two-level shuffling**: shuffle the order of shards, then pass samples through a **shuffle buffer** that holds `k` samples and emits a random one each time a new one arrives. Here it is over WebDataset-style tar shards (WebDataset, [described below](#streaming-from-object-storage-webdataset-and-mosaicml-streaming), stores each sample as a few files sharing a name inside an ordinary tar archive):
@@ -1301,7 +1312,7 @@ print(f"BDP 10 Gb/s x 80 ms = {bw*rtt/8/1e6:.0f} MB in flight; one stream with 4
 BDP 10 Gb/s x 80 ms = 100 MB in flight; one stream with 4 MiB window maxes at 419 Mb/s
 ```
 
-Note the bits vs bytes: network links are quoted in bits per second, storage in bytes (see [Networking: Units](networking.md#units-reading-spec-sheets-without-getting-fooled)). The second line is the reason single-stream transfers across continents are slow. TCP can only have one window of unacknowledged data in flight, so one stream's throughput is at most `window / RTT`. Filling a 10 Gb/s link at 80 ms RTT needs 100 MB in flight (the **bandwidth-delay product**), far more than a typical stream's window. This is the same Little's law as for disks. The fix is many parallel streams, plus tuned TCP buffers on both ends. For a petabyte, also price shipping physical drives (AWS Snowball and similar). Seriously.
+Note the bits vs bytes: network links are quoted in bits per second, storage in bytes (see [Networking: Units](networking.md#units-reading-spec-sheets-without-getting-fooled)). The second line is the reason single-stream transfers across continents are slow. TCP can only have one window of unacknowledged data in flight, so one stream's throughput is at most $\text{window} / \text{RTT}$. Filling a 10 Gb/s link at 80 ms RTT needs 100 MB in flight (the **bandwidth-delay product**), far more than a typical stream's window. This is the same Little's law as for disks. The fix is many parallel streams, plus tuned TCP buffers on both ends. For a petabyte, also price shipping physical drives (AWS Snowball and similar). Seriously.
 
 ### rsync
 

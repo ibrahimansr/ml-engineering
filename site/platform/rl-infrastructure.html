@@ -1,0 +1,1667 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infrastructure for Large-Scale RL on LLMs - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details open><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html" class="current">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="infrastructure-for-large-scale-rl-on-llms">Infrastructure for Large-Scale RL on LLMs</h1>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>This chapter assumes you know the RL algorithms (PPO, GRPO, REINFORCE-style estimators, KL penalties, importance sampling). It does not assume any systems background. It does use the following chapters heavily, so read them first if any of these ideas is new:</p>
+<ul>
+<li><a href="../foundations/concurrency.html">Concurrency and Parallelism</a>: processes vs threads, <code>asyncio</code>, bounded queues and backpressure. An RL system is mostly a producer/consumer pipeline, and the <a href="../foundations/concurrency.html#producerconsumer-and-backpressure">backpressure section</a> is the core idea of this chapter at small scale.</li>
+<li><a href="../foundations/distributed-systems.html">Distributed Systems</a>: ranks, process groups, failures and timeouts.</li>
+<li><a href="../foundations/networking.html">Networking</a>: bandwidth vs latency, NVLink vs InfiniBand vs ordinary Ethernet. Every weight-sync number below is a networking number.</li>
+<li><a href="../inference/arithmetic.html">Inference Arithmetic</a> and <a href="../inference/serving-engine-internals.html">Inside a Serving Engine</a>: decode is memory-bound, KV cache sizing, continuous batching, prefix caching, and <a href="../inference/serving-engine-internals.html#determinism-and-batch-invariance">determinism and batch invariance</a>. The generation half of RL <em>is</em> an inference server.</li>
+<li><a href="../training/model-parallelism/derivations.html">Parallelism derivations</a>: <a href="../training/model-parallelism/derivations.html#zero-and-fsdp">FSDP</a>, <a href="../training/model-parallelism/derivations.html#tensor-parallelism-megatron">tensor parallelism</a> and the <a href="../training/model-parallelism/derivations.html#collective-cost-models-alpha-beta-ring">collective cost model</a>. The training half of RL is an ordinary sharded training job, and weight synchronization is a resharding problem between those two layouts.</li>
+<li><a href="../foundations/containers-and-virtualization.html">Containers and Virtualization</a>: needed for the sandboxed code-execution section.</li>
+<li><a href="../training/arithmetic.html">Training Arithmetic</a>: FLOPs per token (<code>6N</code>) and MFU, and the <a href="../training/arithmetic.html#pytorch-caching-allocator-internals">PyTorch caching allocator</a> (CUDA IPC section).</li>
+<li><a href="../foundations/linux-and-os.html">Linux and OS</a>: <a href="../foundations/linux-and-os.html#signals">signals</a>, <a href="../foundations/linux-and-os.html#process-groups-and-sessions">process groups</a>, <a href="../foundations/linux-and-os.html#file-descriptors-and-ulimits">ulimits / <code>setrlimit</code></a> and <a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now"><code>py-spy</code></a>, used by the verifier harness and the debugging table.</li>
+<li><a href="../foundations/storage-and-data.html">Storage and Data</a>: checkpoints, safetensors and shared filesystems (weight sync through storage).</li>
+<li><a href="../orchestration/slurm/from-zero.html">Slurm from zero</a>: <code>sbatch</code>, <code>srun</code> and <code>torchrun</code> under Slurm, for the launch script at the end.</li>
+<li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a>: the <a href="../inference/serving-hands-on.html#the-openai-compatible-api-and-streaming">OpenAI-compatible API</a> the rollout workers speak, and <a href="../inference/serving-hands-on.html#vllm-on-ray">vLLM on Ray</a>.</li>
+<li><a href="../platform/control-planes.html">Control Planes</a>: <a href="../platform/control-planes.html#littles-law">Little's law</a>, <a href="../platform/control-planes.html#bounded-queues-load-shedding-and-per-tenant-limits">bounded queues and load shedding</a> and <a href="../platform/control-planes.html#retries-and-retry-budgets">retries</a>, which the queue and verifier-service sections reuse.</li>
+<li>The <a href="../foundations/toolkit.html">toolkit</a> chapter for <a href="../foundations/toolkit.html#jq-json-on-the-command-line"><code>jq</code></a> and <code>uv run</code>.</li>
+</ul>
+<p>Online RL for LLMs differs from pretraining in one important way: the training data does not exist until the current model creates it. Every step therefore runs an inference workload (generate rollouts), an evaluation workload (score them, possibly by executing code), and a training workload (compute gradients), and then moves the new weights back to the inference side. Each of these is a distributed system on its own. The RL algorithm determines which of them may overlap and by how much. This chapter covers the infrastructure that connects them: placement, staleness, weight transfer, rollout serving, environments, queues, failure handling, and how the open frameworks are organized.</p>
+<p><strong>What was run.</strong> Every Python block marked with a file name below was run on an Apple M4 laptop (10 cores, macOS, Python 3.14, PyTorch 2.15 CPU, NumPy 2.5, <code>transformers</code> 5.22 for the tokenizer check). Their outputs are pasted verbatim. Timings from the toy pipelines depend on the machine and change between runs. Anything that needs GPUs, a cluster, Ray, Slurm or Docker is marked <strong>untested</strong>. All throughput and time estimates are first-order arithmetic from stated assumptions, not benchmarks, unless a source is cited.</p>
+<h2 id="the-shape-of-an-rl-step">The shape of an RL step</h2>
+<h3 id="components-and-vocabulary">Components and vocabulary</h3>
+<p>These terms are used throughout the chapter:</p>
+<ul>
+<li><strong>Policy</strong>: the model being trained. Its weights have a <strong>version</strong>, an integer that increments with every optimizer step.</li>
+<li><strong>Rollout</strong> (also <em>trajectory</em> or <em>sample</em>): one generated response, or for agents one whole multi-turn episode, together with the per-token logprobs the sampler assigned to it.</li>
+<li><strong>Generator / rollout worker / inference engine</strong>: a process (normally a vLLM or SGLang server) that holds a copy of the policy and generates rollouts.</li>
+<li><strong>Trainer</strong>: the sharded training job (FSDP, Megatron) that turns rollouts into gradient steps.</li>
+<li><strong>Environment</strong>: code that supplies prompts, and for agents also responds to the model's actions with tool outputs.</li>
+<li><strong>Verifier / reward function</strong>: code that turns a finished rollout into a scalar reward. It ranges from a regex to a test suite running in a sandbox to another LLM acting as a judge.</li>
+<li><strong>Orchestrator / controller</strong>: the process that drives the loop. It hands prompts to generators, collects rollouts, calls verifiers, forms batches, tells the trainer to step, and triggers weight sync.</li>
+<li><strong>Weight sync</strong>: copying the trainer's new weights into every inference engine.</li>
+<li><strong>Staleness</strong>: for a token used in a gradient step, the trainer's current version minus the version that sampled it. Zero means on-policy.</li>
+</ul>
+<pre><code>             prompts                     rollouts + sampler logprobs
+ [dataset/env] ──────► [ generators (vLLM/SGLang) ] ──────► [ verifiers / reward ]
+                              ▲                                     │ rewards
+                              │ weights (version v+1)               ▼
+                       [ weight sync ] ◄────────── [ trainer (FSDP/Megatron) ] ◄── [ batcher / queue ]
+</code></pre>
+<p>The synchronous loop, written as the simplest possible code:</p>
+<pre><code class="language-python"># The synchronous RL loop. Every arrow above is one line here, and each line hides a distributed system.
+for step in range(num_steps):
+    prompts  = dataset.next_batch()                        # (P,)
+    rollouts = engines.generate(prompts, n=G)              # (P*G,) sequences + sampler logprobs
+    rewards  = verifiers.score(rollouts)                   # (P*G,)  may execute code
+    batch    = make_batch(rollouts, rewards)               # advantages, masks, packing
+    trainer.step(batch)                                    # recompute logprobs, loss, backward, optimizer
+    engines.load_weights(trainer.state_dict())             # weight sync -&gt; version step+1
+</code></pre>
+<p>Each line in that loop blocks until the previous one finishes. The rest of the chapter is mostly about removing those blocking waits without breaking the algorithm.</p>
+<h3 id="where-the-time-goes-arithmetic-for-a-realistic-config">Where the time goes: arithmetic for a realistic config</h3>
+<p>Configuration: a Qwen2.5-32B-like dense model (64 layers, 8 KV heads of dim 128, about 32.5B parameters) on 64 H100s. One GRPO step uses 256 prompts × 16 samples, 1024-token prompts, and long-tailed reasoning responses (lognormal, median about 6k tokens, capped at 32k). Generation runs on 16 TP=4 engines. Training recomputes the old-policy logprobs (<span class="math inline"><span class="math-inline">2N</span></span> FLOPs per token), runs a reference-model forward (<span class="math inline"><span class="math-inline">2N</span></span>), and a forward+backward (<span class="math inline"><span class="math-inline">6N</span></span>), for <span class="math inline"><span class="math-inline">10N</span></span> FLOPs per token.</p>
+<p>The script below simulates one engine with continuous batching. Each decode step costs one read of the weights plus one read of every active sequence's KV cache from HBM. That is the decode roofline from <a href="../inference/arithmetic.html#decode-latency-lower-bound">inference arithmetic</a>, assuming 60% of peak HBM bandwidth is achieved. The script calls that fraction <code>MBU</code> (model bandwidth utilization), the memory-bandwidth counterpart of MFU.</p>
+<pre><code class="language-python"># step_budget.py - where the time goes in one synchronous GRPO-style step.
+# Qwen2.5-32B-like dense model, 64x H100, colocated. First-order model, not a benchmark.
+import numpy as np
+
+# model
+N      = 32.5e9                 # params
+L, kvh, hd = 64, 8, 128
+kv_tok = 2 * L * kvh * hd * 2   # bytes/token, bf16 K and V
+W      = 2 * N                  # bf16 weight bytes
+
+# hardware (H100 SXM)
+HBM, PEAK = 3.35e12, 989e12
+MBU, MFU  = 0.6, 0.4            # assumed achieved fraction of HBM bw (decode) / FLOPs (train)
+
+# workload
+prompts, G = 256, 16            # 256 prompts x 16 samples = 4096 rollouts
+P_len      = 1024
+rng = np.random.default_rng(0)
+resp = np.clip(rng.lognormal(np.log(6000), 0.8, prompts * G), 200, 32768).astype(int)
+
+# inference layout: TP=4 engines on 64 GPUs
+gpus, tp = 64, 4
+engines  = gpus // tp
+kv_budget = 0.9 * tp * 80e9 - W            # bytes left for KV per engine
+max_tokens_in_kv = kv_budget / kv_tok
+
+def simulate_engine(lengths, max_seqs=256):
+    &quot;&quot;&quot;Continuous batching (oracle admission: a seq is admitted only if its final length fits;
+    real engines admit optimistically and preempt), one decode token per active seq per step.
+    Step time = (weights + KV of all active seqs) / (tp * HBM * MBU). Prefill ignored.&quot;&quot;&quot;
+    waiting = list(lengths); active = []  # active: [generated, target]
+    t, steps, util = 0.0, 0, []
+    while waiting or active:
+        ctx = sum(P_len + g for g, _ in active)
+        while waiting and len(active) &lt; max_seqs and ctx + P_len + waiting[0] &lt;= max_tokens_in_kv:
+            active.append([0, waiting.pop(0)]); ctx += P_len
+        B = len(active)
+        kv_read = sum(P_len + g for g, _ in active) * kv_tok
+        t += (W + kv_read) / (tp * HBM * MBU)
+        util.append(B)
+        for a in active: a[0] += 1
+        active = [a for a in active if a[0] &lt; a[1]]
+        steps += 1
+    return t, steps, np.array(util)
+
+per_engine = np.array_split(rng.permutation(resp), engines)
+t_gen, steps, util = simulate_engine(list(per_engine[0]))
+gen_tokens = resp.sum()
+
+# training: old-logprob fwd (2N) + ref fwd (2N) + fwd/bwd (6N) per token, prompt+response
+train_tokens = (P_len + resp).sum()
+flops = 10 * N * train_tokens
+t_train = flops / (gpus * PEAK * MFU)
+
+print(f&quot;KV bytes/token          {kv_tok/1024:.0f} KiB; KV budget/engine {kv_budget/1e9:.0f} GB = {max_tokens_in_kv/1e3:.0f}k tokens&quot;)
+print(f&quot;rollouts                {resp.size}, response tokens mean {resp.mean():.0f}, p50 {np.median(resp):.0f}, p99 {np.percentile(resp,99):.0f}, max {resp.max()}&quot;)
+print(f&quot;generated tokens        {gen_tokens/1e6:.1f} M&quot;)
+print(f&quot;generation (1 engine)   {t_gen:.0f} s over {steps} decode steps&quot;)
+print(f&quot;  batch size: mean {util.mean():.0f}, steps with batch&lt;=16: {(util&lt;=16).mean():.0%}&quot;)
+print(f&quot;  time-weighted throughput {util[0:].sum()/t_gen:.0f} tok/s/engine&quot;)
+print(f&quot;training (10N/token)    {t_train:.0f} s  ({flops:.2e} FLOPs at {MFU:.0%} MFU)&quot;)
+print(f&quot;generation share        {t_gen/(t_gen+t_train):.0%} of a synchronous step&quot;)
+same = [int(per_engine[0].mean())] * len(per_engine[0])   # same total tokens, no tail
+t_flat, _, _ = simulate_engine(same)
+print(f&quot;same tokens, no tail    {t_flat:.0f} s  -&gt; the tail costs {t_gen/t_flat:.1f}x&quot;)
+</code></pre>
+<pre><code>$ python step_budget.py
+KV bytes/token          256 KiB; KV budget/engine 223 GB = 851k tokens
+rollouts                4096, response tokens mean 7978, p50 5830, p99 32768, max 32768
+generated tokens        32.7 M
+generation (1 engine)   837 s over 32768 decode steps
+  batch size: mean 65, steps with batch&lt;=16: 35%
+  time-weighted throughput 2560 tok/s/engine
+training (10N/token)    473 s  (1.20e+19 FLOPs at 40% MFU)
+generation share        64% of a synchronous step
+same tokens, no tail    432 s  -&gt; the tail costs 1.9x
+</code></pre>
+<p>How to read the output:</p>
+<ol>
+<li><strong>Generation is about two thirds of a synchronous step, even with oracle scheduling.</strong> It also understates the problem. The step waits for the slowest of 16 engines, and this simulation measures only one of them.</li>
+<li><strong>The tail costs 1.9×.</strong> The same total number of tokens, spread evenly across sequences, would take 432 s instead of 837 s. For 35% of decode steps the engine has 16 or fewer sequences running, so it reads 65 GB of weights per step to produce at most 16 tokens. A 32k-token response needs 32,768 <em>sequential</em> decode steps no matter how many GPUs you have. Generation time has a floor set by the longest sequence, not by total work.</li>
+<li><strong>Training is regular and predictable.</strong> 473 s comes from <span class="math inline"><span class="math-inline">10N \times \text{tokens} / (64 \times 989\ \text{TFLOP/s} \times 0.4)</span></span>. It scales almost linearly with GPU count and does not depend on the length distribution, only on the total number of tokens.</li>
+</ol>
+<p>The same reasoning applies to any long-chain-of-thought setup. Reports from frameworks and labs put generation at roughly half to 80% of wall time. That share depends on the length distribution, which is why almost every infrastructure idea in this chapter targets the generation tail.</p>
+<h3 id="why-the-tail-is-a-systems-problem">Why the tail is a systems problem</h3>
+<p>Decode on a memory-bound GPU costs about the same per step whether the batch holds 16 sequences or 200 (see the <a href="../inference/arithmetic.html#arithmetic-intensity-and-the-roofline">roofline</a>). Throughput per GPU is therefore roughly proportional to batch size, and batch size collapses at the end of every synchronous generation phase. There are four ways out, each covered later:</p>
+<table>
+<thead>
+<tr>
+<th>Fix</th>
+<th>Idea</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Async / pipelined RL</td>
+<td>start the next batch's rollouts while the tail finishes</td>
+<td><a href="#synchronous-vs-asynchronous-rl">Synchronous vs asynchronous RL</a></td>
+</tr>
+<tr>
+<td>Partial rollouts</td>
+<td>cap tokens per iteration and carry unfinished rollouts over</td>
+<td><a href="#partial-rollouts">Partial rollouts</a></td>
+</tr>
+<tr>
+<td>Over-sampling</td>
+<td>start more rollouts than needed, keep the first that finish</td>
+<td><a href="#continuous-batching-and-the-long-tail">Continuous batching and the long tail</a></td>
+</tr>
+<tr>
+<td>Length limits / penalties</td>
+<td>an algorithm change, not an infrastructure one</td>
+<td>out of scope</td>
+</tr>
+</tbody>
+</table>
+<p>Over-sampling and keeping the first finishers biases the batch toward short responses, and partial rollouts mix policy versions inside one response. Each of these fixes has an algorithmic cost, and the importance-ratio corrections <a href="#importance-ratio-corrections-systems-use">below</a> are how systems pay for it.</p>
+<h2 id="placement-colocated-vs-disaggregated">Placement: colocated vs disaggregated</h2>
+<p><em>Placement</em> is the decision about which GPUs run which component. There are two basic designs.</p>
+<h3 id="colocated-the-hybrid-engine">Colocated (the &quot;hybrid engine&quot;)</h3>
+<p>In a <strong>colocated</strong> design every GPU alternates between roles. It holds the inference engine during generation and the trainer shards during training. verl's HybridFlow (Sheng et al., arXiv 2409.19256) made this the default, and OpenRLHF's <code>--train.colocate_all</code> and TRL's <code>vllm_mode=&quot;colocate&quot;</code> do the same. Its appeal is that no GPU is ever idle because it is waiting on another role. Its cost is memory juggling: both roles must fit in, or be swapped through, the same 80 GB.</p>
+<p>Memory per GPU for the 32B example on 64 GPUs:</p>
+<pre><code class="language-python"># colocated_memory.py - what has to share one 80 GB H100 in the colocated 32B setup
+N, gpus, tp = 32.5e9, 64, 4
+train_state = 16 * N / gpus / 1e9          # FSDP: bf16 params+grads, fp32 master+Adam m,v, sharded 64 ways
+infer_weights = 2 * N / tp / 1e9           # bf16 weights, TP=4 shard
+kv = 0.9 * 80 - infer_weights              # what vLLM would grab for KV at gpu_memory_utilization=0.9
+print(f&quot;trainer sharded state {train_state:.1f} GB + activations (several GB to tens of GB)&quot;)
+print(f&quot;inference weights     {infer_weights:.1f} GB + KV cache {kv:.1f} GB&quot;)
+</code></pre>
+<pre><code>$ python colocated_memory.py
+trainer sharded state 8.1 GB + activations (several GB to tens of GB)
+inference weights     16.2 GB + KV cache 55.8 GB
+</code></pre>
+<p>Both sets of state cannot sit in memory together at full size, so colocated systems <strong>sleep</strong> the engine while training. vLLM's sleep mode (as of vLLM's docs, 2026) has two levels. Level 1 offloads weights to CPU RAM and discards the KV cache. Level 2 discards both, which is what you want when the trainer is about to overwrite the weights anyway. <code>wake_up(tags=[...])</code> lets you bring back only the weights first, load the new ones, and only then allocate the KV cache. That ordering keeps peak memory low. SGLang has the equivalent <code>release_memory_occupation</code> / <code>resume_memory_occupation</code> engine methods. The trainer offloads its optimizer state (and sometimes its parameters) to CPU in the opposite direction. <strong>Untested</strong> (needs a GPU):</p>
+<pre><code class="language-python"># colocated step, vLLM offline engine (API per vLLM docs/features/sleep_mode.md; untested here)
+from vllm import LLM
+llm = LLM(model=&quot;Qwen/Qwen2.5-32B-Instruct&quot;, tensor_parallel_size=4, enable_sleep_mode=True)
+
+outs = llm.generate(prompts, sampling_params)          # 1. generate (KV cache allocated)
+llm.sleep(level=2)                                      # 2. drop weights and KV: trainer gets the HBM
+trainer.load_to_gpu(); trainer.step(batch); trainer.offload_optimizer_to_cpu()   # 3. train
+llm.wake_up(tags=[&quot;weights&quot;])                           # 4. allocate weight buffers only
+push_weights(trainer, llm)                              # 5. sync (CUDA IPC / in-process copy)
+llm.wake_up(tags=[&quot;kv_cache&quot;])                          # 6. now allocate KV and generate again
+</code></pre>
+<p>Phase switches are not free. Moving 8 GB of optimizer state over PCIe at about 25-50 GB/s takes a fraction of a second. Re-creating CUDA graphs, re-allocating the KV pool and running Python-side weight loading take seconds to tens of seconds. That overhead is the <code>t_switch</code> in the next script, and I assume it rather than measure it.</p>
+<h3 id="disaggregated">Disaggregated</h3>
+<p>In a <strong>disaggregated</strong> design inference and training run on separate GPU pools, usually on separate nodes, and weights travel over the network after every step (or every few steps). This only makes sense with asynchronous RL. With a synchronous loop, the training pool sits idle during generation and vice versa. With async, both pools run all the time, and the question becomes how to split the GPUs.</p>
+<pre><code class="language-python"># placement.py - colocated vs disaggregated, using step_budget.py's numbers for 64 GPUs.
+t_gen_tail, t_gen_flat, t_train, G = 837, 432, 473, 64   # seconds on all 64 GPUs
+t_switch = 30          # assumed: offload/onload weights+optimizer, KV realloc, weight sync
+
+print(f&quot;colocated, sync               {t_gen_tail + t_train + t_switch:5.0f} s/step&quot;)
+print(f&quot;colocated, partial rollouts   {t_gen_flat + t_train + t_switch:5.0f} s/step  (tail carried to next step)&quot;)
+for g in (16, 24, 30, 32, 40, 48):
+    gen   = t_gen_flat * G / g          # assume perfect scaling with GPU count
+    train = t_train * G / (G - g)
+    step  = max(gen, train)             # async pipeline: slower side sets the pace
+    idle  = 1 - min(gen, train) / step
+    side  = &quot;trainer&quot; if gen &gt; train else &quot;generator&quot;
+    print(f&quot;disagg {g:2d} gen / {G-g:2d} train   {step:5.0f} s/step  ({side} idle {idle:.0%})&quot;)
+</code></pre>
+<pre><code>$ python placement.py
+colocated, sync                1340 s/step
+colocated, partial rollouts     935 s/step  (tail carried to next step)
+disagg 16 gen / 48 train    1728 s/step  (trainer idle 64%)
+disagg 24 gen / 40 train    1152 s/step  (trainer idle 34%)
+disagg 30 gen / 34 train     922 s/step  (trainer idle 3%)
+disagg 32 gen / 32 train     946 s/step  (generator idle 9%)
+disagg 40 gen / 24 train    1261 s/step  (generator idle 45%)
+disagg 48 gen / 16 train    1892 s/step  (generator idle 70%)
+</code></pre>
+<p>What this shows:</p>
+<ul>
+<li><strong>With perfect linear scaling, overlap by itself is zero-sum.</strong> The best disaggregated split (30/34) gives 922 s, which is just <span class="math inline"><span class="math-inline">432 + 473</span></span>: generation work plus training work. That is the same as colocated with partial rollouts (935 s, which differs only by the assumed switch cost). The 1340 → ~930 s improvement comes from <strong>removing the tail</strong>, not from overlapping the two phases.</li>
+<li><strong>Disaggregation is unforgiving about the split.</strong> Misjudge the ratio by 25% and one side idles 34-45% of the time. The right split also moves during training, because response lengths change as the policy learns. (Response length often grows during reasoning RL.)</li>
+<li>Disaggregation wins when the linear-scaling assumption fails in its favour. Inference and training can use different parallelism, different hardware (cheaper or older GPUs for inference, even consumer GPUs over the internet in decentralized setups), and different failure domains. Inference capacity becomes elastic: engines join and leave without stopping the trainer. You also skip the memory juggling entirely. Colocation wins when the cluster is small, the network between pools is slow, or the run must be strictly on-policy.</li>
+</ul>
+<h3 id="choosing">Choosing</h3>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Points toward colocated</th>
+<th>Points toward disaggregated</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Must training be strictly on-policy?</td>
+<td>yes</td>
+<td>no, bounded staleness is acceptable</td>
+</tr>
+<tr>
+<td>Cluster size</td>
+<td>one to a few nodes</td>
+<td>many nodes, or heterogeneous hardware</td>
+</tr>
+<tr>
+<td>Network between would-be pools</td>
+<td>slow</td>
+<td>InfiniBand/RoCE, or acceptable WAN with compression</td>
+</tr>
+<tr>
+<td>Response length distribution</td>
+<td>short, regular</td>
+<td>long-tailed (async fills the tail)</td>
+</tr>
+<tr>
+<td>Need elastic or preemptible inference capacity</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Engineering budget</td>
+<td>less moving parts at runtime, but tricky memory management</td>
+<td>more services, queues, failure modes</td>
+</tr>
+</tbody>
+</table>
+<p>Most large-scale frameworks now support both. Open systems built for long agentic rollouts have moved toward disaggregated + asynchronous designs (prime-rl, AReaL, slime's async mode, verl's <code>fully_async_policy</code>).</p>
+<h2 id="synchronous-vs-asynchronous-rl">Synchronous vs asynchronous RL</h2>
+<h3 id="the-staleness-spectrum">The staleness spectrum</h3>
+<p>Systems use the following modes, ordered from fully on-policy to most off-policy:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Behaviour policy for a batch trained at version <span class="math inline"><span class="math-inline">v</span></span></th>
+<th>Who uses it (as of late 2026; verify)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Synchronous</td>
+<td>exactly <span class="math inline"><span class="math-inline">v</span></span></td>
+<td>TRL default, verl/OpenRLHF default colocated mode</td>
+</tr>
+<tr>
+<td>One-step off-policy</td>
+<td>version <span class="math inline"><span class="math-inline">v-1</span></span>: generate batch <span class="math inline"><span class="math-inline">n+1</span></span> while training on batch <span class="math inline"><span class="math-inline">n</span></span></td>
+<td>verl <code>one_step_off_policy</code>, prime-rl's basic overlap, OpenRLHF <code>--train.async_enable</code> with queue size 1</td>
+</tr>
+<tr>
+<td>Bounded async</td>
+<td>any version <span class="math inline"><span class="math-inline">\ge v-k</span></span></td>
+<td>AReaL (arXiv 2505.24298), prime-rl <code>orchestrator.max_staleness</code></td>
+</tr>
+<tr>
+<td>In-flight weight updates</td>
+<td>a <em>single</em> rollout spans several versions; weights change mid-generation</td>
+<td>PipelineRL (arXiv 2509.19128), OpenRLHF <code>--train.partial_rollout_enable</code>, AReaL interruptible rollouts</td>
+</tr>
+</tbody>
+</table>
+<p>In-flight updates exist because of the tail. Without them, a 32k-token rollout started at version <span class="math inline"><span class="math-inline">v</span></span> will finish at version <span class="math inline"><span class="math-inline">v+5</span></span> and is entirely 5 steps stale. With them, its last tokens were sampled by a recent policy. The cost is that the KV cache for the first part of the response was computed under the old weights. Systems generally keep that stale KV rather than recompute it, and record per-token versions so the loss can account for them.</p>
+<h3 id="a-toy-async-rl-pipeline">A toy async RL pipeline</h3>
+<p>The following toy contains every moving part of an async system, scaled down until it runs in two seconds. The <strong>trainer</strong> is a separate OS process (<code>multiprocessing</code>), as a real trainer would be. The <strong>generator</strong> is one <code>asyncio</code> event loop that keeps <code>SLOTS</code> rollouts in flight at once, as an inference engine with continuous batching does. The two are connected by a <strong>bounded queue</strong>, which provides backpressure. Weights are a shared-memory array published together with a <strong>version counter</strong> under a lock, which stands in for weight sync. The stdlib provides these directly: <code>mp.Array(&quot;d&quot;, A)</code> is an array of <code>A</code> C doubles in shared memory that both processes can index like a list, <code>mp.Value(&quot;i&quot;, 0)</code> is a single shared C int read and written through <code>.value</code>, and <code>lock=False</code> skips their built-in per-object lock because the code uses one explicit <code>mp.Lock()</code> to cover the weights and the version together (<a href="../foundations/concurrency.html#shared-memory">shared memory</a> and its race conditions are covered in the concurrency chapter). The policy is a 4-way softmax, reward is 1 for action 3, and rollout length is lognormal so the tail is real. <span class="math inline"><span class="math-inline">k</span></span> is the maximum lag: a rollout may <em>start</em> only if its batch index is at most <span class="math inline"><span class="math-inline">k</span></span> ahead of the trainer's version. <span class="math inline"><span class="math-inline">k=0</span></span> is the synchronous loop.</p>
+<pre><code class="language-python"># toy_async_rl.py - generator (asyncio, many concurrent rollouts) -&gt; bounded queue -&gt; trainer (process).
+# The &quot;policy&quot; is softmax over 4 actions; reward = 1 for action 3. Rollout length is long-tailed.
+# max_lag k: a rollout may start only while (its batch index - trainer version) &lt;= k.  k=0 is synchronous.
+import asyncio, multiprocessing as mp, time
+import numpy as np
+
+A, B, STEPS, TRAIN_S, TOKEN_S = 4, 16, 12, 0.15, 0.002
+
+def logp(theta): z = theta - theta.max(); return z - np.log(np.exp(z).sum())
+
+def trainer(q, weights, version, lock, log, produced):
+    theta = np.zeros(A); busy = 0.0; t_start = None
+    for step in range(STEPS):
+        batch = q.get()                                   # blocks when the generator is behind
+        t0 = time.perf_counter(); t_start = t_start or t0
+        acts = np.array([r[&quot;a&quot;] for r in batch]); rew = np.array([r[&quot;r&quot;] for r in batch])
+        lp_now = logp(theta)[acts]                        # recompute under the *current* policy
+        lp_beh = np.array([r[&quot;lp&quot;] for r in batch])       # what the sampler reported
+        ratio = np.exp(lp_now - lp_beh)                   # importance ratio pi_theta / pi_behaviour
+        w = np.minimum(ratio, 2.0)                        # truncated IS (cap C=2)
+        adv = rew - rew.mean()                            # group-mean baseline
+        grad = np.zeros(A)
+        for a, wi, ad in zip(acts, w, adv):               # REINFORCE: grad of log softmax = onehot - p
+            grad += wi * ad * (np.eye(A)[a] - np.exp(logp(theta)))
+        theta += 0.5 * grad / len(batch)
+        time.sleep(TRAIN_S)                               # pretend fwd/bwd/optimizer
+        with lock:                                        # &quot;weight sync&quot;: publish theta + version together
+            weights[:] = theta; version.value = step + 1
+        busy += time.perf_counter() - t0
+        stale = [step - r[&quot;v&quot;] for r in batch]
+        log.put(dict(step=step, stale=stale, ratio_dev=float(np.abs(ratio - 1).max()),
+                     reward=float(rew.mean()), qdepth=produced.value - step - 1))   # mp.Queue.qsize() is unimplemented on macOS
+    log.put(dict(done=True, busy=busy, span=time.perf_counter() - t_start))
+
+async def generator(q, weights, version, lock, k, seed, produced, SLOTS):
+    rng = np.random.default_rng(seed)
+    started, slots, done = 0, asyncio.Semaphore(SLOTS), []
+    loop = asyncio.get_running_loop()
+    flush = asyncio.Lock()
+
+    async def rollout(idx):
+        while idx // B - version.value &gt; k:               # staleness gate
+            await asyncio.sleep(0.001)
+        with lock: theta, v = np.array(weights[:]), version.value   # snapshot weights at start
+        p = np.exp(logp(theta))
+        a = rng.choice(A, p=p)
+        n_tok = int(min(rng.lognormal(np.log(30), 0.9), 400))      # long-tailed response length
+        await asyncio.sleep(n_tok * TOKEN_S)                         # &quot;decode&quot;
+        done.append(dict(a=int(a), lp=float(np.log(p[a])), r=float(a == 3), v=v))
+        slots.release()
+        async with flush:                                 # first B finished rollouts form a batch
+            if len(done) &gt;= B:
+                batch = done[:B]; del done[:B]
+                await loop.run_in_executor(None, q.put, batch)   # blocks if the queue is full
+                produced.value += 1
+
+    tasks = []
+    while started &lt; STEPS * B:
+        await slots.acquire()                             # continuous batching: refill a free slot
+        tasks.append(asyncio.create_task(rollout(started))); started += 1
+    await asyncio.gather(*tasks)
+
+def run(k, slots=16, qmax=2, verbose=False):
+    q, log = mp.Queue(maxsize=qmax), mp.Queue()
+    weights, version, lock = mp.Array(&quot;d&quot;, A, lock=False), mp.Value(&quot;i&quot;, 0, lock=False), mp.Lock()
+    produced = mp.Value(&quot;i&quot;, 0, lock=False)
+    tp = mp.Process(target=trainer, args=(q, weights, version, lock, log, produced)); tp.start()
+    t0 = time.perf_counter()
+    asyncio.run(generator(q, weights, version, lock, k, 0, produced, slots))
+    rows = []
+    while &quot;done&quot; not in (end := log.get()): rows.append(end)
+    tp.join(); wall = time.perf_counter() - t0
+    if verbose:
+        for r in rows:
+            h = np.bincount(r[&quot;stale&quot;], minlength=3)
+            print(f&quot;  step {r['step']:2d}  staleness hist {dict(enumerate(h.tolist()))}  &quot;
+                  f&quot;max|ratio-1| {r['ratio_dev']:.3f}  reward {r['reward']:.2f}  queue {r['qdepth']}&quot;)
+    st = np.concatenate([r[&quot;stale&quot;] for r in rows])
+    return wall, end[&quot;busy&quot;] / wall, st.mean(), st.max(), np.mean([x[&quot;ratio_dev&quot;] for x in rows]), rows[-1][&quot;reward&quot;], max(x[&quot;qdepth&quot;] for x in rows)
+
+if __name__ == &quot;__main__&quot;:
+    print(&quot;k=1, step by step:&quot;)
+    run(1, verbose=True)
+    print(f&quot;\n{'k':&gt;3} {'slots':&gt;5} {'wall s':&gt;7} {'trainer busy':&gt;12} {'mean stale':&gt;10} {'max stale':&gt;9} {'mean max|r-1|':&gt;13} {'final reward':&gt;12} {'max queue':&gt;9}&quot;)
+    for k, slots in ((0, 16), (1, 16), (2, 16), (4, 16), (4, 64)):
+        wall, util, ms, mx, rd, rew, qd = run(k, slots)
+        print(f&quot;{k:&gt;3} {slots:&gt;5} {wall:7.2f} {util:12.0%} {ms:10.2f} {mx:9d} {rd:13.3f} {rew:12.2f} {qd:9d}&quot;)
+</code></pre>
+<pre><code>$ python toy_async_rl.py
+k=1, step by step:
+  step  0  staleness hist {0: 16, 1: 0, 2: 0}  max|ratio-1| 0.000  reward 0.38  queue 0
+  step  1  staleness hist {0: 2, 1: 14, 2: 0}  max|ratio-1| 0.121  reward 0.12  queue 0
+  step  2  staleness hist {0: 3, 1: 11, 2: 2}  max|ratio-1| 0.099  reward 0.12  queue 0
+  step  3  staleness hist {0: 2, 1: 12, 2: 2}  max|ratio-1| 0.114  reward 0.56  queue 0
+  step  4  staleness hist {0: 1, 1: 13, 2: 1, 3: 1}  max|ratio-1| 0.249  reward 0.44  queue 0
+  step  5  staleness hist {0: 2, 1: 13, 2: 1}  max|ratio-1| 0.250  reward 0.44  queue 0
+  step  6  staleness hist {0: 1, 1: 13, 2: 2}  max|ratio-1| 0.138  reward 0.50  queue 0
+  step  7  staleness hist {0: 3, 1: 13, 2: 0}  max|ratio-1| 0.106  reward 0.44  queue 0
+  step  8  staleness hist {0: 2, 1: 12, 2: 2}  max|ratio-1| 0.193  reward 0.69  queue 0
+  step  9  staleness hist {0: 3, 1: 13, 2: 0}  max|ratio-1| 0.097  reward 0.56  queue 0
+  step 10  staleness hist {0: 2, 1: 12, 2: 1, 3: 0, 4: 0, 5: 1}  max|ratio-1| 0.358  reward 0.50  queue 0
+  step 11  staleness hist {0: 0, 1: 14, 2: 1, 3: 0, 4: 1}  max|ratio-1| 0.325  reward 0.62  queue 0
+
+  k slots  wall s trainer busy mean stale max stale mean max|r-1| final reward max queue
+  0    16    5.99          31%       0.00         0         0.000         0.62         0
+  1    16    2.32          79%       0.92         5         0.163         0.62         0
+  2    16    2.01          91%       1.75         6         0.252         0.62         1
+  4    16    1.95          94%       2.96         9         0.422         0.44         2
+  4    64    1.95          95%       3.17         8         0.439         0.50         2
+</code></pre>
+<p>What this output shows (your timings will differ):</p>
+<ul>
+<li><strong>Synchronous (<span class="math inline"><span class="math-inline">k=0</span></span>) keeps the trainer only 31% busy.</strong> It waits for the slowest rollout of every batch. Allowing one step of lag cuts wall time 2.6× (5.99 → 2.32 s), and the trainer reaches about 80-95% busy. This is the async win: the next batch's rollouts fill the slots the tail leaves empty.</li>
+<li><strong>Staleness at training time is not bounded by <span class="math inline"><span class="math-inline">k</span></span>.</strong> With <span class="math inline"><span class="math-inline">k=1</span></span> the step-by-step log shows rollouts 4 and 5 versions stale. The gate applies when a rollout <em>starts</em>, and a long rollout started at version 5 can finish after the trainer reaches version 10. Every system that gates only at submission has this property. To bound staleness at training time you must also act at consumption: drop or mask stale tokens (prime-rl masks tokens beyond <code>max_staleness</code> and never cancels rollouts, per its <code>docs/algorithms.md</code>), or interrupt and resume long rollouts with new weights.</li>
+<li><strong>The importance ratio drifts away from 1 as staleness grows</strong> (mean max <span class="math inline"><span class="math-inline">\lvert r-1 \rvert</span></span> goes 0 → 0.16 → 0.25 → 0.42). This toy has 4 actions and a large learning rate. With real vocabularies and long sequences the effect compounds per token, which is the next section.</li>
+<li><strong>Backpressure works.</strong> With <span class="math inline"><span class="math-inline">k=4</span></span> the generator outruns the trainer, the queue fills to its bound of 2, and <code>q.put</code> blocks the generator instead of letting memory grow and staleness explode. Adding 4× more slots (<code>slots=64</code>) changes nothing, because the trainer is now the bottleneck. The queue depth tells you which side to scale, exactly as in <a href="../foundations/concurrency.html#producerconsumer-and-backpressure">the concurrency chapter</a>.</li>
+<li>Two macOS details came up while writing this. <code>multiprocessing.Queue.qsize()</code> raises <code>NotImplementedError</code> on macOS, so the queue depth is computed from counters. And the lock around the weights+version write matters: without it a generator could read new weights with an old version number, or the reverse, and every staleness metric would be wrong. Real systems have the same requirement. The version must travel with the weights, atomically.</li>
+</ul>
+<h3 id="importance-ratio-corrections-systems-use">Importance-ratio corrections systems use</h3>
+<p>Let <span class="math inline"><span class="math-inline">\pi</span></span> be the trainer's current policy and <span class="math inline"><span class="math-inline">\mu</span></span> the behaviour policy that produced the tokens (stale weights, a different numeric stack, or both). Then the per-token ratio is <span class="math inline"><span class="math-inline">r_t = \pi(y_t \mid x, y_{&lt;t}) / \mu(y_t \mid x, y_{&lt;t})</span></span>. PPO and GRPO already use a ratio, but against <span class="math inline"><span class="math-inline">\pi_{\text{old}}</span></span>. Infrastructure mismatch adds a <em>second</em> ratio, and it is easy to get the two confused. The standard corrections:</p>
+<ul>
+<li><strong>Recompute <span class="math inline"><span class="math-inline">\pi_{\text{old}}</span></span> on the trainer</strong> instead of trusting the sampler's logprobs (the <span class="math inline"><span class="math-inline">2N</span></span> forward in the step budget). PPO clipping then operates on trainer-vs-trainer ratios, and the sampler/trainer gap is handled separately.</li>
+<li><strong>Truncated importance sampling (TIS)</strong>: weight each token by <span class="math inline"><span class="math-inline">\min(r_t, C)</span></span>, with <span class="math inline"><span class="math-inline">C</span></span> typically 2. This was popularised for exactly this sampler/trainer mismatch by Yao et al., &quot;Your Efficient RL Framework Secretly Brings You Off-Policy RL Training&quot; (blog, August 2025). It has V-trace lineage (IMPALA, arXiv 1802.01561).</li>
+<li><strong>Masking instead of weighting</strong>: drop tokens, or whole sequences, whose ratio leaves a band. IcePop (from Ant's Ling team, 2025) masks tokens outside <code>[ratio_low, ratio_high]</code>. prime-rl ships it as an opt-in loss with defaults 0.2 and 5.0, and its default loss masks tokens whose <em>probability</em> change <span class="math inline"><span class="math-inline">\lvert \pi - \mu \rvert</span></span> exceeds <code>eps = 0.3</code> (prime-rl <code>docs/algorithms.md</code>, as of November 2026). TRL's GRPO has <code>vllm_importance_sampling_correction</code> (default <code>True</code>), <code>vllm_importance_sampling_mode</code> (default <code>&quot;sequence_mask&quot;</code>) and <code>vllm_importance_sampling_clip_max</code> (default <code>3.0</code>) in <code>grpo_config.py</code> as of November 2026.</li>
+<li><strong>Decoupled PPO objective</strong>: separate the <em>proximal</em> policy (for the trust region) from the <em>behaviour</em> policy (for the IS weight). Hilton et al., &quot;Batch size-invariance for policy optimization&quot; (arXiv 2110.00641). AReaL uses it for stale data.</li>
+<li><strong>Staleness bounds plus diagnostics</strong>: cap <span class="math inline"><span class="math-inline">k</span></span>, and log the mismatch KL <em>per staleness bin</em>. Bin 0 then isolates pure numerics, and higher bins show drift from staleness (prime-rl logs <code>mismatch_kl_by_staleness/{bin}</code>).</li>
+</ul>
+<p>How large is the ratio spread from staleness alone? Here is a synthetic experiment where each optimizer step moves the logits by a fixed amount of noise:</p>
+<pre><code class="language-python"># ratios.py - why the sampler's logprobs are not the trainer's, and what TIS does about it.
+import torch
+torch.manual_seed(0)
+T, V = 8192, 32000                                   # one 8k-token response, 32k vocab
+logits = torch.randn(T, V) * 3                       # (T, V) &quot;trainer&quot; logits, fp32
+
+# sampler: same weights, but bf16 logits (different kernels / precision / batch shape)
+samp_logits = logits.to(torch.bfloat16).float()      # (T, V)
+samp_logp = torch.log_softmax(samp_logits, -1)
+tok = torch.multinomial(samp_logp.exp(), 1).squeeze(1)            # (T,) sampled by the &quot;sampler&quot;
+lp_samp = samp_logp.gather(1, tok[:, None]).squeeze(1)            # (T,) logprobs the sampler reports
+lp_train = torch.log_softmax(logits, -1).gather(1, tok[:, None]).squeeze(1)  # (T,) trainer recompute
+
+log_r = lp_train - lp_samp                                        # (T,) per-token log ratio
+print(f&quot;per-token |log ratio|: mean {log_r.abs().mean():.2e}  max {log_r.abs().max():.2e}&quot;)
+print(f&quot;sequence log ratio (sum over {T} tokens): {log_r.sum():+.3f}  -&gt; ratio {log_r.sum().exp():.3f}&quot;)
+mis_kl = (lp_samp - lp_train).mean()                              # k1 estimate of KL(sampler || trainer): mean log ratio
+print(f&quot;mismatch KL estimate (k1, per token): {mis_kl:.2e}&quot;)
+
+# staleness: the behaviour policy is k optimizer steps old; each step moves logits by ~eps
+for k in (0, 1, 4, 16):
+    old = logits - 0.02 * k * torch.randn(T, V)                   # (T, V) policy k steps ago
+    old_logp = torch.log_softmax(old, -1)
+    a = torch.multinomial(old_logp.exp(), 1).squeeze(1)
+    r = (torch.log_softmax(logits, -1).gather(1, a[:, None]) - old_logp.gather(1, a[:, None])).exp().squeeze(1)
+    tis = r.clamp(max=2.0)                                        # truncated IS weight, cap C=2
+    print(f&quot;staleness k={k:2d}: ratio p1 {r.quantile(.01):.3f} p99 {r.quantile(.99):.3f} max {r.max():6.2f}&quot;
+          f&quot;  | frac clipped by TIS(C=2) {(r &gt; 2).float().mean():.4f}  | ESS/T {(r.sum()**2 / (r**2).sum() / T):.3f}&quot;)
+</code></pre>
+<pre><code>$ python ratios.py
+per-token |log ratio|: mean 1.21e-02  max 3.95e-02
+sequence log ratio (sum over 8192 tokens): +0.014  -&gt; ratio 1.014
+mismatch KL estimate (k1, per token): -1.71e-06
+staleness k= 0: ratio p1 1.000 p99 1.000 max   1.00  | frac clipped by TIS(C=2) 0.0000  | ESS/T 1.000
+staleness k= 1: ratio p1 0.955 p99 1.048 max   1.08  | frac clipped by TIS(C=2) 0.0000  | ESS/T 1.000
+staleness k= 4: ratio p1 0.824 p99 1.205 max   1.34  | frac clipped by TIS(C=2) 0.0000  | ESS/T 0.994
+staleness k=16: ratio p1 0.455 p99 1.986 max   3.08  | frac clipped by TIS(C=2) 0.0095  | ESS/T 0.908
+</code></pre>
+<p>The bottom four lines are the staleness part. The p1-p99 ratio band widens from <span class="math inline"><span class="math-inline">[0.96, 1.05]</span></span> at one step of staleness to <span class="math inline"><span class="math-inline">[0.46, 1.99]</span></span> at 16, and TIS clipping only starts to bite at large <span class="math inline"><span class="math-inline">k</span></span>. The effective sample size (<span class="math inline"><span class="math-inline">\text{ESS} = (\sum r)^2 / \sum r^2</span></span>) falls slowly, so in this toy moderate staleness wastes little data. Real policy drift per step depends on learning rate and data and is not Gaussian. Measure it on your own run with the per-bin mismatch KL. The top three lines are the zero-staleness part, covered next. (The &quot;k1&quot; estimator there is the plain Monte Carlo estimate of <span class="math inline"><span class="math-inline">\operatorname{KL}(\mu \,\Vert\, \pi)</span></span>: the mean of <span class="math inline"><span class="math-inline">\log \mu - \log \pi</span></span> over tokens sampled from <span class="math inline"><span class="math-inline">\mu</span></span>. It is unbiased but an individual estimate can be negative, as it is here. The non-negative <code>k3</code> variant used for alerting appears in <a href="#infrastructure-health-signals">Infrastructure health signals</a>.)</p>
+<h3 id="sampler-trainer-mismatch-at-zero-staleness">Sampler-trainer mismatch at zero staleness</h3>
+<p>Even with identical weights and version, the inference engine and the trainer compute different logprobs. The reasons:</p>
+<ul>
+<li><strong>Precision and kernels.</strong> The engine uses fused attention and decode kernels, sometimes FP8 weights or KV, and its reduction order depends on batch shape. The trainer uses training kernels in bf16 with fp32 accumulation. See <a href="../inference/serving-engine-internals.html#determinism-and-batch-invariance">determinism and batch invariance</a>.</li>
+<li><strong>MoE routing flips</strong>: a near-tie in the router sends the token to a different expert, so the output is different, not just rounded differently.</li>
+<li><strong>Sampling post-processing</strong>: temperature, top-p/top-k and repetition penalty change <span class="math inline"><span class="math-inline">\mu</span></span>. If the engine returns logprobs of the <em>raw</em> distribution but sampled from the <em>processed</em> one (or the reverse), the ratio is wrong for every token. TRL's config notes that <code>repetition_penalty != 1.0</code> requires turning its IS correction off for this reason.</li>
+<li><strong>Tokenization and templates</strong>: the trainer may score a <em>different token sequence</em> than the one sampled. See <a href="#chat-templates-and-tokenization-consistency">chat templates and tokenization</a>.</li>
+</ul>
+<p>In <code>ratios.py</code> above, only bf16 rounding of the logits is simulated. The per-token <code>|log r|</code> is about 1.2e-2, but it is unbiased noise, so the sequence-level sum over 8192 tokens nearly cancels (ratio 1.014) and the KL estimate is around 0. Real mismatch is <strong>systematic</strong>: the same kernel errs the same way, and MoE flips are discrete. Systematic error accumulates over long sequences instead of cancelling. That is why sequence-level masks exist, and why batch-invariant inference kernels and an fp32 LM head (TRL's <code>cast_lm_head_to_fp32</code>) are things RL teams actually pay for. The practical rule: <strong>log the mismatch KL from the very first step</strong>. In a healthy setup it is small (around 1e-3 or less per token is a commonly cited range; this is not a universal threshold) and flat. A jump means something in the infrastructure changed.</p>
+<h2 id="weight-synchronization">Weight synchronization</h2>
+<h3 id="what-has-to-move-and-how-long-it-takes">What has to move, and how long it takes</h3>
+<p>After every trainer step, every inference engine needs the new weights. The lower bound on transfer time is bytes per receiver divided by the receiver's bandwidth:</p>
+<pre><code class="language-python"># weight_sync.py - time to move a fresh policy from trainer to inference engines.
+GB = 1e9
+cases = {&quot;32B dense bf16&quot;: 32.5e9 * 2, &quot;235B MoE bf16&quot;: 235e9 * 2, &quot;1T MoE fp8&quot;: 1.04e12 * 1}
+paths = [  # (name, bytes/s per receiving GPU or per receiving node, what limits it)
+    (&quot;CUDA IPC, same GPU (colocated)&quot;,           1.5e12, &quot;HBM copy, ~half of 3.35 TB/s r+w&quot;),
+    (&quot;NVLink, per GPU&quot;,                          450e9,  &quot;1 direction&quot;),
+    (&quot;IB 400G per GPU, sharded broadcast&quot;,       50e9,   &quot;each GPU receives only its TP shard&quot;),
+    (&quot;one 400G NIC, unsharded (naive rank0)&quot;,    50e9,   &quot;whole model through one NIC&quot;),
+    (&quot;shared FS, 10 GB/s per node read&quot;,         10e9,   &quot;per node&quot;),
+    (&quot;WAN 10 Gb/s&quot;,                              1.25e9, &quot;per node, decentralized&quot;),
+    (&quot;WAN 1 Gb/s&quot;,                               0.125e9,&quot;per node, decentralized&quot;),
+]
+import math
+for name, M in cases.items():
+    tp = max(8, 8 * math.ceil(M / (8 * 60 * GB)))   # GPUs per replica: &gt;=8, &lt;=60 GB weights each
+    print(f&quot;\n{name}: {M/GB:.0f} GB, one replica = {tp} GPUs, {M/tp/GB:.1f} GB/GPU&quot;)
+    for p, bw, why in paths:
+        per_gpu = &quot;per GPU&quot; in p or &quot;same GPU&quot; in p or &quot;sharded&quot; in p
+        bytes_ = M / tp if per_gpu and &quot;unsharded&quot; not in p else M
+        print(f&quot;  {p:40s} {bytes_/bw:9.2f} s   ({why})&quot;)
+</code></pre>
+<pre><code>$ python weight_sync.py
+
+32B dense bf16: 65 GB, one replica = 8 GPUs, 8.1 GB/GPU
+  CUDA IPC, same GPU (colocated)                0.01 s   (HBM copy, ~half of 3.35 TB/s r+w)
+  NVLink, per GPU                               0.02 s   (1 direction)
+  IB 400G per GPU, sharded broadcast            0.16 s   (each GPU receives only its TP shard)
+  one 400G NIC, unsharded (naive rank0)         1.30 s   (whole model through one NIC)
+  shared FS, 10 GB/s per node read              6.50 s   (per node)
+  WAN 10 Gb/s                                  52.00 s   (per node, decentralized)
+  WAN 1 Gb/s                                  520.00 s   (per node, decentralized)
+
+235B MoE bf16: 470 GB, one replica = 8 GPUs, 58.8 GB/GPU
+  CUDA IPC, same GPU (colocated)                0.04 s   (HBM copy, ~half of 3.35 TB/s r+w)
+  NVLink, per GPU                               0.13 s   (1 direction)
+  IB 400G per GPU, sharded broadcast            1.18 s   (each GPU receives only its TP shard)
+  one 400G NIC, unsharded (naive rank0)         9.40 s   (whole model through one NIC)
+  shared FS, 10 GB/s per node read             47.00 s   (per node)
+  WAN 10 Gb/s                                 376.00 s   (per node, decentralized)
+  WAN 1 Gb/s                                 3760.00 s   (per node, decentralized)
+
+1T MoE fp8: 1040 GB, one replica = 24 GPUs, 43.3 GB/GPU
+  CUDA IPC, same GPU (colocated)                0.03 s   (HBM copy, ~half of 3.35 TB/s r+w)
+  NVLink, per GPU                               0.10 s   (1 direction)
+  IB 400G per GPU, sharded broadcast            0.87 s   (each GPU receives only its TP shard)
+  one 400G NIC, unsharded (naive rank0)        20.80 s   (whole model through one NIC)
+  shared FS, 10 GB/s per node read            104.00 s   (per node)
+  WAN 10 Gb/s                                 832.00 s   (per node, decentralized)
+  WAN 1 Gb/s                                 8320.00 s   (per node, decentralized)
+</code></pre>
+<p>The bandwidths are rounded hardware numbers: H100 HBM 3.35 TB/s, NVLink 450 GB/s per direction, one 400 Gb/s NIC per GPU = 50 GB/s. Conclusions:</p>
+<ul>
+<li><strong>Inside a datacenter, the bandwidth term is small</strong> if every GPU receives only its own shard and all GPUs receive in parallel: 0.16 s for 32B, about 1 s for the 1T MoE. Sending everything through one NIC (rank 0 broadcasts the whole model) is 8-24× slower. That is the most common first implementation.</li>
+<li><strong>Real systems are well above these bounds.</strong> verl's checkpoint-engine README (as of November 2026) reports about 7 s to sync Qwen3-30B-A3B (about 61 GB in bf16) across 4×8 H100s with 400 Gb/s ConnectX-7 over NCCL, quoted as 8.25 GB/s, and 5.93 s over Mooncake on 2×8 H100. That is roughly 6× below one NIC's line rate. The time goes to gathering shards from the trainer layout, dtype casts or quantization, per-tensor bookkeeping, and the engine's weight-loading code. The section below on per-message overhead shows where some of it goes.</li>
+<li><strong>Over a WAN</strong> (decentralized RL across datacenters or volunteer machines), bandwidth dominates. At 1 Gb/s a 32B model takes nearly 9 minutes per sync, longer than a training step. This is why decentralized RL systems lean on async (generation keeps going on old weights while new ones download), on checkpoint relays or CDNs (prime-rl's INTELLECT-2 report, arXiv 2505.07291, describes an HTTP-based relay for broadcasting checkpoints to untrusted inference workers), and on compressing or sparsifying the update. See <a href="../training/decentralized-training.html">decentralized training</a>.</li>
+</ul>
+<h3 id="resharding-between-fsdp-and-tp-layouts">Resharding between FSDP and TP layouts</h3>
+<p>The trainer stores parameters in its own layout, and the engine expects a different one. FSDP2 keeps each parameter as a dim-0 shard per rank. An engine with TP <span class="math inline"><span class="math-inline">= t</span></span> expects column-parallel weights (q/k/v, gate/up) split by output rows and row-parallel weights (o, down) split by input columns (<a href="../training/model-parallelism/derivations.html#column-and-row-splits">TP derivation</a>). Engines also <strong>fuse</strong> weights: vLLM loads q, k and v into a single <code>qkv_proj</code> and gate and up into <code>gate_up_proj</code>. Resharding means gathering each parameter, cutting it the way the engine wants, and fusing per TP rank. Fusing in the wrong order is the classic silent bug:</p>
+<pre><code class="language-python"># reshard.py - FSDP (dim-0 shards over 4 trainer ranks) -&gt; TP=2 inference layout with a fused QKV.
+# Checks that the inference-side matmul reproduces the trainer-side one.
+import numpy as np
+rng = np.random.default_rng(0)
+h, nq, nkv, hd = 64, 8, 2, 8            # hidden, q heads, kv heads, head dim
+FSDP, TP = 4, 2
+
+# trainer's logical weights, torch Linear layout (out_features, in_features)
+Wq = rng.standard_normal((nq * hd, h))  # (64, 64)
+Wk = rng.standard_normal((nkv * hd, h)) # (16, 64)
+Wv = rng.standard_normal((nkv * hd, h)) # (16, 64)
+
+# FSDP2 stores each param as a dim-0 shard per rank
+fsdp = {n: np.array_split(W, FSDP, axis=0) for n, W in dict(q=Wq, k=Wk, v=Wv).items()}
+
+# step 1: gather (on a real system: all-gather over the trainer mesh, or per-rank sends)
+full = {n: np.concatenate(shards, axis=0) for n, shards in fsdp.items()}
+
+# step 2a (WRONG): fuse first, then split the fused matrix into TP pieces
+fused = np.concatenate([full[&quot;q&quot;], full[&quot;k&quot;], full[&quot;v&quot;]], axis=0)       # (96, 64)
+wrong = np.array_split(fused, TP, axis=0)
+
+# step 2b (RIGHT): split each of q/k/v by heads for TP rank r, then fuse per rank
+right = [np.concatenate([np.array_split(full[n], TP, axis=0)[r] for n in &quot;qkv&quot;], axis=0)
+         for r in range(TP)]
+
+x = rng.standard_normal((3, h))                                          # (B, h)
+ref_q = x @ Wq.T                                                         # (B, nq*hd)
+for name, shards in ((&quot;wrong&quot;, wrong), (&quot;right&quot;, right)):
+    q_dim = nq * hd // TP                                                # q columns per TP rank
+    q = np.concatenate([x @ s.T[:, :q_dim] for s in shards], axis=1)     # each rank's q slice
+    print(f&quot;{name}: per-rank fused shape {shards[0].shape}, max |q - ref| = {np.abs(q - ref_q).max():.3g}&quot;)
+</code></pre>
+<pre><code>$ python reshard.py
+wrong: per-rank fused shape (48, 64), max |q - ref| = 25.4
+right: per-rank fused shape (48, 64), max |q - ref| = 1.42e-14
+</code></pre>
+<p>Both versions produce tensors of the same shape. Nothing crashes and the model still generates text, just <em>worse</em> text. Rollouts get worse, rewards drop, and it looks like an RL instability. Defences: after the first weight sync of every run, check that engine logprobs on a fixed prompt match the trainer's (the mismatch KL check), and unit-test the resharding function against a reference forward, as the script does.</p>
+<p>Real implementations differ mainly in <em>where</em> the gather happens:</p>
+<table>
+<thead>
+<tr>
+<th>Approach</th>
+<th>How</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gather on trainer, send full tensors</td>
+<td>trainer all-gathers each param (as FSDP does every forward), rank 0 or a few ranks send</td>
+<td>simple. One sender's NIC bounds it, unless you shard the sending</td>
+</tr>
+<tr>
+<td>Gather per engine shard</td>
+<td>each trainer rank sends its slice directly to whichever engine ranks need it (an <span class="math inline"><span class="math-inline">M \times N</span></span> transfer plan)</td>
+<td>optimal bandwidth, complex planning. Several frameworks precompute such a plan</td>
+</tr>
+<tr>
+<td>Same layout both sides</td>
+<td>inference uses the trainer's own sharding (e.g. Megatron TP=TP)</td>
+<td>no resharding, but constrains both sides</td>
+</tr>
+<tr>
+<td>Engine reads a checkpoint</td>
+<td>trainer writes safetensors to shared storage or serves it over HTTP, engines load</td>
+<td>most decoupled and elastic. Storage bandwidth bounds it (see <a href="../foundations/storage-and-data.html">storage</a>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="nccl-broadcast-between-trainer-and-engines">NCCL broadcast between trainer and engines</h3>
+<p>To broadcast over NCCL you need a <strong>process group</strong> that contains both trainer and engine ranks. They were not launched together, so they are not in the same <code>torch.distributed</code> world. Engines therefore expose an RPC that creates an extra, separate communicator. As of November 2026, SGLang's engine has <code>init_weights_update_group(...)</code> plus <code>update_weights_from_distributed(...)</code> (and <code>update_weights_from_tensor</code>, <code>update_weights_from_disk</code>, <code>update_weights_from_ipc</code>). vLLM ships worked examples under <code>examples/rl/</code> (e.g. <code>rlhf_http_nccl.py</code>, <code>rlhf_http_ipc.py</code>, <code>rlhf_nccl_fsdp_ep.py</code>). OpenRLHF selects the path with <code>--vllm.sync_backend nccl</code>. The protocol is the same in all of them. <strong>Untested sketch:</strong></p>
+<pre><code class="language-python"># trainer side (sketch; real API names differ per engine - read the version you run)
+group = init_custom_group(master=trainer0_addr, world_size=1 + n_engine_ranks, rank=0)  # stateless group
+for engine in engines:
+    engine.rpc(&quot;init_weights_update_group&quot;, master=trainer0_addr, rank_offset=..., world_size=...)
+
+engines.rpc(&quot;pause_generation&quot;)             # stop scheduling new tokens (or keep going: in-flight update)
+for name, tensor in gathered_params_in_buckets():           # gather FSDP shards, cast to bf16, fuse
+    engines.rpc_async(&quot;update_weights_from_distributed&quot;, names=..., dtypes=..., shapes=...)
+    group.broadcast(tensor, src=0)          # engine ranks post matching recvs inside the RPC
+engines.rpc(&quot;reset_prefix_cache&quot;)           # cached KV was computed with the OLD weights
+engines.rpc(&quot;resume_generation&quot;, version=v + 1)
+</code></pre>
+<p>Three details in that sketch are easy to miss:</p>
+<ul>
+<li><strong>Bucketing.</strong> Every collective pays a fixed latency <span class="math inline"><span class="math-inline">\alpha</span></span> (see the <a href="../training/model-parallelism/derivations.html#collective-cost-models-alpha-beta-ring">cost model</a>). A large model has thousands of tensors (norm weights, biases, per-expert weights), and broadcasting them one by one is latency-bound. Flatten them into buckets of tens to hundreds of MB. The effect is visible even on CPU with gloo:</li>
+</ul>
+<pre><code class="language-python"># bcast.py - trainer rank 0 broadcasts a &quot;state dict&quot; to 3 inference ranks (gloo, CPU).
+# Compares one broadcast per tensor vs flattening into 64 MB buckets.
+import os, time, torch, torch.distributed as dist, torch.multiprocessing as mp
+
+def run(rank, world):
+    os.environ.update(MASTER_ADDR=&quot;127.0.0.1&quot;, MASTER_PORT=&quot;29511&quot;)
+    dist.init_process_group(&quot;gloo&quot;, rank=rank, world_size=world)
+    # 4000 tensors of 4096 fp32 (16 KB) = 64 MB, like many small norm/bias + medium matrices
+    params = [torch.full((4096,), float(rank == 0)) for _ in range(4000)]
+    for mode in (&quot;per-tensor&quot;, &quot;bucketed&quot;):
+        dist.barrier(); t0 = time.perf_counter()
+        if mode == &quot;per-tensor&quot;:
+            for p in params: dist.broadcast(p, src=0)
+        else:
+            per_bucket = 64 * 2**20 // (4096 * 4)          # tensors per 64 MB bucket
+            for i in range(0, len(params), per_bucket):
+                chunk = params[i:i + per_bucket]
+                flat = torch.cat(chunk) if rank == 0 else torch.empty(sum(c.numel() for c in chunk))
+                dist.broadcast(flat, src=0)
+                if rank:
+                    for c, f in zip(chunk, flat.split(4096)): c.copy_(f)
+        dist.barrier(); dt = time.perf_counter() - t0
+        ok = all(bool((p == 1).all()) for p in params)
+        if rank == 1: print(f&quot;{mode:10s}: {dt*1e3:7.1f} ms  {64/dt:6.0f} MB/s  weights correct on rank 1: {ok}&quot;)
+        for p in params: p.fill_(float(rank == 0))
+    dist.destroy_process_group()
+
+if __name__ == &quot;__main__&quot;:
+    mp.spawn(run, args=(4,), nprocs=4)
+</code></pre>
+<pre><code>$ GLOO_SOCKET_IFNAME=lo0 python bcast.py
+per-tensor:   647.4 ms      99 MB/s  weights correct on rank 1: True
+bucketed  :    37.9 ms    1688 MB/s  weights correct on rank 1: True
+</code></pre>
+<p>On this run, 4000 small broadcasts were 17× slower than one 64 MB broadcast. (Other runs gave between 17× and 38×. The absolute numbers are loopback TCP and mean nothing for NCCL, but the ratio is the <span class="math inline"><span class="math-inline">\alpha</span></span> term.) The first version of this script aborted with a gloo <code>Unexpected opcode</code> error on macOS. It ran after I pinned the socket interface with <code>GLOO_SOCKET_IFNAME=lo0</code> and fixed a copy bug in the same edit, so I did not isolate which change fixed it.</p>
+<ul>
+<li><strong>Prefix-cache invalidation.</strong> Prefix caching (<a href="../inference/serving-engine-internals.html#prefix-caching">serving internals</a>) reuses KV blocks keyed by token hashes. After a weight update those blocks hold KV computed with the old weights, so the engine must flush them (vLLM's <code>reset_prefix_cache</code>). If it doesn't, the next rollouts quietly mix versions. GRPO makes heavy use of prefix caching, since <code>G</code> samples share a prompt, so this matters.</li>
+<li><strong>Version tagging.</strong> Every rollout must record the version of the weights that produced each token. With in-flight updates that means a per-token version.</li>
+</ul>
+<h3 id="colocated-cuda-ipc">Colocated: CUDA IPC</h3>
+<p>When trainer and engine share a GPU, there is no need to copy bytes over a network. CUDA IPC (inter-process communication) lets one process export a handle to a GPU allocation, and another process on the same GPU maps the same memory. The trainer gathers a parameter into a GPU buffer, sends the IPC handle (a few bytes) to the engine process over a local socket, and the engine copies from the mapped buffer into its own weight tensor at HBM speed. PyTorch exposes this through <code>torch.multiprocessing</code> tensor sharing (<code>reduce_tensor</code> / <code>rebuild_cuda_tensor</code> under the hood). OpenRLHF, verl and SGLang (<code>update_weights_from_ipc</code>) all use variants of it. <strong>Untested</strong> (needs CUDA):</p>
+<pre><code class="language-python"># CUDA IPC handoff between two processes on the same GPU (sketch; needs CUDA)
+import torch, torch.multiprocessing as mp
+from torch.multiprocessing.reductions import reduce_tensor
+
+def engine(conn):
+    fn, args = conn.recv()                    # the &quot;handle&quot;: a rebuild function + small args
+    w = fn(*args)                             # maps the trainer's allocation; no copy yet
+    engine_weight.copy_(w)                    # device-to-device copy at HBM bandwidth
+    conn.send(&quot;done&quot;)                         # trainer must not free the buffer before this
+
+if __name__ == &quot;__main__&quot;:
+    mp.set_start_method(&quot;spawn&quot;)
+    a, b = mp.Pipe(); p = mp.Process(target=engine, args=(b,)); p.start()
+    full = gather_full_param(&quot;model.layers.0.self_attn.q_proj.weight&quot;).cuda()   # (out, in)
+    a.send(reduce_tensor(full)); assert a.recv() == &quot;done&quot;
+</code></pre>
+<p>The protocol detail that matters is <strong>lifetime</strong>. The trainer must keep <code>full</code> alive until the engine confirms the copy. If the trainer frees it and the caching allocator (<a href="../training/arithmetic.html#pytorch-caching-allocator-internals">PyTorch caching allocator</a>) reuses the memory, the engine reads garbage. Nothing errors, and logprobs are simply wrong.</p>
+<h3 id="over-the-network-checkpoint-streaming">Over the network: checkpoint streaming</h3>
+<p>When engines are elastic (they join and leave), live in another datacenter, or are not trusted, a shared NCCL group is the wrong tool. A single failed member hangs a collective (see <a href="../foundations/distributed-systems.html">distributed systems</a>). The alternative is the same method you would use to distribute any large file: the trainer writes a versioned checkpoint, and engines pull it. A minimal HTTP version, runnable with the stdlib (<code>http.server</code> serves a directory over HTTP, as in <a href="../foundations/networking.html#http11-from-raw-sockets">Networking</a>; <code>urllib.request.urlopen</code> is the stdlib HTTP client):</p>
+<pre><code class="language-python"># ckpt_stream.py - trainer publishes versioned shards over HTTP; an engine polls and pulls the newest.
+import hashlib, http.server, json, os, tempfile, threading, urllib.request
+
+root = tempfile.mkdtemp()
+def publish(version, shards):                        # trainer side, after each step
+    d = os.path.join(root, f&quot;step_{version}&quot;); os.makedirs(d)
+    manifest = {}
+    for name, blob in shards.items():
+        open(os.path.join(d, name), &quot;wb&quot;).write(blob)
+        manifest[name] = hashlib.sha256(blob).hexdigest()
+    json.dump(manifest, open(os.path.join(d, &quot;manifest.json&quot;), &quot;w&quot;))
+    open(os.path.join(root, &quot;LATEST.tmp&quot;), &quot;w&quot;).write(str(version))
+    os.replace(os.path.join(root, &quot;LATEST.tmp&quot;), os.path.join(root, &quot;LATEST&quot;))   # atomic: last thing written
+
+handler = lambda *a: http.server.SimpleHTTPRequestHandler(*a, directory=root)
+srv = http.server.ThreadingHTTPServer((&quot;127.0.0.1&quot;, 0), handler)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+url = f&quot;http://127.0.0.1:{srv.server_port}&quot;
+
+def pull(have):                                      # engine side
+    v = int(urllib.request.urlopen(f&quot;{url}/LATEST&quot;).read())
+    if v &lt;= have: return have, None
+    man = json.loads(urllib.request.urlopen(f&quot;{url}/step_{v}/manifest.json&quot;).read())
+    shards = {n: urllib.request.urlopen(f&quot;{url}/step_{v}/{n}&quot;).read() for n in man}
+    assert all(hashlib.sha256(b).hexdigest() == man[n] for n, b in shards.items()), &quot;corrupt shard&quot;
+    return v, shards
+
+publish(1, {&quot;shard0.bin&quot;: os.urandom(8 &lt;&lt; 20), &quot;shard1.bin&quot;: os.urandom(8 &lt;&lt; 20)})
+v, s = pull(0); print(&quot;pulled version&quot;, v, {k: len(b) for k, b in s.items()})
+print(&quot;second poll:&quot;, pull(v)[0], &quot;(nothing new)&quot;)
+</code></pre>
+<pre><code>$ python ckpt_stream.py
+pulled version 1 {'shard0.bin': 8388608, 'shard1.bin': 8388608}
+second poll: 1 (nothing new)
+</code></pre>
+<p>The design points carry over to real systems. The <code>LATEST</code> pointer is written last and atomically (<code>os.replace</code>, the write-temp-then-rename pattern from <a href="../foundations/distributed-systems.html#where-you-dont-get-to-sidestep-it">Distributed Systems</a>), so readers never see a half-written version. Every shard has a checksum, because WAN transfers do corrupt data and a corrupt shard gives a broken policy with no error. Old versions are kept until no engine is reading them. To scale out, fan out through relays, a CDN (content delivery network: many cache servers near the readers) or peer-to-peer (each engine re-serves what it downloaded) instead of having a thousand engines pull from one trainer NIC. This is the same reasoning as a pipelined broadcast tree.</p>
+<h2 id="rollout-workers">Rollout workers</h2>
+<h3 id="engines-as-rollout-workers">Engines as rollout workers</h3>
+<p>RL uses an inference engine differently from chat serving:</p>
+<ul>
+<li><strong>Token-in, token-out.</strong> The orchestrator should send token ids and receive token ids plus per-token logprobs, not text. Text round-trips break things (see <a href="#chat-templates-and-tokenization-consistency">tokenization</a>). vLLM and SGLang both accept token-id prompts and return sampled-token logprobs, and prime-rl drives a token-in <code>/generate</code> route on its vLLM server (as of November 2026).</li>
+<li><strong>Throughput, not latency.</strong> There is no human waiting on time-to-first-token. Batch as large as KV memory allows and accept long per-token latency.</li>
+<li><strong>Sampling must be exactly what the loss assumes.</strong> Record the temperature, top-p, top-k and the logprob definition (raw vs processed) together with the rollout.</li>
+</ul>
+<p>A request to an OpenAI-compatible vLLM server (the request/response format is taught in <a href="../inference/serving-hands-on.html#the-openai-compatible-api-and-streaming">Serving LLMs in Practice</a>; this uses the older <code>/v1/completions</code> route, which takes a raw <code>prompt</code>, here a list of token ids, instead of chat <code>messages</code>). <code>&quot;logprobs&quot;: 0</code> asks for the logprob of each sampled token only, <code>return_tokens_as_token_ids</code> (a vLLM extension) returns ids instead of strings, and the <code>jq</code> filter (<a href="../foundations/toolkit.html#jq-json-on-the-command-line">toolkit</a>) prints just the finish reason and token count. The flags follow vLLM's API as I know it; check against the version you run. <strong>Untested:</strong></p>
+<pre><code class="language-bash">curl -s localhost:8000/v1/completions -H 'Content-Type: application/json' -d '{
+  &quot;model&quot;: &quot;policy&quot;, &quot;prompt&quot;: [151644, 872, 198, 3838, 374, 220, 17, 10, 18, 30],
+  &quot;max_tokens&quot;: 4096, &quot;temperature&quot;: 1.0, &quot;top_p&quot;: 1.0, &quot;n&quot;: 16,
+  &quot;logprobs&quot;: 0, &quot;return_tokens_as_token_ids&quot;: true
+}' | jq '.choices[0] | {finish_reason, ntok: (.logprobs.tokens | length)}'
+# expected shape: {&quot;finish_reason&quot;: &quot;stop&quot; | &quot;length&quot;, &quot;ntok&quot;: 1834}
+</code></pre>
+<p><code>n=16</code> asks the engine for the whole GRPO group in one request. The engine prefills the prompt once and the 16 samples share its KV blocks through prefix caching.</p>
+<h3 id="continuous-batching-and-the-long-tail">Continuous batching and the long tail</h3>
+<p>Continuous batching (<a href="../inference/serving-engine-internals.html#continuous-batching-and-the-scheduler">serving internals</a>) keeps one engine's batch full by admitting new sequences as old ones finish. In synchronous RL there are no new sequences to admit at the end of a step, and that is exactly the tail in <code>step_budget.py</code>. The systems responses:</p>
+<ul>
+<li><strong>Feed the engine continuously</strong> (async RL): the orchestrator always has more prompts queued, so the engine never drains.</li>
+<li><strong>Over-sample</strong>: request, say, 1.25× the prompts the batch needs and stop when enough groups have finished. Abort the rest, or carry them over. DAPO's dynamic sampling (arXiv 2503.14476) over-samples for a different reason, to discard groups whose rewards have zero variance, but the infrastructure is the same: the batch is formed from <em>completed</em> groups and the rest is surplus. OpenRLHF's <code>--rollout.vllm_generate_batch_size</code> is this knob.</li>
+<li><strong>Balance work across engines by tokens, not requests.</strong> Assign whole groups to one engine (for prefix sharing) and route to the engine with the fewest outstanding <em>tokens</em>.</li>
+</ul>
+<pre><code class="language-python"># least-outstanding-tokens routing for GRPO groups (runnable)
+import heapq, random
+random.seed(0)
+engines = [(0, i) for i in range(4)]                  # (outstanding_tokens, engine_id) min-heap
+heapq.heapify(engines); load = [0] * 4
+for g in range(64):                                   # 64 groups, each G=16 samples of one prompt
+    expected = 16 * random.choice([500, 2000, 8000])  # e.g. from the prompt's past response lengths
+    tok, eid = heapq.heappop(engines)
+    load[eid] += expected; heapq.heappush(engines, (tok + expected, eid))
+print(&quot;tokens per engine:&quot;, load, f&quot;imbalance {max(load)/min(load):.2f}x&quot;)
+</code></pre>
+<pre><code>$ python route.py
+tokens per engine: [896000, 976000, 1008000, 944000] imbalance 1.12x
+</code></pre>
+<p>Greedy assignment leaves 1.12x imbalance here, because groups are large and few. It also balances only <em>expected</em> tokens. Actual lengths are only revealed during generation, so a balancer that assigns everything up front cannot be perfect. Continuous refill, where engines pull work as they free up, absorbs the rest of the variance.</p>
+<h3 id="partial-rollouts">Partial rollouts</h3>
+<p>Kimi k1.5 (arXiv 2501.12599) describes <strong>partial rollouts</strong>: each iteration generates at most a fixed token budget per trajectory. Unfinished trajectories are saved (prompt + tokens so far) and continued in the next iteration, possibly under newer weights. Long responses then stop dictating iteration time, at the cost of multi-version trajectories. A runnable sketch of the bookkeeping:</p>
+<pre><code class="language-python"># partial_rollouts.py - cap tokens per iteration, carry the rest over (bookkeeping only)
+import random
+random.seed(0)
+BUDGET, NEW_PER_ITER = 2048, 32
+carry = []                                     # [prompt_id, target_len, done_tokens, versions]
+next_prompt = 0
+for it in range(6):
+    while len(carry) &lt; NEW_PER_ITER + len([c for c in carry if c[2] &gt; 0]):   # top up with new prompts
+        carry.append([next_prompt, min(int(random.lognormvariate(7.5, 1.0)), 32768), 0, []]); next_prompt += 1
+    finished, still = [], []
+    for c in carry:
+        n = min(BUDGET, c[1] - c[2]); c[2] += n; c[3].append(it)   # tokens generated this iter, at version it
+        (finished if c[2] == c[1] else still).append(c)
+    carry = still
+    multi = sum(len(set(c[3])) &gt; 1 for c in finished)
+    print(f&quot;iter {it}: finished {len(finished):2d}, carried {len(carry):2d}, &quot;
+          f&quot;finished-with-multiple-versions {multi}, max tokens/iter/traj {BUDGET}&quot;)
+</code></pre>
+<pre><code>$ python partial_rollouts.py
+iter 0: finished 17, carried 15, finished-with-multiple-versions 0, max tokens/iter/traj 2048
+iter 1: finished 27, carried 20, finished-with-multiple-versions 10, max tokens/iter/traj 2048
+iter 2: finished 28, carried 24, finished-with-multiple-versions 12, max tokens/iter/traj 2048
+iter 3: finished 32, carried 24, finished-with-multiple-versions 11, max tokens/iter/traj 2048
+iter 4: finished 26, carried 30, finished-with-multiple-versions 13, max tokens/iter/traj 2048
+iter 5: finished 27, carried 35, finished-with-multiple-versions 13, max tokens/iter/traj 2048
+</code></pre>
+<p>Training batches would be formed from the <code>finished</code> trajectories. Watch the <code>carried</code> column: it grows from 15 to 35 because each iteration adds 32 new prompts while long trajectories pile up, and from iteration 1 onward 10-13 of the finished trajectories were sampled by more than one policy version. Real systems cap the carry-over pool or prioritise finishing old trajectories. If the carry-over pool grows without bound, that is a queue without backpressure, and the oldest entries become arbitrarily stale. Implementation-wise, continuing a trajectory means re-prefilling <code>prompt + tokens_so_far</code> on whichever engine picks it up. That is cheap with prefix caching if the same engine is reused and weights have not changed, and otherwise a full prefill.</p>
+<h2 id="agentic-and-multi-turn-rollouts">Agentic and multi-turn rollouts</h2>
+<h3 id="the-environment-as-code">The environment as code</h3>
+<p>For agentic RL a rollout is a <strong>program</strong>, not a single generate call. The environment interleaves model turns with tool calls (run code, search, edit a file), may span tens of turns and hundreds of thousands of tokens, and each tool call may take seconds to minutes. The rollout worker is now an <code>async</code> function that drives one episode. Thousands of such coroutines share a few inference engines and a sandbox fleet. The budgets that keep this from melting down:</p>
+<ul>
+<li><strong>Max turns</strong> and a <strong>context budget</strong> per episode (the engine's max context, minus headroom).</li>
+<li><strong>Per-tool-call timeout</strong>: a hung tool returns an error observation instead of hanging the episode.</li>
+<li><strong>Per-episode wall-clock timeout</strong>: a final guard against anything else that hangs.</li>
+<li><strong>Per-turn token accounting</strong>: which tokens were sampled (and are trained on) and which were injected by the environment.</li>
+</ul>
+<pre><code class="language-python"># agent_loop.py - one multi-turn episode: model turn -&gt; tool call -&gt; env turn -&gt; ..., with budgets.
+# The &quot;model&quot; and &quot;tool&quot; are fakes; the accounting (ids, loss mask, budgets, timeouts) is the point.
+import asyncio, random, json
+
+MAX_TURNS, MAX_CTX, TOOL_TIMEOUT_S, EPISODE_TIMEOUT_S = 6, 600, 0.2, 2.0
+
+async def fake_generate(ctx_len, rng):                 # stands in for POST /generate on the engine
+    await asyncio.sleep(0.01)
+    n = rng.randint(20, 120)
+    call = rng.random() &lt; 0.7                          # 70% of turns end in a tool call
+    return list(range(n)), ({&quot;tool&quot;: &quot;python&quot;, &quot;code&quot;: &quot;...&quot;} if call else None)
+
+async def fake_tool(call, rng):                        # stands in for a sandbox exec
+    await asyncio.sleep(rng.choice([0.01, 0.01, 0.01, 0.5]))   # 1 in 4 calls hangs
+    return list(range(rng.randint(10, 200)))           # tool output tokens
+
+async def episode(seed):
+    rng = random.Random(seed)
+    ids, mask, turns, log = list(range(50)), [0] * 50, 0, []   # 50-token prompt, not trained
+    stop = &quot;max_turns&quot;
+    while turns &lt; MAX_TURNS:
+        out, call = await fake_generate(len(ids), rng)
+        out = out[: MAX_CTX - len(ids)]                        # never exceed the context budget
+        ids += out; mask += [1] * len(out); turns += 1
+        log.append((&quot;model&quot;, len(out)))
+        if len(ids) &gt;= MAX_CTX: stop = &quot;ctx_budget&quot;; break
+        if call is None: stop = &quot;answered&quot;; break
+        try:
+            obs = await asyncio.wait_for(fake_tool(call, rng), TOOL_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            obs = list(range(8))                               # &quot;&lt;tool timed out&gt;&quot; as a short observation
+            log.append((&quot;tool_timeout&quot;, len(obs)))
+        else:
+            log.append((&quot;tool&quot;, len(obs)))
+        obs = obs[: MAX_CTX - len(ids)]
+        ids += obs; mask += [0] * len(obs)                     # env tokens: in context, not in loss
+        if len(ids) &gt;= MAX_CTX: stop = &quot;ctx_budget&quot;; break
+    return dict(seed=seed, stop=stop, turns=turns, total=len(ids), trained=sum(mask), log=log)
+
+async def main():
+    eps = await asyncio.gather(*(asyncio.wait_for(episode(s), EPISODE_TIMEOUT_S) for s in range(200)))
+    for e in eps[:3]: print(json.dumps(e))
+    from collections import Counter
+    print(&quot;stop reasons:&quot;, dict(Counter(e[&quot;stop&quot;] for e in eps)))
+    print(&quot;timeouts per episode:&quot;, sum(t == &quot;tool_timeout&quot; for e in eps for t, _ in e[&quot;log&quot;]) / len(eps))
+    print(f&quot;trained-token fraction: {sum(e['trained'] for e in eps) / sum(e['total'] for e in eps):.2f}&quot;)
+    assert all(e[&quot;total&quot;] &lt;= MAX_CTX for e in eps)
+asyncio.run(main())
+</code></pre>
+<pre><code>$ python agent_loop.py
+{&quot;seed&quot;: 0, &quot;stop&quot;: &quot;answered&quot;, &quot;turns&quot;: 1, &quot;total&quot;: 119, &quot;trained&quot;: 69, &quot;log&quot;: [[&quot;model&quot;, 69]]}
+{&quot;seed&quot;: 1, &quot;stop&quot;: &quot;ctx_budget&quot;, &quot;turns&quot;: 5, &quot;total&quot;: 600, &quot;trained&quot;: 309, &quot;log&quot;: [[&quot;model&quot;, 37], [&quot;tool&quot;, 75], [&quot;model&quot;, 35], [&quot;tool_timeout&quot;, 8], [&quot;model&quot;, 80], [&quot;tool&quot;, 34], [&quot;model&quot;, 82], [&quot;tool_timeout&quot;, 8], [&quot;model&quot;, 75], [&quot;tool&quot;, 188]]}
+{&quot;seed&quot;: 2, &quot;stop&quot;: &quot;answered&quot;, &quot;turns&quot;: 2, &quot;total&quot;: 244, &quot;trained&quot;: 141, &quot;log&quot;: [[&quot;model&quot;, 27], [&quot;tool&quot;, 53], [&quot;model&quot;, 114]]}
+stop reasons: {'answered': 145, 'ctx_budget': 55}
+timeouts per episode: 0.435
+trained-token fraction: 0.49
+</code></pre>
+<p>Observations:</p>
+<ul>
+<li><strong>27.5% of episodes (55/200) ended on the context budget, not by answering.</strong> In real agentic RL, the truncation rate is a first-class metric. Truncated episodes usually get zero or undefined reward, and a rising truncation rate looks like the policy getting worse when it is really an infrastructure limit.</li>
+<li><strong>Half the tokens in context are not trained on</strong> (trained fraction 0.49): prompt plus tool outputs. They still cost prefill compute and KV memory on the engine, and forward/backward compute on the trainer, because the model must attend to them. Size the trainer for total tokens, not trained tokens.</li>
+<li><strong>Tool timeouts are frequent</strong> (0.44 per episode here, by construction). Whether a timeout is shown to the model as an observation, ends the episode, or invalidates the sample is a design decision with reward consequences. Make it explicit and log it.</li>
+</ul>
+<p>Libraries like <code>verifiers</code> (Prime Intellect), verl's <code>agent_loop</code>, OpenRLHF's <code>AgentInstanceBase</code> (<code>reset</code> / <code>step</code>) and SkyRL's environment interface package this loop so that environment authors write only the <code>step</code> logic. The <a href="#open-frameworks-survey">survey</a> below lists them.</p>
+<h3 id="token-accounting-and-loss-masking">Token accounting and loss masking</h3>
+<p>The trainer needs three aligned arrays per episode: <code>input_ids</code> (everything in context), <code>loss_mask</code> (1 for tokens the policy sampled), and <code>sampler_logprobs</code> (for those tokens). The robust way to build them is <strong>token-in, token-out</strong> throughout. Keep the exact ids the engine returned. Tokenize environment text yourself, append it, and never re-tokenize the concatenated text. Re-tokenizing is the source of most of the bugs in the next section.</p>
+<pre><code class="language-python"># masked policy-gradient loss over a packed multi-turn episode (torch; ran on CPU)
+import torch
+T = 12
+logp_new = torch.randn(T, requires_grad=True)              # (T,) trainer logprobs of input_ids[1:]
+logp_old = logp_new.detach() + 0.01 * torch.randn(T)       # (T,) sampler logprobs (only valid where mask=1)
+mask = torch.tensor([0,0,0,1,1,1,0,0,1,1,1,1.])            # (T,) prompt/tool tokens = 0
+adv = torch.full((T,), 0.7)                                # (T,) sequence advantage broadcast to tokens
+ratio = torch.exp(logp_new - logp_old)                     # (T,)
+loss = -(torch.minimum(ratio * adv, ratio.clamp(0.8, 1.2) * adv) * mask).sum() / mask.sum()
+loss.backward()
+print(&quot;grad nonzero only where mask=1:&quot;, torch.equal(logp_new.grad != 0, mask.bool()))
+</code></pre>
+<pre><code>$ python masked_loss.py
+grad nonzero only where mask=1: True
+</code></pre>
+<p>The normalisation (<code>/ mask.sum()</code> per sequence, per batch, or a constant) is an algorithm choice, but one with infrastructure consequences. With sequence packing, &quot;per sequence&quot; requires the packer to keep sequence boundaries alongside the mask.</p>
+<h3 id="chat-templates-and-tokenization-consistency">Chat templates and tokenization consistency</h3>
+<p>The importance ratio is only meaningful if the trainer scores <strong>the exact token ids the sampler produced</strong>, in <strong>the exact context it produced them in</strong>. Three ways to break that, demonstrated with a real tokenizer (Qwen3, loaded offline from the local HF cache). Two Hugging Face <code>transformers</code> calls appear: <code>AutoTokenizer.from_pretrained(name)</code> downloads (or reads from the local cache) the tokenizer files for a model, and <code>tok.apply_chat_template(messages, ...)</code> runs the model's chat template (defined in <a href="../inference/serving-engine-internals.html#why-cpu-overhead-matters-at-decode">Inside a Serving Engine</a>: a small Jinja program that turns <code>{&quot;role&quot;, &quot;content&quot;}</code> messages into one prompt string). <code>&lt;|im_start|&gt;</code> and <code>&lt;|im_end|&gt;</code> are Qwen's special tokens that open and close a chat turn. To rerun it: <code>pip install transformers</code> and expect a tokenizer download of roughly 10 MB on first use.</p>
+<pre><code class="language-python"># tokcheck.py - three ways trainer and sampler disagree about &quot;the same&quot; text. Qwen3 tokenizer, offline.
+from transformers import AutoTokenizer
+tok = AutoTokenizer.from_pretrained(&quot;Qwen/Qwen3-14B&quot;)
+
+# 1. Round-trip drift: the sampler emitted a non-canonical split; decode -&gt; re-encode changes the ids.
+canon = tok.encode(&quot; unbelievable&quot;, add_special_tokens=False)
+sampled = tok.encode(&quot; unbel&quot;, add_special_tokens=False) + tok.encode(&quot;ievable&quot;, add_special_tokens=False)
+text = tok.decode(sampled)
+print(&quot;1. canonical ids&quot;, canon, &quot;| sampled ids&quot;, sampled)
+print(&quot;   decode(sampled) == decode(canon):&quot;, text == tok.decode(canon),
+      &quot;| re-encode(decode(sampled)) == sampled:&quot;, tok.encode(text, add_special_tokens=False) == sampled)
+
+# 2. Multi-turn template: is turn 2's prompt an extension of what was actually sampled in turn 1?
+msgs = [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;What is 2+3?&quot;}]
+p1 = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+completion = &quot;&lt;think&gt;\n2+3=5\n&lt;/think&gt;\n\nThe answer is 5.&lt;|im_end|&gt;&quot;
+msgs += [{&quot;role&quot;: &quot;assistant&quot;, &quot;content&quot;: &quot;&lt;think&gt;\n2+3=5\n&lt;/think&gt;\n\nThe answer is 5.&quot;},
+         {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Times 4?&quot;}]
+p2 = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+seen = p1 + completion
+print(&quot;2. turn-2 prompt starts with turn-1 prompt+completion:&quot;, p2.startswith(seen))
+i = next(i for i, (a, b) in enumerate(zip(seen, p2)) if a != b)
+print(f&quot;   first difference at char {i}: sampled {seen[i:i+30]!r} vs re-rendered {p2[i:i+30]!r}&quot;)
+
+# 3. Token-in/token-out: build the episode from ids, and mask env/tool tokens out of the loss.
+ids, mask = [], []
+def add(t, train):  # t: str for env/template text, list[int] for sampled tokens (kept verbatim)
+    new = t if isinstance(t, list) else tok.encode(t, add_special_tokens=False)
+    ids.extend(new); mask.extend([int(train)] * len(new))
+add(p1, False)
+add(tok.encode(completion, add_special_tokens=False), True)        # stands in for the sampler's ids
+add(&quot;\n&lt;|im_start|&gt;user\n&lt;tool_response&gt;\n5 * 4 = 20\n&lt;/tool_response&gt;&lt;|im_end|&gt;\n&lt;|im_start|&gt;assistant\n&quot;, False)
+add(tok.encode(&quot;20.&lt;|im_end|&gt;&quot;, add_special_tokens=False), True)
+print(f&quot;3. episode {len(ids)} tokens, {sum(mask)} trained, {len(ids)-sum(mask)} masked (prompt + tool output)&quot;)
+print(&quot;   trained text:&quot;, repr(tok.decode([t for t, m in zip(ids, mask) if m])))
+</code></pre>
+<pre><code>$ python tokcheck.py
+1. canonical ids [51129] | sampled ids [650, 9779, 645, 23760]
+   decode(sampled) == decode(canon): True | re-encode(decode(sampled)) == sampled: False
+2. turn-2 prompt starts with turn-1 prompt+completion: False
+   first difference at char 62: sampled '&lt;think&gt;\n2+3=5\n&lt;/think&gt;\n\nThe an' vs re-rendered 'The answer is 5.&lt;|im_end|&gt;\n&lt;|i'
+3. episode 57 tokens, 21 trained, 36 masked (prompt + tool output)
+   trained text: '&lt;think&gt;\n2+3=5\n&lt;/think&gt;\n\nThe answer is 5.&lt;|im_end|&gt;20.&lt;|im_end|&gt;'
+</code></pre>
+<ol>
+<li><strong>Round-trip drift.</strong> The sampler is free to emit a non-canonical tokenization (<code> unbel</code> + <code>iev</code> + <code>able</code>, 4 tokens) of text that the tokenizer would encode as 1 token. Decoding gives identical text, but re-encoding gives different ids. If your pipeline passes <em>text</em> from engine to trainer, the trainer computes logprobs for tokens that were never sampled. The ratio for that span is meaningless, and nothing raises an error.</li>
+<li><strong>Template non-prefix property.</strong> Qwen3's chat template strips the <code>&lt;think&gt;</code> block from earlier assistant turns when it renders a conversation. Turn 2's prompt, re-rendered from messages, is <em>not</em> turn 1's prompt plus what the model actually generated: the reasoning has disappeared from the context. If the trainer re-renders the conversation from messages, it trains on a context the sampler never saw. If the engine re-renders it for turn 2, the model's own reasoning is hidden from it on later turns. Either can be intended, but it has to be the <em>same</em> choice on both sides. Other templates differ in their own ways (system-prompt injection, tool-call formatting, trailing newlines).</li>
+<li><strong>The fix</strong> is the token-in/token-out construction in part 3: build the episode from ids, mark which ones were sampled, and keep env/template text masked.</li>
+</ol>
+<p>The check worth adding to CI and to the first step of every run: take a few real rollouts, rebuild the trainer's <code>input_ids</code> the way the trainer will, and assert they are equal to the engine's <code>prompt_ids + output_ids</code>. Then compare trainer and sampler logprobs on those ids and assert the mismatch KL is small. Most &quot;RL is unstable on model X&quot; reports that turn out to be infrastructure bugs would have been caught by this.</p>
+<h2 id="environments-verifiers-and-rewards-as-services">Environments, verifiers and rewards as services</h2>
+<h3 id="reward-types-and-what-they-cost">Reward types and what they cost</h3>
+<table>
+<thead>
+<tr>
+<th>Reward</th>
+<th>Example</th>
+<th>Latency per rollout</th>
+<th>Scaling problem</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rule-based</td>
+<td>exact match on a boxed math answer, regex, JSON schema check</td>
+<td>µs-ms, in-process</td>
+<td>none. Run it inline</td>
+</tr>
+<tr>
+<td>Programmatic, with execution</td>
+<td>run unit tests on generated code, compile, run a SQL query</td>
+<td>10 ms - minutes</td>
+<td>needs <strong>sandboxes</strong>: isolation, a fleet, cold starts</td>
+</tr>
+<tr>
+<td>Model-based</td>
+<td>LLM-as-judge, reward model, rubric grading</td>
+<td>100 ms - 10 s</td>
+<td>it is <strong>another inference fleet</strong>: GPUs, batching, its own weights</td>
+</tr>
+<tr>
+<td>Environment outcome</td>
+<td>did the agent's edits make the repo's tests pass</td>
+<td>minutes</td>
+<td>per-task container images, long episodes</td>
+</tr>
+</tbody>
+</table>
+<p>The infrastructure rule: <strong>reward computation must not be on the trainer's critical path.</strong> Score each rollout as soon as it finishes, concurrently with ongoing generation, so that by the time a batch is complete its rewards are too. Treat the verifier as a service with a bounded queue, a concurrency limit and a timeout, like any other.</p>
+<h3 id="sandboxed-code-execution">Sandboxed code execution</h3>
+<p>Model-written code is <strong>untrusted input</strong>. It will, sometimes by accident and sometimes because RL rewards it, loop forever, fork-bomb, fill the disk, flood stdout, read the test file to find expected answers, open network connections, or kill its parent. The minimum single-machine harness: a fresh working directory, a child process in its own <a href="../foundations/linux-and-os.html#process-groups-and-sessions">process group</a>, CPU/file/fd limits (<code>resource.setrlimit</code>, see <a href="../foundations/linux-and-os.html#file-descriptors-and-ulimits">ulimits</a>), a wall-clock timeout, bounded output capture, and killing the <em>whole process group</em> on timeout. The same harness is built layer by layer, with the security reasoning, in <a href="../foundations/containers-and-virtualization.html#a-minimal-harness-layer-by-layer">Containers: a minimal harness</a>; here the focus is throughput and reward correctness:</p>
+<pre><code class="language-python"># verify.py - a reward service's inner loop: run untrusted model-written code with limits, many at once.
+import asyncio, os, resource, sys, tempfile, time, collections
+
+GOOD  = &quot;def add(a, b): return a + b&quot;
+WRONG = &quot;def add(a, b): return a - b&quot;
+HANG  = &quot;def add(a, b):\n    while True: pass&quot;
+BOMB  = &quot;def add(a, b):\n    print('x' * 10**8)&quot;            # floods stdout
+CRASH = &quot;import os; os._exit(3)&quot;
+TESTS = &quot;\nassert add(2, 3) == 5\nassert add(-1, 1) == 0\nprint('PASS')&quot;
+
+def limits():                                            # runs in the child before exec
+    resource.setrlimit(resource.RLIMIT_CPU, (2, 2))      # 2 s of CPU, then SIGXCPU
+    resource.setrlimit(resource.RLIMIT_FSIZE, (1 &lt;&lt; 20, 1 &lt;&lt; 20))  # 1 MB max file write
+    resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+    os.setsid()                                          # own process group so we can kill all of it
+
+async def verify(code, sem, wall=3.0, max_out=1 &lt;&lt; 16):
+    async with sem:                                      # bounded concurrency = backpressure
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, &quot;sol.py&quot;)
+            with open(path, &quot;w&quot;) as f: f.write(code + TESTS)
+            p = await asyncio.create_subprocess_exec(sys.executable, &quot;-I&quot;, path, cwd=d,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                    stdin=asyncio.subprocess.DEVNULL, preexec_fn=limits)
+            async def drain():                           # read a bounded prefix, discard the rest:
+                out = await p.stdout.read(max_out)       # asyncio's wait() only returns once the
+                while await p.stdout.read(1 &lt;&lt; 16): pass # pipe is closed, so it must be drained
+                return out, await p.wait()
+            try:
+                out, rc = await asyncio.wait_for(drain(), wall)
+            except asyncio.TimeoutError:
+                os.killpg(p.pid, 9)                      # whole process group, not just the child
+                while await p.stdout.read(1 &lt;&lt; 16): pass
+                await p.wait()
+                return &quot;timeout&quot;, 0.0
+            if rc == 0 and out.strip().endswith(b&quot;PASS&quot;): return &quot;pass&quot;, 1.0
+            return (&quot;killed&quot; if rc &lt; 0 else f&quot;exit{rc}&quot;), 0.0
+
+async def main(n=200, conc=8):
+    pool = [GOOD] * 6 + [WRONG] * 2 + [HANG, BOMB, CRASH]
+    jobs = [pool[i % len(pool)] for i in range(n)]
+    sem = asyncio.Semaphore(conc)
+    t0 = time.perf_counter()
+    res = await asyncio.gather(*(verify(c, sem) for c in jobs))
+    dt = time.perf_counter() - t0
+    print(f&quot;{n} verifications, concurrency {conc}: {dt:.1f} s, {n/dt:.1f} verifications/s&quot;)
+    print(collections.Counter(s for s, _ in res))
+    print(f&quot;mean reward {sum(r for _, r in res)/n:.3f} (expected {6/11:.3f})&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    asyncio.run(main(int(sys.argv[1]) if len(sys.argv) &gt; 1 else 200, int(sys.argv[2]) if len(sys.argv) &gt; 2 else 8))
+</code></pre>
+<pre><code>$ python verify.py 110 8 ; python verify.py 110 32
+110 verifications, concurrency 8: 4.9 s, 22.6 verifications/s
+Counter({'pass': 60, 'exit1': 30, 'killed': 10, 'exit3': 10})
+mean reward 0.545 (expected 0.545)
+110 verifications, concurrency 32: 3.5 s, 31.8 verifications/s
+Counter({'pass': 60, 'exit1': 30, 'exit3': 10, 'killed': 7, 'timeout': 3})
+mean reward 0.545 (expected 0.545)
+</code></pre>
+<p>Points from this output and from writing the code:</p>
+<ul>
+<li><strong>Every failure mode ends with reward 0, and the harness itself survives.</strong> The infinite loop is killed by <code>RLIMIT_CPU</code> (<code>killed</code>). The output flood is truncated at 64 KB. The crash returns its exit code. The mean reward comes out exactly at the expected 6/11.</li>
+<li><strong>Wall-clock timeouts become flaky under load.</strong> At concurrency 32 on 10 cores, three of the ten hung programs hit the 3 s <em>wall</em> timeout before reaching 2 s of <em>CPU</em> time, because they were time-sliced with other jobs. (In an earlier run of the same command it was 9 of 10.) Here both outcomes give reward 0, so nothing changes. For a <em>correct but slow</em> solution, though, the outcome depends on how loaded the sandbox host is, and that is <strong>reward noise produced by the infrastructure</strong>. Use CPU-time limits or fixed per-job CPU allocations (cgroup quotas, see <a href="../foundations/containers-and-virtualization.html">containers</a>) for anything that decides correctness, and keep the wall-clock limit as a last-resort backstop.</li>
+<li><strong>asyncio subprocess gotcha (found while writing this).</strong> Since Python 3.12, <code>Process.wait()</code> does not return until the child's pipes are closed. The first version of this script read a bounded prefix of stdout, killed the child, then called <code>wait()</code>, and hung forever because unread data stayed in the pipe. The fix is the <code>drain()</code> loop: keep reading and discarding until EOF. In a production reward service this bug shows up as a slow leak of stuck verification tasks.</li>
+<li><strong>This is not a security boundary.</strong> <code>setrlimit</code> plus a temp directory stops accidents, not adversaries. It does not stop network access, reading other files on the host, or kernel exploits. <code>RLIMIT_AS</code> (memory) is not enforced on macOS at all. On Linux, use real isolation layers. From weakest to strongest: namespaces + cgroups + seccomp (containers, nsjail, a small sandboxing tool that applies these primitives to one process), a user-space kernel (gVisor), a microVM (Firecracker, Kata). See <a href="../foundations/containers-and-virtualization.html">containers and virtualization</a> for what each one actually isolates.</li>
+</ul>
+<p>A container-based version of the same harness would look like this. <strong>Untested</strong>: Docker was not used for this chapter. The flags are standard <code>docker run</code> options, each explained in <a href="../foundations/containers-and-virtualization.html#the-run-flags-that-matter-for-ml">the run flags that matter</a> and <a href="../foundations/containers-and-virtualization.html#defense-in-depth-a-reference-design">defense in depth</a>. <code>137</code> is 128 + 9, the shell's exit code for a process killed by signal 9 (SIGKILL; see <a href="../foundations/linux-and-os.html#signals">signals</a>).</p>
+<pre><code class="language-bash">docker run --rm --network none --read-only --tmpfs /work:rw,size=64m \
+  --memory 512m --memory-swap 512m --cpus 1 --pids-limit 64 \
+  --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 \
+  -v &quot;$PWD/sol.py:/work/sol.py:ro&quot; -w /work python:3.12-slim \
+  timeout -s KILL 10 python -I sol.py
+# expected: &quot;PASS&quot; on stdout and exit 0 for a correct solution; 137 (SIGKILL) on timeout
+</code></pre>
+<h3 id="sandbox-fleets-throughput-and-cold-starts">Sandbox fleets: throughput and cold starts</h3>
+<p>The fleet size follows from <a href="../inference/arithmetic.html#littles-law">Little's law</a>, <span class="math inline"><span class="math-inline">\text{concurrency} = \text{arrival rate} \times \text{time in system}</span></span>:</p>
+<pre><code class="language-python"># sandbox_fleet.py - how many sandboxes does the reward side need?
+rollouts_per_step, step_s = 4096, 935            # from the 32B example (partial-rollout step time)
+tests_per_rollout = 1                            # one sandbox session runs the whole test file
+for exec_s, cold_s, label in ((2, 0.0, &quot;warm pool, 2 s tests&quot;), (2, 1.0, &quot;cold container start 1 s&quot;),
+                              (30, 0.0, &quot;heavier repo tests, 30 s&quot;), (30, 15.0, &quot;per-task image pull/start 15 s&quot;)):
+    rate = rollouts_per_step * tests_per_rollout / step_s     # sandbox sessions per second (average)
+    conc = rate * (exec_s + cold_s)
+    print(f&quot;{label:32s} {rate:5.1f}/s x {exec_s + cold_s:5.1f} s = {conc:6.1f} concurrent sandboxes (avg)&quot;)
+</code></pre>
+<pre><code>$ python sandbox_fleet.py
+warm pool, 2 s tests               4.4/s x   2.0 s =    8.8 concurrent sandboxes (avg)
+cold container start 1 s           4.4/s x   3.0 s =   13.1 concurrent sandboxes (avg)
+heavier repo tests, 30 s           4.4/s x  30.0 s =  131.4 concurrent sandboxes (avg)
+per-task image pull/start 15 s     4.4/s x  45.0 s =  197.1 concurrent sandboxes (avg)
+</code></pre>
+<p>These are <em>averages</em>. Completions arrive in bursts (a whole group finishes together, a whole batch at the end of a synchronous step), so provision for the peak, or put a queue in front and accept the extra latency. The levers:</p>
+<ul>
+<li><strong>Warm pools</strong>: keep pre-started sandboxes and hand one out per job, so per-job cost is reset time rather than boot time.</li>
+<li><strong>Snapshot/restore</strong>: microVM snapshots restore in tens to hundreds of ms (Firecracker's published goal is fast boot; measure your own setup). The mechanics are in <a href="../foundations/containers-and-virtualization.html#snapshots-starting-from-a-warm-vm">Containers: snapshots</a>, and the same fleet arithmetic from the sandbox side is in <a href="../foundations/containers-and-virtualization.html#throughput-sandboxes-are-part-of-the-step-time">Throughput: sandboxes are part of the step time</a>.</li>
+<li><strong>Image locality</strong>: for SWE-style tasks (SWE-bench and similar: the agent must patch a real repository so that its tests pass) every task has its own multi-GB image (for example, <code>swebench/sweb.eval.*</code> images are around 4 GB each). Pre-pull to nodes and schedule jobs where the image already is. Pulling on demand is the cold-start cost.</li>
+<li><strong>Multi-turn agents hold a sandbox for the whole episode</strong>, not per call, so <code>time in system</code> is the episode duration. This is where hosted sandbox services and Kubernetes-based fleets (<a href="../orchestration/kubernetes-from-zero.html">Kubernetes</a>) come in.</li>
+</ul>
+<h3 id="reward-computation-throughput">Reward-computation throughput</h3>
+<p>Reward work should be overlapped with generation and measured like everything else. The key per-step metrics are: reward latency p50/p99, verifier queue depth, timeouts per 1k rollouts, and the fraction of rollouts whose reward is missing or non-finite. A model-based judge is an inference deployment with its own capacity plan. Use <a href="../inference/arithmetic.html#worked-sizing-example">inference arithmetic</a> for it, and remember that it competes with the policy for GPUs if you colocate it.</p>
+<pre><code class="language-python"># reward service with overlap: score as rollouts finish, not after the batch (runnable)
+import asyncio, random, time
+async def generate(i): await asyncio.sleep(random.lognormvariate(-2.5, 0.8)); return i
+async def score(i):    await asyncio.sleep(0.05); return float(i % 3 == 0)
+async def main(overlap):
+    random.seed(0); t0 = time.perf_counter(); sem = asyncio.Semaphore(16)
+    async def one(i):
+        r = await generate(i)
+        if overlap:
+            async with sem: return await score(r)
+        return r
+    out = await asyncio.gather(*(one(i) for i in range(256)))
+    if not overlap:                                         # score after the whole batch is done
+        async def s(r):
+            async with sem: return await score(r)
+        out = await asyncio.gather(*(s(r) for r in out))
+    print(f&quot;overlap={overlap}: {time.perf_counter()-t0:.2f} s, mean reward {sum(out)/len(out):.3f}&quot;)
+asyncio.run(main(False)); asyncio.run(main(True))
+</code></pre>
+<pre><code>$ python reward_overlap.py
+overlap=False: 1.40 s, mean reward 0.336
+overlap=True: 0.83 s, mean reward 0.336
+</code></pre>
+<h2 id="data-flow-queues-and-backpressure">Data flow, queues and backpressure</h2>
+<h3 id="the-pipeline-as-queues">The pipeline as queues</h3>
+<p>An async RL system is a chain of stages connected by queues:</p>
+<pre><code>prompt source -&gt; [Q1] -&gt; generators -&gt; [Q2] -&gt; verifiers -&gt; [Q3] -&gt; batcher -&gt; [Q4] -&gt; trainer
+                                                                                         |
+                       generators &lt;---------------- weights (version v) ----------------+
+</code></pre>
+<p>Every queue must be <strong>bounded</strong>, and every bound is a policy decision. A bound on Q4 is a bound on in-queue staleness: a batch can be at most <code>|Q4|</code> steps old when the trainer pulls it. A bound on Q1 together with the number of generator slots bounds in-flight work, and with it in-flight staleness and KV memory. A bound on Q2 protects the verifier fleet. Unbounded queues turn a slow consumer into an OOM, or worse, into silently growing staleness. The monitoring rule from <a href="../foundations/concurrency.html#producerconsumer-and-backpressure">concurrency</a> applies: queues near full mean the downstream stage is the bottleneck, queues near empty mean the upstream stage is. What to do when a bounded queue is full (block, shed, or rate-limit per tenant) is worked through in <a href="../platform/control-planes.html#bounded-queues-load-shedding-and-per-tenant-limits">Control Planes</a>.</p>
+<pre><code class="language-python"># queue_depth.py - which stage is the bottleneck? Read the queue depths. (runnable)
+import asyncio
+async def stage(name, inq, outq, sec, n):
+    for _ in range(n):
+        x = await inq.get(); await asyncio.sleep(sec)
+        if outq: await outq.put(x)
+async def main():
+    q1, q2, q3 = (asyncio.Queue(maxsize=8) for _ in range(3))
+    async def src():
+        for i in range(60): await q1.put(i)
+    async def monitor():
+        for _ in range(5):
+            await asyncio.sleep(0.2); print(f&quot;depth  gen-in {q1.qsize()}  verify-in {q2.qsize()}  train-in {q3.qsize()}&quot;)
+    await asyncio.gather(src(), stage(&quot;gen&quot;, q1, q2, 0.005, 60), stage(&quot;verify&quot;, q2, q3, 0.02, 60),
+                         stage(&quot;train&quot;, q3, None, 0.005, 60), monitor())
+asyncio.run(main())
+</code></pre>
+<pre><code>$ python queue_depth.py
+depth  gen-in 8  verify-in 8  train-in 0
+depth  gen-in 8  verify-in 8  train-in 0
+depth  gen-in 8  verify-in 8  train-in 0
+depth  gen-in 8  verify-in 8  train-in 0
+depth  gen-in 3  verify-in 8  train-in 0
+</code></pre>
+<p>The verifier is the slow stage (20 ms vs 5 ms): the queue in front of it is full, the queue after it is empty, and backpressure holds the generator at the verifier's pace. Scaling the generators would change nothing.</p>
+<h3 id="batch-formation">Batch formation</h3>
+<p>The batcher between the verifiers and the trainer has several jobs:</p>
+<ul>
+<li><strong>Group completeness.</strong> GRPO-style advantages need all <code>G</code> samples of a prompt. Batch by completed <em>groups</em>, not by individual rollouts. A group with one stuck sample blocks the whole group, so put a timeout on groups too: drop the group, or accept <code>G-1</code> samples if your estimator allows it.</li>
+<li><strong>Filtering.</strong> Drop zero-variance groups (all rewards identical, so every advantage is 0), groups with NaN rewards, and samples beyond the staleness limit. Filtering shrinks the batch, so either over-sample upstream or allow variable batch sizes. Each choice has different loss-normalisation consequences.</li>
+<li><strong>Packing.</strong> Concatenate variable-length sequences into fixed token budgets per micro-batch so the trainer doesn't waste compute on padding. Packing must keep sequence boundaries (for the attention mask, or <code>cu_seqlens</code> for varlen FlashAttention) and per-sequence metadata (advantage, version, mask).</li>
+</ul>
+<pre><code class="language-python"># pack.py - first-fit-decreasing packing of rollouts into 16k-token micro-batches (runnable)
+import random
+random.seed(0)
+lens = [min(int(random.lognormvariate(8.3, 0.8)), 16384) for _ in range(256)]   # tokens per rollout
+CAP = 16384
+bins = []                                              # each bin: [used, [seq lens]]
+for L in sorted(lens, reverse=True):
+    for b in bins:
+        if b[0] + L &lt;= CAP: b[0] += L; b[1].append(L); break
+    else: bins.append([L, [L]])
+pad_mb = len(lens) * max(lens) / CAP                   # micro-batches if every sequence were padded to the max
+print(f&quot;{len(lens)} seqs, {sum(lens)/1e6:.2f}M tokens -&gt; {len(bins)} packed micro-batches &quot;
+      f&quot;(fill {sum(lens)/(len(bins)*CAP):.1%}); padded-to-max would need {pad_mb:.0f}&quot;)
+</code></pre>
+<pre><code>$ python pack.py
+256 seqs, 1.36M tokens -&gt; 84 packed micro-batches (fill 98.9%); padded-to-max would need 256
+</code></pre>
+<h3 id="transports">Transports</h3>
+<p>How the stages actually talk, as of the frameworks surveyed:</p>
+<table>
+<thead>
+<tr>
+<th>Transport</th>
+<th>Used for</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ray actors + object store</td>
+<td>verl, OpenRLHF, slime, NeMo-RL control and data</td>
+<td>one Python &quot;driver&quot; calls methods on remote actors. Large objects go through shared memory. Single-controller programming model</td>
+</tr>
+<tr>
+<td>ZMQ sockets (ZeroMQ, a message-passing library; also vLLM's internal process link, see <a href="../inference/serving-engine-internals.html#the-fix-separate-processes-persistent-state-async-scheduling">serving internals</a>)</td>
+<td>prime-rl orchestrator ↔ trainer (default <code>rollout_transport</code>)</td>
+<td>point-to-point, the trainer pulls one step at a time</td>
+</tr>
+<tr>
+<td>Shared filesystem</td>
+<td>rollout dumps, checkpoints, prime-rl's <code>rollout_transport.type = &quot;filesystem&quot;</code></td>
+<td>simple and persistent. Bounded by storage throughput</td>
+</tr>
+<tr>
+<td>HTTP</td>
+<td>engines (OpenAI-style + <code>/generate</code>), remote reward servers (OpenRLHF <code>--reward.remote_url</code>), weight relays</td>
+<td>crosses trust and network boundaries, easy to load-balance</td>
+</tr>
+<tr>
+<td>NCCL / NIXL / Mooncake</td>
+<td>weights only (NIXL and Mooncake are the KV-transfer libraries from <a href="../inference/serving-engine-internals.html#disaggregated-prefill-and-decode">disaggregated serving</a>, reused for weights)</td>
+<td>high bandwidth, fragile under membership changes</td>
+</tr>
+</tbody>
+</table>
+<p>A Ray single-controller sketch, to show the programming model. Ray was introduced in <a href="../inference/serving-hands-on.html#vllm-on-ray">vLLM on Ray</a> as a distributed runtime with a head and worker processes. Just enough of its API to read the sketch:</p>
+<ul>
+<li><code>ray.init()</code> connects this Python process (the <strong>driver</strong>) to a Ray cluster, or starts a local one.</li>
+<li><code>@ray.remote(num_gpus=4)</code> on a class makes it an <strong>actor</strong> class: each instance runs in its own process, which Ray places on some node that has 4 free GPUs.</li>
+<li><code>Engine.remote(...)</code> creates such an actor and returns a handle. <code>handle.method.remote(args)</code> calls the method in the actor's process and returns immediately with an <code>ObjectRef</code>, a future for the result.</li>
+<li><code>ray.get(refs)</code> blocks until the results are ready and fetches them. Large results travel through Ray's per-node shared-memory <strong>object store</strong> rather than through the driver's sockets.</li>
+</ul>
+<p><strong>Untested</strong> (Ray is not installed here):</p>
+<pre><code class="language-python">import ray
+ray.init()
+
+@ray.remote(num_gpus=4)
+class Engine:
+    def __init__(self, model): ...                     # start vLLM with TP=4 inside this actor
+    def generate(self, prompt_ids, n): ...             # -&gt; list of (ids, logprobs, version)
+    def update_weights(self, version): ...             # join the NCCL group and receive
+
+@ray.remote(num_gpus=1)
+class TrainerRank:
+    def step(self, batch_ref): ...                     # one FSDP rank; all ranks called together
+
+engines  = [Engine.remote(&quot;policy&quot;) for _ in range(8)]
+trainers = [TrainerRank.remote() for _ in range(32)]
+futs = [e.generate.remote(p, 16) for e, p in zip(engines, prompt_shards)]   # non-blocking
+rollouts = ray.get(futs)                               # the driver is the orchestrator
+</code></pre>
+<p>The driver process sees the whole dataflow as ordinary Python method calls. Ray handles placement (<code>num_gpus</code>), serialization and the object store. That makes RL algorithms easy to change, which is HybridFlow's argument. The costs are that the driver is a single point of failure, and that large tensors going through the object store can become the bottleneck if you are not careful about what flows through the driver.</p>
+<h2 id="evals-inside-the-rl-loop">Evals inside the RL loop</h2>
+<p>Training reward is measured on the training distribution, with the training sampling settings, using a policy that may be stale. It is not an evaluation. Evals should run <em>in the loop</em>, periodically, on the same inference fleet, under conditions you control:</p>
+<ul>
+<li><strong>Pin the version.</strong> Evaluate a specific checkpoint version and record it. In async systems, &quot;the model at step 400&quot; has to be defined: the trainer's weights after step 400, synced to an engine.</li>
+<li><strong>Fixed sampling settings and seeds</strong>, distinct from training settings (e.g. temperature 0.6, top-p 0.95, <code>n=16</code> for pass@k). With batch-dependent numerics, even greedy decoding is not reproducible across fleet states. Report averages over enough samples.</li>
+<li><strong>Separate priority or a separate engine slice</strong>, so that evals do not steal the tail-filling slots and change training dynamics. prime-rl's orchestrator has explicit eval source and sink modules for this. In verl it is a periodic validation step.</li>
+<li><strong>Uncertainty.</strong> On a 500-problem benchmark, a pass@1 difference of 1-2 points is often within noise. Use pass@k with the unbiased estimator and report a confidence interval. (pass@k is the probability that at least one of <span class="math inline"><span class="math-inline">k</span></span> samples for a problem is correct. Estimating it as &quot;draw exactly <span class="math inline"><span class="math-inline">k</span></span> samples&quot; is noisy, so you draw <span class="math inline"><span class="math-inline">n \ge k</span></span>, count <span class="math inline"><span class="math-inline">c</span></span> correct, and use <span class="math inline"><span class="math-inline">1 - \binom{n-c}{k} / \binom{n}{k}</span></span>, the chance that a random size-<span class="math inline"><span class="math-inline">k</span></span> subset contains a correct one.)</li>
+</ul>
+<pre><code class="language-python"># passk.py - unbiased pass@k from n samples with c correct (Chen et al. 2021, arXiv 2107.03374)
+from math import comb
+def pass_at_k(n, c, k): return 1.0 if n - c &lt; k else 1 - comb(n - c, k) / comb(n, k)
+results = {&quot;p0&quot;: (16, 0), &quot;p1&quot;: (16, 3), &quot;p2&quot;: (16, 16), &quot;p3&quot;: (16, 8)}   # prompt -&gt; (n, c)
+for k in (1, 4, 16):
+    print(f&quot;pass@{k:&lt;2} = {sum(pass_at_k(n, c, k) for n, c in results.values()) / len(results):.3f}&quot;)
+</code></pre>
+<pre><code>$ python passk.py
+pass@1  = 0.422
+pass@4  = 0.642
+pass@16 = 0.750
+</code></pre>
+<p>Treat a sudden eval drop together with <em>flat</em> training reward as an infrastructure alarm first. Common causes: a template change, a stale or broken weight sync to the eval engine, or eval contamination being fixed.</p>
+<h2 id="fault-tolerance-and-debugging">Fault tolerance and debugging</h2>
+<h3 id="failure-modes-and-what-they-look-like">Failure modes, and what they look like</h3>
+<p>RL adds failure modes that pretraining doesn't have, and several of them look like algorithm problems:</p>
+<table>
+<thead>
+<tr>
+<th>Symptom in metrics</th>
+<th>Common infrastructure cause</th>
+<th>First check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Step time grows, GPU utilization falls</td>
+<td>a stuck rollout or group, a hung sandbox, an engine stuck in preemption loops</td>
+<td>per-rollout age histogram, engine <code>num_running</code> / <code>num_waiting</code>, preemption counters</td>
+</tr>
+<tr>
+<td>Reward suddenly 0 or NaN</td>
+<td>verifier crashed or timed out (treated as 0), a NaN from a judge model, a dataset field renamed</td>
+<td>fraction of non-finite or missing rewards, verifier error logs</td>
+</tr>
+<tr>
+<td>Mismatch KL jumps at a specific step</td>
+<td>weight sync bug (partial update, wrong resharding, version mix), engine restarted with a different dtype or quantization, prefix cache not reset</td>
+<td>mismatch KL at staleness bin 0</td>
+</tr>
+<tr>
+<td>KL to reference or policy entropy blows up</td>
+<td>can be algorithmic, but rule out stale or mixed-version rollouts and mis-masked env tokens first</td>
+<td>mismatch KL by staleness bin, trained-token fraction</td>
+</tr>
+<tr>
+<td>Response length collapses or explodes</td>
+<td>max-tokens or truncation change, stop-token or template mismatch (model never emits EOS as the engine expects)</td>
+<td>finish-reason histogram (<code>stop</code> vs <code>length</code>)</td>
+</tr>
+<tr>
+<td>Trainer idle, queues empty</td>
+<td>generator-bound: engines down, KV oversubscribed, sandbox fleet saturated</td>
+<td>queue depths per stage</td>
+</tr>
+<tr>
+<td>Run hangs completely</td>
+<td>NCCL weight-sync collective with a dead member, a deadlocked orchestrator</td>
+<td>stack dumps (<a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now"><code>py-spy dump</code></a>), <a href="../debug/torch-distributed-hanging-solutions.html">hanging guide</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="stuck-rollouts-and-timeouts">Stuck rollouts and timeouts</h3>
+<p>Every remote call in the loop gets a deadline, and every deadline expiry has a defined outcome. A pattern for generation with a deadline and abort:</p>
+<pre><code class="language-python"># deadline.py - generation with a deadline: abort the request, return a marked-incomplete rollout (runnable)
+import asyncio, random
+random.seed(1)
+async def engine_generate(req_id):                      # stand-in for an HTTP call to vLLM/SGLang
+    await asyncio.sleep(random.choice([0.05, 0.05, 0.05, 5.0]))     # 1 in 4 never comes back in time
+    return {&quot;id&quot;: req_id, &quot;finish&quot;: &quot;stop&quot;}
+async def engine_abort(req_id): await asyncio.sleep(0)  # real engines expose abort by request id
+async def rollout(req_id, deadline_s=0.5):
+    try:
+        return await asyncio.wait_for(engine_generate(req_id), deadline_s)
+    except asyncio.TimeoutError:
+        await engine_abort(req_id)                      # free its KV on the engine, or it keeps generating
+        return {&quot;id&quot;: req_id, &quot;finish&quot;: &quot;abort&quot;}
+async def main():
+    out = await asyncio.gather(*(rollout(i) for i in range(20)))
+    print({k: sum(o[&quot;finish&quot;] == k for o in out) for k in (&quot;stop&quot;, &quot;abort&quot;)})
+asyncio.run(main())
+</code></pre>
+<pre><code>$ python deadline.py
+{'stop': 12, 'abort': 8}
+</code></pre>
+<p>Cancelling the client-side coroutine does not stop the engine. Without the explicit abort, the engine keeps generating the orphaned request and holding its KV cache. That is a slow capacity leak, and it shows up as <code>num_running</code> staying high while throughput drops.</p>
+<h3 id="infrastructure-health-signals">Infrastructure health signals</h3>
+<p>Run cheap checks on every batch before the optimizer step. These signals are inexpensive to compute and catch most infrastructure bugs before they become a &quot;training instability&quot;:</p>
+<pre><code class="language-python"># health.py - per-batch infra health checks to run before every optimizer step.
+import numpy as np
+rng = np.random.default_rng(0)
+n = 512
+batch = dict(
+    reward=rng.binomial(1, 0.4, n).astype(float),
+    lp_sampler=rng.normal(-0.6, 0.3, (n, 64)),          # (n, T) per-token logprobs from the engine
+    finish=rng.choice([&quot;stop&quot;, &quot;length&quot;, &quot;abort&quot;], n, p=[0.9, 0.08, 0.02]),
+    staleness=rng.integers(0, 3, n),
+)
+batch[&quot;lp_trainer&quot;] = batch[&quot;lp_sampler&quot;] + rng.normal(0, 0.01, (n, 64))   # (n, T) recomputed
+batch[&quot;reward&quot;][7] = np.nan                                                 # a broken verifier
+batch[&quot;lp_trainer&quot;][13] += 2.0                                              # e.g. wrong template / tokens
+
+def check(b, max_mismatch_kl=1e-3, max_trunc=0.2):
+    alerts = []
+    bad = ~np.isfinite(b[&quot;reward&quot;])
+    if bad.any(): alerts.append(f&quot;non-finite reward rows {np.flatnonzero(bad).tolist()} -&gt; drop + page verifier owner&quot;)
+    d = b[&quot;lp_sampler&quot;] - b[&quot;lp_trainer&quot;]                                  # (n, T)
+    k3 = (np.exp(-d) - 1 + d).mean(1)                                      # k3 estimator of KL(sampler||trainer), per seq
+    for s in np.unique(b[&quot;staleness&quot;]):
+        sel = b[&quot;staleness&quot;] == s
+        print(f&quot;  mismatch KL staleness={s}: mean {k3[sel].mean():.2e}  max {k3[sel].max():.2e}&quot;)
+    worst = np.flatnonzero(k3 &gt; max_mismatch_kl)
+    if k3.max() &gt; max_mismatch_kl: alerts.append(f&quot;mismatch KL outliers rows {worst.tolist()} (max {k3.max():.2f})&quot;)
+    trunc = (b[&quot;finish&quot;] == &quot;length&quot;).mean()
+    if trunc &gt; max_trunc: alerts.append(f&quot;truncation rate {trunc:.0%}&quot;)
+    if (b[&quot;finish&quot;] == &quot;abort&quot;).any(): alerts.append(f&quot;{(b['finish']=='abort').sum()} aborted rollouts (engine restarts?)&quot;)
+    r = b[&quot;reward&quot;][~bad]
+    if r.std() == 0: alerts.append(&quot;zero reward variance: every advantage is 0&quot;)
+    return alerts
+
+for a in check(batch): print(&quot;ALERT:&quot;, a)
+</code></pre>
+<pre><code>$ python health.py
+  mismatch KL staleness=0: mean 5.02e-05  max 7.34e-05
+  mismatch KL staleness=1: mean 5.02e-05  max 7.68e-05
+  mismatch KL staleness=2: mean 2.61e-02  max 4.40e+00
+ALERT: non-finite reward rows [7] -&gt; drop + page verifier owner
+ALERT: mismatch KL outliers rows [13] (max 4.40)
+ALERT: 6 aborted rollouts (engine restarts?)
+</code></pre>
+<p>The mismatch KL here is the <code>k3</code> estimator (<span class="math inline"><span class="math-inline">e^{-d} - 1 + d</span></span> with <span class="math inline"><span class="math-inline">d = \log \mu - \log \pi</span></span>), which is non-negative per sample, so it can be used for alerting. The planted bug (row 13, the trainer scoring different tokens) stands out by about five orders of magnitude, and so does the NaN reward. Per-staleness-bin means separate it from drift: the bin-2 mean is inflated only by the bad row. In production these become per-step dashboard series with alert thresholds, and a bad batch is quarantined (saved to disk for inspection) instead of trained on.</p>
+<h3 id="checkpointing-and-resuming-an-rl-run">Checkpointing and resuming an RL run</h3>
+<p>Resuming RL means restoring more than model weights:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>model + optimizer (sharded)</td>
+<td>as in any <a href="../training/checkpoints/README.html">training checkpoint</a></td>
+</tr>
+<tr>
+<td>policy version counter</td>
+<td>staleness accounting and logged step numbers continue correctly</td>
+</tr>
+<tr>
+<td>prompt/data sampler position + RNG</td>
+<td>so the resumed run doesn't repeat or skip prompts</td>
+</tr>
+<tr>
+<td>reference model / reward model identity</td>
+<td>KL target and rewards must be the same models as before</td>
+</tr>
+<tr>
+<td>carry-over pool (partial rollouts), replay buffers</td>
+<td>or decide to drop them on resume, and record that you did</td>
+</tr>
+<tr>
+<td>engine weights</td>
+<td>engines restart from the checkpoint, <em>then</em> sync. Never assume the engines kept their weights</td>
+</tr>
+</tbody>
+</table>
+<p>In-flight rollouts at the time of a crash are usually cheaper to drop than to persist. Test resumption once, early: kill the run at step <span class="math inline"><span class="math-inline">N</span></span>, resume, and check that step <span class="math inline"><span class="math-inline">N+1</span></span> metrics are continuous. See <a href="../training/fault-tolerance/README.html">fault tolerance</a> for the general machinery.</p>
+<h2 id="open-frameworks-survey">Open frameworks survey</h2>
+<h3 id="architectures-at-a-glance">Architectures at a glance</h3>
+<p>Architecture only, from READMEs, docs and source trees. These projects change monthly. Module layouts were checked on GitHub on 2026-11-05; the other descriptions are from documentation as I know it and should be verified against the current versions.</p>
+<table>
+<thead>
+<tr>
+<th>Framework</th>
+<th>Trainer</th>
+<th>Inference</th>
+<th>Control plane</th>
+<th>Placement</th>
+<th>Async</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>verl</strong> (ByteDance Seed; HybridFlow, arXiv 2409.19256)</td>
+<td>FSDP / FSDP2 / Megatron-LM (plus other &quot;engine workers&quot;)</td>
+<td>vLLM, SGLang, HF</td>
+<td>Ray, single controller</td>
+<td>colocated by default, disaggregated supported</td>
+<td><code>verl/experimental/{one_step_off_policy,fully_async_policy}</code>. Pluggable <code>checkpoint_engine</code> backends for weight sync (naive, nccl, nixl, mooncake, kimi_ckpt_engine, hccl)</td>
+</tr>
+<tr>
+<td><strong>OpenRLHF</strong> (arXiv 2405.11143)</td>
+<td>DeepSpeed (ZeRO-3, AutoTP: DeepSpeed's automatic tensor parallelism)</td>
+<td>vLLM</td>
+<td>Ray</td>
+<td>separate placement of actor/critic/reward/ref, or <code>--train.colocate_all</code></td>
+<td><code>--train.async_enable</code>, <code>--train.async_queue_size</code>, <code>--train.partial_rollout_enable</code></td>
+</tr>
+<tr>
+<td><strong>prime-rl</strong> (Prime Intellect; INTELLECT-2, arXiv 2505.07291)</td>
+<td>FSDP2</td>
+<td>vLLM</td>
+<td>separate processes: trainer, orchestrator (CPU), inference server. ZMQ or filesystem for rollouts, NCCL for weights. Launched via <code>uv run rl @ config.toml</code>, Slurm for multi-node</td>
+<td>disaggregated</td>
+<td>fully async, <code>orchestrator.max_staleness</code> (default 8) with token masking</td>
+</tr>
+<tr>
+<td><strong>TRL</strong> (Hugging Face)</td>
+<td>Accelerate/DeepSpeed/FSDP</td>
+<td>vLLM via <code>vllm_mode=&quot;colocate&quot;</code> (default) or <code>&quot;server&quot;</code></td>
+<td>single program</td>
+<td>either</td>
+<td>primarily synchronous; vLLM IS correction flags</td>
+</tr>
+<tr>
+<td><strong>slime</strong> (THUDM / Z.ai; used for GLM-4.5-era RL)</td>
+<td>Megatron-LM</td>
+<td>SGLang</td>
+<td>Ray</td>
+<td>colocated or disaggregated</td>
+<td>supports async (verify current docs)</td>
+</tr>
+<tr>
+<td><strong>AReaL</strong> (Ant / Tsinghua; arXiv 2505.24298)</td>
+<td>own / FSDP-style</td>
+<td>SGLang / vLLM</td>
+<td>own</td>
+<td>disaggregated</td>
+<td>fully async, interruptible rollouts, staleness-bounded, decoupled PPO</td>
+</tr>
+<tr>
+<td><strong>NeMo-RL</strong> (NVIDIA)</td>
+<td>Megatron / DTensor</td>
+<td>vLLM</td>
+<td>Ray</td>
+<td>both</td>
+<td>async support added over 2025 (verify)</td>
+</tr>
+<tr>
+<td><strong>PipelineRL</strong> (ServiceNow; arXiv 2509.19128)</td>
+<td>own</td>
+<td>vLLM</td>
+<td>own</td>
+<td>disaggregated</td>
+<td>in-flight weight updates</td>
+</tr>
+<tr>
+<td><strong>SkyRL</strong> (Berkeley), <strong>ROLL</strong> (Alibaba)</td>
+<td>various</td>
+<td>vLLM / SGLang</td>
+<td>Ray</td>
+<td>both</td>
+<td>agentic / multi-turn focus (verify)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="how-to-read-an-open-rl-codebase">How to read an open RL codebase</h3>
+<p>Each of these frameworks implements the same components from this chapter. When you open a new one, look for these, in this order:</p>
+<ol>
+<li><strong>The entrypoint and config.</strong> What processes start, and on which GPUs (placement).</li>
+<li><strong>The control loop.</strong> Who calls generate, score, train and sync, and is it one driver or several services?</li>
+<li><strong>The rollout function.</strong> Single-turn generate, or a multi-turn environment loop. Where do the masks and sampler logprobs come from?</li>
+<li><strong>The batch / data structure</strong> that crosses from rollout to trainer.</li>
+<li><strong>The loss.</strong> Where the IS correction, masking and staleness handling live.</li>
+<li><strong>Weight sync.</strong> Gather → reshard → transport → engine load → cache reset.</li>
+<li><strong>The engine adapter.</strong> Patches to vLLM/SGLang, weight-loading hooks, sleep/wake.</li>
+</ol>
+<p>Mapping onto three codebases (paths from the GitHub trees on 2026-11-05; they will move):</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>prime-rl (<code>src/prime_rl/</code>)</th>
+<th>verl (<code>verl/</code>)</th>
+<th>OpenRLHF (<code>openrlhf/</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Entrypoint / launch</td>
+<td><code>entrypoints/</code>, <code>uv run rl @ examples/.../rl.toml</code></td>
+<td><code>trainer/main_ppo.py</code></td>
+<td><code>cli/train_ppo_ray.py</code> via <code>ray job submit</code></td>
+</tr>
+<tr>
+<td>Control loop / orchestrator</td>
+<td><code>orchestrator/orchestrator.py</code> (+ <code>dispatcher.py</code>, <code>concurrency.py</code>)</td>
+<td><code>trainer/ppo/</code> (Ray trainer driver), <code>single_controller/ray/</code></td>
+<td><code>trainer/ppo_trainer.py</code>, <code>trainer/ppo_trainer_async.py</code>, <code>trainer/ray/launcher.py</code></td>
+</tr>
+<tr>
+<td>Environments / rollout logic</td>
+<td><code>orchestrator/envs.py</code>, <code>orchestrator/trajectories.py</code>, plus the separate <code>verifiers</code> library</td>
+<td><code>experimental/agent_loop/</code>, <code>workers/rollout/</code></td>
+<td>agent executors (<code>AgentInstanceBase</code>, <code>MultiTurnAgentExecutor</code>, per README)</td>
+</tr>
+<tr>
+<td>Rewards</td>
+<td>via <code>verifiers</code> environments</td>
+<td><code>workers/reward_manager/</code>, <code>experimental/reward_loop/</code></td>
+<td><code>--reward.remote_url</code> reward servers, <code>reward_func()</code></td>
+</tr>
+<tr>
+<td>Batch to trainer</td>
+<td><code>orchestrator/batch.py</code>, <code>orchestrator/train_sink.py</code>, <code>transports/batch/</code></td>
+<td><code>protocol.py</code> (<code>DataProto</code>)</td>
+<td><code>trainer/ppo_utils/</code></td>
+</tr>
+<tr>
+<td>Trainer + loss</td>
+<td><code>trainer/rl/</code>, <code>trainer/train.py</code>, <code>trainer/models/</code></td>
+<td><code>workers/engine_workers.py</code>, <code>workers/engine/</code></td>
+<td><code>trainer/ray/ppo_actor.py</code>, <code>trainer/ray/ppo_critic.py</code></td>
+</tr>
+<tr>
+<td>Weight sync</td>
+<td><code>transports/weights/</code></td>
+<td><code>checkpoint_engine/</code></td>
+<td><code>trainer/ray/vllm_worker_wrap.py</code> (engine side)</td>
+</tr>
+<tr>
+<td>Engine adapter</td>
+<td><code>inference/server.py</code>, <code>inference/vllm/</code></td>
+<td><code>workers/rollout/vllm_rollout/</code>, <code>sglang_rollout/</code></td>
+<td><code>trainer/ray/vllm_engine.py</code></td>
+</tr>
+<tr>
+<td>Async / staleness</td>
+<td><code>orchestrator</code> + <code>max_staleness</code> (docs/algorithms.md)</td>
+<td><code>experimental/fully_async_policy/</code>, <code>one_step_off_policy/</code></td>
+<td><code>ppo_trainer_async.py</code>, <code>--train.async_queue_size</code></td>
+</tr>
+<tr>
+<td>Evals</td>
+<td><code>orchestrator/eval_source.py</code>, <code>eval_sink.py</code>, <code>eval/</code></td>
+<td><code>trainer/main_eval.py</code>, periodic validation</td>
+<td>eval options in the trainer</td>
+</tr>
+</tbody>
+</table>
+<p>A practical exercise that teaches a codebase faster than reading: run its smallest example end to end (for prime-rl, the README's 2-GPU <code>reverse-text</code> example; for verl and OpenRLHF, their GSM8K quickstarts), then put a breakpoint or a log line at each of the seven points above and watch one rollout travel through the system.</p>
+<p>A Slurm launch for a disaggregated layout, as a sketch of what &quot;launched via Slurm&quot; means. <strong>Untested</strong>. The heterogeneous-job syntax is standard Slurm, but the program names are placeholders. <code>sbatch</code> directives and <code>srun</code> are taught in <a href="../orchestration/slurm/from-zero.html#the-directives-that-matter">Slurm from zero</a>; what is new here is the <strong>heterogeneous job</strong>. <code>#SBATCH hetjob</code> separates two groups of directives, so one job gets two components with different shapes (here 4 inference nodes and 4 trainer nodes) that start together. <code>srun --het-group=N</code> launches a step on component <code>N</code> only. Each <code>srun ... &amp;</code> runs in the background and <code>wait</code> keeps the batch script alive until all of them exit. The <code>torchrun --rdzv-backend c10d</code> line is the multi-node launch from <a href="../orchestration/slurm/from-zero.html#launch-with-torchrun">Launch with torchrun</a>:</p>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=rl-32b-async
+#SBATCH --nodes=4 --gpus-per-node=8 --ntasks-per-node=1
+#SBATCH hetjob
+#SBATCH --nodes=4 --gpus-per-node=8 --ntasks-per-node=1
+# component 0: inference (4 nodes x 2 TP=4 engines); component 1: trainer (FSDP over 32 GPUs)
+srun --het-group=0 bash -c 'serve_policy --tp 4 --port 8000 --replicas-per-node 2' &amp;
+srun --het-group=0 --nodes=1 --ntasks=1 bash -c 'orchestrator --engines-from-slurm --max-staleness 2' &amp;
+srun --het-group=1 torchrun --nnodes 4 --nproc-per-node 8 --rdzv-backend c10d \
+     --rdzv-endpoint &quot;$(scontrol show hostnames $SLURM_JOB_NODELIST_HET_GROUP_1 | head -1):29500&quot; train_rl.py
+wait
+</code></pre>
+<h2 id="you-can-now-read">You can now read</h2>
+<p>This is the last chapter in the reading order, so the chapters below come earlier; revisit them with the RL pipeline in mind.</p>
+<ul>
+<li><a href="../training/decentralized-training.html">Decentralized Training</a>: RL over the WAN, where weight sync and verification of untrusted rollouts dominate.</li>
+<li><a href="../platform/control-planes.html">Services and Control Planes</a>: how to run the orchestrator, reward services and sandbox fleets as production services.</li>
+<li><a href="../inference/serving-hands-on.html">Serving Hands-On</a>: running the vLLM/SGLang engines that serve as rollout workers.</li>
+<li><a href="../training/profiling-and-optimization.html">Profiling and Optimization</a>: measuring where an RL step's time actually goes, rather than estimating it as this chapter does.</li>
+<li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes from Zero</a>: the substrate many sandbox fleets and elastic inference pools run on.</li>
+<li>The HybridFlow, AReaL, PipelineRL and Kimi k1.5 papers below, and the <code>docs/</code> folders of prime-rl and verl.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>Sheng et al., &quot;HybridFlow: A Flexible and Efficient RLHF Framework&quot; (verl), arXiv 2409.19256.</li>
+<li>Hu et al., &quot;OpenRLHF: An Easy-to-use, Scalable and High-performance RLHF Framework&quot;, arXiv 2405.11143.</li>
+<li>Prime Intellect, &quot;INTELLECT-2: A Reasoning Model Trained Through Globally Decentralized Reinforcement Learning&quot;, arXiv 2505.07291.</li>
+<li>Fu et al., &quot;AReaL: A Large-Scale Asynchronous Reinforcement Learning System for Language Reasoning&quot;, arXiv 2505.24298.</li>
+<li>Piché et al., &quot;PipelineRL: Faster On-policy Reinforcement Learning for Long Sequence Generation&quot;, arXiv 2509.19128.</li>
+<li>Kimi Team, &quot;Kimi k1.5: Scaling Reinforcement Learning with LLMs&quot; (partial rollouts), arXiv 2501.12599.</li>
+<li>Noukhovitch et al., &quot;Asynchronous RLHF: Faster and More Efficient Off-Policy RL for Language Models&quot;, arXiv 2410.18252.</li>
+<li>Yu et al., &quot;DAPO: An Open-Source LLM Reinforcement Learning System at Scale&quot; (dynamic sampling), arXiv 2503.14476.</li>
+<li>Espeholt et al., &quot;IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures&quot; (V-trace), arXiv 1802.01561.</li>
+<li>Hilton, Cobbe, Schulman, &quot;Batch size-invariance for policy optimization&quot; (decoupled PPO), arXiv 2110.00641.</li>
+<li>Yao et al., &quot;Your Efficient RL Framework Secretly Brings You Off-Policy RL Training&quot; (blog, August 2025): truncated importance sampling for sampler/trainer mismatch.</li>
+<li>He and Thinking Machines Lab, &quot;Defeating Nondeterminism in LLM Inference&quot; (blog, September 2025).</li>
+<li>Chen et al., &quot;Evaluating Large Language Models Trained on Code&quot; (unbiased pass@k), arXiv 2107.03374.</li>
+<li>vLLM sleep mode: https://docs.vllm.ai/en/latest/features/sleep_mode.html ; RL weight-sync examples: https://github.com/vllm-project/vllm/tree/main/examples/rl</li>
+<li>verl checkpoint engine: https://github.com/volcengine/verl/tree/main/verl/checkpoint_engine</li>
+<li>prime-rl docs (overview, algorithms): https://github.com/PrimeIntellect-ai/prime-rl/tree/main/docs</li>
+<li>OpenRLHF README (Ray + vLLM architecture, async and agent flags): https://github.com/OpenRLHF/OpenRLHF</li>
+<li>TRL GRPO config: https://github.com/huggingface/trl/blob/main/trl/trainer/grpo_config.py</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../platform/control-planes.html">&larr; Control Planes and Fleet Management</a><a class="next" href="../debug/README.html">Debugging and Troubleshooting &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

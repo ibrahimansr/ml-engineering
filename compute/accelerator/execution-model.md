@@ -38,7 +38,7 @@ Nothing in this chapter is a benchmark result. The one kernel in it comes with a
 - cuBLAS / cuBLASLt: NVIDIA's closed-source GEMM libraries; `torch.matmul` on a GPU ends up here. CUTLASS: NVIDIA's open-source C++ template library for writing your own GEMM-like kernels.
 - DSMEM: Distributed Shared Memory - shared memory of other CTAs in the same cluster
 - epilogue: the code at the end of a GEMM (or attention) kernel that post-processes the finished output tile (scale, bias, activation, cast) and writes it to memory
-- GEMM: GEneral Matrix Multiply, `C = A @ B` (optionally scaled and added to an existing `C`); the operation behind every `nn.Linear`. GEMV is the matrix-vector special case (one row of activations).
+- GEMM: GEneral Matrix Multiply, $C = AB$ (optionally scaled and added to an existing `C`); the operation behind every `nn.Linear`. GEMV is the matrix-vector special case (one row of activations).
 - GPC: Graphics Processing Cluster - a group of SMs; a thread block cluster is co-scheduled within one
 - ILP: Instruction-Level Parallelism
 - MAC / MMA: multiply-accumulate (`c += a * b`, 2 FLOPs) / matrix multiply-accumulate (`C += A @ B` on a small tile, one tensor core instruction)
@@ -141,7 +141,7 @@ On Hopper (per the [H100 architecture white paper](https://resources.nvidia.com/
 - a 16K x 32-bit register file slice (64KB), so 64K registers = 256KB per SM
 - 32 FP32 lanes, 16 INT32, 16 FP64 lanes
 - 1 tensor core (4 per SM, 528 on the 132-SM H100 SXM - the figure the [TFLOPS derivation](README.md#how-to-calculate-theoretical-tflops) uses)
-- special function units; the FlashAttention-3 paper states H100 SXM5 has "989 TFLOPS of FP16 matmul but only 3.9 TFLOPS of special functions", which works out to `3.9e12 / (132 SMs * 1.83e9 Hz) = 16` MUFU ops per clock per SM, i.e. 4 per sub-partition (derived; the per-SM count is consistent with the white paper but I did not find it stated as a single number)
+- special function units; the FlashAttention-3 paper states H100 SXM5 has "989 TFLOPS of FP16 matmul but only 3.9 TFLOPS of special functions", which works out to $3.9\times10^{12} / (132\ \text{SMs} \times 1.83\times10^{9}\ \text{Hz}) = 16$ MUFU ops per clock per SM, i.e. 4 per sub-partition (derived; the per-SM count is consistent with the white paper but I did not find it stated as a single number)
 
 Per-SM limits for compute capability 9.0, from the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications) table:
 
@@ -177,12 +177,15 @@ for k in ("max_threads_per_multi_processor", "regs_per_multiprocessor",
 
 A GPU does not hide memory latency with caches and out-of-order execution as a CPU does. (Latency is the time from issuing a load until its data arrives; bandwidth is how many bytes per second arrive once the pipe is full.) It hides it by having many warps resident and switching between them for free: every resident warp's registers are permanently allocated in the register file, so a "context switch" is the scheduler picking a different warp on the next clock. When warp A issues a global load and its next instruction depends on the result, A stalls (in Nsight Compute vocabulary, on the *long scoreboard*) and the scheduler issues from warp B.
 
-How much parallelism you need is [Little's law](../../foundations/computer-architecture.md#bandwidth-vs-latency): `bytes in flight = bandwidth * latency`. NVIDIA does not publish DRAM latency; microbenchmark studies of Hopper (e.g. Luo et al., "Benchmarking and Dissecting the Nvidia Hopper GPU Architecture", arXiv:2402.13499 (id unverified)) report several hundred ns. Taking 500ns as an assumption:
+How much parallelism you need is [Little's law](../../foundations/computer-architecture.md#bandwidth-vs-latency): $\text{bytes in flight} = \text{bandwidth} \times \text{latency}$. NVIDIA does not publish DRAM latency; microbenchmark studies of Hopper (e.g. Luo et al., "Benchmarking and Dissecting the Nvidia Hopper GPU Architecture", arXiv:2402.13499 (id unverified)) report several hundred ns. Taking 500ns as an assumption:
 
-```
-3.35e12 B/s * 500e-9 s = 1.675 MB in flight across the GPU
-1.675 MB / 132 SMs     = ~12.4 KB in flight per SM
-```
+$$
+3.35\times10^{12}\ \text{B/s} \times 500\times10^{-9}\ \text{s} = 1.675\ \text{MB in flight across the GPU}
+$$
+
+$$
+1.675\ \text{MB} / 132\ \text{SMs} \approx 12.4\ \text{KB in flight per SM}
+$$
 
 At one 16-byte vectorized load outstanding per thread, that is ~790 threads (~25 warps) per SM doing nothing but waiting on memory, just to saturate HBM. You get there with some combination of:
 
@@ -220,22 +223,24 @@ B200     lat=700ns   5.60 MB in flight,  37.8 KB/SM =  2365 threads = 73.9 warps
 
 ### Occupancy, worked
 
-Occupancy is `resident warps / 64`. It is limited by whichever resource runs out first: registers, shared memory (a small on-chip scratchpad per SM that the threads of one CTA explicitly read and write to share data), the thread limit, or the CTA limit.
+Occupancy is $\text{resident warps} / 64$. It is limited by whichever resource runs out first: registers, shared memory (a small on-chip scratchpad per SM that the threads of one CTA explicitly read and write to share data), the thread limit, or the CTA limit.
 
 Allocation granularities matter. Registers are allocated per warp in units of 256 (so per-thread counts round up to a multiple of 8), and since compute capability 8.0 each CTA also reserves 1KB of shared memory for the system ([CUDA Programming Guide, shared memory section](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory-8-x)). The [CUDA Occupancy Calculator](https://docs.nvidia.com/nsight-compute/NsightComputeCli/index.html) (now in Nsight Compute) applies the exact rules; this is the arithmetic it does.
 
 A kernel with 128 threads per CTA, 96 registers per thread, 48KB of shared memory per CTA, on H100:
 
-```
-warps per CTA        = 128 / 32                           = 4
-registers per warp   = 96 * 32                            = 3072  (already a multiple of 256)
-CTAs by registers    = floor(floor(65536 / 3072) / 4)     = floor(21 / 4) = 5
-CTAs by smem         = floor(228KB / (48KB + 1KB))        = 4
-CTAs by threads      = 2048 / 128                         = 16
-CTAs by CTA limit    = 32
-resident CTAs        = min(5, 4, 16, 32)                  = 4
-occupancy            = 4 * 4 / 64                         = 25%
-```
+$$
+\begin{aligned}
+\text{warps per CTA} &= 128 / 32 = 4 \\
+\text{registers per warp} &= 96 \times 32 = 3072 \quad \text{(already a multiple of 256)} \\
+\text{CTAs by registers} &= \lfloor \lfloor 65536 / 3072 \rfloor / 4 \rfloor = \lfloor 21 / 4 \rfloor = 5 \\
+\text{CTAs by smem} &= \lfloor 228\ \text{KB} / (48\ \text{KB} + 1\ \text{KB}) \rfloor = 4 \\
+\text{CTAs by threads} &= 2048 / 128 = 16 \\
+\text{CTAs by CTA limit} &= 32 \\
+\text{resident CTAs} &= \min(5, 4, 16, 32) = 4 \\
+\text{occupancy} &= 4 \cdot 4 / 64 = 25\%
+\end{aligned}
+$$
 
 Shared memory is the binding limit. Some variants:
 
@@ -295,7 +300,7 @@ max regs/thread at 64 warps: 32
 
 The `384 / 168 / 192KB` row is the shape of a Hopper warp-specialized GEMM: one CTA per SM, 18.8% occupancy, by design.
 
-The ceiling for 100% occupancy is `65536 / 2048 = 32` registers per thread, which almost no compute-heavy kernel meets. That is fine. High occupancy is a means (latency hiding) and not a goal: a Hopper GEMM typically runs 1 CTA of 384 threads per SM, 12 of 64 warps, about 19% occupancy, and sits near the tensor core roofline because TMA does the loads and each consumer thread holds a large accumulator tile in registers. Conversely, a memory-bound elementwise kernel at 25% occupancy with one scalar load per thread will not saturate HBM. Read occupancy together with the stall reasons ([Profiling](#profiling-nsys-and-ncu)), not on its own.
+The ceiling for 100% occupancy is $65536 / 2048 = 32$ registers per thread, which almost no compute-heavy kernel meets. That is fine. High occupancy is a means (latency hiding) and not a goal: a Hopper GEMM typically runs 1 CTA of 384 threads per SM, 12 of 64 warps, about 19% occupancy, and sits near the tensor core roofline because TMA does the loads and each consumer thread holds a large accumulator tile in registers. Conversely, a memory-bound elementwise kernel at 25% occupancy with one scalar load per thread will not saturate HBM. Read occupancy together with the stall reasons ([Profiling](#profiling-nsys-and-ncu)), not on its own.
 
 [Triton](https://triton-lang.org), which appears from here on, is a Python-embedded language for writing GPU kernels: you decorate a Python function with `@triton.jit`, write it in terms of whole blocks of data (`tl.load`, `tl.sum`, ...), and launch it as `kernel[grid](args...)`; the compiler handles the per-thread details. Read the Triton snippets here as sketches; the [Triton learning path](#a-triton-learning-path) at the end of this chapter and [Triton from zero](writing-kernels.md#triton-from-zero) in the next chapter teach it.
 
@@ -372,7 +377,7 @@ y = tl.where(x > 0, x, 0.01 * x)          # leaky ReLU, both sides computed, one
 
 | level              | H100 SXM                                     | B200                                    | scope                   | source / note                                                                 |
 | :----------------- | :------------------------------------------- | :-------------------------------------- | :---------------------- | :---------------------------------------------------------------------------- |
-| registers          | 256KB per SM, 33MiB total                    | 256KB per SM                            | per thread (private)    | 64K x 4B; `132 * 256KB = 33MiB`                                              |
+| registers          | 256KB per SM, 33MiB total                    | 256KB per SM                            | per thread (private)    | 64K x 4B; $132 \times 256\ \text{KB} = 33\ \text{MiB}$                                              |
 | tensor memory      | -                                            | 256KB per SM                            | per CTA (allocated)     | `sm_100` only; 128 lanes x 512 columns x 4B, see [tcgen05](#blackwell-tcgen05-and-tmem) |
 | L1 / shared memory | 256KB per SM combined, up to 228KB as smem   | 256KB per SM combined, up to 228KB smem | per CTA (smem) / per SM | Hopper / Blackwell tuning guides                                              |
 | L2                 | 50MB                                         | 126MB (GB200 figure)                    | whole GPU (2 partitions)| [caches table](README.md#caches)                                              |
@@ -380,13 +385,13 @@ y = tl.where(x > 0, x, 0.01 * x)          # leaky ReLU, both sides computed, one
 
 Bandwidths NVIDIA does not publish as a single figure:
 
-- **Shared memory**: 32 banks x 4 bytes per clock per SM = 128 B/clk/SM. At 1.83GHz this is `128 * 1.83e9 * 132 = 30.9TBps` aggregate on H100 (derived; `34.7TBps` with 148 SMs on B200 at the same clock, also derived - the B200 clock may differ). That is ~9x HBM.
+- **Shared memory**: 32 banks x 4 bytes per clock per SM = 128 B/clk/SM. At 1.83GHz this is $128 \times 1.83\times10^{9} \times 132 = 30.9\ \text{TBps}$ aggregate on H100 (derived; `34.7TBps` with 148 SMs on B200 at the same clock, also derived - the B200 clock may differ). That is ~9x HBM.
 - **L2**: not published. Microbenchmarks report a few times HBM bandwidth; treat any specific number as unverified. The L2 on H100 and A100 is split into two partitions connected by a crossbar (an on-chip switch connecting every SM to every L2 slice), and data homed in the far partition costs more ([Hopper Tuning Guide](https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html)).
 - **Registers**: effectively whatever the ALUs can consume - not a bottleneck you design around, but a *capacity* you design around (see the accumulator arithmetic in [GEMM tiling](#gemm-tiling-hierarchy)).
 
 B200 is two reticle-sized dies joined by NVIDIA's 10TBps NV-HBI link and presented to software as one GPU ([Blackwell architecture page](https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/)). L2 and HBM are physically split between the dies, so locality effects similar to Hopper's two L2 partitions exist at a larger scale; NVIDIA does not publish the cross-die latency penalty.
 
-The ratio that matters for kernel design: H100 does ~4094 dense BF16 FLOP per clock per SM (`989e12 / (132 * 1.83e9)`), but HBM delivers `3.35e12 / (132 * 1.83e9) = 13.9` bytes per clock per SM. Every byte fetched from HBM has to be reused ~295 times in FLOPs for the tensor cores not to starve. Registers and shared memory exist to provide that reuse.
+The ratio that matters for kernel design: H100 does ~4094 dense BF16 FLOP per clock per SM ($989\times10^{12} / (132 \times 1.83\times10^{9})$), but HBM delivers $3.35\times10^{12} / (132 \times 1.83\times10^{9}) = 13.9$ bytes per clock per SM. Every byte fetched from HBM has to be reused ~295 times in FLOPs for the tensor cores not to starve. Registers and shared memory exist to provide that reuse.
 
 The budget arithmetic in one place:
 
@@ -416,7 +421,7 @@ The last line is the less-quoted half of the story: even shared memory is ~32x t
 
 ### Coalescing
 
-Global memory (the kernel's view of HBM, readable by every thread) is accessed in 32-byte sectors, grouped into 128-byte cache lines (the unit a cache stores and evicts). When a warp issues a load, the hardware computes the set of sectors touched by the 32 addresses and issues one transaction per sector. If thread `i` reads `float` element `i`, the warp touches `32 * 4 = 128` contiguous bytes = 4 sectors: perfect. If thread `i` reads element `i * stride`:
+Global memory (the kernel's view of HBM, readable by every thread) is accessed in 32-byte sectors, grouped into 128-byte cache lines (the unit a cache stores and evicts). When a warp issues a load, the hardware computes the set of sectors touched by the 32 addresses and issues one transaction per sector. If thread `i` reads `float` element `i`, the warp touches $32 \times 4 = 128$ contiguous bytes = 4 sectors: perfect. If thread `i` reads element `i * stride`:
 
 | stride (float) | sectors touched | bytes moved | bytes used | efficiency |
 | -------------: | --------------: | ----------: | ---------: | ---------: |
@@ -504,9 +509,9 @@ Useful bandwidth halves with each doubling of stride: the memory system moves wh
 
 ### Bank conflicts
 
-Shared memory has 32 banks (independent memory sub-arrays that can each serve one 4-byte word per clock), each 4 bytes wide; word address `a` lives in bank `(a / 4) % 32`. A warp's shared memory access completes in one cycle if all 32 threads hit distinct banks (or the same word - broadcast). If `k` threads hit different words in the same bank, it takes `k` cycles: a `k`-way conflict.
+Shared memory has 32 banks (independent memory sub-arrays that can each serve one 4-byte word per clock), each 4 bytes wide; word address $a$ lives in bank $\lfloor a / 4 \rfloor \bmod 32$. A warp's shared memory access completes in one cycle if all 32 threads hit distinct banks (or the same word - broadcast). If $k$ threads hit different words in the same bank, it takes $k$ cycles: a $k$-way conflict.
 
-The canonical case is a transpose through a `float tile[32][32]`: writing rows is conflict-free, reading a column has every thread hitting bank `(row * 32 + c) % 32 = c`, a 32-way conflict. Two fixes:
+The canonical case is a transpose through a `float tile[32][32]`: writing rows is conflict-free, reading a column has every thread hitting bank $(32 \cdot \text{row} + c) \bmod 32 = c$, a 32-way conflict. Two fixes:
 
 - **padding**: `float tile[32][33]` shifts each row by one bank. Simple, wastes 3% of the buffer, and breaks the alignment that vectorized and TMA accesses need.
 - **swizzling**: permute the column index by XOR-ing it with bits of the row index, so a logical column maps to 32 different banks. This keeps rows aligned and is what CUTLASS, Triton and TMA use. TMA supports 32B, 64B and 128B swizzle modes in hardware, and Hopper `wgmma` / Blackwell `tcgen05` shared memory descriptors expect operands in exactly those swizzled layouts.
@@ -543,7 +548,7 @@ padded       row read:  1-way   column read:  1-way
 xor-swizzle  row read:  1-way   column read:  1-way
 ```
 
-Why the XOR works: for column `c`, row `r` lands in bank `c ^ r`, and as `r` runs over 0..31 with `c` fixed, `c ^ r` also runs over all 32 values exactly once - a permutation, so no two lanes share a bank. Rows stay 128-byte aligned because the permutation only shuffles words within a row. The hardware swizzle modes do the same thing on 16-byte chunks instead of 4-byte words.
+Why the XOR works: for column $c$, row $r$ lands in bank $c \oplus r$ (XOR), and as $r$ runs over $0..31$ with $c$ fixed, $c \oplus r$ also runs over all 32 values exactly once - a permutation, so no two lanes share a bank. Rows stay 128-byte aligned because the permutation only shuffles words within a row. The hardware swizzle modes do the same thing on 16-byte chunks instead of 4-byte words.
 
 ### TMA
 
@@ -743,7 +748,7 @@ asm volatile(
 
 - no `ldmatrix` round trip through registers for B, freeing registers and issue slots
 - asynchronous: the warpgroup issues a batch of `wgmma`s, then `wgmma.commit_group`, and later `wgmma.wait_group N` - so it can do other work (softmax, in FA3) while the tensor core runs
-- the accumulator (the tile that `C += A @ B` sums into) is still in registers, distributed across the 128 threads. A `64 x 256` FP32 accumulator is `64 * 256 / 128 = 128` registers per thread. This is the register-capacity limit that shapes Hopper kernels.
+- the accumulator (the tile that `C += A @ B` sums into) is still in registers, distributed across the 128 threads. A `64 x 256` FP32 accumulator is $64 \times 256 / 128 = 128$ registers per thread. This is the register-capacity limit that shapes Hopper kernels.
 - for FP8 inputs, `wgmma` requires both operands "K-major" (K contiguous) in shared memory; 16-bit types allow either major-ness for smem operands. This is why FA3's FP8 path transposes V in-kernel.
 
 The register arithmetic for Hopper, and the TMEM arithmetic for Blackwell below, in one script:
@@ -816,13 +821,15 @@ There are three distinct mechanisms hiding behind "make it divisible", with diff
 2. **Instruction shape (16 / 64)** - the MMA instruction's M/N/K. A K that is not a multiple of 16 (bf16) means padding the last K-slab with zeros inside the kernel; an N not a multiple of 8 wastes part of every `wgmma`.
 3. **Tile quantization (64 / 128 / 256)** - the CTA tile. The output is covered by `BM x BN` tiles, and partial tiles cost as much as full ones.
 
-On top of tile quantization sits **wave quantization**: tiles are executed in waves of `#SMs` (or `#SMs * CTAs-per-SM`). Both are covered with plots in the [Tile and wave quantization](../../training/performance/README.md#tile-and-wave-quantization) section and the SKU-dependence in [Do more SMs give more TFLOPS?](../../training/performance/README.md#do-more-sms-give-more-tflops); here is the combined arithmetic for H100 (132 SMs, 1 CTA per SM, `128 x 256` tile - a common Hopper CUTLASS/cuBLAS tile; the real kernel's tile is picked by heuristics and may differ):
+On top of tile quantization sits **wave quantization**: tiles are executed in waves of $\#\text{SMs}$ (or $\#\text{SMs} \times \text{CTAs-per-SM}$). Both are covered with plots in the [Tile and wave quantization](../../training/performance/README.md#tile-and-wave-quantization) section and the SKU-dependence in [Do more SMs give more TFLOPS?](../../training/performance/README.md#do-more-sms-give-more-tflops); here is the combined arithmetic for H100 (132 SMs, 1 CTA per SM, `128 x 256` tile - a common Hopper CUTLASS/cuBLAS tile; the real kernel's tile is picked by heuristics and may differ):
 
-```
-efficiency = (M*N / (tiles * BM*BN))   # tile quantization
-           * (tiles / (waves * SMs))   # wave quantization
-tiles = ceil(M/BM) * ceil(N/BN),  waves = ceil(tiles / SMs)
-```
+$$
+\text{efficiency} = \frac{MN}{\text{tiles} \cdot \text{BM} \cdot \text{BN}} \ \text{(tile quantization)} \times \frac{\text{tiles}}{\text{waves} \cdot \text{SMs}} \ \text{(wave quantization)}
+$$
+
+$$
+\text{tiles} = \lceil M/\text{BM} \rceil \cdot \lceil N/\text{BN} \rceil, \quad \text{waves} = \lceil \text{tiles} / \text{SMs} \rceil
+$$
 
 | M x N           | tile      | tiles | waves (exact) | tile eff | wave eff | total |
 | :-------------- | :-------- | ----: | ------------: | -------: | -------: | ----: |
@@ -833,7 +840,7 @@ tiles = ceil(M/BM) * ceil(N/BN),  waves = ceil(tiles / SMs)
 | 1536 x 1536     | 128 x 128 |   144 |  2 (1.09)     |   100%   |   54.5%  | 54.5% |
 | 4096 x 4096 (B200, 148 SMs) | 128 x 256 | 512 | 4 (3.46) | 100% | 86.5% | 86.5% |
 
-The `4160` row is the instructive one: adding 1.6% to N (64 columns) adds a 17th tile column, pushes the tile count over 4 waves, and costs 25% more time (`5/4` waves) for 1.6% more work. The last row is the same shape on a part with *more* SMs getting *worse* wave efficiency - the staircase from the performance chapter.
+The `4160` row is the instructive one: adding 1.6% to N (64 columns) adds a 17th tile column, pushes the tile count over 4 waves, and costs 25% more time ($5/4$ waves) for 1.6% more work. The last row is the same shape on a part with *more* SMs getting *worse* wave efficiency - the staircase from the performance chapter.
 
 The table and the staircase come from this calculator:
 
@@ -887,9 +894,9 @@ N      waves  time/work (relative to N=4096)
  4608      5   1.111
 ```
 
-The second half is the staircase: time per unit of work jumps by 21% at `N = 4224` and then decays until the next wave boundary.
+The second half is the staircase: time per unit of work jumps by 21% at $N = 4224$ and then decays until the next wave boundary.
 
-And a counterexample to a popular explanation: padding GPT-2's vocab from 50257 to 50304 (a multiple of 64) is often described as a tile-quantization win, but with `M = 4096` tokens and a `128 x 256` tile both shapes need exactly 6304 tiles and 48 waves. The arithmetic says the gain is from mechanism 1: 50257 is odd, so the bf16 rows of the LM head weight are not 16-byte aligned. (This is my derivation, not a profiled finding - verify with the kernel names in a trace, which usually reveal the alignment variant chosen.)
+And a counterexample to a popular explanation: padding GPT-2's vocab from 50257 to 50304 (a multiple of 64) is often described as a tile-quantization win, but with $M = 4096$ tokens and a `128 x 256` tile both shapes need exactly 6304 tiles and 48 waves. The arithmetic says the gain is from mechanism 1: 50257 is odd, so the bf16 rows of the LM head weight are not 16-byte aligned. (This is my derivation, not a profiled finding - verify with the kernel names in a trace, which usually reveal the alignment variant chosen.)
 
 These effects are why `Linear` dimensions in well-sized models are multiples of 128 or 256 and why persistent / stream-K kernels exist ([below](#split-k-stream-k-and-persistent-kernels)).
 
@@ -898,15 +905,21 @@ These effects are why `Linear` dimensions in well-sized models are multiples of 
 
 ### The model
 
-For a kernel doing `F` FLOPs and moving `B` bytes to/from HBM:
+For a kernel doing $F$ FLOPs and moving $B$ bytes to/from HBM:
 
-```
-time >= max(F / peak_flops, B / peak_bw)
-arithmetic intensity  AI = F / B          [FLOP/byte]
-ridge point           AI* = peak_flops / peak_bw
-```
+$$
+\text{time} \ge \max\left(\frac{F}{\text{peak\_flops}}, \frac{B}{\text{peak\_bw}}\right)
+$$
 
-If `AI < AI*` the kernel is memory-bound and its best possible time is `B / peak_bw`, no matter how clever the arithmetic. Ridge points from the vendor peaks in the [TFLOPS table](README.md#tflops-comparison-table) and [memory table](README.md#accelerator-memory-size-and-speed):
+$$
+\text{arithmetic intensity:}\quad \text{AI} = F / B \quad [\text{FLOP/byte}]
+$$
+
+$$
+\text{ridge point:}\quad \text{AI}^* = \text{peak\_flops} / \text{peak\_bw}
+$$
+
+If $\text{AI} < \text{AI}^*$ the kernel is memory-bound and its best possible time is $B / \text{peak\_bw}$, no matter how clever the arithmetic. Ridge points from the vendor peaks in the [TFLOPS table](README.md#tflops-comparison-table) and [memory table](README.md#accelerator-memory-size-and-speed):
 
 | accelerator | bf16 dense TFLOPS | HBM TBps | bf16 ridge (FLOP/B) | fp8 ridge |
 | :---------- | ----------------: | -------: | ------------------: | --------: |
@@ -1025,24 +1038,26 @@ matmul n= 4096  AI= 1365.3    3.47 TFLOPS    39609.0 us
 eager x*2+1: 16535 us, effective 32.5 GB/s of useful traffic
 ```
 
-Reading it: the ridge of this machine is about `3.5e12 / 73e9 = 48` FLOP/B. Small matmuls are far below their roofline (they are latency- and launch-bound, not bandwidth-bound); from `n = 2048` the matmul is on the flat compute roof. The last line shows fusion's value directly: eager `x * 2 + 1` is two kernels, each reading and writing the full tensor, so the useful bandwidth is half the copy bandwidth. On an H100 run the same script with `dtype=torch.bfloat16` and compare against 989 TFLOPS / 3.35 TB/s.
+Reading it: the ridge of this machine is about $3.5\times10^{12} / 73\times10^{9} = 48$ FLOP/B. Small matmuls are far below their roofline (they are latency- and launch-bound, not bandwidth-bound); from $n = 2048$ the matmul is on the flat compute roof. The last line shows fusion's value directly: eager `x * 2 + 1` is two kernels, each reading and writing the full tensor, so the useful bandwidth is half the copy bandwidth. On an H100 run the same script with `dtype=torch.bfloat16` and compare against 989 TFLOPS / 3.35 TB/s.
 
 ### GEMM
 
-`C (M, N) = A (M, K) @ B (K, N)`, each element `b` bytes, `C` written once, `A` and `B` read once (the ideal; achieved only if tiling gives enough reuse):
+$C_{(M, N)} = A_{(M, K)} B_{(K, N)}$, each element $b$ bytes, $C$ written once, $A$ and $B$ read once (the ideal; achieved only if tiling gives enough reuse):
 
-```
-F  = 2 * M * N * K                         # one multiply + one add per MAC
-B  = b * (M*K + K*N + M*N)
-AI = 2*M*N*K / (b * (M*K + K*N + M*N))
-```
+$$
+\begin{aligned}
+F &= 2MNK \quad \text{(one multiply + one add per MAC)} \\
+B &= b\,(MK + KN + MN) \\
+\text{AI} &= \frac{2MNK}{b\,(MK + KN + MN)}
+\end{aligned}
+$$
 
-Cases, bf16 (`b = 2`):
+Cases, bf16 ($b = 2$):
 
-- **Square** `M = N = K = n`: `AI = 2n^3 / (2 * 3n^2) = n/3`. At `n = 4096`, `AI = 1365` - well above the ridge.
-- **Skinny** `M << N, K` (decode, or the per-token weight GEMMs at small batch): the `K*N` weight term dominates, and `AI -> 2*M*N*K / (2*K*N) = M`. Intensity equals the number of tokens in the batch.
+- **Square** $M = N = K = n$: $\text{AI} = 2n^3 / (2 \cdot 3n^2) = n/3$. At $n = 4096$, $\text{AI} = 1365$ - well above the ridge.
+- **Skinny** $M \ll N, K$ (decode, or the per-token weight GEMMs at small batch): the $KN$ weight term dominates, and $\text{AI} \to 2MNK / (2KN) = M$. Intensity equals the number of tokens in the batch.
 
-| M (tokens) | AI for N = K = 4096, bf16 |
+| $M$ (tokens) | AI for $N = K = 4096$, bf16 |
 | ---------: | ------------------------: |
 |          1 |                      1.00 |
 |         16 |                      15.9 |
@@ -1051,7 +1066,7 @@ Cases, bf16 (`b = 2`):
 |        512 |                       410 |
 |       1024 |                       683 |
 
-Solving `AI(M) = 295` gives `M = 345`: a `4096 x 4096` bf16 projection on H100 is memory-bound below ~345 tokens. With FP8 weights *and* activations (`b = 1`) both AI and ridge double, so the crossover stays at ~345 tokens; with FP8 weights and bf16 activations the weight bytes halve and the crossover moves down. This is the arithmetic behind continuous batching in inference (a serving engine adds new requests to the running batch at every decode step so `M` stays large; see [Continuous batching and the scheduler](../../inference/serving-engine-internals.md#continuous-batching-and-the-scheduler)): a decode step at batch 1 is a GEMV with `AI ~ 1`, bound by reading the weights. For an 8B model in bf16 (16.06GB of weights), that floor is `16.06e9 / 3.35e12 = 4.8ms` per token on H100 regardless of kernel quality.
+Solving $\text{AI}(M) = 295$ gives $M = 345$: a `4096 x 4096` bf16 projection on H100 is memory-bound below ~345 tokens. With FP8 weights *and* activations ($b = 1$) both AI and ridge double, so the crossover stays at ~345 tokens; with FP8 weights and bf16 activations the weight bytes halve and the crossover moves down. This is the arithmetic behind continuous batching in inference (a serving engine adds new requests to the running batch at every decode step so `M` stays large; see [Continuous batching and the scheduler](../../inference/serving-engine-internals.md#continuous-batching-and-the-scheduler)): a decode step at batch 1 is a GEMV with $\text{AI} \approx 1$, bound by reading the weights. For an 8B model in bf16 (16.06GB of weights), that floor is $16.06\times10^{9} / 3.35\times10^{12} = 4.8\ \text{ms}$ per token on H100 regardless of kernel quality.
 
 On a CPU you can see the same skinny-GEMM collapse, just with a lower ridge. Real output on an Apple M4 CPU (fp32, PyTorch 2.15, other jobs were running so treat as approximate):
 
@@ -1071,7 +1086,7 @@ M=  128    569.5 GFLOP/s     8.9 GB/s of weight reads
 M= 1024    824.6 GFLOP/s     1.6 GB/s of weight reads
 ```
 
-At `M = 1` the GFLOP/s are tiny and the "weight GB/s" column is at the level of the copy bandwidth this machine reaches (the 34-36 GB/s single-thread reads above); at large `M` the opposite.
+At $M = 1$ the GFLOP/s are tiny and the "weight GB/s" column is at the level of the copy bandwidth this machine reaches (the 34-36 GB/s single-thread reads above); at large $M$ the opposite.
 
 ### Normalization, softmax and elementwise
 
@@ -1085,7 +1100,7 @@ Per element, bf16 in and out, each element read once and written once (4 bytes t
 | LayerNorm                   |                       ~8  |          ~2 | memory |
 | softmax (max, sub, exp, sum, div) |                  ~5 |        ~1.3 | memory |
 
-All are two orders of magnitude below the ridge. Their cost is bytes, so the only levers are (a) moving fewer bytes - fusion - and (b) moving them at a higher fraction of peak bandwidth. On H100, a LayerNorm on an `(8192, 4096)` bf16 activation moves `2 * 8192 * 4096 * 2 = 134MB`, a floor of 40us, while the following `4096 x 4096` projection does `2 * 8192 * 4096 * 4096 = 275GFLOP`, a floor of 278us. At the roofline the norm is ~14% of the GEMM; in eager PyTorch with an fp32 upcast it is several separate kernels each paying the round trip, which is how normalization and elementwise ops end up a large fraction of a step for smaller models (see [Anatomy of Model's Operations](../../training/performance/README.md#anatomy-of-models-operations)).
+All are two orders of magnitude below the ridge. Their cost is bytes, so the only levers are (a) moving fewer bytes - fusion - and (b) moving them at a higher fraction of peak bandwidth. On H100, a LayerNorm on an `(8192, 4096)` bf16 activation moves $2 \times 8192 \times 4096 \times 2 = 134\ \text{MB}$, a floor of 40us, while the following `4096 x 4096` projection does $2 \times 8192 \times 4096 \times 4096 = 275\ \text{GFLOP}$, a floor of 278us. At the roofline the norm is ~14% of the GEMM; in eager PyTorch with an fp32 upcast it is several separate kernels each paying the round trip, which is how normalization and elementwise ops end up a large fraction of a step for smaller models (see [Anatomy of Model's Operations](../../training/performance/README.md#anatomy-of-models-operations)).
 
 A PyTorch-level check of the claim that these ops are bytes, not FLOPs - count both with the FLOP counter and the tensor sizes (runs on CPU; `device="meta"` tensors carry shapes but no data, so nothing is actually computed):
 
@@ -1107,26 +1122,31 @@ print(2 * x.numel() * 2 / 1e6, "MB moved by the norm (read + write)")
 
 The FLOP counter attributes zero FLOPs to `layer_norm`: PyTorch's counter only counts matmul-like ops, which is itself a hint about where the community thinks FLOPs matter. The norm's cost is its 134MB.
 
-Note softmax has an `exp` per element, which runs on the MUFU at 1/256 the rate of the tensor cores (`3.9 / 989`). That is irrelevant for a standalone softmax (memory-bound) but matters inside fused attention ([FA3](#flashattention-3-on-hopper)).
+Note softmax has an `exp` per element, which runs on the MUFU at 1/256 the rate of the tensor cores ($3.9 / 989$). That is irrelevant for a standalone softmax (memory-bound) but matters inside fused attention ([FA3](#flashattention-3-on-hopper)).
 
 ### Attention
 
-Per head, sequence length `N`, head dim `d`, non-causal forward:
+Per head, sequence length $N$, head dim $d$, non-causal forward:
 
-```
-F = 2*N*N*d (Q K^T) + 2*N*N*d (P V) = 4 * N^2 * d        # causal: ~half
-```
+$$
+F = 2N^2 d\ (QK^\top) + 2N^2 d\ (PV) = 4N^2 d \quad \text{(causal: about half)}
+$$
 
 **Naive** (materialize `S` and `P` in HBM, bf16): read Q, K; write S; read S, write P; read P and V; write O:
 
-```
-B_naive ~ 2 * (4*N^2 + 4*N*d) bytes
-N = 8192, d = 128:  B = 545MB  ->  163us at 3.35TBps
-                    F = 34.4GFLOP -> 35us at 989TFLOPS
-                    AI = 63  ->  memory-bound by ~4.7x
-```
+$$
+B_\text{naive} \approx 2\,(4N^2 + 4Nd)\ \text{bytes}
+$$
 
-**Fused** (FlashAttention): only Q, K, V, O touch HBM in the ideal, `B = 2 * 4*N*d = 8.4MB`, `AI = N/2 = 4096` - compute-bound. Training-time attention at realistic `N` is compute-bound *if fused*, memory-bound if not.
+$$
+\begin{aligned}
+N = 8192,\ d = 128:\quad B &= 545\ \text{MB} \to 163\ \mu\text{s at } 3.35\ \text{TBps} \\
+F &= 34.4\ \text{GFLOP} \to 35\ \mu\text{s at } 989\ \text{TFLOPS} \\
+\text{AI} &= 63 \to \text{memory-bound by} \approx 4.7\times
+\end{aligned}
+$$
+
+**Fused** (FlashAttention): only Q, K, V, O touch HBM in the ideal, $B = 2 \cdot 4Nd = 8.4\ \text{MB}$, $\text{AI} = N/2 = 4096$ - compute-bound. Training-time attention at realistic $N$ is compute-bound *if fused*, memory-bound if not.
 
 The naive vs fused byte counts as numbers (from the `roofline.py` run above):
 
@@ -1135,7 +1155,7 @@ attn naive N=8192 d=128   AI=    63.0  memory   floor    162.8 us  attainable  2
 attn fused N=8192 d=128   AI=  4096.0  compute  floor     34.7 us  attainable  989.0 TFLOPS
 ```
 
-**Decode attention** (one query row against a [KV cache](../../models/architectures.md#the-kv-cache) of length `L`): `F = 4*L*d`, `B ~ 2*L*d*2` (read K and V) so `AI ~ 1` per query head. With GQA, `g` query heads share each KV head, so `AI ~ g`. Still far below the ridge: decode attention is bound by reading the KV cache, which is why paged KV layout (storing the cache in fixed-size blocks, like OS memory pages, so a sequence need not be contiguous), KV quantization and [MQA/GQA](../../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic)/[MLA](../../models/architectures.md#mla-multi-head-latent-attention-deepseek-v2v3) matter for serving and FLOP-saving attention tricks do not.
+**Decode attention** (one query row against a [KV cache](../../models/architectures.md#the-kv-cache) of length $L$): $F = 4Ld$, $B \approx 2 \cdot Ld \cdot 2$ (read K and V) so $\text{AI} \approx 1$ per query head. With GQA, $g$ query heads share each KV head, so $\text{AI} \approx g$. Still far below the ridge: decode attention is bound by reading the KV cache, which is why paged KV layout (storing the cache in fixed-size blocks, like OS memory pages, so a sequence need not be contiguous), KV quantization and [MQA/GQA](../../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic)/[MLA](../../models/architectures.md#mla-multi-head-latent-attention-deepseek-v2v3) matter for serving and FLOP-saving attention tricks do not.
 
 ### Summary for an LLM step
 
@@ -1149,7 +1169,7 @@ attn fused N=8192 d=128   AI=  4096.0  compute  floor     34.7 us  attainable  9
 | softmax over vocab / cross-entropy  | memory-bound       | memory-bound |
 | optimizer step (AdamW)              | memory-bound       | -                    |
 
-AdamW is worth a line of arithmetic: per parameter it reads param, grad, `m`, `v` and writes param, `m`, `v`; with fp32 master weights (in bf16 mixed-precision training the optimizer updates an fp32 copy of the weights, and forward/backward use a bf16 copy) and states that is `4*4 + 3*4 = 28` bytes (plus bf16 grad/param copies depending on the setup) for ~10-15 FLOPs. Multi-tensor-apply / fused optimizers (one kernel launch that updates many parameter tensors at once - PyTorch's `foreach=True` / `fused=True` options on `torch.optim.AdamW`) win by reducing launch count, not FLOPs.
+AdamW is worth a line of arithmetic: per parameter it reads param, grad, `m`, `v` and writes param, `m`, `v`; with fp32 master weights (in bf16 mixed-precision training the optimizer updates an fp32 copy of the weights, and forward/backward use a bf16 copy) and states that is $4 \cdot 4 + 3 \cdot 4 = 28$ bytes (plus bf16 grad/param copies depending on the setup) for ~10-15 FLOPs. Multi-tensor-apply / fused optimizers (one kernel launch that updates many parameter tensors at once - PyTorch's `foreach=True` / `fused=True` options on `torch.optim.AdamW`) win by reducing launch count, not FLOPs.
 
 The whole table, with numbers, for one Llama-3-8B-shaped layer (hidden 4096, MLP 14336, 32 query / 8 KV heads, bf16, non-causal attention FLOPs; halve attention for causal):
 
@@ -1313,25 +1333,30 @@ The measured intensity of the tiled loop (38 FLOP/B, including the `C` write) is
 
 Reuse per level: each element of `sA` is used `BN` times, each of `sB` `BM` times. The CTA's global-memory intensity is
 
-```
-AI_tile = 2*BM*BN*BK / (b * (BM*BK + BK*BN)) = 2*BM*BN / (b * (BM + BN))
-128 x 256, bf16:  2*128*256 / (2*384) = 85 FLOP/B
-```
+$$
+\text{AI}_\text{tile} = \frac{2 \cdot \text{BM} \cdot \text{BN} \cdot \text{BK}}{b\,(\text{BM} \cdot \text{BK} + \text{BK} \cdot \text{BN})} = \frac{2 \cdot \text{BM} \cdot \text{BN}}{b\,(\text{BM} + \text{BN})}
+$$
+
+$$
+128 \times 256,\ \text{bf16}:\quad \frac{2 \cdot 128 \cdot 256}{2 \cdot 384} = 85\ \text{FLOP/B}
+$$
 
 85 is below H100's 295 ridge with respect to HBM - which is fine, because most of those reads hit L2 (neighbouring CTAs read the same `A` rows and `B` columns). This is why tile *rasterization* (the order CTAs are launched in, e.g. CUTLASS's swizzled tile schedulers or Triton's `GROUP_SIZE_M` trick of launching CTAs in groups of `GROUP_SIZE_M` tile-rows so consecutive CTAs share `B` tiles) affects GEMM throughput: it controls L2 hit rate. Clusters with TMA multicast push the effective tile larger still.
 
 ### Resource arithmetic for a Hopper tile
 
-`BM x BN x BK = 128 x 256 x 64`, bf16, 2 consumer warpgroups + 1 producer warpgroup (384 threads):
+$\text{BM} \times \text{BN} \times \text{BK} = 128 \times 256 \times 64$, bf16, 2 consumer warpgroups + 1 producer warpgroup (384 threads):
 
-```
-smem per stage  = (BM*BK + BN*BK) * 2B = (8192 + 16384) * 2 = 48KB
-4 stages        = 192KB  (fits in 227KB, leaving room for the epilogue buffer)
-accumulator     = 128*256 fp32 / 256 consumer threads = 128 registers/thread
-register budget = 65536 / 384 = 170 per thread on average
-```
+$$
+\begin{aligned}
+\text{smem per stage} &= (\text{BM} \cdot \text{BK} + \text{BN} \cdot \text{BK}) \cdot 2\ \text{B} = (8192 + 16384) \cdot 2 = 48\ \text{KB} \\
+\text{4 stages} &= 192\ \text{KB} \quad \text{(fits in 227KB, leaving room for the epilogue buffer)} \\
+\text{accumulator} &= 128 \cdot 256\ \text{fp32} / 256\ \text{consumer threads} = 128\ \text{registers/thread} \\
+\text{register budget} &= 65536 / 384 = 170\ \text{per thread on average}
+\end{aligned}
+$$
 
-128 accumulator registers plus addresses and fragments do not fit comfortably at 170 per thread for everyone - but the producer warpgroup only issues TMA and needs few registers. `setmaxnreg` (Hopper) lets warpgroups re-balance: e.g. producer at 40 and consumers at 232 gives `128*40 + 256*232 = 64512 <= 65536`. (The exact numbers CUTLASS and FA3 choose vary by kernel; these are illustrative.)
+128 accumulator registers plus addresses and fragments do not fit comfortably at 170 per thread for everyone - but the producer warpgroup only issues TMA and needs few registers. `setmaxnreg` (Hopper) lets warpgroups re-balance: e.g. producer at 40 and consumers at 232 gives $128 \cdot 40 + 256 \cdot 232 = 64512 \le 65536$. (The exact numbers CUTLASS and FA3 choose vary by kernel; these are illustrative.)
 
 These numbers are the `tc_arith.py` output in [Hopper: `wgmma`](#hopper-wgmma) above:
 
@@ -1350,12 +1375,12 @@ else                   { asm volatile("setmaxnreg.inc.sync.aligned.u32 232;\n");
 
 ### Software pipelining
 
-The mainloop above is serial as written: load, wait, compute. Pipelining keeps `S` stages of `sA`/`sB` in a ring buffer in shared memory so that while the tensor cores work on stage `s`, loads for stages `s+1 ... s+S-1` are in flight:
+The mainloop above is serial as written: load, wait, compute. Pipelining keeps $S$ stages of `sA`/`sB` in a ring buffer in shared memory so that while the tensor cores work on stage $s$, loads for stages $s+1, \dots, s+S-1$ are in flight:
 
 - **Ampere**: `cp.async` copies with `cp.async.commit_group` / `wait_group`, issued by the same warps that compute. Triton's `num_stages` controls this.
 - **Hopper/Blackwell**: TMA loads completing on per-stage `mbarrier`s; consumers arrive on an "empty" barrier when done with a stage so the producer can refill it. CUTLASS calls this `PipelineTmaAsync`.
 
-Overlapping loads for tile `k+1` with math on tile `k`:
+Overlapping loads for tile $k+1$ with math on tile $k$:
 
 ![software pipelining in CUTLASS](images/cutlass-software-pipeline.png)
 
@@ -1405,10 +1430,10 @@ triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64}, num_stages=4, num
 
 ### Split-K, stream-K and persistent kernels
 
-Wave quantization is worst when there are few output tiles: a GEMM with `M = 64, N = 4096, K = 16384` has only `1 * 16` tiles of `64 x 256` - 16 CTAs on 132 SMs.
+Wave quantization is worst when there are few output tiles: a GEMM with $M = 64, N = 4096, K = 16384$ has only $1 \times 16$ tiles of `64 x 256` - 16 CTAs on 132 SMs.
 
-- **Split-K**: partition K into `s` chunks, give each to a different CTA, then reduce the `s` partial `C` tiles (through a global workspace and a second reduction kernel, or atomics, or a serialized "fixup" in the last CTA). Raises CTA count by `s` at the cost of `s` extra FP32 tile writes/reads. cuBLAS and Triton (`SPLIT_K`) pick it heuristically for small-`M*N` / large-`K` shapes - common after tensor-parallel sharding (splitting each weight matrix across GPUs, which shrinks N or K per GPU; derived in [Tensor parallelism](../../training/model-parallelism/derivations.md#tensor-parallelism-megatron)).
-- **Stream-K** (Osama et al., "Stream-K: Work-centric Parallel Decomposition for Dense Matrix-Matrix Multiplication on the GPU", arXiv:2301.03598): launch exactly as many CTAs as SMs and divide the *total* MAC-loop iterations `tiles * ceil(K/BK)` evenly among them, so a CTA may finish one tile's K range and start partway through another. Tiles split across CTAs are fixed up with partial-sum exchange. This removes the tail wave in general rather than per shape. CUTLASS ships stream-K tile schedulers.
+- **Split-K**: partition K into $s$ chunks, give each to a different CTA, then reduce the $s$ partial `C` tiles (through a global workspace and a second reduction kernel, or atomics, or a serialized "fixup" in the last CTA). Raises CTA count by $s$ at the cost of $s$ extra FP32 tile writes/reads. cuBLAS and Triton (`SPLIT_K`) pick it heuristically for small-$MN$ / large-$K$ shapes - common after tensor-parallel sharding (splitting each weight matrix across GPUs, which shrinks N or K per GPU; derived in [Tensor parallelism](../../training/model-parallelism/derivations.md#tensor-parallelism-megatron)).
+- **Stream-K** (Osama et al., "Stream-K: Work-centric Parallel Decomposition for Dense Matrix-Matrix Multiplication on the GPU", arXiv:2301.03598): launch exactly as many CTAs as SMs and divide the *total* MAC-loop iterations $\text{tiles} \cdot \lceil K/\text{BK} \rceil$ evenly among them, so a CTA may finish one tile's K range and start partway through another. Tiles split across CTAs are fixed up with partial-sum exchange. This removes the tail wave in general rather than per shape. CUTLASS ships stream-K tile schedulers.
 - **Persistent kernels**: launch `#SMs` (times CTAs-per-SM) CTAs that loop over tiles from a tile scheduler instead of one CTA per tile. This amortizes prologue (barrier init, TMA descriptor prefetch) over many tiles and, more importantly, lets the epilogue of tile `i` overlap the mainloop of tile `i+1`. On Hopper CUTLASS offers two schedules:
   - *cooperative*: both consumer warpgroups work on the same tile (split along M), epilogue not overlapped
   - *ping-pong*: the two consumer warpgroups work on different tiles and alternate, so one runs its epilogue while the other runs MMAs
@@ -1472,7 +1497,7 @@ CTAs 1, 2 and 4 each straddle a tile boundary; the partial sums for the tiles th
 
 ### Epilogue fusion
 
-The epilogue is the only point where the output tile is in registers before it hits HBM, so anything elementwise on `C` should happen there: scaling (`alpha`, FP8 dequant scales), bias, activation, residual add, dtype cast, computing `amax` for the next FP8 scale, even writing an auxiliary output (the pre-activation, for backward). Each op fused saves a full `M*N` round trip. Mechanisms:
+The epilogue is the only point where the output tile is in registers before it hits HBM, so anything elementwise on `C` should happen there: scaling (`alpha`, FP8 dequant scales), bias, activation, residual add, dtype cast, computing `amax` for the next FP8 scale, even writing an auxiliary output (the pre-activation, for backward). Each op fused saves a full $MN$ round trip. Mechanisms:
 
 - cuBLASLt epilogues (`CUBLASLT_EPILOGUE_BIAS`, `_GELU_BIAS`, `_GELU_AUX`, ...) - a fixed menu
 - CUTLASS 3.x Epilogue Visitor Trees (EVT) - arbitrary DAGs (directed acyclic graphs) of elementwise/broadcast/reduction nodes compiled into the epilogue
@@ -1597,7 +1622,7 @@ unshifted exp: math range error
 
 FlashAttention applies exactly this per query row, with `O` carried along and rescaled by the same factor.
 
-For one query block `Q_i` (`Br` rows) iterate over key/value blocks `K_j, V_j` (`Bc` rows each), keeping per-row running max `m`, running denominator `l` and unnormalized output `O`. Scale `1/sqrt(d)` folded into `S`:
+For one query block `Q_i` (`Br` rows) iterate over key/value blocks `K_j, V_j` (`Bc` rows each), keeping per-row running max `m`, running denominator `l` and unnormalized output `O`. Scale $1/\sqrt{d}$ folded into $S$:
 
 ```
 init:   m = -inf (Br,),  l = 0 (Br,),  O = 0 (Br, d)
@@ -1622,9 +1647,9 @@ The online-softmax forward pass with K/V split into two blocks:
 
 ([source](https://arxiv.org/abs/2307.08691))
 
-Correctness: after processing blocks `1..j`, `l = sum_k exp(s_k - m)` and `O = sum_k exp(s_k - m) v_k` over all keys seen so far, with `m` their max. Replacing `m` by `m_new` multiplies every existing term by `exp(m - m_new)`, which is exactly `alpha`. The final division gives `sum_k softmax(s)_k v_k` exactly - this is not an approximation. (In practice kernels use `exp2` with `scale * log2(e)` folded in, since `ex2` is the native MUFU op.)
+Correctness: after processing blocks $1..j$, $l = \sum_k \exp(s_k - m)$ and $O = \sum_k \exp(s_k - m)\, v_k$ over all keys seen so far, with $m$ their max. Replacing $m$ by $m_\text{new}$ multiplies every existing term by $\exp(m - m_\text{new})$, which is exactly $\alpha$ (`alpha`). The final division gives $\sum_k \operatorname{softmax}(s)_k\, v_k$ exactly - this is not an approximation. (In practice kernels use `exp2` with $\text{scale} \cdot \log_2 e$ folded in, since `ex2` is the native MUFU op.)
 
-The equations above are the FA2 form. FA1 kept `O` normalized at each step (`O = (l_old * alpha * O + P @ V) / l_new`), costing a division per element per block; FA2 defers it to the end.
+The equations above are the FA2 form. FA1 kept $O$ normalized at each step ($O = (l_\text{old}\, \alpha\, O + PV) / l_\text{new}$), costing a division per element per block; FA2 defers it to the end.
 
 The full algorithm in pure PyTorch - forward with causal block skipping, and the recomputation backward from [Backward and recomputation](#backward-and-recomputation) - checked against naive attention, `F.scaled_dot_product_attention` and autograd in float64. `N = 300` is deliberately not a multiple of the 64-row block so the tails are exercised:
 
@@ -1724,18 +1749,18 @@ Differences at 1e-15 in float64 confirm the claim that FlashAttention is exact, 
 
 ### IO complexity
 
-The FlashAttention paper (Dao et al., arXiv:2205.14135) counts HBM accesses with an SRAM of size `M` elements, `d <= M <= N*d`:
+The FlashAttention paper (Dao et al., arXiv:2205.14135) counts HBM accesses with an SRAM of size $M$ elements, $d \le M \le Nd$:
 
-- standard attention: `Theta(N*d + N^2)`
-- FlashAttention: `Theta(N^2 * d^2 / M)`
+- standard attention: $\Theta(Nd + N^2)$
+- FlashAttention: $\Theta(N^2 d^2 / M)$
 
-The argument (FA1 loop order: K/V blocks outer, Q blocks inner): choose `Bc = ceil(M / 4d)` so a K/V block plus a Q/O block plus `S` fit in SRAM. There are `Tc = N / Bc` outer iterations, and each makes one pass over all of `Q` and `O` (`Theta(N*d)` each). Total:
+The argument (FA1 loop order: K/V blocks outer, Q blocks inner): choose $B_c = \lceil M / 4d \rceil$ so a K/V block plus a Q/O block plus $S$ fit in SRAM. There are $T_c = N / B_c$ outer iterations, and each makes one pass over all of $Q$ and $O$ ($\Theta(Nd)$ each). Total:
 
-```
-Tc * N * d = (N / Bc) * N * d = N^2 * d * 4d / M = Theta(N^2 d^2 / M)
-```
+$$
+T_c \cdot Nd = \frac{N}{B_c} \cdot Nd = N^2 d \cdot \frac{4d}{M} = \Theta\left(\frac{N^2 d^2}{M}\right)
+$$
 
-Since `d^2 < M` in practice, this beats `N^2`. With `d = 128` and `M = 228KB / 2B = 116,736` bf16 elements, `d^2 / M = 0.14`. The paper also shows (Proposition 3) that no exact attention algorithm can achieve `o(N^2 d^2 / M)` for all `M` in `[d, N*d]`.
+Since $d^2 < M$ in practice, this beats $N^2$. With $d = 128$ and $M = 228\ \text{KB} / 2\ \text{B} = 116{,}736$ bf16 elements, $d^2 / M = 0.14$. The paper also shows (Proposition 3) that no exact attention algorithm can achieve $o(N^2 d^2 / M)$ for all $M$ in $[d, Nd]$.
 
 The numbers in this section, computed:
 
@@ -1767,8 +1792,8 @@ The last two lines are the FA3 motivation in the next section: 512 matmul FLOPs 
 
 Two caveats the asymptotics hide, worth knowing when you reason about real kernels:
 
-- The constants are not small. In the FA2 loop order (Q outer), each Q block loads all of K and V once: `2 * N * d * (N / Br)` elements. At `N = 8192, d = 128, Br = 128` that is 268MB per head - comparable to the naive 545MB. The kernel is still fast because those re-reads mostly hit **L2**, not HBM: one head's K and V are `2 * 8192 * 128 * 2B = 4.2MB`, and the CTAs concurrently working on a head share them. The model counts HBM-SRAM traffic without an L2.
-- What the model *does* capture is the thing that matters most: the `N^2` matrices `S` and `P` never exist in HBM, so the memory footprint is `O(N)` and the kernel's AI becomes `~N/2` instead of `~63`.
+- The constants are not small. In the FA2 loop order (Q outer), each Q block loads all of K and V once: $2Nd \cdot (N / B_r)$ elements. At $N = 8192, d = 128, B_r = 128$ that is 268MB per head - comparable to the naive 545MB. The kernel is still fast because those re-reads mostly hit **L2**, not HBM: one head's K and V are $2 \times 8192 \times 128 \times 2\ \text{B} = 4.2\ \text{MB}$, and the CTAs concurrently working on a head share them. The model counts HBM-SRAM traffic without an L2.
+- What the model *does* capture is the thing that matters most: the $N^2$ matrices $S$ and $P$ never exist in HBM, so the memory footprint is $O(N)$ and the kernel's AI becomes $\approx N/2$ instead of $\approx 63$.
 
 ### FA2 partitioning changes
 
@@ -1806,8 +1831,8 @@ FA2 on H100 reaches only ~35% utilization according to the FA3 paper (Shah et al
 
 - **Warp specialization**: within a CTA, a *producer* warpgroup issues TMA loads of K/V into a shared-memory ring buffer; *consumer* warpgroups issue `wgmma` and do softmax. `setmaxnreg` moves registers from the producer to the consumers. The producer/consumer handshake is `mbarrier`-based, as in a CUTLASS Hopper GEMM.
 - **Ping-pong scheduling between warpgroups**: with 2 consumer warpgroups, named barriers (hardware barriers that only a chosen subset of warps waits on, unlike `__syncthreads()`) force warpgroup 1's GEMMs to run while warpgroup 2 does its softmax, and vice versa. The motivation is the MUFU arithmetic above: per the paper, for `d = 128` there are 512x more matmul FLOPs than exponentials but exponentials have 256x lower throughput, so the `exp` can take ~50% of the cycles of the matmuls. Overlapping hides it.
-- **Intra-warpgroup pipelining**: within one warpgroup, issue `S_{j+1} = Q K_{j+1}^T` asynchronously (`wgmma` is async), then compute softmax of `S_j` while it runs, then `P_j V_j`. Costs extra registers for the second `S` tile.
-- **FP8**: `wgmma` FP8 requires K-major operands, so V (which is MN-major - N contiguous - for `P @ V`) is transposed in shared memory inside the kernel; the register layout of the FP32 accumulator of the first GEMM does not match the operand layout FP8 `wgmma` needs for `P`, so a register permutation is done. To limit quantization error: **block quantization** (one scale per block rather than per tensor) and **incoherent processing** (multiply Q and K by a random orthogonal matrix - a Hadamard matrix, whose entries are all +-1 scaled by `1/sqrt(d)` and which can be applied in `O(d log d)`, with random signs - which leaves `Q K^T` unchanged but spreads outliers).
+- **Intra-warpgroup pipelining**: within one warpgroup, issue $S_{j+1} = Q K_{j+1}^\top$ asynchronously (`wgmma` is async), then compute softmax of $S_j$ while it runs, then $P_j V_j$. Costs extra registers for the second `S` tile.
+- **FP8**: `wgmma` FP8 requires K-major operands, so V (which is MN-major - N contiguous - for `P @ V`) is transposed in shared memory inside the kernel; the register layout of the FP32 accumulator of the first GEMM does not match the operand layout FP8 `wgmma` needs for `P`, so a register permutation is done. To limit quantization error: **block quantization** (one scale per block rather than per tensor) and **incoherent processing** (multiply Q and K by a random orthogonal matrix - a Hadamard matrix, whose entries are all +-1 scaled by $1/\sqrt{d}$ and which can be applied in $O(d \log d)$, with random signs - which leaves $QK^\top$ unchanged but spreads outliers).
 
 FA3's ping-pong schedule - one warpgroup's softmax overlaps the other's GEMMs:
 
@@ -1817,7 +1842,7 @@ FA3's ping-pong schedule - one warpgroup's softmax overlaps the other's GEMMs:
 
 Paper-reported results: 1.5-2.0x over FA2 in FP16, up to 740 TFLOPS (75% of 989), and close to 1.2 PFLOPS in FP8, with 2.6x lower numerical error than baseline per-tensor FP8 attention. On Blackwell the equivalent role is played by `tcgen05`-based kernels (cuDNN's, and FlashAttention's own Blackwell path); the FA3 binary does not run there (`sm_90a`).
 
-Why the incoherent-processing trick is free: an orthogonal `H` satisfies `H @ H.T = I`, so `(Q H)(K H)^T = Q K^T`, while the rotation spreads one large outlier channel across all channels. Checked on CPU with a random orthogonal matrix standing in for the randomized Hadamard transform:
+Why the incoherent-processing trick is free: an orthogonal $H$ satisfies $HH^\top = I$, so $(QH)(KH)^\top = QK^\top$, while the rotation spreads one large outlier channel across all channels. Checked on CPU with a random orthogonal matrix standing in for the randomized Hadamard transform:
 
 ```python
 import torch
@@ -1853,7 +1878,7 @@ for each (i, j) block pair:
     dK_j += dS^T @ Q_i * scale               # (Bc, d)
 ```
 
-`D_i = rowsum(dO_i * O_i)` equals `rowsum(P * dP)` and is what makes the softmax backward local to a block. The backward does 5 matmuls per block (`S`, `dV`, `dP`, `dQ`, `dK`) versus 2 in the forward, so it is ~2.5x the forward FLOPs, and recomputing `S` is one of those five - recomputation is ~20% of the backward FLOPs (25% more than a backward that read a stored `P`) but saves `O(N^2)` memory and the HBM traffic of reading `P`, which is a net speed win. FA2's backward parallelizes over K/V blocks (each CTA owns `dK_j, dV_j` and loops over Q blocks), so `dQ` contributions from different CTAs are accumulated with atomic adds in FP32.
+$D_i = \operatorname{rowsum}(dO_i \circ O_i)$ equals $\operatorname{rowsum}(P \circ dP)$ and is what makes the softmax backward local to a block. The backward does 5 matmuls per block (`S`, `dV`, `dP`, `dQ`, `dK`) versus 2 in the forward, so it is ~2.5x the forward FLOPs, and recomputing `S` is one of those five - recomputation is ~20% of the backward FLOPs (25% more than a backward that read a stored `P`) but saves $O(N^2)$ memory and the HBM traffic of reading `P`, which is a net speed win. FA2's backward parallelizes over K/V blocks (each CTA owns `dK_j, dV_j` and loops over Q blocks), so `dQ` contributions from different CTAs are accumulated with atomic adds in FP32.
 
 The `flash_bwd` function in [the PyTorch implementation above](#online-softmax) is this pseudocode line for line, loop order included, and its gradients match autograd to 1e-15. Using a production kernel from PyTorch, which dispatches to FlashAttention or cuDNN attention on NVIDIA GPUs (untested here; backend enum names as of PyTorch 2.x):
 
@@ -2084,7 +2109,7 @@ for step, batch in enumerate(loader):
 
 ## Writing a Triton kernel: fused RMSNorm
 
-RMSNorm is memory-bound with `AI ~ 1`, so the whole job is to read `x` once and write `y` once at as close to peak bandwidth as possible. Eager PyTorch with the standard fp32 upcast launches a chain of kernels (cast, `pow`, `mean`, `add`+`rsqrt`, `mul`, `mul`, cast), each of which round-trips an `(M, N)` tensor. Rough per-element byte count for that chain (bf16 in, fp32 intermediates):
+RMSNorm is memory-bound with $\text{AI} \approx 1$, so the whole job is to read `x` once and write `y` once at as close to peak bandwidth as possible. Eager PyTorch with the standard fp32 upcast launches a chain of kernels (cast, `pow`, `mean`, `add`+`rsqrt`, `mul`, `mul`, cast), each of which round-trips an `(M, N)` tensor. Rough per-element byte count for that chain (bf16 in, fp32 intermediates):
 
 ```
 x.float()             read 2, write 4
@@ -2203,9 +2228,9 @@ This code was written for this chapter and not run while writing it (no GPU was 
 
 ### Choices, and why
 
-- **Block size = whole row** (`next_power_of_2(N)`): the reduction needs the whole row, and keeping it in registers means one read of `x`. For `N = 4096` with 8 warps that is `4096 / 256 = 16` fp32 values of `x` plus 16 of `w` per thread - comfortable. At `N = 16384` with 16 warps it is 32 + 32, still fine; much beyond that, register pressure forces spills and you switch to a two-pass loop over column chunks (reduce pass, then normalize pass), paying a second read of `x` that will usually hit L2.
-- **`num_warps`**: enough threads that each one issues a few 16-byte vector loads (8 bf16). With 8 warps and `N = 4096`, each thread loads `4096 / 256 = 16` elements = two 16B loads. Too few warps per program and each program has too little memory parallelism; too many and the reduction (`tl.sum` across warps goes through shared memory) dominates for short rows. Autotune it if the shape matters.
-- **Grid = M programs**: `M = 8192` rows on 132 SMs, many programs resident per SM, so per-row latency is hidden across rows. For tiny `M` (decode, `M = batch`) one row per program leaves most SMs idle - but then the op is launch-bound anyway ([next section](#launch-overhead-and-cpu-boundness)).
+- **Block size = whole row** (`next_power_of_2(N)`): the reduction needs the whole row, and keeping it in registers means one read of `x`. For $N = 4096$ with 8 warps that is $4096 / 256 = 16$ fp32 values of `x` plus 16 of `w` per thread - comfortable. At $N = 16384$ with 16 warps it is 32 + 32, still fine; much beyond that, register pressure forces spills and you switch to a two-pass loop over column chunks (reduce pass, then normalize pass), paying a second read of `x` that will usually hit L2.
+- **`num_warps`**: enough threads that each one issues a few 16-byte vector loads (8 bf16). With 8 warps and $N = 4096$, each thread loads $4096 / 256 = 16$ elements = two 16B loads. Too few warps per program and each program has too little memory parallelism; too many and the reduction (`tl.sum` across warps goes through shared memory) dominates for short rows. Autotune it if the shape matters.
+- **Grid = M programs**: $M = 8192$ rows on 132 SMs, many programs resident per SM, so per-row latency is hidden across rows. For tiny $M$ (decode, $M = \text{batch}$) one row per program leaves most SMs idle - but then the op is launch-bound anyway ([next section](#launch-overhead-and-cpu-boundness)).
 - **fp32 accumulation** for the mean of squares - bf16 has 8 bits of mantissa and summing thousands of squares in it loses precision.
 - **Saving `rstd`** costs `4M` bytes (negligible) and makes the backward a single fused pass.
 
@@ -2306,7 +2331,7 @@ Every eager PyTorch op runs Python, the dispatcher (PyTorch's C++ layer that pic
 - full eager op from Python, including dispatch: roughly 5-20us
 - a kernel launch replayed from a CUDA graph: on the order of 1us or less per kernel of GPU-side overhead
 
-The GPU runs asynchronously, so overhead only matters when the GPU executes kernels faster than the CPU can enqueue them. Illustrative arithmetic: a decode step of a 1B-parameter bf16 model reads 2GB of weights, a floor of `2e9 / 3.35e12 = 0.6ms` on H100. If that model has 16 layers with ~15 kernels each (norm, QKV, RoPE, attention, O-proj, residual, norm, gate/up, act, mul, down, residual, ...) that is ~240 launches; at an assumed 10us each the CPU needs 2.4ms. The step is CPU-bound by ~4x and a faster kernel would change nothing.
+The GPU runs asynchronously, so overhead only matters when the GPU executes kernels faster than the CPU can enqueue them. Illustrative arithmetic: a decode step of a 1B-parameter bf16 model reads 2GB of weights, a floor of $2\times10^{9} / 3.35\times10^{12} = 0.6\ \text{ms}$ on H100. If that model has 16 layers with ~15 kernels each (norm, QKV, RoPE, attention, O-proj, residual, norm, gate/up, act, mul, down, residual, ...) that is ~240 launches; at an assumed 10us each the CPU needs 2.4ms. The step is CPU-bound by ~4x and a faster kernel would change nothing.
 
 Measure your own launch rate with a trivially small kernel:
 
@@ -2444,7 +2469,7 @@ for batch in loader:
 
 See the [PyTorch CUDA graphs docs](https://docs.pytorch.org/docs/stable/notes/cuda.html#cuda-graphs) for capturing training steps including backward and optimizer.
 
-How to tell whether graphs are worth it before writing any of that: time a step eagerly, then time only the GPU work (from a profile). If `eager_step / gpu_busy` is well above 1, graphs (or fusion) will recover most of the difference. A sketch of the measurement (untested):
+How to tell whether graphs are worth it before writing any of that: time a step eagerly, then time only the GPU work (from a profile). If $\text{eager\_step} / \text{gpu\_busy}$ is well above 1, graphs (or fusion) will recover most of the difference. A sketch of the measurement (untested):
 
 ```python
 start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
@@ -2565,7 +2590,7 @@ What changes in practice:
 - **Small LDS.** 64KB per CU on MI300X versus 228KB per SM on H100 means smaller GEMM / attention tiles or fewer pipeline stages. CDNA4 (MI350/MI355X) increases LDS to 160KB per CU per AMD's CDNA4 materials (stated with moderate confidence; check the MI355X documentation).
 - **Large register file, organized differently.** Each SIMD has its own VGPR file and CDNA3 lets a wavefront use up to 512 VGPRs, unified with the accumulation registers (AGPRs) that MFMA writes (from my reading of the CDNA3 ISA guide; verify). Occupancy is counted in waves per SIMD; the ROCm Triton knob `waves_per_eu` trades it against registers.
 - **Chiplets.** MI300X is built from chiplets (several smaller dies in one package); its 8 XCDs each have a private 4MB L2; workgroups are dispatched round-robin across XCDs, so consecutive workgroup IDs land on different L2s. GEMM and attention kernels on MI300X remap workgroup IDs so that tiles sharing operands land on the same XCD - the analogue of tile rasterization, with a much larger penalty for getting it wrong.
-- **Ridge point** is `1307 / 5.3 = 247` FLOP/B for bf16 - the same classification of ops as on H100.
+- **Ridge point** is $1307 / 5.3 = 247$ FLOP/B for bf16 - the same classification of ops as on H100.
 - **Tools**: `rocprofv3` (timeline, the nsys analogue) and `rocprof-compute` (formerly Omniperf; the ncu analogue with roofline and per-unit utilization). Libraries: hipBLASLt (cuBLASLt analogue), Composable Kernel (CUTLASS analogue), and AITER / CK-based FlashAttention.
 
 The most common porting bug is the wavefront width. The same Triton launch on the two vendors:

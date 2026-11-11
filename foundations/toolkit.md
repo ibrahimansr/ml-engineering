@@ -379,11 +379,11 @@ For the single-GPU material, rent a cloud GPU by the hour. The pattern is the sa
 
 Rough on-demand prices at the time of writing (late 2026), for orientation only - they vary by provider and region, spot/preemptible capacity is cheaper, and prices fall over time:
 
-| GPU | Good for in this book | Approx. $/GPU-hour |
+| GPU | Good for in this book | Approx. \$/GPU-hour |
 |---|---|---|
-| a consumer-class or L4/A10-class card (16-24 GB) | kernels, profiling, small serving runs | $0.3-1 |
-| A100 40/80 GB | everything single-GPU, larger serving runs | $1-2 |
-| H100 80 GB | Hopper-specific kernels (TMA, FP8: features new in this "Hopper" GPU generation), realistic serving numbers | $2-4 |
+| a consumer-class or L4/A10-class card (16-24 GB) | kernels, profiling, small serving runs | \$0.3-1 |
+| A100 40/80 GB | everything single-GPU, larger serving runs | \$1-2 |
+| H100 80 GB | Hopper-specific kernels (TMA, FP8: features new in this "Hopper" GPU generation), realistic serving numbers | \$2-4 |
 
 A focused afternoon on the [GPU]-labelled examples of one chapter is a few dollars. Multi-GPU nodes (8x H100) cost 8x as much per hour, and you need them only for the collective-communication and multi-GPU serving parts.
 
@@ -1731,7 +1731,7 @@ RuntimeError: addmm: mat1 and mat2 shapes cannot be multiplied (64x64 and 32x10)
 1. **The last line is the error**: its type (`RuntimeError`) and message. Read that first.
 2. **Frames are listed outermost first**, so the line that actually failed is at the bottom, and the call chain that led there reads downward. Each frame is a file, a line number, a function name and the source line.
 3. **Find the lowest frame in *your* code** (here `train.py`, line 12, `self.proj(h)`). Frames inside `site-packages/` are library code; the bug is almost never there. The `module.py` frames are PyTorch's `nn.Module.__call__` machinery and appear twice per module call.
-4. **Translate the message into your terms.** `addmm` is the matmul inside `nn.Linear`; `64x64` is the input flattened to `(B*T, d) = (4*16, 64)`; `32x10` is the transposed weight. So the layer expects 32 input features and got 64: the bug is in `__init__`, not on the line where it surfaced.
+4. **Translate the message into your terms.** `addmm` is the matmul inside `nn.Linear`; `64x64` is the input flattened to $(B \cdot T, d) = (4 \cdot 16, 64)$; `32x10` is the transposed weight. So the layer expects 32 input features and got 64: the bug is in `__init__`, not on the line where it surfaced.
 
 Two variations to know. **Chained exceptions** print several tracebacks separated by "During handling of the above exception, another exception occurred:" or "The above exception was the direct cause of the following exception:"; the first one is usually the root cause. And a **multi-process job** (DataLoader workers, or `torchrun` ranks: `torchrun` starts one copy of your training script per GPU, covered in [the Linux chapter](linux-and-os.md#how-torchrun-spawns-workers)) prints one traceback per failing process, interleaved; scroll up to the *first* error by time, since the others are often consequences ("connection reset" on ranks whose peer died).
 

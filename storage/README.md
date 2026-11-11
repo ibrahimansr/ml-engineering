@@ -116,7 +116,7 @@ Measured on 2026-09 with `datasets` 4.0.0: 1GiB of text as 32768 rows of 32KiB i
 | mmap, rows in order             |      0.53s |     279% |  3.11s |      66% |
 | mmap, rows shuffled             |      0.78s |     457% |  94.2s |   4_937% |
 
-- The slowdown column is `t / t_sequential - 1` within each file system.
+- The slowdown column is $t / t_{\text{sequential}} - 1$ within each file system.
 - [`mmap-io-bench.py`](./mmap-io-bench.py) created this table - edit the two paths at the top of the script before running. In this table the benchmarks filesystem was Lustre.
 
 The three rows are the three ways a pipeline usually touches Arrow shards: read the file through once, walk a mapped dataset in order, or index rows in shuffled training order. Match your target job to a row - the bullets below say when the slowdown is acceptable and when you need a different read path or node-local shards instead of a network fs.
@@ -308,7 +308,7 @@ IOPS vs. Throughput
 - when you deal with small files high IOPS is important.
 - when you deal with large files high throughput is important.
 
-IOPS correlates to Throughput via block size: `Throughput = IOPS * block_size`
+IOPS correlates to Throughput via block size: $\text{Throughput} = \text{IOPS} \times \text{block\_size}$
 
 Thus given a fixed IOPS - the larger the block size that the system can read or write the bigger the throughput will be.
 

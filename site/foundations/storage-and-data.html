@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foundations: Storage, Checkpoints and Data Pipelines - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details open><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html" class="current">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="foundations-storage-checkpoints-and-data-pipelines">Foundations: Storage, Checkpoints and Data Pipelines</h1>
+<p>A training job touches storage in three ways: it reads the training data (a steady stream for days), it writes checkpoints (a big burst every few minutes to hours, and the training stalls if the burst is slow), and it loads code and environments at start-up (lots of small files). Inference adds a fourth: loading the weights quickly when a server starts. Each of these has a different access pattern, and storage systems are good at some patterns and terrible at others. Most &quot;the cluster is slow&quot; complaints that aren't network or GPU problems come from a mismatch between the pattern and the storage.</p>
+<p>This chapter starts from &quot;what is a disk&quot; and works up to the arithmetic a senior engineer does before choosing where a 5.7 TB checkpoint goes, how a 15-trillion-token dataset is laid out, and how a data loader resumes bit-exactly after a crash. The book's <a href="../storage/README.html">Storage chapter</a> is the hands-on companion: it has the <code>fio-scan</code> benchmark, mmap-vs-sequential measurements on Lustre, filesystem recommendations and disk-cleanup scripts. This chapter doesn't repeat that material. It explains the mechanisms underneath it.</p>
+<p>Conventions:</p>
+<ul>
+<li>Examples marked <strong>[torch]</strong> need <code>pip install torch numpy safetensors</code> (tested with torch 2.15.0, safetensors 0.8.0, numpy 2.5.4, Python 3.14). Pure-Python examples need only <code>python3</code>. <strong>[boto3, moto]</strong> needs <code>pip install boto3 &quot;moto[s3]&quot;</code> (boto3 is AWS's Python client library; moto fakes AWS services in-process for testing). <strong>[tiktoken]</strong> needs <code>pip install tiktoken</code>.</li>
+<li>Unless marked otherwise, outputs come from one run on an Apple M4 laptop (macOS, 16 GB RAM, internal SSD). The <code>fio</code> and <code>dd</code> outputs come from a Linux 6.10 VM (Docker Desktop's linuxkit kernel) on the same laptop. Its virtual disk is a file on the macOS SSD, so its absolute numbers mean nothing for real servers. They show what the tools print and how the numbers relate to each other.</li>
+<li>Commands that need a real cluster (Lustre <code>lfs</code>, <code>mdadm</code>, <code>nvme</code>, real S3) are marked <strong>untested</strong>. Their flags are taken from the tools' documentation.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../foundations/computer-architecture.html">Computer Architecture</a>: especially <a href="../foundations/computer-architecture.html#storage-devices">Storage devices</a> and <a href="../foundations/computer-architecture.html#bandwidth-vs-latency">Bandwidth vs latency</a>.</li>
+<li><a href="../foundations/linux-and-os.html">Linux and Operating Systems</a>: especially section 3, <a href="../foundations/linux-and-os.html#3-files-and-filesystems">Files and filesystems</a>, covering inodes, mount points, the page cache, and <code>fsync</code> with atomic rename. This chapter assumes you know why <code>write()</code> returning doesn't mean the data is on disk.</li>
+<li><a href="../foundations/concurrency.html">Concurrency and Parallelism</a>: <a href="../foundations/concurrency.html#part-4-how-the-pytorch-dataloader-works-inside">DataLoader internals</a> and <a href="../foundations/concurrency.html#part-8-async-io-for-checkpoints-and-data">Async I/O for checkpoints and data</a>.</li>
+<li><a href="../foundations/networking.html">Computer Networking</a>: enough to know what bandwidth, latency, RTT and TCP are, plus HTTP (object stores are HTTP APIs) and the <a href="../foundations/networking.html#bandwidth-delay-product">bandwidth-delay product</a>.</li>
+<li><a href="../foundations/toolkit.html">The toolkit</a>: <code>pip</code> and virtual environments for the <strong>[torch]</strong>-style examples, JSON (the safetensors header and checkpoint manifests are JSON), and git (a run's git SHA belongs in its checkpoint).</li>
+<li><a href="../foundations/distributed-systems.html">Distributed Systems</a>: ranks, barriers and process groups (the gloo backend), <a href="../foundations/distributed-systems.html#model-parallelism">data vs model parallelism</a> (FSDP, tensor and pipeline parallelism, which decide how a checkpoint is sharded), and <a href="../foundations/distributed-systems.html#how-often-to-checkpoint">MTBF and how often to checkpoint</a>.</li>
+<li><a href="../foundations/containers-and-virtualization.html">Containers and Virtualization</a>: volumes and bind mounts, and why environments belong in images rather than on a shared filesystem.</li>
+<li>Forward links: <a href="../training/arithmetic.html">Training arithmetic</a> (bytes per parameter, FLOPs per token) and <a href="../training/model-parallelism/README.html">Model Parallelism</a>.</li>
+</ul>
+<h2 id="1-three-ways-to-store-bytes-block-file-object">1. Three ways to store bytes: block, file, object</h2>
+<p>Every storage product you'll meet sells one of three interfaces. Most confusion about storage comes from not knowing which one you're looking at.</p>
+<pre><code> application:   open(&quot;/data/x.bin&quot;)  read(fd, 1 MiB)          GET s3://bucket/x.bin  Range: bytes=0-1048575
+                        |                                                |
+                 +-------------+   POSIX file API                        |  HTTP API
+                 | filesystem  |   (names, dirs, permissions,            |
+                 | (ext4, xfs, |    byte offsets, locks)          +-------------+
+                 |  Lustre...) |                                  | object store|
+                 +-------------+                                  | (S3, GCS,   |
+                        |  &quot;read blocks 81920..82175&quot;             |  MinIO...)  |
+                 +-------------+                                  +-------------+
+                 | block device|   numbered fixed-size blocks            |
+                 | (NVMe, EBS, |   nothing else                   internally: disks, block
+                 |  SAN LUN)   |                                  devices, its own metadata DB
+                 +-------------+
+</code></pre>
+<h3 id="block-storage">Block storage</h3>
+<p>A <strong>block device</strong> is a numbered array of fixed-size blocks (usually 512 bytes or 4 KiB), and you read or write whole blocks by number. It has no names, directories or permissions. A local NVMe drive is a block device. So is a cloud &quot;volume&quot; such as AWS EBS or a GCP Persistent Disk: it is attached over the network, but the VM sees it as a disk. A SAN LUN (in the diagram) is the on-premises version: a virtual disk carved out of a dedicated storage array and served to one server over a storage network. On Linux they appear under <code>/dev</code>:</p>
+<pre><code class="language-bash">$ lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,MODEL        # untested; sketched output from a GPU node
+NAME        SIZE TYPE MOUNTPOINT MODEL
+nvme0n1     1.7T disk            SAMSUNG MZ1L21T9HCLS
+└─nvme0n1p1 1.7T part /
+nvme1n1     3.5T disk            SAMSUNG MZQL23T8HCLS
+nvme2n1     3.5T disk            SAMSUNG MZQL23T8HCLS
+md0          14T raid0 /local     # 4 data drives striped together
+</code></pre>
+<p>Only one machine at a time can safely mount a block device read-write. Two kernels each running their own ext4 on the same blocks would corrupt each other's metadata within seconds. That is why block storage is fast (there is nothing in the way) and also why it is not shared.</p>
+<h3 id="file-storage">File storage</h3>
+<p>A <strong>filesystem</strong> turns blocks into named files in a tree of directories. It keeps <strong>metadata</strong> (data about the data: names, sizes, owners, timestamps, and which blocks hold which file) in structures called inodes, and it gives you the <strong>POSIX</strong> API (the Unix standard for file operations): <code>open</code>, <code>read</code>, <code>write</code> at any byte offset, <code>rename</code>, <code>fsync</code>, locks. A local filesystem (ext4, XFS) lives on one block device. A <strong>network filesystem</strong> (NFS, Lustre, GPFS, Weka) serves the same API over the network to many clients at once, so every node in the cluster sees the same <code>/data</code>.</p>
+<p>The POSIX API is very convenient, and it is expensive to provide across many machines. <code>rename</code> must be atomic. A write must be visible to a reader on another node at the right time. A <code>stat()</code> must return the current size. Each of these needs coordination between the client and the servers. That is why shared filesystems are much slower per operation than local disks, and why their metadata servers fall over when a job runs <code>os.listdir</code> on a million files from a thousand ranks at once.</p>
+<pre><code class="language-python"># posix_ops.py - the operations a filesystem must make atomic and coherent
+import os, tempfile
+d = tempfile.mkdtemp()
+p = os.path.join(d, &quot;ckpt.bin&quot;)
+with open(p + &quot;.tmp&quot;, &quot;wb&quot;) as f:
+    f.write(b&quot;x&quot; * 4096); f.flush(); os.fsync(f.fileno())   # durable data
+os.replace(p + &quot;.tmp&quot;, p)                                    # atomic rename: the POSIX feature checkpoints rely on
+with open(p, &quot;r+b&quot;) as f:
+    f.seek(1000); f.write(b&quot;Y&quot;)                              # overwrite 1 byte in the middle: trivial here, impossible in S3
+st = os.stat(p)
+print(st.st_size, st.st_ino, oct(st.st_mode))
+</code></pre>
+<pre><code class="language-text">4096 109344057 0o100644
+</code></pre>
+<h3 id="object-storage">Object storage</h3>
+<p>An <strong>object store</strong> (Amazon S3, Google Cloud Storage, Azure Blob, Cloudflare R2, MinIO, Ceph RGW) keeps <strong>objects</strong>: an immutable blob of bytes, a <strong>key</strong> (a string such as <code>runs/a/step_100/shard_0.bin</code>) and a little metadata. Objects live in a flat namespace called a <strong>bucket</strong>, and you use them through an HTTP API: <code>PUT</code> a whole object, <code>GET</code> it (or a byte range of it), <code>DELETE</code> it, <code>LIST</code> keys by prefix. That's nearly the whole interface.</p>
+<p>What's missing is deliberate. There is no appending, no writing at an offset, no rename (a &quot;rename&quot; is copy plus delete), no locks, and no real directories (the <code>/</code> in a key is just a character). Giving these up lets the provider spread objects over thousands of servers with no cross-server coordination. That is how S3 offers effectively unlimited capacity and very high aggregate throughput at a few cents per GB-month. The cost is latency: every request is an HTTP round trip, typically tens of milliseconds to the first byte.</p>
+<p>Below, <code>aws</code> is Amazon's command-line client for its services, and <code>model.safetensors</code> is a weights file in the safetensors format, a JSON header followed by raw tensor bytes (taught in <a href="#safetensors-a-header-plus-raw-bytes">section 6</a>).</p>
+<pre><code class="language-bash"># untested here (needs AWS credentials); standard aws-cli commands
+$ aws s3 cp model.safetensors s3://my-bucket/models/llama-8b/model.safetensors
+$ aws s3 ls s3://my-bucket/models/llama-8b/
+2026-11-05 10:12:01 16060522624 model.safetensors
+$ aws s3api get-object --bucket my-bucket --key models/llama-8b/model.safetensors \
+      --range bytes=0-7 header.bin        # range read: first 8 bytes only
+</code></pre>
+<h3 id="which-one-for-what">Which one for what</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Block (local NVMe)</th>
+<th>Shared filesystem (NFS / parallel FS)</th>
+<th>Object store</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interface</td>
+<td>blocks; you put a local FS on it</td>
+<td>POSIX files</td>
+<td>HTTP: PUT / GET / LIST / DELETE</td>
+</tr>
+<tr>
+<td>Shared between nodes</td>
+<td>no</td>
+<td>yes</td>
+<td>yes, also across regions and clouds</td>
+</tr>
+<tr>
+<td>Latency per op</td>
+<td>~10-100 µs</td>
+<td>~0.1-few ms (metadata can be far worse)</td>
+<td>~10-100 ms first byte</td>
+</tr>
+<tr>
+<td>Throughput</td>
+<td>a few GB/s per drive, ~10-25 GB/s per node with several drives</td>
+<td>10s-1000s of GB/s aggregate (parallel FS)</td>
+<td>very high aggregate, if you issue many requests in parallel</td>
+</tr>
+<tr>
+<td>Small files</td>
+<td>excellent</td>
+<td>the classic weak spot</td>
+<td>per-request overhead and per-request price</td>
+</tr>
+<tr>
+<td>Survives node loss</td>
+<td>no</td>
+<td>yes</td>
+<td>yes, and designed for very high durability</td>
+</tr>
+<tr>
+<td>Typical ML use</td>
+<td>staging data, local checkpoint tier, <code>/tmp</code></td>
+<td>code, envs, datasets, checkpoints</td>
+<td>the dataset and checkpoint archive, cross-site transfer, model distribution</td>
+</tr>
+</tbody>
+</table>
+<p>The usual cluster layout described in <a href="../foundations/linux-and-os.html#local-vs-network-filesystems">Linux: Local vs network filesystems</a> follows from this table: code on NFS <code>/home</code>, hot data and checkpoints on a parallel FS, staging on node-local NVMe, and everything durable in an object store.</p>
+<h2 id="2-local-nvme">2. Local NVMe</h2>
+<h3 id="what-an-nvme-drive-does">What an NVMe drive does</h3>
+<p>An SSD stores bits in NAND flash: many dies (individual flash chips) that can be read in parallel. <strong>NVMe</strong> (Non-Volatile Memory Express) is the protocol for talking to an SSD directly over PCIe. Its key design choice is many deep queues. The spec allows up to 65,535 I/O queues of up to 65,536 commands each, so every CPU core can have its own queue pair and submit requests without taking a lock. The older SATA/AHCI interface had one queue of 32 commands. The NVMe design exists because flash is internally parallel: a single request at a time uses one die and leaves the rest idle. The <a href="../storage/README.html#queue-depth">Queue Depth</a> section of the Storage chapter shows the effect.</p>
+<p>Two flash facts that matter for ML:</p>
+<ul>
+<li><strong>Writes are slower and less steady than reads.</strong> Flash is erased in big blocks and written in pages. Sustained writes eventually trigger internal garbage collection, and throughput drops once the drive's fast cache region fills. A short benchmark can overstate sustained write speed.</li>
+<li><strong>Endurance is finite.</strong> Drives are rated in DWPD (drive writes per day over the warranty). Writing a multi-TB checkpoint to the same local drive every ten minutes for months uses up real endurance.</li>
+</ul>
+<pre><code class="language-bash"># untested: needs nvme-cli on a Linux node with NVMe drives
+$ sudo nvme list
+Node          Model                  Namespace  Usage                    Format
+/dev/nvme1n1  SAMSUNG MZQL23T8HCLS   1          3.84 TB / 3.84 TB        512 B + 0 B
+$ sudo nvme smart-log /dev/nvme1n1 | grep -E 'percentage_used|data_units_written|temperature'
+temperature          : 41 C
+percentage_used      : 3%
+data_units_written   : 812,345,678     # units of 512,000 bytes -&gt; ~416 TB written
+$ cat /sys/block/nvme1n1/queue/nr_requests       # the kernel's per-queue request limit
+1023
+</code></pre>
+<h3 id="striping-local-drives-together">Striping local drives together</h3>
+<p>GPU nodes usually ship with 4-8 data NVMe drives. One drive gives a few GB/s. <strong>RAID 0</strong> (striping) spreads consecutive chunks of every file across all drives, so a big sequential read uses all of them at once. RAID 0 has no redundancy: one dead drive loses everything. That is acceptable for scratch space, which is always reproducible from the shared tier.</p>
+<pre><code class="language-bash"># untested: creates a 4-drive RAID0 and an XFS filesystem (destroys data on those drives)
+$ sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 --chunk=512K \
+      /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1
+$ sudo mkfs.xfs /dev/md0 &amp;&amp; sudo mkdir -p /local &amp;&amp; sudo mount -o noatime /dev/md0 /local
+$ cat /proc/mdstat
+md0 : active raid0 nvme4n1[3] nvme3n1[2] nvme2n1[1] nvme1n1[0]
+      15002963968 blocks super 1.2 512k chunks
+</code></pre>
+<p><code>noatime</code> stops the filesystem from writing an access timestamp on every read, which is pure overhead for training data. Cloud providers often set this up for you. Look for something like <code>/opt/dlami/nvme</code>, <code>/mnt/local_disk</code> or <code>/scratch</code> before building your own.</p>
+<h3 id="gpudirect-storage-briefly">GPUDirect Storage, briefly</h3>
+<p>Normally data travels disk → kernel page cache → user buffer → pinned buffer → GPU. <strong>GPUDirect Storage (GDS)</strong> lets the NVMe drive or the network storage client DMA straight into GPU memory and skip host RAM (DMA, direct memory access, means the device copies into memory without the CPU doing the copying). The API is NVIDIA's <code>cuFile</code>, and some parallel filesystems support it. GDS removes CPU and bounce-buffer copies, but it doesn't make a disk faster than its own bandwidth. It matters most when host-memory bandwidth or CPU is the bottleneck, for example many GPUs loading weights at once. See <a href="https://docs.nvidia.com/gpudirect-storage/">NVIDIA's GDS docs</a>. This is untested here.</p>
+<h2 id="3-network-and-parallel-filesystems">3. Network and parallel filesystems</h2>
+<h3 id="nfs">NFS</h3>
+<p><strong>NFS</strong> (Network File System) is the oldest and simplest shared filesystem: one server (or an HA pair: two servers where one takes over if the other dies) exports a directory, and clients mount it. Every operation becomes an RPC to that server, so it has one server's bandwidth and one server's metadata throughput. NFS is fine for home directories and code, and poor for datasets and checkpoints at scale. Its consistency model is <strong>close-to-open</strong>: another client is only guaranteed to see your writes after you <code>close()</code> the file and it <code>open()</code>s it. It is not guaranteed to see them while you're still writing.</p>
+<pre><code class="language-bash"># untested: typical NFS mount and a look at its options
+$ sudo mount -t nfs -o vers=4.1,nconnect=8,rsize=1048576,wsize=1048576 nfs-server:/export/home /home
+$ nfsstat -m
+/home from nfs-server:/export/home
+ Flags: rw,vers=4.1,rsize=1048576,wsize=1048576,nconnect=8,hard,proto=tcp,...
+</code></pre>
+<p><code>vers=4.1</code> picks the NFS protocol version, and <code>rsize</code>/<code>wsize</code> are the largest single read and write request the client sends (1 MiB here). <code>nconnect=8</code> opens 8 TCP connections to the server instead of 1 (Linux 5.3+). A single TCP stream is often the limit for one NFS client, for the reasons in <a href="#transfer-time-and-the-bandwidth-delay-product">section 9</a>.</p>
+<h3 id="how-a-parallel-filesystem-works">How a parallel filesystem works</h3>
+<p>A <strong>parallel filesystem</strong> splits the two jobs a filesystem does across many servers:</p>
+<pre><code>                     compute nodes (clients, each runs the FS client in its kernel)
+           +--------+ +--------+ +--------+         +--------+
+           | node 1 | | node 2 | | node 3 |  ...    | node N |
+           +--------+ +--------+ +--------+         +--------+
+              |  1. open(&quot;/lustre/ckpt/shard_7.bin&quot;)  -&gt; &quot;which servers hold it?&quot;
+              v
+    +--------------------+        metadata: names, dirs, permissions, sizes,
+    | metadata server(s) |        and the file's LAYOUT: &quot;stripe 4 MiB chunks
+    |  (MDS / MDT)       |        round-robin over OST 3, 9, 14, 22&quot;
+    +--------------------+
+              |  2. read/write the bytes directly, in parallel, from many data servers
+              v
+    +-------+ +-------+ +-------+ +-------+ +-------+ +-------+      data servers (OSS),
+    | OST 0 | | OST 1 | | ... 3 | | ... 9 | | ..14  | | ..22  | ...  each with several
+    +-------+ +-------+ +-------+ +-------+ +-------+ +-------+      targets (OSTs) = disk arrays
+</code></pre>
+<ul>
+<li>A client asks the <strong>metadata server</strong> once per <code>open</code>. The answer includes the file's <strong>layout</strong>, the map of which data servers hold which byte ranges.</li>
+<li>After that, the client reads and writes the data servers directly and in parallel. The metadata server is not on the data path.</li>
+<li><strong>Striping</strong> means a file is cut into fixed-size chunks (the <em>stripe size</em>, e.g. 1-4 MiB) placed round-robin across several data targets (the <em>stripe count</em>). A large file striped over 16 targets can be read at roughly 16 targets' combined bandwidth. Bandwidth grows with the number of servers, which is the whole point.</li>
+</ul>
+<p>The design has a consequence you will hit: <strong>data scales, metadata scales much less.</strong> <code>ls -l</code> on a directory of a million files, <code>import torch</code> (thousands of <code>stat</code> and <code>open</code> calls), or a DataLoader that opens one small JPEG per sample all go to the metadata servers. Large-file bandwidth can be hundreds of GB/s while small-file workloads crawl. That is why ML data is packed into big shard files (see <a href="#8-datasets-at-scale">section 8</a>).</p>
+<h3 id="lustre-mds-oss-and-lfs-setstripe">Lustre: MDS, OSS and <code>lfs setstripe</code></h3>
+<p><strong>Lustre</strong> is the open-source parallel FS behind many supercomputers. In Lustre terms, the MDS (metadata server) stores metadata on MDTs (metadata targets), and the OSS (object storage server) stores file data on OSTs (object storage targets). Recent versions can spread metadata over several MDTs (the feature is called DNE, Distributed Namespace). Striping is set per file or per directory, and new files inherit their directory's setting:</p>
+<pre><code class="language-bash"># untested: Lustre client commands (lfs ships with the client)
+$ lfs df -h /lustre                               # capacity per MDT/OST
+UUID                 bytes   Used  Available Use% Mounted on
+lustre-MDT0000_UUID   2.8T  91.2G      2.7T   4% /lustre[MDT:0]
+lustre-OST0000_UUID  58.2T  41.0T     17.2T  71% /lustre[OST:0]
+...
+$ lfs getstripe /lustre/datasets/shard_000.bin    # how is this file laid out?
+lmm_stripe_count:  1
+lmm_stripe_size:   1048576
+        obdidx   objid   objid   group
+             7  123456  0x1e240   0        # the whole file lives on OST 7
+
+$ mkdir /lustre/ckpts/run1
+$ lfs setstripe -c 8 -S 4M /lustre/ckpts/run1     # new files here: 4 MiB stripes over 8 OSTs
+$ lfs setstripe -c -1 /lustre/models/big          # -1 = stripe over all OSTs
+</code></pre>
+<p>How to choose:</p>
+<ul>
+<li>Many small and medium files (a dataset of 100k 256 MB shards, read by many ranks): stripe count 1. Each file sits on one OST and parallelism comes from different ranks reading different files. Striping small files only adds round trips.</li>
+<li>A few huge files read or written by many clients at once (a consolidated checkpoint, a model every node loads): stripe wide, so the load spreads over many OSTs instead of hammering one.</li>
+<li>An OST that fills up makes writes fail even if the filesystem as a whole has space. The Storage chapter covers this <a href="../storage/README.html#beware-that-youre-often-being-sold-only-80-of-the-storage-you-pay-for">&quot;80%&quot; trap</a>.</li>
+</ul>
+<p>Many sites set a default layout called PFL (Progressive File Layout): the first MiBs on one OST and wider striping as the file grows. Check <code>lfs getstripe -d</code> on your directories before changing anything.</p>
+<h3 id="gpfs-weka-vast-other-answers-to-the-metadata-problem">GPFS, Weka, VAST: other answers to the metadata problem</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Lustre</th>
+<th>IBM Storage Scale (GPFS)</th>
+<th>WekaFS</th>
+<th>VAST</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Metadata</td>
+<td>dedicated MDS/MDT servers (can be several)</td>
+<td>distributed across the cluster's nodes</td>
+<td>distributed across all backend nodes</td>
+<td>in the shared storage itself, accessed by stateless servers</td>
+</tr>
+<tr>
+<td>Client</td>
+<td>kernel module</td>
+<td>native NSD client (GPFS's own protocol), or NFS/SMB (SMB is the Windows file-sharing protocol)</td>
+<td>native client (POSIX), or NFS/SMB/S3</td>
+<td>mostly NFS (with multipath / RDMA extensions)</td>
+</tr>
+<tr>
+<td>Notable</td>
+<td>open source, needs careful tuning (see the <a href="https://www.nas.nasa.gov/hecc/support/kb/lustre-best-practices_226.html">NASA best practices</a>)</td>
+<td>very mature; tiering to object storage; sub-blocks for small files</td>
+<td>flash-native; tiers to an object store</td>
+<td>flash-native; global data reduction</td>
+</tr>
+</tbody>
+</table>
+<p>These descriptions are from vendor documentation and the Storage chapter's <a href="../storage/README.html#which-file-system-to-choose">Which file system to choose</a>. They are not from benchmarks run for this chapter. For ML, what to evaluate is: aggregate large-file read and write bandwidth at your node count, small-file metadata ops/s, and behaviour when hundreds of clients write checkpoints at once. Use the tools in <a href="#5-measuring-storage">section 5</a> and the Storage chapter's <a href="../storage/README.html#fio"><code>fio-scan</code></a>.</p>
+<h3 id="metadata-storms-and-how-ml-jobs-cause-them">Metadata storms, and how ML jobs cause them</h3>
+<p>A <strong>metadata storm</strong> is many clients issuing metadata operations (<code>stat</code>, <code>open</code>, <code>listdir</code>, <code>create</code>) at once and saturating the metadata servers. Every user of the filesystem then sees <code>ls</code> hang. ML jobs cause them in a few standard ways:</p>
+<pre><code class="language-python"># DON'T: every one of 1024 ranks lists the same directory of 2M files at start-up
+files = sorted(os.listdir(&quot;/lustre/data/images&quot;))           # 1024 x 2M dirent reads on the MDS
+
+# DO: list once offline, ship the list as one file, every rank reads one file
+#   python -c &quot;import os,json; json.dump(sorted(os.listdir(D)), open('index.json','w'))&quot;
+files = json.load(open(&quot;/lustre/data/index.json&quot;))           # 1 open per rank, sequential read
+</code></pre>
+<p>Other common causes: Python environments with 100k files on a shared FS (each <code>import</code> is dozens of <code>stat</code> calls, multiplied by every rank), one-file-per-sample datasets, and checkpoints that write one file per tensor per rank (a 405B model with about 1,000 tensors on 1,024 ranks makes up to a million <code>create</code>s every save). The fixes are always the same: pack small things into big files, list once, and put environments in a container image or on local disk (see <a href="../foundations/containers-and-virtualization.html">Containers and Virtualization</a>).</p>
+<h2 id="4-object-stores">4. Object stores</h2>
+<h3 id="s3-semantics">S3 semantics</h3>
+<p>S3's API has become the standard that GCS, R2, MinIO, Ceph and others imitate, so learn its rules once:</p>
+<ul>
+<li><strong>Whole-object writes.</strong> <code>PUT</code> replaces the entire object. To change one byte you rewrite the object.</li>
+<li><strong>Consistency.</strong> As of December 2020, AWS S3 gives strong read-after-write consistency: after a successful <code>PUT</code>, every <code>GET</code> and <code>LIST</code> sees the new data. Older S3 and some S3-compatible stores were only <em>eventually consistent</em>: a <code>LIST</code> right after a <code>PUT</code> might not show the new object. Check this for any non-AWS store you rely on.</li>
+<li><strong>No atomic multi-object operations.</strong> A checkpoint made of 1,000 objects is never written atomically. A reader can see 600 new shards and 400 old ones. You build atomicity yourself by writing a marker object last (see <a href="#making-checkpoints-trustworthy">section 7</a>).</li>
+<li><strong>Conditional writes.</strong> As of late 2024, S3 supports <code>If-None-Match: *</code> on <code>PUT</code> (&quot;only create if absent&quot;) and <code>If-Match</code> (&quot;only overwrite if the ETag is still X&quot;; an <strong>ETag</strong> is a fingerprint string S3 returns for each version of an object). These are building blocks for locks and leader election on top of S3. They are version-sensitive, so check your provider.</li>
+<li><strong>Rate limits per prefix.</strong> AWS documents at least 3,500 <code>PUT</code>/<code>COPY</code>/<code>POST</code>/<code>DELETE</code> and 5,500 <code>GET</code>/<code>HEAD</code> requests per second per partitioned prefix. Throughput comes from many parallel requests, often spread across prefixes. One request at a time gets you one connection's worth of bandwidth.</li>
+</ul>
+<pre><code class="language-python"># s3_demo.py  [boto3, moto]  - S3 semantics against moto's in-process S3 emulator
+import hashlib, os, boto3
+from moto import mock_aws
+
+@mock_aws
+def main():
+    s3 = boto3.client(&quot;s3&quot;, region_name=&quot;us-east-1&quot;)
+    s3.create_bucket(Bucket=&quot;ckpts&quot;)
+
+    # 1) PUT is whole-object: there is no &quot;append&quot; and no &quot;write at offset&quot;
+    s3.put_object(Bucket=&quot;ckpts&quot;, Key=&quot;runs/a/step_100/meta.json&quot;, Body=b'{&quot;step&quot;: 100}')
+
+    # 2) &quot;directories&quot; are just key prefixes; LIST by prefix + delimiter fakes them
+    r = s3.list_objects_v2(Bucket=&quot;ckpts&quot;, Prefix=&quot;runs/a/&quot;, Delimiter=&quot;/&quot;)
+    print(&quot;common prefixes:&quot;, [p[&quot;Prefix&quot;] for p in r.get(&quot;CommonPrefixes&quot;, [])])
+
+    # 3) multipart upload: parts are uploaded independently (in parallel in real life), then committed
+    part = 5 * 2**20                                   # S3 minimum part size is 5 MiB (except the last)
+    data = os.urandom(3 * part + 123)
+    mpu = s3.create_multipart_upload(Bucket=&quot;ckpts&quot;, Key=&quot;runs/a/step_100/shard_0.bin&quot;)
+    parts = []
+    for n, off in enumerate(range(0, len(data), part), start=1):
+        r = s3.upload_part(Bucket=&quot;ckpts&quot;, Key=&quot;runs/a/step_100/shard_0.bin&quot;, UploadId=mpu[&quot;UploadId&quot;],
+                           PartNumber=n, Body=data[off:off + part])
+        parts.append({&quot;PartNumber&quot;: n, &quot;ETag&quot;: r[&quot;ETag&quot;]})
+    print(&quot;before complete, object visible?&quot;,
+          &quot;Contents&quot; in s3.list_objects_v2(Bucket=&quot;ckpts&quot;, Prefix=&quot;runs/a/step_100/shard_0&quot;))
+    s3.complete_multipart_upload(Bucket=&quot;ckpts&quot;, Key=&quot;runs/a/step_100/shard_0.bin&quot;,
+                                 UploadId=mpu[&quot;UploadId&quot;], MultipartUpload={&quot;Parts&quot;: parts})
+    etag = s3.head_object(Bucket=&quot;ckpts&quot;, Key=&quot;runs/a/step_100/shard_0.bin&quot;)[&quot;ETag&quot;].strip('&quot;')
+
+    # 4) a multipart ETag is NOT the md5 of the file: it is md5(concat(md5(part_i))) + &quot;-&lt;nparts&gt;&quot;
+    md5s = b&quot;&quot;.join(hashlib.md5(data[o:o + part]).digest() for o in range(0, len(data), part))
+    print(&quot;ETag from S3      :&quot;, etag)
+    print(&quot;md5 of whole file :&quot;, hashlib.md5(data).hexdigest())
+    print(&quot;md5-of-part-md5s  :&quot;, hashlib.md5(md5s).hexdigest() + f&quot;-{len(parts)}&quot;)
+
+    # 5) range read: fetch bytes [10 MiB, 10 MiB + 16) without downloading 15 MiB
+    r = s3.get_object(Bucket=&quot;ckpts&quot;, Key=&quot;runs/a/step_100/shard_0.bin&quot;, Range=&quot;bytes=10485760-10485775&quot;)
+    print(&quot;range read:&quot;, r[&quot;ContentRange&quot;], &quot;ok:&quot;, r[&quot;Body&quot;].read() == data[10485760:10485776])
+
+main()
+</code></pre>
+<pre><code class="language-text">common prefixes: ['runs/a/step_100/']
+before complete, object visible? False
+ETag from S3      : 4c012e54e12c8b83236d9849d4198210-4
+md5 of whole file : bb574a7ec45d1d47f2a363106531e7d6
+md5-of-part-md5s  : 4c012e54e12c8b83236d9849d4198210-4
+range read: bytes 10485760-10485775/15728763 ok: True
+</code></pre>
+<p><code>moto</code> is an emulator, not S3. It reproduces the API, not the performance or the rate limits.</p>
+<h3 id="multipart-uploads-and-range-reads">Multipart uploads and range reads</h3>
+<p><strong>Multipart upload</strong> splits a large object into parts that are uploaded independently, retried independently and committed together. As of the S3 docs at the time of writing, parts are 5 MiB to 5 GiB, with at most 10,000 parts per object. Object size has long been capped at 5 TiB; check the current docs, because AWS has announced larger limits. The object doesn't exist until <code>CompleteMultipartUpload</code>, which is a single atomic commit for one object. Abandoned uploads keep their parts, and you keep paying for them, until you abort them or a lifecycle rule (a bucket setting that automatically deletes or archives objects or incomplete uploads by age) cleans them up. Set an <code>AbortIncompleteMultipartUpload</code> lifecycle rule on every bucket you checkpoint to.</p>
+<p>The demo shows the trap in point 4: a multipart object's ETag is not the file's MD5, so <code>md5sum file == ETag</code> &quot;verification&quot; fails, or worse, gets skipped. To verify, either recompute the ETag the same way with the same part size, or store your own checksum as object metadata. S3 also supports additional checksums (CRC32C, SHA-256 and others) at upload time.</p>
+<p>A <strong>range read</strong> (<code>Range: bytes=a-b</code>) fetches part of an object. Range reads are what make object stores usable for more than whole-file download:</p>
+<ul>
+<li>safetensors on S3: one range read for the 8-byte length and the header, then one range read per tensor you need.</li>
+<li>Parallel download of one big object: N concurrent range reads of 64 MiB each. Tools such as <code>s5cmd</code>, <code>rclone</code> and <code>aws s3 cp</code> do this internally.</li>
+<li>Streaming datasets read whole shards sequentially, but can start at an offset when resuming.</li>
+</ul>
+<h3 id="getting-bandwidth-out-of-an-object-store">Getting bandwidth out of an object store</h3>
+<p>A single HTTPS stream to S3 typically gets tens to low hundreds of MB/s. The service is not slow. One TCP connection, one request at a time, with tens of milliseconds of latency per request just can't fill a fat pipe (the same <a href="#bandwidth-iops-latency-and-littles-law">Little's law</a> arithmetic as for disks). Aggregate bandwidth comes from concurrency:</p>
+<pre><code class="language-python"># s3_parallel_get.py  [boto3]  - untested against real S3; the pattern every fast S3 client uses
+import boto3
+from concurrent.futures import ThreadPoolExecutor
+
+s3 = boto3.client(&quot;s3&quot;)
+bucket, key, part = &quot;my-bucket&quot;, &quot;models/llama-70b/model-00001-of-00030.safetensors&quot;, 64 &lt;&lt; 20
+size = s3.head_object(Bucket=bucket, Key=key)[&quot;ContentLength&quot;]
+
+def get(off):
+    end = min(off + part, size) - 1
+    return off, s3.get_object(Bucket=bucket, Key=key, Range=f&quot;bytes={off}-{end}&quot;)[&quot;Body&quot;].read()
+
+buf = bytearray(size)
+with ThreadPoolExecutor(32) as pool:                        # 32 requests in flight
+    for off, chunk in pool.map(get, range(0, size, part)):
+        buf[off:off + len(chunk)] = chunk
+</code></pre>
+<h3 id="fuse-mounts-of-object-stores">FUSE mounts of object stores</h3>
+<p>A <strong>FUSE</strong> (Filesystem in Userspace) client such as <code>s3fs</code>, <code>gcsfuse</code>, <code>rclone mount</code> or AWS <code>mountpoint-s3</code> makes a bucket look like a directory. It is handy and a common source of surprises. A FUSE mount can't give you POSIX semantics the store doesn't have. Depending on the client, &quot;rename&quot; is a full copy or unsupported, random writes are unsupported (mountpoint-s3 supports only sequential writes to new files, per its docs), <code>fsync</code> may not mean &quot;durable in the store&quot;, and <code>ls</code> on a big prefix is slow and paginated. <code>torch.save</code> to a FUSE mount followed by the atomic-rename pattern from the <a href="../foundations/linux-and-os.html#fsync-and-durability-why-checkpoints-get-lost">Linux chapter</a> may silently not be atomic. Prefer the object API (via DCP storage plugins, <code>fsspec</code>, or your own uploader) for checkpoints, and keep FUSE for read-mostly convenience. (DCP, <code>torch.distributed.checkpoint</code>, is PyTorch's sharded checkpoint library, taught in <a href="#torchdistributedcheckpoint-every-rank-writes-its-own-pieces">section 6</a>; <code>fsspec</code> is a Python library that gives local files, S3, GCS and others one file-like interface.)</p>
+<pre><code class="language-bash"># untested: AWS mountpoint-s3, read-only mount for loading a dataset or model
+$ mount-s3 --read-only my-bucket /mnt/s3
+$ python -c &quot;from safetensors import safe_open; f = safe_open('/mnt/s3/models/x.safetensors', 'pt'); print(list(f.keys())[:3])&quot;
+</code></pre>
+<h2 id="5-measuring-storage">5. Measuring storage</h2>
+<h3 id="bandwidth-iops-latency-and-littles-law">Bandwidth, IOPS, latency and Little's law</h3>
+<p>The three numbers (defined in the Storage chapter's <a href="../storage/README.html#metrics">Metrics</a> section) are bandwidth (bytes/s), IOPS (operations/s) and latency (time per operation). Two equations connect them:</p>
+<div class="math block">
+<div class="math-display">\text{bandwidth} = \text{IOPS} \times \text{block size}</div>
+</div>
+<div class="math block">
+<div class="math-display">\text{outstanding} = \text{IOPS} \times \text{latency}</div>
+</div>
+<p>The second is Little's law: requests in flight = rate <span class="math inline"><span class="math-inline">\times</span></span> time each spends inside.</p>
+<p>The second equation explains almost every storage benchmark. If a device has 100 µs latency and you keep 1 request in flight, you get 10k IOPS. To get 1M IOPS from the same device you need 100 requests in flight. &quot;The storage is slow&quot; very often means &quot;the application keeps too few requests in flight&quot;. The fix then is more DataLoader workers, a thread pool, <code>iodepth</code>, or multipart concurrency, not new hardware. The fio run below checks the law: <span class="math inline"><span class="math-inline">4\ \text{jobs} \times \text{iodepth } 32 = 128</span></span> outstanding requests, <span class="math inline"><span class="math-inline">128 / 3.143\ \text{ms} = 40.7\text{k}</span></span> IOPS, and fio measured 40.6k.</p>
+<h3 id="fio-flag-by-flag">fio, flag by flag</h3>
+<p><code>fio</code> generates a synthetic I/O load that you describe precisely. This is the run quoted above, executed in the Linux VM (<code>apt install fio</code>, fio-3.36):</p>
+<pre><code class="language-bash">fio --name=randread-4k \          # job name (also names the data files)
+    --directory=/root/fio \       # where to put data files: the filesystem under test
+    --size=1G \                   # per-job file size; make total &gt;&gt; RAM, or use --direct=1
+    --rw=randread \               # read | write | randread | randwrite | randrw
+    --bs=4k \                     # block size of each I/O
+    --iodepth=32 \                # requests kept in flight per job (only meaningful with an async engine)
+    --numjobs=4 \                 # parallel jobs (processes); total in flight = numjobs x iodepth
+    --ioengine=libaio \           # Linux native async I/O; io_uring (newer kernel async-I/O interface) is the modern alternative
+    --direct=1 \                  # O_DIRECT: bypass the page cache, so we measure storage, not RAM
+    --time_based --runtime=10s \  # run for a fixed time instead of until size is done
+    --ramp_time=2s \              # ignore the first 2 s (warm-up)
+    --group_reporting             # one summary for all jobs
+</code></pre>
+<p>(The comments are for reading only. Bash doesn't allow comments after a trailing <code>\</code>, so remove them before pasting.)</p>
+<pre><code class="language-text">randread-4k: (g=0): rw=randread, bs=(R) 4096B-4096B, (W) 4096B-4096B, (T) 4096B-4096B, ioengine=libaio, iodepth=32
+...
+fio-3.36
+Starting 4 processes
+randread-4k: Laying out IO file (1 file / 1024MiB)
+...
+randread-4k: (groupid=0, jobs=4): err= 0: pid=2285: Thu Nov  5 21:20:04 2026
+  read: IOPS=40.6k, BW=159MiB/s (166MB/s)(1588MiB/10004msec)
+    slat (nsec): min=541, max=6393.9k, avg=5906.56, stdev=22499.28
+    clat (usec): min=247, max=22920, avg=3143.27, stdev=1047.28
+     lat (usec): min=252, max=22928, avg=3149.17, stdev=1047.58
+    clat percentiles (usec):
+     |  1.00th=[ 2212],  5.00th=[ 2376], 10.00th=[ 2474], 20.00th=[ 2573],
+     | 30.00th=[ 2671], 40.00th=[ 2802], 50.00th=[ 2900], 60.00th=[ 3032],
+     | 70.00th=[ 3195], 80.00th=[ 3392], 90.00th=[ 3851], 95.00th=[ 4686],
+     | 99.00th=[ 7504], 99.50th=[ 8979], 99.90th=[14484], 99.95th=[15795],
+     | 99.99th=[20579]
+  ...
+  IO depths    : 1=0.0%, 2=0.0%, 4=0.0%, 8=0.0%, 16=0.0%, 32=100.0%, &gt;=64=0.0%
+Run status group 0 (all jobs):
+   READ: bw=159MiB/s (166MB/s), 159MiB/s-159MiB/s (166MB/s-166MB/s), io=1588MiB (1665MB), run=10004-10004msec
+</code></pre>
+<p>How to read it:</p>
+<ul>
+<li><code>slat</code> is submission latency (time to hand the request to the kernel). <code>clat</code> is completion latency (time from submission to completion, the storage's real latency). <code>lat</code> is the two added together.</li>
+<li>Look at the percentiles, not the average. A data loader or a checkpoint barrier waits for the <em>slowest</em> request. Here p50 is 2.9 ms and p99.9 is 14.5 ms, a 5x tail.</li>
+<li><code>IO depths: 32=100%</code> confirms the requested depth was actually reached.</li>
+</ul>
+<p>Two flag traps:</p>
+<pre><code class="language-bash"># Same job with --direct=0 (buffered). Measured in the same VM, one run each:
+#   direct=1  randread 4k qd32 x4 jobs : 62,075 IOPS   mean clat  2.06 ms
+#   direct=0  randread 4k qd32 x4 jobs :  5,442 IOPS   mean clat 22.8 ms
+</code></pre>
+<ol>
+<li><strong>libaio is only asynchronous with <code>O_DIRECT</code>.</strong> The fio docs say so: with buffered I/O, libaio submissions block, so <code>iodepth=32</code> quietly becomes about 1. That is why the buffered run above is 11x slower, not faster. (These two rows come from a separate, JSON-output pass in the same VM. The 62k vs 40.6k difference between the two <code>direct=1</code> runs is run-to-run noise in a VM. Take the ratio as the finding, not the absolute numbers.)</li>
+<li><strong>fio reuses its data files</strong> if they exist with the same name, even when the parameters changed. Use <code>--unlink=1</code> or delete them, as the <a href="../storage/README.html#fio">Storage chapter warns</a>.</li>
+</ol>
+<p>ML-shaped fio jobs:</p>
+<pre><code class="language-bash"># untested on a real cluster; patterns to adapt
+# checkpoint-like: each of 8 ranks per node writes one big file with 16 MiB writes, fsync at end
+fio --name=ckpt --directory=/lustre/bench --rw=write --bs=16M --size=8G --numjobs=8 \
+    --ioengine=libaio --direct=1 --iodepth=4 --end_fsync=1 --group_reporting --unlink=1
+# dataloader-like: many readers, 1 MiB sequential chunks out of large shards
+fio --name=shards --directory=/lustre/bench --rw=read --bs=1M --size=4G --numjobs=32 \
+    --ioengine=libaio --direct=1 --iodepth=8 --time_based --runtime=60s --group_reporting --unlink=1
+</code></pre>
+<p>A parallel filesystem has to be measured from many nodes at once. One client can't saturate it. Run the same fio job on N nodes (via Slurm's <code>srun</code>, or <code>pdsh</code>, which runs one command over ssh on many hosts at once) and add the results, or use fio's client/server mode (<code>fio --server</code> on each node, <code>fio --client=hosts.txt job.fio</code> from one). For metadata, IOR/mdtest (from the IO500 benchmark) is the standard tool.</p>
+<h3 id="dd-and-its-pitfalls">dd and its pitfalls</h3>
+<p><code>dd</code> copies bytes. People use it as a benchmark because it's always installed, and it is easy to get wrong. This was run in the Linux VM, 1 GiB per command, twice:</p>
+<pre><code class="language-bash">dd if=/dev/zero of=dd.bin bs=1M count=1024                  # write, no sync
+dd if=/dev/zero of=dd.bin bs=1M count=1024 conv=fdatasync   # write, flush to disk before reporting
+dd if=dd.bin of=/dev/null bs=1M                             # read right after writing
+dd if=dd.bin of=/dev/null bs=1M                             # read again
+sync; echo 3 &gt; /proc/sys/vm/drop_caches                     # root only: drop the page cache
+dd if=dd.bin of=/dev/null bs=1M                             # cold read
+dd if=dd.bin of=/dev/null bs=1M iflag=direct                # O_DIRECT read
+</code></pre>
+<pre><code class="language-text">             no-sync write   fdatasync write   read #1    read #2    cold read   direct read
+run 1        185 MB/s        140 MB/s          2.7 GB/s   6.9 GB/s   633 MB/s    1.4 GB/s
+run 2        232 MB/s        336 MB/s          5.4 GB/s   11.1 GB/s  1.1 GB/s    2.4 GB/s
+(an earlier session: no-sync write 2.3 GB/s, fdatasync write 772 MB/s)
+</code></pre>
+<p>What the numbers teach, given that this is a noisy VM:</p>
+<ul>
+<li><strong>Reads right after writing are page-cache reads.</strong> 5-11 GB/s here is memory bandwidth, not the disk. The cold read, after <code>drop_caches</code>, is 5-10x slower. A benchmark that writes a file and reads it back measures RAM.</li>
+<li><strong>A write without <code>conv=fdatasync</code> measures how fast dirty pages pile up in RAM</strong> when there is room, as in the 2.3 GB/s vs 772 MB/s session. When the kernel's dirty-page limits are already hit, as in runs 1 and 2, the no-sync write is throttled to disk speed anyway. Either way the number isn't &quot;disk write speed&quot; unless the data is forced to disk.</li>
+<li><strong>The same command varied 2x between runs.</strong> One run is an anecdote. Repeat it, and report the spread.</li>
+<li><strong><code>/dev/zero</code> is a stream of zeros.</strong> Storage that compresses or deduplicates (ZFS with compression, some appliances) writes almost nothing. Use random data, or fio, which fills buffers with random data by default.</li>
+<li><code>bs=1M count=1</code> with a single process and no queue depth measures one stream. It can't show what 1,000 ranks do.</li>
+</ul>
+<p>On macOS, <code>dd</code> has no <code>conv=fdatasync</code> or <code>iflag=direct</code> (BSD <code>dd</code>). Use the Python version below.</p>
+<h3 id="the-page-cache-in-your-own-measurements">The page cache in your own measurements</h3>
+<pre><code class="language-python"># pagecache.py - what a naive write/read benchmark actually measures
+import os, time
+P, N = &quot;/tmp/pc_test.bin&quot;, 1 &lt;&lt; 30                  # 1 GiB
+buf = os.urandom(64 &lt;&lt; 20)                          # random, so compression/dedup can't cheat
+
+def write(fsync):
+    t0 = time.perf_counter()
+    with open(P, &quot;wb&quot;) as f:
+        for _ in range(N // len(buf)): f.write(buf)
+        f.flush()
+        if fsync: os.fsync(f.fileno())
+    return N / (time.perf_counter() - t0) / 1e9
+
+def read():
+    t0 = time.perf_counter()
+    with open(P, &quot;rb&quot;, buffering=0) as f:
+        while f.read(16 &lt;&lt; 20): pass
+    return N / (time.perf_counter() - t0) / 1e9
+
+print(f&quot;write, no fsync : {write(False):5.1f} GB/s&quot;)
+print(f&quot;write + fsync   : {write(True):5.1f} GB/s&quot;)
+print(f&quot;read (cached)   : {read():5.1f} GB/s&quot;)
+print(f&quot;read again      : {read():5.1f} GB/s&quot;)
+os.remove(P)
+</code></pre>
+<pre><code class="language-text"># macOS, M4 laptop, internal SSD ~94% full, two runs
+write, no fsync :   0.4 GB/s        write, no fsync :   0.6 GB/s
+write + fsync   :   0.6 GB/s        write + fsync   :   0.6 GB/s
+read (cached)   :   2.1 GB/s        read (cached)   :   3.0 GB/s
+read again      :   6.1 GB/s        read again      :   3.2 GB/s
+# Linux VM, one run
+write, no fsync :   0.3 GB/s
+write + fsync   :   0.8 GB/s
+read (cached)   :   4.5 GB/s
+read again      :   7.5 GB/s
+</code></pre>
+<p>I expected the no-fsync write to be much faster than the fsync write, and on both machines it wasn't. Both are writing through to a nearly full SSD (or the VM's disk image on it) under memory pressure, so the kernel throttles writers to about disk speed. Your server, with 1-2 TB of RAM and an empty NVMe, will probably show the gap that <code>dd</code> showed in its first session. The read side behaved as expected: cached reads run at RAM speed. The lesson is that the page cache makes some measurements meaningless, and you have to find out <em>which</em> ones on <em>your</em> machine, rather than assume.</p>
+<h3 id="what-to-measure-for-ml">What to measure for ML</h3>
+<p>Benchmark the access pattern your job actually produces. Generic numbers don't transfer:</p>
+<table>
+<thead>
+<tr>
+<th>Workload</th>
+<th>Pattern</th>
+<th>Measure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Checkpoint save</td>
+<td>N ranks each write one or a few large files at once, then a barrier</td>
+<td>aggregate write GB/s from all nodes at once, with fsync, and the <em>slowest</em> rank's time</td>
+</tr>
+<tr>
+<td>Checkpoint load / model load</td>
+<td>every rank reads its shard (or everyone reads the same file)</td>
+<td>aggregate read GB/s, and the &quot;thundering herd&quot; case of all nodes reading one file</td>
+</tr>
+<tr>
+<td>Pretokenized data</td>
+<td>sequential reads of big shards from many workers</td>
+<td>read GB/s at your worker count; is it more than you need (often trivially, see <a href="#how-much-bandwidth-does-training-need">section 8</a>)?</td>
+</tr>
+<tr>
+<td>Image/video data</td>
+<td>many medium reads, decode-heavy</td>
+<td>samples/s <em>including decode</em>; the CPU is often the bottleneck</td>
+</tr>
+<tr>
+<td>Environments, imports</td>
+<td>thousands of small <code>stat</code>/<code>open</code></td>
+<td><code>time python -c &quot;import torch&quot;</code> cold, from 64 nodes at once</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-tensor-file-formats">6. Tensor file formats</h2>
+<h3 id="pickle-and-why-loading-a-checkpoint-can-run-code">Pickle, and why loading a checkpoint can run code</h3>
+<p><code>torch.save</code> writes a zip file containing a <strong>pickle</strong> (Python's object serialization format) plus raw tensor bytes. A pickle isn't data. It is a small program for a stack machine, and loading it runs that program, which can call any importable function. Any object can control what happens on load through <code>__reduce__</code>:</p>
+<pre><code class="language-python"># pickle_risk.py  [torch]
+import pickle, torch, os
+
+class Evil:
+    def __reduce__(self):
+        # pickle stores &quot;call os.system with this arg&quot; - and load() obeys
+        return (os.system, (&quot;echo '  &gt;&gt;&gt; arbitrary code ran during load'&quot;,))
+
+torch.save({&quot;weight&quot;: torch.zeros(2), &quot;x&quot;: Evil()}, &quot;/tmp/evil.pt&quot;)
+
+print(&quot;torch.load(weights_only=False):&quot;, flush=True)
+torch.load(&quot;/tmp/evil.pt&quot;, weights_only=False)
+
+print(&quot;torch.load() default (weights_only=True since torch 2.6):&quot;)
+try:
+    torch.load(&quot;/tmp/evil.pt&quot;)
+except pickle.UnpicklingError as e:
+    print(&quot;  refused:&quot;, str(e).splitlines()[0][:100])
+</code></pre>
+<pre><code class="language-text">torch.load(weights_only=False):
+  &gt;&gt;&gt; arbitrary code ran during load
+torch.load() default (weights_only=True since torch 2.6):
+  refused: Weights only load failed. In PyTorch 2.6, we changed the default value of the `weights_only` argumen
+</code></pre>
+<p>Since PyTorch 2.6, <code>torch.load</code> defaults to <code>weights_only=True</code>, which allows only tensors, primitive types and an allow-list of classes. Code that &quot;fixes&quot; the error by passing <code>weights_only=False</code> to a file downloaded from the internet is running a stranger's program. Pickle also ties a checkpoint to your code: if the pickle references <code>mymodule.MyConfig</code>, renaming that class breaks loading.</p>
+<h3 id="safetensors-a-header-plus-raw-bytes">safetensors: a header plus raw bytes</h3>
+<p><a href="https://github.com/huggingface/safetensors">safetensors</a> is the format that replaced pickle for distributing weights. The whole format is:</p>
+<pre><code>+----------------+------------------------------------+---------------------------------------+
+| N: u64 little- | JSON header (N bytes):             | raw tensor bytes, back to back,       |
+| endian (8 B)   | {&quot;name&quot;: {&quot;dtype&quot;,&quot;shape&quot;,         | row-major, no padding inside tensors  |
+|                |   &quot;data_offsets&quot;:[begin,end]}, ... |                                       |
+|                |  &quot;__metadata__&quot;: {str: str}}       |                                       |
++----------------+------------------------------------+---------------------------------------+
+</code></pre>
+<p>There is no code and nothing to execute, so loading an untrusted file is safe (modulo parser bugs). Because the bytes are already laid out exactly as they sit in memory, a loader can <strong>memory-map</strong> the file. <code>mmap</code> asks the OS to make the file appear as memory, and pages are read from disk only when touched (see <a href="../foundations/linux-and-os.html#page-faults-and-lazy-allocation">Linux: page faults</a>). Opening the file costs only reading the header. One tensor, or a slice of one, costs reading just those bytes. That is what makes lazy loading of a single tensor-parallel shard out of a full checkpoint possible.</p>
+<pre><code class="language-python"># st_demo.py  [torch]
+import json, struct, time, os, torch
+from safetensors.torch import save_file, load_file
+from safetensors import safe_open
+
+torch.manual_seed(0)
+# a fake &quot;model&quot;: 8 layers of 2048x2048 bf16 = 8 * 8 MiB = 64 MiB, plus a 32000x512 embedding
+state = {f&quot;layers.{i}.weight&quot;: torch.randn(2048, 2048).to(torch.bfloat16) for i in range(8)}
+state[&quot;embed.weight&quot;] = torch.randn(32000, 512).to(torch.bfloat16)          # (V, C)
+save_file(state, &quot;/tmp/model.safetensors&quot;, metadata={&quot;step&quot;: &quot;1200&quot;})
+print(f&quot;file size: {os.path.getsize('/tmp/model.safetensors') / 2**20:.1f} MiB&quot;)
+
+# 1) the format, by hand: 8-byte little-endian header length, JSON header, raw bytes
+with open(&quot;/tmp/model.safetensors&quot;, &quot;rb&quot;) as f:
+    n = struct.unpack(&quot;&lt;Q&quot;, f.read(8))[0]
+    header = json.loads(f.read(n))
+print(&quot;header bytes:&quot;, n)
+print(&quot;metadata:&quot;, header.pop(&quot;__metadata__&quot;))
+k = &quot;layers.3.weight&quot;
+print(k, &quot;-&gt;&quot;, header[k])
+
+# 2) read ONE tensor's bytes ourselves using the offsets (offsets are relative to end of header)
+start, end = header[k][&quot;data_offsets&quot;]
+with open(&quot;/tmp/model.safetensors&quot;, &quot;rb&quot;) as f:
+    f.seek(8 + n + start)
+    raw = bytearray(f.read(end - start))
+mine = torch.frombuffer(raw, dtype=torch.bfloat16).view(2048, 2048)
+print(&quot;hand-decoded equals original:&quot;, torch.equal(mine, state[k]))
+
+# 3) lazy, mmap-backed access: open is O(header), a tensor is read only when asked for
+t0 = time.perf_counter()
+with safe_open(&quot;/tmp/model.safetensors&quot;, framework=&quot;pt&quot;) as f:
+    t_open = time.perf_counter() - t0
+    names = list(f.keys())
+    row = f.get_slice(&quot;embed.weight&quot;)[100:104]     # (4, 512): reads ~4 KiB, not 32 MiB
+print(f&quot;safe_open + keys: {t_open*1e3:.2f} ms for {len(names)} tensors; slice shape {tuple(row.shape)}&quot;)
+print(&quot;slice correct:&quot;, torch.equal(row, state[&quot;embed.weight&quot;][100:104]))
+
+# 4) &quot;load&quot; time vs torch.save/torch.load of the same dict (warm page cache)
+torch.save(state, &quot;/tmp/model.pt&quot;)
+for name, fn in [(&quot;safetensors load_file&quot;, lambda: load_file(&quot;/tmp/model.safetensors&quot;)),
+                 (&quot;torch.load mmap=True &quot;, lambda: torch.load(&quot;/tmp/model.pt&quot;, mmap=True)),
+                 (&quot;torch.load          &quot;, lambda: torch.load(&quot;/tmp/model.pt&quot;))]:
+    fn(); t0 = time.perf_counter(); sd = fn(); dt = time.perf_counter() - t0
+    print(f&quot;{name}: {dt*1e3:6.1f} ms&quot;)
+
+# 5) why load_file looks free: tensors are views of the mmap; pages are read on first touch
+def touch(sd): return sum(t.clone().numel() for t in sd.values())   # forces every page in
+for name, fn in [(&quot;safetensors load_file + touch&quot;, lambda: touch(load_file(&quot;/tmp/model.safetensors&quot;))),
+                 (&quot;torch.load mmap=True + touch &quot;, lambda: touch(torch.load(&quot;/tmp/model.pt&quot;, mmap=True))),
+                 (&quot;torch.load + touch          &quot;, lambda: touch(torch.load(&quot;/tmp/model.pt&quot;)))]:
+    fn(); t0 = time.perf_counter(); fn(); dt = time.perf_counter() - t0
+    print(f&quot;{name}: {dt*1e3:6.1f} ms&quot;)
+</code></pre>
+<pre><code class="language-text">file size: 95.3 MiB
+header bytes: 832
+metadata: {'step': '1200'}
+layers.3.weight -&gt; {'dtype': 'BF16', 'shape': [2048, 2048], 'data_offsets': [57933824, 66322432]}
+hand-decoded equals original: True
+safe_open + keys: 3.07 ms for 9 tensors; slice shape (4, 512)
+slice correct: True
+safetensors load_file:    0.2 ms
+torch.load mmap=True :    1.3 ms
+torch.load          :   22.2 ms
+safetensors load_file + touch:   32.4 ms
+torch.load mmap=True + touch :   35.8 ms
+torch.load + touch          :   52.2 ms
+</code></pre>
+<p>Read the timings carefully, because this is a common benchmarking mistake. <code>load_file</code> in 0.2 ms didn't read 95 MiB. It mapped the file and returned tensors whose pages hadn't been touched yet. Once every byte is touched, the formats are within 2x of each other (on a warm page cache, with one run). The real advantages of safetensors are safety, partial reads, and no Python object reconstruction. &quot;Faster load&quot; claims need an honest touch-every-byte measurement. <code>torch.load(..., mmap=True)</code> (PyTorch 2.1+) gives pickle checkpoints the same lazy behaviour for the tensor bytes, but not the safety.</p>
+<p>Also note that <code>layers.3.weight</code> sits at offset 57.9 MB, after the 32.8 MB embedding. The writer orders tensors itself, so never assume file order matches dict order. Always go through the header.</p>
+<h3 id="sharded-checkpoints-the-hugging-face-layout">Sharded checkpoints: the Hugging Face layout</h3>
+<p>Large models are stored as several files plus an index. The Hugging Face convention is <code>model-0000k-of-0000n.safetensors</code> files and a <code>model.safetensors.index.json</code> whose <code>weight_map</code> maps each tensor name to its file. Loaders read the index, then open only the files they need:</p>
+<pre><code class="language-python"># hf_shards.py  [torch, safetensors]  - the Hugging Face sharded-checkpoint layout, by hand
+import json, os, torch
+from safetensors.torch import save_file
+from safetensors import safe_open
+
+D = &quot;/tmp/hf_ckpt&quot;; os.makedirs(D, exist_ok=True)
+state = {f&quot;model.layers.{i}.mlp.weight&quot;: torch.randn(1024, 1024).to(torch.bfloat16) for i in range(6)}   # 2 MiB each
+max_shard, shards, cur, size = 5 * 2**20, [], {}, 0
+for k, t in state.items():                                   # greedy packing into &lt;= 5 MiB files
+    b = t.numel() * t.element_size()
+    if cur and size + b &gt; max_shard: shards.append(cur); cur, size = {}, 0
+    cur[k] = t; size += b
+shards.append(cur)
+
+weight_map = {}
+for i, sh in enumerate(shards, 1):
+    fn = f&quot;model-{i:05d}-of-{len(shards):05d}.safetensors&quot;
+    save_file(sh, f&quot;{D}/{fn}&quot;, metadata={&quot;format&quot;: &quot;pt&quot;})
+    weight_map |= {k: fn for k in sh}
+json.dump({&quot;metadata&quot;: {&quot;total_size&quot;: sum(t.numel() * 2 for t in state.values())}, &quot;weight_map&quot;: weight_map},
+          open(f&quot;{D}/model.safetensors.index.json&quot;, &quot;w&quot;), indent=1)
+
+print(sorted(os.listdir(D)))
+idx = json.load(open(f&quot;{D}/model.safetensors.index.json&quot;))
+k = &quot;model.layers.4.mlp.weight&quot;
+with safe_open(f&quot;{D}/{idx['weight_map'][k]}&quot;, framework=&quot;pt&quot;) as f:   # open only the file that has it
+    print(k, &quot;lives in&quot;, idx[&quot;weight_map&quot;][k], &quot;-&gt;&quot;, tuple(f.get_tensor(k).shape))
+</code></pre>
+<pre><code class="language-text">['model-00001-of-00003.safetensors', 'model-00002-of-00003.safetensors', 'model-00003-of-00003.safetensors', 'model.safetensors.index.json']
+model.layers.4.mlp.weight lives in model-00003-of-00003.safetensors -&gt; (1024, 1024)
+</code></pre>
+<p>In practice <code>model.save_pretrained(dir, max_shard_size=&quot;5GB&quot;)</code> and <code>huggingface_hub.save_torch_state_dict</code> do this for you. The layout is the <em>distribution</em> format: full, unsharded tensors grouped into files by size. It is not how a running FSDP/TP job wants to save, because there each rank holds <em>pieces</em> of tensors.</p>
+<h3 id="torchdistributedcheckpoint-every-rank-writes-its-own-pieces">torch.distributed.checkpoint: every rank writes its own pieces</h3>
+<p>In a sharded training job (FSDP, tensor parallel, pipeline parallel; introduced in <a href="../foundations/distributed-systems.html#model-parallelism">Distributed Systems</a>, in depth in <a href="../training/model-parallelism/README.html">Model Parallelism</a>), no rank has the full model. The naive save, gathering everything to rank 0 and calling <code>torch.save</code>, sends the whole model through one GPU's memory and one node's network link and disk. At 405B scale that takes hours, or runs out of memory.</p>
+<p><strong>torch.distributed.checkpoint (DCP)</strong> has each rank write only the shards it owns, in parallel, plus one small global <code>.metadata</code> file describing how the pieces fit together. Loading can use a <em>different</em> parallel layout than saving: DCP reads the metadata and gives each rank the byte ranges that make up the shard it now owns. This is <strong>resharding on load</strong>, and it is what lets you resume a 256-GPU run on 192 GPUs.</p>
+<p>New PyTorch pieces in the demo below: <code>mp.spawn(run, nprocs=2)</code> starts two processes that each call <code>run(rank, ...)</code>, and they form a process group over the CPU-only <code>gloo</code> backend (both as in <a href="../foundations/distributed-systems.html#communication-models">Distributed Systems</a>). A <strong>device mesh</strong> (<code>init_device_mesh</code>) is a named grid of ranks, here just a line of 2. A <strong>DTensor</strong> (<code>distribute_tensor(full, mesh, [Shard(0)])</code>) is a tensor that knows it is split across that mesh, here by rows (dim 0), so each rank physically holds half of it; <code>w.to_local()</code> is that rank's half. FSDP2 (the current version of PyTorch's FSDP) stores parameters as DTensors, which is why DCP understands them.</p>
+<pre><code class="language-python"># dcp_demo.py  [torch]  - torch.distributed.checkpoint on 2 CPU ranks (gloo)
+import os, shutil, torch, torch.distributed as dist, torch.multiprocessing as mp
+import torch.distributed.checkpoint as dcp
+from torch.distributed.tensor import distribute_tensor, Shard, init_device_mesh
+
+CKPT = &quot;/tmp/dcp_ckpt&quot;
+
+def run(rank, world):
+    os.environ.update(MASTER_ADDR=&quot;127.0.0.1&quot;, MASTER_PORT=&quot;29531&quot;)
+    dist.init_process_group(&quot;gloo&quot;, rank=rank, world_size=world)
+    mesh = init_device_mesh(&quot;cpu&quot;, (world,))
+    torch.manual_seed(0)
+    full = torch.randn(1024, 256)                                  # (out, in), same on all ranks
+    w = distribute_tensor(full, mesh, [Shard(0)])                  # each rank owns 512 rows
+    state = {&quot;model&quot;: {&quot;w&quot;: w}, &quot;step&quot;: 1200}
+    print(f&quot;rank {rank}: local shard {tuple(w.to_local().shape)}&quot;, flush=True)
+
+    dcp.save(state, checkpoint_id=CKPT)                            # every rank writes only its shard
+    fut = dcp.async_save(state, checkpoint_id=CKPT + &quot;_async&quot;)     # stage to CPU, write in background
+    fut.result()                                                   # (a real loop keeps training here)
+
+    # reload into a plain, unsharded tensor: a different layout than was saved -&gt; DCP reshards
+    target = {&quot;model&quot;: {&quot;w&quot;: torch.zeros(1024, 256)}, &quot;step&quot;: 0}
+    dcp.load(target, checkpoint_id=CKPT)
+    if rank == 0:
+        print(&quot;reloaded full tensor equals original:&quot;, torch.equal(target[&quot;model&quot;][&quot;w&quot;], full), &quot;step:&quot;, target[&quot;step&quot;])
+    dist.destroy_process_group()
+
+if __name__ == &quot;__main__&quot;:
+    shutil.rmtree(CKPT, ignore_errors=True); shutil.rmtree(CKPT + &quot;_async&quot;, ignore_errors=True)
+    mp.spawn(run, args=(2,), nprocs=2)
+    for f in sorted(os.listdir(CKPT)):
+        print(f&quot;{f:20s} {os.path.getsize(os.path.join(CKPT, f)):&gt;9,} bytes&quot;)
+</code></pre>
+<pre><code class="language-text">rank 1: local shard (512, 256)
+rank 0: local shard (512, 256)
+reloaded full tensor equals original: True step: 1200
+.metadata                1,094 bytes
+__0_0.distcp           525,865 bytes
+__1_0.distcp           527,126 bytes
+</code></pre>
+<p>Each <code>.distcp</code> file is one rank's <span class="math inline"><span class="math-inline">512 \times 256 \times 4\ \text{B} = 524{,}288</span></span> bytes of tensor data plus a little framing. With FSDP2 you'd use <code>torch.distributed.checkpoint.state_dict.get_state_dict(model, optimizer)</code> to get sharded model and optimizer state in this form, and <code>set_state_dict</code> after loading. DCP's <code>StorageWriter</code>/<code>StorageReader</code> interfaces are how you plug in an object-store backend (an <code>fsspec</code>-based writer ships with PyTorch). To export a final model for inference, convert DCP to a single <code>torch.save</code> file with <code>torch.distributed.checkpoint.format_utils.dcp_to_torch_save</code>, and from there to safetensors. API surface as of torch 2.15. DCP has moved quickly, so check the <a href="https://pytorch.org/docs/stable/distributed.checkpoint.html">docs</a> for your version.</p>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Code on load</th>
+<th>Partial / lazy reads</th>
+<th>Sharded save from many ranks</th>
+<th>Reshard on load</th>
+<th>Use for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>torch.save</code> (pickle)</td>
+<td>yes, unless <code>weights_only=True</code></td>
+<td>with <code>mmap=True</code></td>
+<td>no (one file per writer, you manage it)</td>
+<td>no</td>
+<td>small experiments</td>
+</tr>
+<tr>
+<td>safetensors</td>
+<td>no</td>
+<td>yes (header + offsets)</td>
+<td>by hand, or HF sharding</td>
+<td>no (full tensors)</td>
+<td>distribution, inference loading</td>
+</tr>
+<tr>
+<td>DCP</td>
+<td>no for tensors (metadata is pickled internally; only load checkpoints you produced)</td>
+<td>yes</td>
+<td>yes, the point of it</td>
+<td>yes</td>
+<td>training checkpoints</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-checkpoint-io-arithmetic">7. Checkpoint I/O arithmetic</h2>
+<h3 id="whats-in-a-training-checkpoint">What's in a training checkpoint</h3>
+<p>For mixed-precision training with Adam, each parameter carries (see <a href="../training/arithmetic.html#static-per-parameter">Training arithmetic: static memory per parameter</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Bytes/param</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bf16 working weights</td>
+<td>2</td>
+</tr>
+<tr>
+<td>fp32 master weights</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Adam first moment <code>m</code> (fp32)</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Adam second moment <code>v</code> (fp32)</td>
+<td>4</td>
+</tr>
+<tr>
+<td><strong>Total for a resumable checkpoint</strong></td>
+<td><strong>14</strong> (16 if fp32 grads or fp32 weights are also saved; 12 if bf16 weights are rebuilt from master)</td>
+</tr>
+<tr>
+<td>Inference export (bf16 weights only)</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<p>Plus the small but essential extras: the step count, LR scheduler state, RNG states for every rank, the data loader position (<a href="#deterministic-resumable-data-loading">section 8</a>), and the config and git SHA. These are kilobytes, and without them the checkpoint can't reproduce the run.</p>
+<h3 id="size-and-time-for-8b-70b-and-405b">Size and time for 8B, 70B and 405B</h3>
+<pre><code class="language-python"># ckpt_math.py - checkpoint size and write time
+import math
+models = {&quot;8B&quot;: 8.03e9, &quot;70B&quot;: 70.6e9, &quot;405B&quot;: 405.9e9}     # Llama-3.1 parameter counts
+# bytes/param: bf16 weights only (inference/export) vs full mixed-precision Adam training state
+#   training: fp32 master weights 4 + Adam m 4 + Adam v 4 + bf16 weights 2 = 14
+bpp = {&quot;weights bf16 (2 B/p)&quot;: 2, &quot;train state (14 B/p)&quot;: 14}
+bws = {&quot;1 GB/s&quot;: 1e9, &quot;10 GB/s&quot;: 10e9, &quot;100 GB/s&quot;: 100e9, &quot;1 TB/s&quot;: 1e12}
+
+print(f&quot;{'model':5} {'what':22} {'size':&gt;9} &quot; + &quot; &quot;.join(f&quot;{k:&gt;10}&quot; for k in bws))
+for m, n in models.items():
+    for what, b in bpp.items():
+        size = n * b
+        ts = [size / bw for bw in bws.values()]
+        fmt = lambda t: f&quot;{t/60:8.1f}m&quot; if t &gt;= 120 else f&quot;{t:8.1f}s&quot;
+        print(f&quot;{m:5} {what:22} {size/1e9:7.0f}GB &quot; + &quot; &quot;.join(f&quot;{fmt(t):&gt;10}&quot; for t in ts))
+
+# GPU -&gt; host snapshot, &quot;D2H&quot; = device-to-host copy (the only part async checkpointing cannot hide)
+n_gpu, pcie = 1024, 25e9         # 405B train state over 1024 GPUs; ~25 GB/s achieved D2H per GPU (assumption)
+per_gpu = models[&quot;405B&quot;] * 14 / n_gpu
+print(f&quot;\n405B train state over {n_gpu} GPUs: {per_gpu/1e9:.1f} GB/GPU -&gt; D2H snapshot {per_gpu/pcie:.2f} s at 25 GB/s&quot;)
+print(f&quot;host RAM for one staged copy per 8-GPU node: {per_gpu*8/1e9:.0f} GB&quot;)
+
+# Young/Daly optimal interval: tau = sqrt(2 * C * MTBF)
+mtbf_h = 54 * 24 / 466           # Llama 3 405B: 466 interruptions in 54 days
+for C in (5, 60, 600):           # seconds of training blocked per checkpoint
+    tau = math.sqrt(2 * C * mtbf_h * 3600)
+    waste = C / tau + tau / (2 * mtbf_h * 3600)        # checkpoint overhead + expected lost work
+    print(f&quot;MTBF {mtbf_h:.2f} h, blocking cost {C:4d} s -&gt; checkpoint every {tau/60:5.1f} min, ~{100*waste:.1f}% time lost&quot;)
+</code></pre>
+<pre><code class="language-text">model what                        size     1 GB/s    10 GB/s   100 GB/s     1 TB/s
+8B    weights bf16 (2 B/p)        16GB      16.1s       1.6s       0.2s       0.0s
+8B    train state (14 B/p)       112GB     112.4s      11.2s       1.1s       0.1s
+70B   weights bf16 (2 B/p)       141GB       2.4m      14.1s       1.4s       0.1s
+70B   train state (14 B/p)       988GB      16.5m      98.8s       9.9s       1.0s
+405B  weights bf16 (2 B/p)       812GB      13.5m      81.2s       8.1s       0.8s
+405B  train state (14 B/p)      5683GB      94.7m       9.5m      56.8s       5.7s
+
+405B train state over 1024 GPUs: 5.5 GB/GPU -&gt; D2H snapshot 0.22 s at 25 GB/s
+host RAM for one staged copy per 8-GPU node: 44 GB
+MTBF 2.78 h, blocking cost    5 s -&gt; checkpoint every   5.3 min, ~3.2% time lost
+MTBF 2.78 h, blocking cost   60 s -&gt; checkpoint every  18.3 min, ~10.9% time lost
+MTBF 2.78 h, blocking cost  600 s -&gt; checkpoint every  57.8 min, ~34.6% time lost
+</code></pre>
+<p>What the bandwidth columns correspond to (orders of magnitude, not quotes):</p>
+<ul>
+<li><strong>1 GB/s</strong>: one NFS client, a single-stream object-store upload, or a slow WAN link (wide-area network: a link between sites or regions).</li>
+<li><strong>10 GB/s</strong>: one node writing to a few local NVMe drives, or one node's share of a good parallel FS.</li>
+<li><strong>100 GB/s</strong>: the aggregate of tens of nodes writing to a strong parallel FS at once. The Storage chapter's <a href="../storage/README.html#which-file-system-to-choose">JeanZay case study</a>, 2.3 TB in 40 s from 384 processes, works out to about 58 GB/s.</li>
+<li><strong>1 TB/s</strong>: hundreds of nodes each writing to <em>their own local NVMe</em> at a few GB/s. This is why fast checkpointing systems write locally first.</li>
+</ul>
+<p>The bottleneck is usually the smallest of: per-GPU device-to-host copy, per-node NIC to storage (for example <span class="math inline"><span class="math-inline">2 \times 200\ \text{Gb/s} = 50\ \text{GB/s}</span></span>), storage-side aggregate bandwidth, and metadata (file creates). Do the division for each and take the minimum.</p>
+<h3 id="how-often-to-checkpoint">How often to checkpoint</h3>
+<p>The Young/Daly formula (Young 1974; Daly 2006; first met in <a href="../foundations/distributed-systems.html#how-often-to-checkpoint">Distributed Systems</a>) balances two costs. Checkpointing often wastes the blocking time <span class="math inline"><span class="math-inline">C</span></span> on every save. Checkpointing rarely loses on average half an interval of work per failure. With mean time between failures <span class="math inline"><span class="math-inline">M</span></span>, the optimum interval is about</p>
+<div class="math block">
+<div class="math-display">\tau \approx \sqrt{2 C M}</div>
+</div>
+<p>The script plugs in the failure rate reported for Llama 3 405B pre-training on 16k H100s: 466 job interruptions in a 54-day snapshot (<a href="https://arxiv.org/abs/2407.21783">The Llama 3 Herd of Models</a>, arXiv 2407.21783). (Distributed Systems used 419 from the same table: that is the <em>unexpected</em> interruptions only; the other 47 were planned, such as maintenance. For checkpoint planning every interruption costs you work, so this chapter uses the total.) That gives an MTBF of 2.8 hours. The numbers are first-order: they ignore restart time, which at this scale is often minutes and adds to every failure. The conclusion still holds. Cutting the blocking cost from 10 minutes to 5 seconds cuts the overhead from about 35% to about 3%, and that is what async checkpointing buys.</p>
+<h3 id="async-checkpointing">Async checkpointing</h3>
+<p>The mechanism and a runnable minimal version are in <a href="../foundations/concurrency.html#async-checkpointing">Concurrency: Async checkpointing</a>: snapshot to host memory (blocking, fast), persist from a background thread or process (overlapped), and never have more than one save in flight. The arithmetic above shows why the split works. The 405B snapshot is 0.22 s of D2H copy per GPU, under the assumed 25 GB/s. The write, minutes at realistic bandwidth, is hidden behind training steps, as long as the write finishes before the next checkpoint is due.</p>
+<p>Production systems layer storage tiers so that the blocking part only touches the fastest tier:</p>
+<pre><code> step N  ──► GPU HBM ──(D2H, pinned buffers, ~0.2 s)──► host RAM ──► training resumes
+                                                         │
+                         background, overlapped with steps N+1 ...
+                                                         ├─► local NVMe          (seconds; survives process crash)
+                                                         ├─► parallel FS         (minutes; survives node loss)
+                                                         └─► object store, async (minutes-hours; survives the cluster)
+                                     keep: last 2-3 on fast tiers, every k-th forever in object store
+</code></pre>
+<pre><code class="language-python"># untested at scale; DCP async save in a training loop (the pattern, torch &gt;= 2.3 API)
+import torch.distributed.checkpoint as dcp
+pending = None
+for step in range(start, total_steps):
+    train_step()
+    if step % ckpt_every == 0:
+        if pending is not None:
+            pending.result()                  # backpressure: previous save must have finished
+        state = {&quot;model&quot;: model_sd(), &quot;optim&quot;: optim_sd(), &quot;step&quot;: step, &quot;data&quot;: loader.state_dict()}
+        pending = dcp.async_save(state, checkpoint_id=f&quot;/lustre/ckpts/run1/step_{step:08d}&quot;)
+if pending is not None:
+    pending.result()
+</code></pre>
+<p>Host RAM is the hidden constraint. One staged copy for 405B on 1,024 GPUs is 44 GB per 8-GPU node, which is affordable. For 405B on 128 GPUs it would be 355 GB per node, and double-buffering doubles it. Do this arithmetic before turning on pinned staging buffers.</p>
+<p>Replication is an alternative to storage for fast recovery. Some systems keep each rank's checkpoint shard in the host RAM of a <em>peer</em> node (sent over the training network), so a single node failure is recovered from memory without touching storage. GEMINI (Wang et al., SOSP 2023) and <a href="../training/fault-tolerance/README.html">Fault tolerance</a> discuss this. For decentralized training, where each &quot;site&quot; has slow links to the others, the checkpoint and transfer arithmetic dominates the design. See <a href="../training/decentralized-training.html">Decentralized Training</a>.</p>
+<h3 id="making-checkpoints-trustworthy">Making checkpoints trustworthy</h3>
+<p>A checkpoint you can't trust is worse than none, because you find out at resume time, days later. Rules:</p>
+<ol>
+<li><strong>Write, fsync, then mark complete.</strong> The atomic-rename recipe is in <a href="../foundations/linux-and-os.html#fsync-and-durability-why-checkpoints-get-lost">Linux: fsync and durability</a>. For a multi-rank checkpoint, every rank fsyncs its files, then a barrier, then rank 0 writes a <code>COMPLETE</code> marker. On object storage the marker is the last object written.</li>
+<li><strong>Resume only from complete checkpoints.</strong></li>
+</ol>
+<pre><code class="language-python"># latest.py - resume only from checkpoints that finished writing
+import os, glob, json, shutil
+R = &quot;/tmp/run_ckpts&quot;; shutil.rmtree(R, ignore_errors=True)
+for step, done in [(1000, True), (2000, True), (3000, False)]:       # 3000 died mid-write
+    d = f&quot;{R}/step_{step:08d}&quot;; os.makedirs(d)
+    open(f&quot;{d}/shard_0.bin&quot;, &quot;wb&quot;).write(b&quot;\0&quot; * 10)
+    if done:                                                         # written LAST, after every rank fsynced
+        json.dump({&quot;step&quot;: step, &quot;world_size&quot;: 64}, open(f&quot;{d}/COMPLETE.json&quot;, &quot;w&quot;))
+
+def latest_complete(root):
+    good = [d for d in sorted(glob.glob(f&quot;{root}/step_*&quot;)) if os.path.exists(f&quot;{d}/COMPLETE.json&quot;)]
+    return good[-1] if good else None
+
+print(&quot;newest dir:     &quot;, sorted(glob.glob(f&quot;{R}/step_*&quot;))[-1])
+print(&quot;resume from:    &quot;, latest_complete(R))
+</code></pre>
+<pre><code class="language-text">newest dir:      /tmp/run_ckpts/step_00003000
+resume from:     /tmp/run_ckpts/step_00002000
+</code></pre>
+<ol start="3">
+<li><strong>Zero-pad step numbers</strong> (<code>step_00002000</code>) so sorting by name sorts by step.</li>
+<li><strong>Record checksums</strong> of every shard in the marker, or alongside it. Verify them when copying between tiers or sites (<a href="#checksums">section 9</a>).</li>
+<li><strong>Test resume, once, early.</strong> Save at step 100, kill the job, resume, and check that the loss at step 101 matches an uninterrupted run to the last bit (or within the run's known nondeterminism). This catches a missing optimizer state, LR scheduler or data position before it costs you a week. See <a href="../training/reproducibility/README.html">Reproducibility</a>.</li>
+<li><strong>Delete on a policy, not by hand.</strong> See the Storage chapter's <a href="../storage/README.html#how-to-automatically-delete-old-checkpoints">automatic deletion of old checkpoints</a>.</li>
+</ol>
+<h2 id="8-datasets-at-scale">8. Datasets at scale</h2>
+<h3 id="how-much-bandwidth-does-training-need">How much bandwidth does training need?</h3>
+<p>Do this arithmetic before optimizing a text data loader:</p>
+<pre><code class="language-python">toks = 16384 * 989e12 * 0.40 / (6 * 405.9e9)   # GPUs x peak bf16 FLOP/s x MFU / (6N FLOPs per token)
+print(f&quot;405B on 16384 H100 @40% MFU: {toks/1e6:.2f} M tok/s -&gt; {toks*4/1e6:.1f} MB/s of uint32 tokens&quot;)
+toks8 = 8 * 989e12 * 0.40 / (6 * 8.03e9)
+print(f&quot;8B on 8 H100 @40%: {toks8/1e3:.0f} k tok/s -&gt; {toks8*4/1e6:.2f} MB/s&quot;)
+print(f&quot;15T tokens: uint16 {15e12*2/1e12:.0f} TB, uint32 {15e12*4/1e12:.0f} TB&quot;)
+print(f&quot;vision: 64 GPUs x 2000 img/s x 110 KB = {64*2000*110e3/1e9:.1f} GB/s&quot;)   # 2000 img/s/GPU is an assumption
+</code></pre>
+<pre><code class="language-text">405B on 16384 H100 @40% MFU: 2.66 M tok/s -&gt; 10.6 MB/s of uint32 tokens
+8B on 8 H100 @40%: 66 k tok/s -&gt; 0.26 MB/s
+15T tokens: uint16 30 TB, uint32 60 TB
+vision: 64 GPUs x 2000 img/s x 110 KB = 14.1 GB/s
+</code></pre>
+<p>(<code>6N</code> FLOPs per token and MFU are derived in <a href="../training/arithmetic.html#flops-of-a-decoder-transformer">Training arithmetic</a>.) <strong>Pretokenized LLM pretraining needs about 10 MB/s for the whole cluster.</strong> Any storage can deliver that. Text data problems are almost never bandwidth problems. They are latency spikes (one slow read stalls a synchronous step on all 16k GPUs), metadata storms, CPU-bound tokenization on the fly, and non-resumable loaders. Image, video and audio are a different story: 14 GB/s of compressed media plus CPU or GPU decode is a real pipeline engineering problem.</p>
+<h3 id="tokenization-pipelines">Tokenization pipelines</h3>
+<p>Tokenize once, offline, and train from token IDs. On-the-fly tokenization in DataLoader workers costs CPU on GPU nodes, makes throughput depend on document length, and makes exact resumption harder. A typical offline pipeline:</p>
+<pre><code>raw text (jsonl.zst = one JSON doc per line, zstd-compressed / parquet = a columnar table file format; on object store)
+  -&gt; filter + dedup (separate stage, separate chapter of your life)
+  -&gt; tokenize in parallel (CPU nodes, many processes)
+  -&gt; concatenate documents with an end-of-text (EOT) token between them
+  -&gt; cut into fixed-size shards of token ids (uint16 if vocab &lt; 65536, else uint32)
+  -&gt; write shards + a manifest (shard list, token counts, tokenizer hash) to object store
+</code></pre>
+<pre><code class="language-python"># pretok.py  [numpy, tiktoken]  - parallel tokenization into fixed-size uint16 shards
+import os, time, numpy as np, tiktoken
+from multiprocessing import Pool
+
+enc = tiktoken.get_encoding(&quot;gpt2&quot;)                 # vocab 50257 &lt; 2**16, so uint16 is enough
+EOT = enc.eot_token
+
+def tok(doc):                                        # runs in a worker process
+    return np.array([EOT] + enc.encode_ordinary(doc), dtype=np.uint16)
+
+if __name__ == &quot;__main__&quot;:
+    docs = [f&quot;Document {i}. &quot; + &quot;Storage is the slowest part of the system, so overlap it. &quot; * (i % 50 + 1)
+            for i in range(20_000)]
+    out, shard_tokens = &quot;/tmp/pretok&quot;, 1_000_000
+    os.makedirs(out, exist_ok=True)
+    t0, buf, n, k = time.perf_counter(), [], 0, 0
+    with Pool(os.cpu_count()) as pool:
+        for ids in pool.imap(tok, docs, chunksize=256):   # imap keeps document order -&gt; reproducible shards
+            buf.append(ids); n += len(ids)
+            if n &gt;= shard_tokens:
+                flat = np.concatenate(buf)
+                flat[:shard_tokens].tofile(f&quot;{out}/train_{k:06d}.bin&quot;)
+                buf, n, k = [flat[shard_tokens:]], n - shard_tokens, k + 1
+    if n: np.concatenate(buf).tofile(f&quot;{out}/train_{k:06d}.bin&quot;); k += 1
+    dt = time.perf_counter() - t0
+    total = sum(os.path.getsize(f&quot;{out}/{f}&quot;) for f in os.listdir(out)) // 2
+    print(f&quot;{len(docs):,} docs -&gt; {total:,} tokens in {k} shards, {total/dt/1e6:.2f} M tok/s on {os.cpu_count()} procs&quot;)
+    m = np.memmap(f&quot;{out}/train_000000.bin&quot;, dtype=np.uint16, mode=&quot;r&quot;)
+    print(&quot;decoded:&quot;, repr(enc.decode(m[:24].tolist())))
+    print(&quot;max id in shard:&quot;, int(m.max()), &quot;&lt; 65536&quot;)
+</code></pre>
+<pre><code class="language-text">20,000 docs -&gt; 7,259,830 tokens in 8 shards, 12.96 M tok/s on 10 procs
+decoded: '&lt;|endoftext|&gt;Document 0. Storage is the slowest part of the system, so overlap it. &lt;|endoftext|&gt;Document 1. Storage'
+max id in shard: 50256 &lt; 65536
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li><strong>Decode a sample and look at it</strong> every time you build shards. The <code>decoded:</code> line catches wrong tokenizers, missing EOT tokens and byte-order bugs in seconds.</li>
+<li><strong>dtype matters.</strong> Llama 3's 128,256-token vocabulary doesn't fit in uint16. Writing it as uint16 silently wraps IDs above 65,535 into other tokens. Assert <code>max_id &lt; 2**16</code> or use uint32.</li>
+<li>The 13M tok/s is optimistic. The text is very repetitive, which BPE handles fast. Real web text is slower; measure on your corpus. At 15T tokens, even 10M tok/s means 17 days on one machine, which is why this runs on a CPU cluster (Ray and Spark are Python/JVM frameworks for spreading tasks over many machines; a Slurm array job submits many copies of one script, each with its own index) with one task per input file.</li>
+<li><strong>Store the tokenizer's identity</strong> (name, version, hash of its vocab file) in the manifest. A model trained on shards from tokenizer A and evaluated with tokenizer B is a silent disaster.</li>
+</ul>
+<h3 id="pretokenized-shards-and-memory-mapped-token-arrays">Pretokenized shards and memory-mapped token arrays</h3>
+<p>The simplest high-performance training format is a flat binary array of token IDs per shard, as in nanoGPT and llm.c. A training sample is a window of <code>T+1</code> consecutive tokens: the input is the first <code>T</code>, the target is the last <code>T</code>. With <code>np.memmap</code>, the shard appears as an array, and only the pages you slice are read from disk:</p>
+<pre><code class="language-python"># tokshards.py  [numpy, torch]  - pretokenize -&gt; uint16 shards -&gt; memmap loader -&gt; resumable sampler
+import glob, os, numpy as np, torch
+
+DIR, T = &quot;/tmp/tokshards&quot;, 64                       # T = context length
+
+# ---- 1) pretokenize: text -&gt; token ids -&gt; flat uint16 shard files (nanoGPT-style .bin)
+def tokenize(s):                                    # byte-level &quot;tokenizer&quot;, vocab 256
+    return list(s.encode(&quot;utf-8&quot;))
+
+def write_shards(docs, shard_tokens=50_000, eot=0):
+    os.makedirs(DIR, exist_ok=True)
+    buf, k = [], 0
+    for d in docs:
+        buf += tokenize(d) + [eot]                  # documents separated by an end-of-text id
+        if len(buf) &gt;= shard_tokens:
+            np.array(buf[:shard_tokens], dtype=np.uint16).tofile(f&quot;{DIR}/shard_{k:05d}.bin&quot;)
+            buf, k = buf[shard_tokens:], k + 1
+    if buf:
+        np.array(buf, dtype=np.uint16).tofile(f&quot;{DIR}/shard_{k:05d}.bin&quot;)
+
+docs = [f&quot;document {i}: the quick brown fox number {i} jumps over {i % 7} lazy dogs.&quot; for i in range(20_000)]
+write_shards(docs)
+
+# ---- 2) memmap loader: no file is read until a window is sliced
+class TokenWindows:
+    def __init__(self, pattern, T):
+        self.shards = [np.memmap(p, dtype=np.uint16, mode=&quot;r&quot;) for p in sorted(glob.glob(pattern))]
+        self.T = T
+        # window w lives in shard s at offset o; windows never straddle shards (simple, loses &lt; T tokens/shard)
+        self.index = [(s, o) for s, m in enumerate(self.shards) for o in range(0, len(m) - T - 1, T)]
+
+    def __len__(self): return len(self.index)
+
+    def __getitem__(self, w):
+        s, o = self.index[w]
+        chunk = torch.from_numpy(self.shards[s][o:o + self.T + 1].astype(np.int64))   # (T+1,)
+        return chunk[:-1], chunk[1:]                                                  # x, y: (T,), (T,)
+
+ds = TokenWindows(f&quot;{DIR}/shard_*.bin&quot;, T)
+n_tok = sum(len(m) for m in ds.shards)
+print(f&quot;{len(ds.shards)} shards, {n_tok:,} tokens, {len(ds):,} windows of T={T}&quot;)
+x, y = ds[1234]
+print(&quot;look at the data  x:&quot;, repr(bytes(x.tolist()).decode()))
+print(&quot;                  y:&quot;, repr(bytes(y.tolist()).decode()))
+</code></pre>
+<pre><code class="language-text">29 shards, 1,437,780 tokens, 22,458 windows of T=64
+look at the data  x: ' lazy dogs.\x00document 1144: the quick brown fox number 1144 jumps'
+                  y: 'lazy dogs.\x00document 1144: the quick brown fox number 1144 jumps '
+</code></pre>
+<p><code>y</code> is <code>x</code> shifted left by one token, which is the next-token objective made visible. The window crosses a document boundary (<code>\x00</code> is our EOT). Whether to allow that or to mask attention across documents is a modelling choice, and you can only see it by looking.</p>
+<p>Why this design is so robust:</p>
+<ul>
+<li><strong>No parsing, no per-sample files.</strong> A sample is one slice of a mapped array. 29 files instead of 20,000.</li>
+<li><strong>mmap shares memory across DataLoader workers.</strong> All workers map the same file and the OS keeps one copy in the page cache. That avoids the copy-on-write blow-up of Python lists described in <a href="../foundations/linux-and-os.html#copy-on-write-after-fork-and-the-dataloader-memory-leak">Linux: Copy-on-write after fork</a>. The <code>index</code> list above <em>is</em> a Python list of tuples, so at a billion windows you'd compute <code>(s, o)</code> arithmetically from cumulative shard lengths instead of storing it.</li>
+<li><strong>Random access is cheap on local NVMe and expensive on a network FS.</strong> The Storage chapter <a href="../storage/README.html#mmap-vs-sequential-dataset-reads">measured shuffled mmap access on Lustre at 50x slower</a> than a sequential read. Either stage shards to local NVMe first (at the 10 MB/s needed for text, staging the next few shards while training is trivial), or read whole shards sequentially and shuffle in memory.</li>
+</ul>
+<h3 id="deterministic-resumable-data-loading">Deterministic, resumable data loading</h3>
+<p>Resuming after a crash must continue the data stream exactly where it stopped. Otherwise you silently train on some data twice and some never, and runs aren't reproducible. The trick is to make the order a pure function of <code>(seed, epoch)</code> and store only a position:</p>
+<pre><code class="language-python"># (continues tokshards.py)
+# ---- 3) deterministic, resumable, rank-sharded sampler
+class ResumableSampler:
+    &quot;&quot;&quot;Order is a pure function of (seed, epoch); position is the only mutable state.&quot;&quot;&quot;
+    def __init__(self, n, rank, world, seed=1234):
+        self.n, self.rank, self.world, self.seed = n, rank, world, seed
+        self.epoch, self.pos = 0, 0                 # pos = samples already yielded by this rank this epoch
+
+    def _order(self):
+        g = torch.Generator().manual_seed(self.seed + self.epoch)
+        perm = torch.randperm(self.n, generator=g)
+        perm = perm[: self.n - self.n % self.world]            # drop tail so every rank gets the same count
+        return perm[self.rank :: self.world]                    # rank's strided slice
+
+    def __iter__(self):
+        while True:
+            order = self._order()
+            while self.pos &lt; len(order):
+                i = int(order[self.pos]); self.pos += 1
+                yield i
+            self.epoch, self.pos = self.epoch + 1, 0
+
+    def state_dict(self): return {&quot;epoch&quot;: self.epoch, &quot;pos&quot;: self.pos, &quot;seed&quot;: self.seed}
+    def load_state_dict(self, sd): self.epoch, self.pos, self.seed = sd[&quot;epoch&quot;], sd[&quot;pos&quot;], sd[&quot;seed&quot;]
+
+def batches(sampler, B):
+    it = iter(sampler)
+    while True:
+        idx = [next(it) for _ in range(B)]
+        xs, ys = zip(*(ds[i] for i in idx))
+        yield idx, torch.stack(xs), torch.stack(ys)             # (B, T), (B, T)
+
+B, world = 8, 4
+# uninterrupted run on rank 1: 30 steps
+ref = ResumableSampler(len(ds), rank=1, world=world)
+g = batches(ref, B); ref_idx = [next(g)[0] for _ in range(30)]
+
+# interrupted run: 17 steps, &quot;checkpoint&quot;, die, new process restores, 13 more steps
+a = ResumableSampler(len(ds), rank=1, world=world)
+g = batches(a, B); got = [next(g)[0] for _ in range(17)]
+ckpt = a.state_dict(); print(&quot;sampler state at step 17:&quot;, ckpt)
+b = ResumableSampler(len(ds), rank=1, world=world); b.load_state_dict(ckpt)
+g = batches(b, B); got += [next(g)[0] for _ in range(13)]
+print(&quot;resumed stream identical to uninterrupted:&quot;, got == ref_idx)
+
+# ranks are disjoint and cover the epoch
+per_rank = [set(ResumableSampler(len(ds), r, world)._order().tolist()) for r in range(world)]
+print(&quot;ranks disjoint:&quot;, all(per_rank[i].isdisjoint(per_rank[j]) for i in range(world) for j in range(i + 1, world)),
+      &quot;| covered:&quot;, sum(map(len, per_rank)), &quot;of&quot;, len(ds))
+x, y = next(batches(b, B))[1:]
+print(&quot;batch shapes:&quot;, tuple(x.shape), tuple(y.shape), x.dtype)
+</code></pre>
+<pre><code class="language-text">sampler state at step 17: {'epoch': 0, 'pos': 136, 'seed': 1234}
+resumed stream identical to uninterrupted: True
+ranks disjoint: True | covered: 22456 of 22458
+batch shapes: (8, 64) (8, 64) torch.int64
+</code></pre>
+<p>The whole data state is three integers, and the uninterrupted and interrupted streams match exactly. Every rank computes the same permutation from the same seed and takes a disjoint strided slice, so no communication is needed. The 2 dropped windows are the tail that doesn't divide by the world size. This sampler re-derives the order for each rank, so it does <strong>not</strong> support resuming with a different world size: <code>pos</code> counts samples <em>per rank</em>. To support elastic resumption, store a <em>global</em> sample counter and derive each rank's position from it.</p>
+<p>The trap that breaks this in practice is prefetching. A PyTorch <code>DataLoader</code> with workers pulls indices from the sampler ahead of what training has consumed:</p>
+<pre><code class="language-python"># overshoot.py  [torch]  - the sampler runs ahead of training when DataLoader prefetches
+import torch
+from torch.utils.data import DataLoader
+
+class Counting(torch.utils.data.Sampler):
+    def __init__(self, n): self.n, self.pos = n, 0
+    def __iter__(self):
+        for i in range(self.n):
+            self.pos += 1
+            yield i
+    def __len__(self): return self.n
+
+if __name__ == &quot;__main__&quot;:
+    data = torch.arange(10_000).float()
+    s = Counting(len(data))
+    dl = DataLoader(data, batch_size=8, sampler=s, num_workers=2, prefetch_factor=4)
+    it = iter(dl)
+    for step in range(17):
+        next(it)
+    print(&quot;samples consumed by training:&quot;, 17 * 8)
+    print(&quot;samples drawn from sampler:  &quot;, s.pos)
+</code></pre>
+<pre><code class="language-text">samples consumed by training: 136
+samples drawn from sampler:   200
+</code></pre>
+<p>The difference is 64 = <code>num_workers × prefetch_factor × batch_size</code> = <span class="math inline"><span class="math-inline">2 \times 4 \times 8</span></span>, the in-flight batches. Saving <code>sampler.state_dict()</code> here would skip 64 samples on resume. The fixes: count consumed samples in the training loop (<code>samples_seen += B</code> after each step) and checkpoint that, or use <code>torchdata</code>'s <code>StatefulDataLoader</code> (<code>from torchdata.stateful_dataloader import StatefulDataLoader</code>, torchdata 0.8+), which tracks what was actually delivered and has <code>state_dict()</code>/<code>load_state_dict()</code>. The StatefulDataLoader is untested here.</p>
+<h3 id="shuffling-at-scale">Shuffling at scale</h3>
+<p>A full random permutation is the gold standard, but it doesn't always fit:</p>
+<ul>
+<li><strong>Materializing the permutation.</strong> <span class="math inline"><span class="math-inline">10^{10}</span></span> windows <span class="math inline"><span class="math-inline">\times</span></span> 8 bytes (int64) = 80 GB per rank. Alternatives: a permutation computed on demand (a seeded bijection on <code>[0, N)</code> such as a Feistel network, which gives <code>perm(i)</code> in <span class="math inline"><span class="math-inline">O(1)</span></span> memory), or a two-level shuffle.</li>
+<li><strong>Random access on remote storage</strong> is slow (see above), so streaming formats read sequentially and shuffle approximately.</li>
+</ul>
+<p>The standard approximate scheme is <strong>two-level shuffling</strong>: shuffle the order of shards, then pass samples through a <strong>shuffle buffer</strong> that holds <code>k</code> samples and emits a random one each time a new one arrives. Here it is over WebDataset-style tar shards (WebDataset, <a href="#streaming-from-object-storage-webdataset-and-mosaicml-streaming">described below</a>, stores each sample as a few files sharing a name inside an ordinary tar archive):</p>
+<pre><code class="language-python"># tarstream.py  - WebDataset-style tar shards: sequential reads, shard shuffle + shuffle buffer
+import io, json, random, tarfile, glob, os
+
+D = &quot;/tmp/wds&quot;; os.makedirs(D, exist_ok=True)
+# write: each sample = files sharing a basename (&quot;key&quot;); one tar = one shard
+for s in range(4):
+    with tarfile.open(f&quot;{D}/shard-{s:06d}.tar&quot;, &quot;w&quot;) as tar:
+        for i in range(250):
+            key = f&quot;{s:02d}{i:04d}&quot;
+            for ext, payload in [(&quot;txt&quot;, f&quot;caption for sample {key}&quot;.encode()),
+                                 (&quot;json&quot;, json.dumps({&quot;id&quot;: key, &quot;len&quot;: i}).encode())]:
+                ti = tarfile.TarInfo(f&quot;{key}.{ext}&quot;); ti.size = len(payload)
+                tar.addfile(ti, io.BytesIO(payload))
+
+def samples(url):                                   # url could be a local path or an HTTP/S3 stream
+    with tarfile.open(url, &quot;r|&quot;) as tar:           # &quot;r|&quot; = pure streaming, no seeking
+        cur, key = {}, None
+        for m in tar:
+            k, ext = m.name.rsplit(&quot;.&quot;, 1)
+            if key is not None and k != key: yield cur; cur = {}
+            key, cur[ext] = k, tar.extractfile(m).read()
+        if cur: yield cur
+
+def stream(urls, seed, epoch, buf=200):
+    rng = random.Random(seed * 1000 + epoch)
+    urls = urls[:]; rng.shuffle(urls)               # level 1: shuffle shard order
+    pool = []
+    for u in urls:
+        for s in samples(u):
+            pool.append(s)
+            if len(pool) &gt;= buf:                    # level 2: shuffle buffer
+                yield pool.pop(rng.randrange(len(pool)))
+    rng.shuffle(pool); yield from pool
+
+urls = sorted(glob.glob(f&quot;{D}/shard-*.tar&quot;))
+out = [json.loads(s[&quot;json&quot;])[&quot;id&quot;] for s in stream(urls, seed=0, epoch=0)]
+print(&quot;first 8 ids:&quot;, out[:8])
+print(&quot;all 1000 seen once:&quot;, sorted(out) == sorted({f&quot;{s:02d}{i:04d}&quot; for s in range(4) for i in range(250)}))
+# how &quot;shuffled&quot; is it? fraction of consecutive pairs coming from the same shard
+same = sum(a[:2] == b[:2] for a, b in zip(out, out[1:])) / (len(out) - 1)
+print(f&quot;consecutive pairs from same shard: {same:.0%} (fully random would be ~25%)&quot;)
+print(&quot;deterministic:&quot;, out == [json.loads(s[&quot;json&quot;])[&quot;id&quot;] for s in stream(urls, 0, 0)])
+</code></pre>
+<pre><code class="language-text">first 8 ids: ['020066', '020131', '020125', '020104', '020078', '020126', '020093', '020156']
+all 1000 seen once: True
+consecutive pairs from same shard: 54% (fully random would be ~25%)
+deterministic: True
+</code></pre>
+<pre><code class="language-bash">$ tar tvf /tmp/wds/shard-000000.tar | head -4
+-rw-r--r--  0 0      0          25 Dec 31  1969 000000.txt
+-rw-r--r--  0 0      0          26 Dec 31  1969 000000.json
+-rw-r--r--  0 0      0          25 Dec 31  1969 000001.txt
+-rw-r--r--  0 0      0          26 Dec 31  1969 000001.json
+</code></pre>
+<p>(The <code>tar tvf</code> listing shows permissions, owner, size, date and name per member; the 1969 dates are just Unix time 0, because the script never set a modification time.)</p>
+<p>The metric shows the weakness. With a buffer of 200 and shards of 250 samples, 54% of neighbouring samples come from the same shard, against 25% for a true shuffle. Approximate shuffles are biased toward shard locality, and the bias matters when shards are <em>sorted</em>, for example by source, by language, or by crawl date: a batch drawn mostly from one shard has a skewed distribution, which can show up as periodic loss spikes. Three remedies: make the buffer much larger than one shard, read several shards at once and interleave them (WebDataset and MosaicML Streaming both do this through workers and their own sampling schemes), and, most important, <strong>randomize sample order when you write the shards</strong>, so that each shard is already a random sample of the corpus. Pre-shuffling is a one-time cost at write time and fixes the problem at the source.</p>
+<h3 id="streaming-from-object-storage-webdataset-and-mosaicml-streaming">Streaming from object storage: WebDataset and MosaicML Streaming</h3>
+<p>When the dataset doesn't fit on local disk, or lives in another region, you stream shards from object storage during training. Two widely used libraries take this approach. Both are untested here; check their docs for current APIs.</p>
+<ul>
+<li><strong><a href="https://github.com/webdataset/webdataset">WebDataset</a></strong> stores samples as plain POSIX tar files (exactly the format above) and opens shards by URL, including <code>pipe:</code> URLs that stream from any command. Sequential reads of 100 MB-1 GB tars suit both object stores and parallel filesystems.</li>
+</ul>
+<pre><code class="language-python"># untested; WebDataset pattern
+import webdataset as wds
+urls = &quot;pipe:aws s3 cp s3://my-bucket/train/shard-{000000..009999}.tar -&quot;
+ds = (wds.WebDataset(urls, shardshuffle=True)      # shuffle shard order
+        .shuffle(5000)                            # shuffle buffer of 5000 samples
+        .decode(&quot;pil&quot;)
+        .to_tuple(&quot;jpg&quot;, &quot;json&quot;))
+</code></pre>
+<ul>
+<li><strong><a href="https://github.com/mosaicml/streaming">MosaicML Streaming</a></strong> uses its own MDS shard format (Mosaic Data Shard; unrelated to Lustre's metadata server, also called MDS) with an index file. It caches shards on local disk (the <code>local=</code> directory), downloads ahead of use, and is built for deterministic resumption across changes in the number of nodes. Its documentation calls this &quot;elastic determinism&quot;.</li>
+</ul>
+<pre><code class="language-python"># untested; MosaicML Streaming pattern
+from streaming import MDSWriter, StreamingDataset
+with MDSWriter(out=&quot;s3://my-bucket/mds/train&quot;, columns={&quot;tokens&quot;: &quot;ndarray:uint32&quot;}) as w:
+    for ids in token_arrays: w.write({&quot;tokens&quot;: ids})
+ds = StreamingDataset(remote=&quot;s3://my-bucket/mds/train&quot;, local=&quot;/local/mds-cache&quot;,
+                      shuffle=True, batch_size=8)
+</code></pre>
+<p>Whatever library you use, the design questions are the same: shard size (100 MB-1 GB: big enough to amortize request latency, small enough to spread over workers and resume cheaply), how many shards are in flight per worker, how much local cache, how the state is checkpointed (shard ID + sample offset + RNG state), and what happens when a GET fails (retry with backoff; one stuck request must not stall 1,000 GPUs).</p>
+<h2 id="9-moving-data-between-sites">9. Moving data between sites</h2>
+<h3 id="transfer-time-and-the-bandwidth-delay-product">Transfer time and the bandwidth-delay product</h3>
+<pre><code class="language-python">for tb, gbps, eff in [(10,10,0.7), (100,10,0.7), (100,100,0.7), (1000,100,0.7)]:
+    s = tb * 1e12 * 8 / (gbps * 1e9 * eff)
+    print(f&quot;{tb:5d} TB over {gbps:3d} Gb/s at {eff:.0%} efficiency: {s/3600:6.1f} h&quot;)
+rtt, bw = 0.08, 10e9
+print(f&quot;BDP 10 Gb/s x 80 ms = {bw*rtt/8/1e6:.0f} MB in flight; one stream with 4 MiB window maxes at {4*2**20*8/rtt/1e6:.0f} Mb/s&quot;)
+</code></pre>
+<pre><code class="language-text">   10 TB over  10 Gb/s at 70% efficiency:    3.2 h
+  100 TB over  10 Gb/s at 70% efficiency:   31.7 h
+  100 TB over 100 Gb/s at 70% efficiency:    3.2 h
+ 1000 TB over 100 Gb/s at 70% efficiency:   31.7 h
+BDP 10 Gb/s x 80 ms = 100 MB in flight; one stream with 4 MiB window maxes at 419 Mb/s
+</code></pre>
+<p>Note the bits vs bytes: network links are quoted in bits per second, storage in bytes (see <a href="../foundations/networking.html#units-reading-spec-sheets-without-getting-fooled">Networking: Units</a>). The second line is the reason single-stream transfers across continents are slow. TCP can only have one window of unacknowledged data in flight, so one stream's throughput is at most <span class="math inline"><span class="math-inline">\text{window} / \text{RTT}</span></span>. Filling a 10 Gb/s link at 80 ms RTT needs 100 MB in flight (the <strong>bandwidth-delay product</strong>), far more than a typical stream's window. This is the same Little's law as for disks. The fix is many parallel streams, plus tuned TCP buffers on both ends. For a petabyte, also price shipping physical drives (AWS Snowball and similar). Seriously.</p>
+<h3 id="rsync">rsync</h3>
+<p><code>rsync</code> copies files and, on re-runs, skips what's already there. By default it decides &quot;already there&quot; by <strong>size and modification time</strong>, not content. Run on this laptop (macOS's <code>openrsync</code>, rsync 2.6.9 compatible):</p>
+<pre><code class="language-bash">mkdir -p /tmp/rs/src /tmp/rs/dst &amp;&amp; cd /tmp/rs
+for i in 0 1 2; do head -c 50000000 /dev/urandom &gt; src/shard_$i.bin; done
+echo &quot;== first sync&quot;;              rsync -a --stats src/ dst/ | grep -E 'Number of files transferred|Total transferred file size'
+echo &quot;== again, nothing changed&quot;;  rsync -a --stats src/ dst/ | grep -E 'Number of files transferred'
+printf 'X' | dd of=src/shard_1.bin bs=1 seek=1000 conv=notrunc 2&gt;/dev/null   # corrupt 1 byte in place
+touch -r dst/shard_1.bin src/shard_1.bin                                       # ...keeping size and mtime equal
+echo &quot;== 1 byte changed, same size+mtime: default quick check&quot;; rsync -a --stats src/ dst/ | grep 'Number of files transferred'
+echo &quot;== with --checksum&quot;;         rsync -a --checksum --stats src/ dst/ | grep 'Number of files transferred'
+shasum -a 256 src/shard_1.bin dst/shard_1.bin | cut -c1-16
+</code></pre>
+<pre><code class="language-text">== first sync
+Number of files transferred: 3
+Total transferred file size: 150000000 B
+== again, nothing changed
+Number of files transferred: 0
+== 1 byte changed, same size+mtime: default quick check
+Number of files transferred: 0
+== with --checksum
+Number of files transferred: 1
+2f1a3bdd6f26f64a
+2f1a3bdd6f26f64a
+</code></pre>
+<p>The default quick check missed a real content difference. Fine for repeated syncs of files you control, but useless as <em>verification</em>. <code>--checksum</code> reads both sides fully. Useful flags for big ML transfers (GNU rsync 3.x; see <a href="../foundations/linux-and-os.html#working-remotely-ssh-scp-rsync">Linux: rsync basics</a>):</p>
+<pre><code class="language-bash"># untested between real sites
+rsync -a --partial --info=progress2 --no-inc-recursive src/ user@remote:/dst/   # resume partial files, overall progress
+rsync -a -e &quot;ssh -c aes128-gcm@openssh.com&quot; ...       # cheaper cipher if ssh CPU is the bottleneck
+rsync -a --whole-file ...                             # skip delta algorithm: faster on fast links for new data
+</code></pre>
+<p>A single rsync is a single stream and a single process. To parallelize, split the file list:</p>
+<pre><code class="language-bash"># untested: 16 parallel rsyncs, one per top-level shard directory
+ls src/ | xargs -P 16 -I{} rsync -a --partial src/{} user@remote:/dst/   # -P 16: run up to 16 at once
+</code></pre>
+<h3 id="rclone-s5cmd-and-other-parallel-tools">rclone, s5cmd and other parallel tools</h3>
+<p>For anything involving object stores, use a tool built for many concurrent requests. These commands are untested here; the flags are from each tool's docs.</p>
+<pre><code class="language-bash"># rclone: one tool, many backends (S3, GCS, Azure, SFTP, local); configure remotes with `rclone config`
+rclone copy /local/ckpts/step_00020000 s3remote:my-bucket/ckpts/step_00020000 \
+    --transfers 32 --checkers 64 --s3-chunk-size 64M --s3-upload-concurrency 8 --progress
+rclone check /local/ckpts/step_00020000 s3remote:my-bucket/ckpts/step_00020000   # compare hashes/sizes
+# rclone copy also works bucket-to-bucket across providers (streams through the machine running it)
+
+# s5cmd: very fast S3 client, many parallel workers
+s5cmd --numworkers 256 cp 's3://my-bucket/datasets/tok/*' /local/tok/
+
+# aws cli: raise its concurrency
+aws configure set default.s3.max_concurrent_requests 64
+aws s3 sync /local/ckpts s3://my-bucket/ckpts
+</code></pre>
+<p>The parallelism knobs (<code>--transfers</code>, <code>--numworkers</code>, multipart concurrency) are the <code>outstanding requests</code> term of Little's law. Raise them until bandwidth stops growing or the provider starts returning <code>503 SlowDown</code>, then back off.</p>
+<h3 id="checksums">Checksums</h3>
+<p>Every hop between storage systems is a chance for silent corruption: a flaky NIC, a buggy FUSE mount, a truncated upload that &quot;succeeded&quot;. The Storage chapter's <a href="../storage/README.html#dont-forget-the-checksums">Don't forget the checksums</a> section makes the case. Here is the cost of the hashing itself, on one core:</p>
+<pre><code class="language-python"># hashspeed.py - how fast can you checksum a checkpoint shard? (one core)
+import hashlib, os, time, zlib
+data = os.urandom(512 &lt;&lt; 20)                        # 512 MiB in RAM, so we time the hash, not the disk
+for name, fn in [(&quot;md5&quot;,     lambda b: hashlib.md5(b).digest()),
+                 (&quot;sha256&quot;,  lambda b: hashlib.sha256(b).digest()),
+                 (&quot;blake2b&quot;, lambda b: hashlib.blake2b(b).digest()),
+                 (&quot;crc32&quot;,   lambda b: zlib.crc32(b))]:
+    t0 = time.perf_counter(); fn(data); dt = time.perf_counter() - t0
+    print(f&quot;{name:8s} {len(data) / dt / 1e9:5.2f} GB/s  -&gt; 1 TB in {1e12 / (len(data) / dt) / 60:5.1f} min&quot;)
+</code></pre>
+<pre><code class="language-text">md5       0.75 GB/s  -&gt; 1 TB in  22.1 min
+sha256    2.95 GB/s  -&gt; 1 TB in   5.7 min
+blake2b   1.32 GB/s  -&gt; 1 TB in  12.6 min
+crc32    38.87 GB/s  -&gt; 1 TB in   0.4 min
+</code></pre>
+<p>On this Apple M4, SHA-256 beats MD5 because the CPU has SHA-256 instructions. On an x86 server without SHA extensions the ranking can flip, so measure on your hardware. CRC32 detects accidental corruption, not tampering, and that is the threat model for internal transfers. Practical recipe:</p>
+<pre><code class="language-bash"># at the source: one manifest per checkpoint/dataset, hashed in parallel (one process per file)
+# (-print0 / -0 separate names with NUL bytes so spaces in names are safe; -P 16 = 16 processes at once)
+find step_00020000 -type f -print0 | xargs -0 -P 16 sha256sum &gt; step_00020000.sha256
+# at the destination, after transfer:
+sha256sum -c --quiet step_00020000.sha256 &amp;&amp; echo &quot;all shards verified&quot;
+</code></pre>
+<p>Hashing 5.7 TB with 16 parallel processes at ~3 GB/s each takes about 2 minutes if the disks can feed 48 GB/s. Otherwise disk read speed is the limit. Remember that S3 multipart ETags are not file MD5s (<a href="#multipart-uploads-and-range-reads">section 4</a>): store your own manifest next to the data.</p>
+<h2 id="checklist">Checklist</h2>
+<pre><code class="language-text">[ ] Know which tier each path is: local NVMe / NFS / parallel FS / object store, and its bandwidth from N nodes
+[ ] Datasets packed into 100 MB-1 GB shards; no per-sample files on shared storage; file lists precomputed
+[ ] Token dtype checked (uint16 only if vocab &lt; 65536); decoded samples looked at; tokenizer hash in manifest
+[ ] Loader state = (seed, epoch, samples consumed by *training*), checkpointed with the model
+[ ] Resume tested once: step N+1 loss matches the uninterrupted run
+[ ] Checkpoint size and write time computed; blocking time measured; interval from sqrt(2 C MTBF)
+[ ] Async/staged checkpoints with backpressure; host RAM for staging budgeted
+[ ] COMPLETE marker written last; resume picks latest complete; checksums in manifest
+[ ] Never torch.load(weights_only=False) on files you didn't produce; distribute weights as safetensors
+[ ] Benchmarks: fio --direct=1 with real queue depth, from many nodes; dd only with fdatasync/direct
+[ ] Lifecycle rules: abort incomplete multipart uploads; delete old checkpoints by policy
+</code></pre>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../storage/README.html">Storage: File Systems and IO</a>: the <code>fio-scan</code> benchmark, mmap measurements on Lustre, filesystem choices, and disk-cleanup scripts, with the mechanisms now clear.</li>
+<li><a href="../training/checkpoints/README.html">Checkpoints</a>: scripts to convert fp32 checkpoints to bf16 and to shrink tensors with oversized storage.</li>
+<li><a href="../training/fault-tolerance/README.html">Fault Tolerance</a>: frequent checkpoint saving, preemption signals, and planning for node failures.</li>
+<li><a href="../training/datasets.html">Dealing with Datasets</a>: preprocessing on the main process and caching.</li>
+<li><a href="../training/arithmetic.html">Training arithmetic</a>: the per-parameter memory and FLOPs numbers used above.</li>
+<li><a href="../training/decentralized-training.html">Decentralized Training</a>: when the &quot;storage&quot; between sites is a slow WAN and checkpoint and transfer arithmetic dominates.</li>
+<li><a href="../platform/rl-infrastructure.html">RL Infrastructure</a>: moving fresh weights from trainers to inference workers is the same safetensors / range-read / parallel-transfer problem on a loop.</li>
+<li><a href="../inference/serving-hands-on.html">Serving hands-on</a>: cold-start weight loading is section 6 and 7 arithmetic with a latency budget.</li>
+<li><a href="../training/profiling-and-optimization.html">Profiling and Optimization</a>: how to tell whether your step is waiting on the data loader.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>Remzi and Andrea Arpaci-Dusseau, <a href="https://pages.cs.wisc.edu/~remzi/OSTEP/">Operating Systems: Three Easy Pieces</a>: the &quot;Persistence&quot; part (I/O devices, hard drives, RAID, files and directories, FFS, journaling, flash SSDs, NFS). It is the best from-zero explanation of everything under section 1.</li>
+<li><a href="https://fio.readthedocs.io/en/latest/">fio documentation</a>, especially the <code>ioengine</code>, <code>direct</code> and <code>iodepth</code> entries.</li>
+<li><a href="https://doc.lustre.org/lustre_manual.xhtml">Lustre Operations Manual</a>: striping, <code>lfs setstripe</code>, PFL and DNE.</li>
+<li>AWS S3 docs: <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel">consistency model</a>, <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html">multipart upload limits</a>, <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html">performance guidelines</a>, <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-requests.html">conditional requests</a>.</li>
+<li><a href="https://github.com/huggingface/safetensors">safetensors</a> README: the format specification and the security audit.</li>
+<li>PyTorch: <a href="https://pytorch.org/docs/stable/distributed.checkpoint.html">torch.distributed.checkpoint</a>, and <a href="https://pytorch.org/docs/stable/notes/serialization.html"><code>torch.load</code> and <code>weights_only</code></a>.</li>
+<li><a href="https://github.com/webdataset/webdataset">WebDataset</a>, <a href="https://docs.mosaicml.com/projects/streaming/">MosaicML Streaming</a>, and <a href="https://pytorch.org/data/beta/torchdata.stateful_dataloader.html">torchdata StatefulDataLoader</a>.</li>
+<li>J. W. Young, &quot;A first order approximation to the optimum checkpoint interval&quot;, CACM 1974; J. T. Daly, &quot;A higher order estimate of the optimum checkpoint interval for restart dumps&quot;, FGCS 2006.</li>
+<li><a href="https://arxiv.org/abs/2407.21783">The Llama 3 Herd of Models</a> (arXiv 2407.21783): section 3.3.4 on reliability and the interruption statistics used above.</li>
+<li>Wang et al., &quot;GEMINI: Fast Failure Recovery in Distributed Training with In-Memory Checkpoints&quot;, SOSP 2023 (citation from memory; check the venue).</li>
+<li>Karpathy, <a href="https://github.com/karpathy/nanoGPT">nanoGPT</a> <code>data/*/prepare.py</code> and <a href="https://github.com/karpathy/llm.c">llm.c</a> <code>dev/data/</code>: the uint16 token-shard pattern in its minimal form.</li>
+<li><a href="https://rclone.org/docs/">rclone docs</a>, <a href="https://github.com/peak/s5cmd">s5cmd</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../foundations/containers-and-virtualization.html">&larr; Foundations: Containers, VMs, MicroVMs and Sandboxing</a><a class="next" href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

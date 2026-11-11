@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profiling and Optimizing Training, Hands-On - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details open><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html" class="current">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="profiling-and-optimizing-training-hands-on">Profiling and Optimizing Training, Hands-On</h1>
+<p>A training step is a pipeline. The CPU fetches a batch, Python walks the model and hands thousands of kernels to the GPU, the GPU runs them, GPUs exchange gradients over the network, and the optimizer updates the weights. The step can only go as fast as its slowest stage. Optimizing without first finding that stage is guessing. You will usually guess wrong, because the stage you would naturally suspect (the matmuls) is often not the slow one.</p>
+<p>This chapter is the practical companion to the theory chapters. It shows how to measure a step correctly, compute tokens/s and MFU from a real loop, read <code>torch.profiler</code> and Nsight Systems traces, find what is eating memory, and recognize the four classic pathologies from their traces. It then walks the standard optimization ladder on a small GPT training script, one change at a time, with measured numbers.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../foundations/concurrency.html#part-7-gpu-concurrency">Concurrency, Part 7: GPU concurrency</a> explains asynchronous kernel launch, CUDA streams and synchronization points. Everything in this chapter's timing sections depends on that model.</li>
+<li><a href="../compute/accelerator/execution-model.html">GPU execution model</a> covers what a kernel is, the roofline, <a href="../compute/accelerator/execution-model.html#launch-overhead-and-cpu-boundness">launch overhead</a>, <a href="../compute/accelerator/execution-model.html#cuda-graphs">CUDA graphs</a> and the <a href="../compute/accelerator/execution-model.html#profiling-nsys-and-ncu">nsys/ncu reference</a>. This chapter uses those tools and does not re-explain them.</li>
+<li><a href="../training/arithmetic.html">Training arithmetic</a> covers FLOPs per token, <a href="../training/arithmetic.html#mfu-and-hfu-properly">MFU and HFU</a>, <a href="../training/arithmetic.html#activation-memory">activation memory</a> and the <a href="../training/arithmetic.html#pytorch-caching-allocator-internals">caching allocator</a>. This chapter computes those quantities for real runs.</li>
+<li><a href="../training/performance/README.html">Software tune-up for performance</a> is the existing reference on batch sizes, gradient checkpointing, DataLoader settings, <code>torch.compile</code> and model-shape choices. This chapter links to it rather than repeating it.</li>
+<li><a href="../training/model-parallelism/derivations.html#data-parallelism-ddp">Model parallelism derivations: DDP</a>, especially <a href="../training/model-parallelism/derivations.html#bucketing-and-overlap">bucketing and overlap</a> and <a href="../training/model-parallelism/derivations.html#zero-and-fsdp">ZeRO and FSDP</a>. The multi-GPU sections here measure what that chapter derives.</li>
+<li><a href="../foundations/distributed-systems.html#data-parallelism">Distributed systems: data parallelism</a> and <a href="../foundations/networking.html#step-1-rendezvous-over-tcp-the-store">networking: rendezvous over TCP</a> for what <code>torchrun</code>, ranks, <code>--master_addr</code> and the gloo backend are.</li>
+<li><a href="../foundations/computer-architecture.html#why-this-matters-for-gpus-pinned-memory">Computer architecture: pinned memory</a> for why <code>pin_memory=True</code> and <code>non_blocking=True</code> go together.</li>
+<li><a href="../foundations/toolkit.html">The toolkit chapter</a> for the shell, virtual environments and JSON used in the runnable parts.</li>
+<li>Useful but optional: <a href="../debug/pytorch.html#profilers">Debugging PyTorch: profilers and the memory profiler</a>, <a href="../network/collectives-internals.html#compute-communication-overlap">collectives internals</a> and the <a href="../compute/gpu-software-stack.html">GPU software stack</a>.</li>
+<li>Forward links (later chapters, not needed to follow this one): <a href="../training/decentralized-training.html">decentralized training</a>, <a href="../inference/serving-hands-on.html">serving hands-on</a>, <a href="../platform/rl-infrastructure.html">RL infrastructure</a>.</li>
+</ul>
+<p><strong>Conventions used here.</strong> Everything marked <strong>[ran]</strong> was executed on an Apple M4 laptop (10 CPU cores, 16 GB unified memory, macOS 15.7, Python 3.14, PyTorch 2.15.0) on either the CPU or the Apple GPU through the MPS backend (Metal Performance Shaders, PyTorch's Apple-GPU device <code>&quot;mps&quot;</code>). The output shown is real output from that machine. Everything marked <strong>[GPU, untested]</strong> needs an NVIDIA GPU. It follows documented APIs but was not run for this chapter. Every number from the M4 is one machine on one day: it is an anecdote, not a benchmark. Where I repeated a run, I show the spread.</p>
+<p>Setup for the runnable parts:</p>
+<pre><code class="language-bash">python3 -m venv /tmp/prof-venv &amp;&amp; /tmp/prof-venv/bin/pip install torch numpy
+mkdir -p /tmp/prof &amp;&amp; cd /tmp/prof
+# training data: the bytes of this book's own markdown (look at it before training on it)
+cat ~/ml-engineering/training/*.md ~/ml-engineering/foundations/*.md &gt; data.bin   # use the path where you cloned this book
+head -c 200 data.bin
+</code></pre>
+<pre><code class="language-text"># Training Arithmetic and Numerics: Going Deeper
+
+## Prerequisites
+
+This chapter assumes you know the math of transformers and backprop. It does not assume any systems background, but a few foun
+</code></pre>
+<h2 id="the-methodology">The methodology</h2>
+<h3 id="the-loop-measure-classify-change-one-thing-re-measure">The loop: measure, classify, change one thing, re-measure</h3>
+<p>Performance work is an experiment loop with four steps:</p>
+<ol>
+<li><strong>Measure</strong> the end-to-end number you care about (tokens/s, step time, MFU) with a correct timer, over enough steps to see the noise.</li>
+<li><strong>Classify</strong> the bottleneck. Profile once and assign the lost time to one of five classes (next section). Each class has a different family of fixes, so this step decides what you try next.</li>
+<li><strong>Change one thing.</strong> If you change two things and the step gets faster, you do not know which change did it, or whether one change helped while the other hurt.</li>
+<li><strong>Re-measure</strong> with the same harness, and check that the loss curve did not change beyond noise. A speedup that changes the math is a bug until proven otherwise.</li>
+</ol>
+<p>Stop when the remaining gap to the roofline (the hardware limit for this workload) is smaller than the noise, or when the next fix costs more engineering time than the GPU hours it saves.</p>
+<p>Write the result of each iteration down as a row: what you changed, the step time, tokens/s, peak memory and the loss at step N. The case study at the end of this chapter is a table like that.</p>
+<pre><code class="language-text">| change                  | step ms | tok/s  | peak mem | loss@30 | note                        |
+| baseline                | 65.6    | 62.4k  |    -     | 3.226   | 3 runs: 65.6-66.9           |
+| - per-step loss.item()  | 64.2    | 63.8k  |    -     | 3.245   | within noise on MPS         |
+</code></pre>
+<h3 id="the-five-bottleneck-classes">The five bottleneck classes</h3>
+<p>Every slow step loses time in at least one of these places:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">class</th>
+<th style="text-align:left">what is happening</th>
+<th style="text-align:left">how it shows in a trace</th>
+<th style="text-align:left">first fixes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>dataloader</strong></td>
+<td style="text-align:left">the GPU waits for the next batch</td>
+<td style="text-align:left">gap at the start of each step; time inside <code>next(loader)</code>; DataLoader worker processes at 100% CPU</td>
+<td style="text-align:left">more workers, pinned memory, pre-tokenize offline, move augmentation to GPU</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>CPU overhead</strong> (launch-bound)</td>
+<td style="text-align:left">Python and the dispatcher cannot enqueue kernels as fast as the GPU runs them</td>
+<td style="text-align:left">many short kernels with idle gaps between them; the CPU thread is never idle</td>
+<td style="text-align:left">bigger batches, fewer and fused kernels (<code>torch.compile</code>, fused optimizer), CUDA graphs</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>host-device syncs</strong></td>
+<td style="text-align:left">the CPU stops and waits for the GPU, so the queue drains</td>
+<td style="text-align:left"><code>cudaStreamSynchronize</code> / <code>cudaMemcpy DtoH</code> on the CPU row followed by a GPU gap</td>
+<td style="text-align:left">remove <code>.item()</code>, <code>.cpu()</code>, <code>print(tensor)</code>, data-dependent shapes from the hot loop</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>kernels</strong></td>
+<td style="text-align:left">the GPU is busy, but the kernels are slow</td>
+<td style="text-align:left">the GPU row is dense; a few kernels dominate</td>
+<td style="text-align:left">bf16, FlashAttention/SDPA, <code>torch.compile</code> fusion, shapes divisible by 64/128, then <code>ncu</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>communication</strong></td>
+<td style="text-align:left">GPUs wait for collectives (NCCL all-reduce, all-gather and similar)</td>
+<td style="text-align:left">NCCL kernels running while no compute kernel runs</td>
+<td style="text-align:left">bucket and overlap gradient reduction, prefetch, faster interconnect, a different parallelism layout</td>
+</tr>
+</tbody>
+</table>
+<p>Memory is a sixth concern that cuts across all five: when you run out, you are forced into smaller micro-batches, recomputation or sharding, and each of those costs speed. Treat &quot;fits with headroom&quot; as a constraint, and treat speed as the objective you optimize subject to it.</p>
+<h3 id="write-down-the-expected-number-first">Write down the expected number first</h3>
+<p>Before profiling, compute what the step <em>should</em> cost, so you know whether you are 10% or 10x off. For a dense decoder transformer, <a href="../training/arithmetic.html#flops-of-a-decoder-transformer">training FLOPs per token</a> are about <span class="math inline"><span class="math-inline">6 \cdot N_{\text{nonembedding}} + 12 \cdot n_{\text{layer}} \cdot \text{seq\_len} \cdot d_{\text{model}}</span></span>. Divide by a realistic achievable FLOP/s to get a floor on step time:</p>
+<pre><code class="language-python"># expected_step.py - lower bound on step time before you run anything  [ran]
+def flop_per_token(n_layer, d_model, seq_len, vocab):
+    n_nonemb = 12 * n_layer * d_model**2 + vocab * d_model      # blocks + untied LM head
+    return 6 * n_nonemb + 12 * n_layer * seq_len * d_model
+
+f = flop_per_token(n_layer=4, d_model=256, seq_len=256, vocab=256)
+tokens_per_step = 16 * 256                                       # B * T
+achievable = 3.38e12                                             # measured fp32 matmul ceiling on M4 GPU (below)
+print(f&quot;{f/1e6:.1f} MFLOP/token, floor {tokens_per_step * f / achievable * 1e3:.1f} ms/step&quot;)
+</code></pre>
+<pre><code class="language-text">22.4 MFLOP/token, floor 27.2 ms/step
+</code></pre>
+<p>The 12-per-block approximation gives 22.4 MFLOP/token. The exact count for the test model below, which includes biases and LayerNorms, is 22.5 MFLOP/token. The naive script ran at 65.6 ms/step, so it was 2.4x above the floor. That number tells you how much headroom there is before you start optimizing.</p>
+<h2 id="timing-gpu-code-correctly">Timing GPU code correctly</h2>
+<h3 id="why-the-naive-timer-lies">Why the naive timer lies</h3>
+<p>PyTorch on a GPU is asynchronous. A call like <code>c = a @ b</code> does not compute anything on the CPU. It enqueues a kernel on a CUDA stream (an ordered queue of GPU work) and returns in microseconds. The CPU races ahead while the GPU works through the queue. A <code>time.perf_counter()</code> pair around GPU code therefore measures how long the <em>enqueue</em> took, unless something forces the CPU to wait. <a href="../foundations/concurrency.html#why-naive-gpu-timing-is-wrong">Concurrency: why naive GPU timing is wrong</a> walks through the mechanism. Here is the effect, measured on the Apple GPU, which is asynchronous in the same way:</p>
+<pre><code class="language-python"># timing.py - three ways to time GPU work; only two are right  [ran, MPS]
+import time, torch
+dev = &quot;mps&quot;
+a = torch.randn(4096, 4096, device=dev)                 # (4096, 4096)
+for _ in range(3): a @ a                                # warmup: shader compile, allocator
+torch.mps.synchronize()
+
+t0 = time.perf_counter(); c = a @ a
+print(f&quot;no sync      : {(time.perf_counter()-t0)*1e3:7.3f} ms   &lt;- measures the enqueue, not the matmul&quot;)
+
+torch.mps.synchronize(); t0 = time.perf_counter(); c = a @ a; torch.mps.synchronize()
+print(f&quot;sync, 1 iter : {(time.perf_counter()-t0)*1e3:7.3f} ms&quot;)
+
+n = 20; torch.mps.synchronize(); t0 = time.perf_counter()
+for _ in range(n): c = a @ a
+torch.mps.synchronize()
+print(f&quot;sync, {n} iter: {(time.perf_counter()-t0)/n*1e3:7.3f} ms   -&gt; {2*4096**3/((time.perf_counter()-t0)/n)/1e12:.2f} TFLOP/s&quot;)
+
+start, end = torch.mps.Event(enable_timing=True), torch.mps.Event(enable_timing=True)
+start.record()
+for _ in range(n): c = a @ a
+end.record(); end.synchronize()
+print(f&quot;events       : {start.elapsed_time(end)/n:7.3f} ms&quot;)
+</code></pre>
+<pre><code class="language-text">no sync      :   0.329 ms   &lt;- measures the enqueue, not the matmul
+sync, 1 iter :  52.466 ms
+sync, 20 iter:  47.809 ms   -&gt; 2.87 TFLOP/s
+events       :  45.761 ms
+</code></pre>
+<p>The unsynchronized timer is 145x too fast. Taken at face value it would claim 418 TFLOP/s from a laptop. The rules:</p>
+<ul>
+<li><strong>Synchronize before starting the clock and before stopping it.</strong> The first sync makes sure earlier queued work is not billed to you. The second makes sure your work has actually finished.</li>
+<li><strong>Warm up.</strong> The first calls pay for one-time costs: kernel or shader compilation, cuBLAS heuristics, allocator growth, and <code>torch.compile</code> tracing. Exclude them.</li>
+<li><strong>Average over many iterations.</strong> A single iteration includes the fixed cost of one sync, about 5 ms above (52.5 vs 47.8).</li>
+<li><strong>Device events</strong> (<code>torch.cuda.Event</code> / <code>torch.mps.Event</code> with <code>enable_timing=True</code>) timestamp the GPU queue itself. They do not include the CPU's view of the gap, which makes them the right tool for timing a region <em>inside</em> a running loop without adding a full sync.</li>
+</ul>
+<p>On CUDA the same pattern is: <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python">start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+start.record()
+y = model(x)
+end.record()
+torch.cuda.synchronize()            # or end.synchronize()
+print(start.elapsed_time(end), &quot;ms&quot;)
+
+# or let PyTorch handle warmup, sync and repetition:
+import torch.utils.benchmark as tb
+print(tb.Timer(&quot;model(x)&quot;, globals={&quot;model&quot;: model, &quot;x&quot;: x}).blocked_autorange(min_run_time=2))
+</code></pre>
+<p><code>torch.utils.benchmark.Timer</code> synchronizes CUDA for you and reports a median with an IQR (interquartile range: the spread between the 25th and 75th percentile runs). Use it for micro-benchmarks of single ops or modules.</p>
+<h3 id="the-attribution-trap">The attribution trap</h3>
+<p>In a real training loop there is a second, subtler lie. A CPU-side timer around one <em>line</em> gets billed for whatever GPU work is queued ahead of the next blocking call. The first version of the training script below wrapped <code>next(loader)</code> and the host-to-device copy <code>x.to(dev)</code> in one timer. With <code>loss.item()</code> called every step (a sync), &quot;data wait&quot; read 0.5%. After the per-step <code>.item()</code> was removed, the same timer read 13.3%, although nothing about the data had changed:</p>
+<pre><code class="language-text">[ran, MPS] timer around next(loader) AND x.to(dev):
+  log every step : step=65.6ms  data_wait= 0.5%
+  log every 10   : step=64.2ms  data_wait=13.3%     &lt;- the copy now blocks behind queued GPU work
+[ran, MPS] timer around next(loader) only:
+  log every 10   : step=64.6ms  data_wait= 0.3%
+</code></pre>
+<p>Once the CPU was free to run ahead, the copy became the first operation that had to wait for the GPU, so the GPU's compute time landed in the &quot;data&quot; bucket. The fix was to time only the CPU work (<code>next(loader)</code>) and nothing that touches the device. More generally, <strong>CPU timers measure where the CPU waited, not where the time went.</strong> Use a profiler trace whenever you want attribution.</p>
+<h2 id="tokenss-and-mfu-from-a-real-loop">Tokens/s and MFU from a real loop</h2>
+<h3 id="the-instrumented-loop">The instrumented loop</h3>
+<p>The minimum instrumentation for any training loop:</p>
+<pre><code class="language-python"># inside the training loop (excerpt of gpt.py below)  [ran]
+for step in range(warmup + steps):
+    if step == warmup:
+        sync(); t0 = time.perf_counter(); data_t = 0.0            # start clock after warmup, on a drained queue
+    td = time.perf_counter()
+    x, y = next(loader)                                           # CPU-side fetch only
+    data_t += time.perf_counter() - td
+    x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
+    loss = model(x, y); loss.backward(); opt.step(); opt.zero_grad(set_to_none=True)
+    if step % log_every == 0:
+        last = loss.item()                                        # the only sync in the loop
+sync(); dt = time.perf_counter() - t0
+tok_s = steps * B * T / dt
+print(f&quot;tok/s={tok_s:.0f}  achieved={tok_s * flop_per_tok / 1e12:.3f} TFLOP/s  data_wait={data_t/dt:.1%}&quot;)
+</code></pre>
+<p><code>non_blocking=True</code> lets the host-to-device copy run asynchronously, but only if the source tensor is in <a href="../foundations/computer-architecture.html#why-this-matters-for-gpus-pinned-memory">pinned memory</a> (the DataLoader's <code>pin_memory=True</code>); from ordinary pageable memory the copy is effectively synchronous.</p>
+<p>In a multi-GPU job, tokens/s is global (summed over data-parallel ranks), and MFU divides by the GPU count. See <a href="../training/arithmetic.html#mfu-from-a-measured-tokenss">MFU from a measured tokens/s</a>:</p>
+<pre><code class="language-python">def mfu(tokens_per_sec_global, n_gpus, flop_per_token, peak_flops):
+    return tokens_per_sec_global / n_gpus * flop_per_token / peak_flops
+</code></pre>
+<h3 id="the-denominator-spec-peak-vs-measured-ceiling">The denominator: spec peak vs measured ceiling</h3>
+<p>MFU (model FLOPs utilization: achieved useful FLOP/s divided by peak FLOP/s) needs a peak. The convention for reporting is the vendor's dense spec peak (989.4 TFLOP/s bf16 for H100 SXM). For deciding <em>how much is left to gain</em>, it is more useful to measure the largest matmul throughput your device actually reaches. This book calls that MAMF, <a href="../compute/accelerator/README.html#maximum-achievable-and-sustainable-matmul-flops-comparison-table">maximum achievable matmul FLOPS</a>. Apple does not publish a FLOP/s figure for the M4 GPU, so for this chapter the measured number is the only denominator available:</p>
+<pre><code class="language-python"># mamf.py - measured matmul ceiling: the denominator you can actually reach on this device  [ran, MPS]
+import sys, time, torch
+dev = sys.argv[1] if len(sys.argv) &gt; 1 else &quot;mps&quot;
+sync = {&quot;mps&quot;: torch.mps.synchronize, &quot;cpu&quot;: lambda: None}.get(dev, torch.cuda.synchronize)
+for dtype in (torch.float32, torch.bfloat16):
+    best = 0
+    for n in (1024, 2048, 4096):
+        a, b = torch.randn(n, n, device=dev, dtype=dtype), torch.randn(n, n, device=dev, dtype=dtype)
+        for _ in range(3): a @ b
+        sync(); t0 = time.perf_counter(); iters = 20
+        for _ in range(iters): a @ b
+        sync(); dt = (time.perf_counter() - t0) / iters
+        best = max(best, 2 * n**3 / dt)
+        print(f&quot;{dev} {str(dtype):15s} n={n:5d} {2*n**3/dt/1e12:6.2f} TFLOP/s&quot;)
+    print(f&quot;  best {best/1e12:.2f}&quot;)
+</code></pre>
+<pre><code class="language-text">mps torch.float32   n= 1024   2.32 TFLOP/s
+mps torch.float32   n= 2048   3.38 TFLOP/s
+mps torch.float32   n= 4096   3.22 TFLOP/s
+  best 3.38
+mps torch.bfloat16  n= 1024   3.52 TFLOP/s
+mps torch.bfloat16  n= 2048   3.73 TFLOP/s
+mps torch.bfloat16  n= 4096   3.76 TFLOP/s
+  best 3.76
+</code></pre>
+<p>Two observations. First, bf16 buys only 11% on this GPU. On an NVIDIA GPU with tensor cores the gap between strict fp32 and bf16 is more than 10x (A100: 19.5 vs 312 dense TFLOP/s by spec), so the size of every ladder step depends on the hardware. Second, the timing script above measured 2.87 TFLOP/s for the same 4096 matmul that this one measured at 3.22. That is run-to-run variance of about 10% on a laptop GPU that shares power and thermals with everything else. Always repeat a measurement before you believe a difference smaller than that.</p>
+<p>The baseline training run below achieved 1.40 TFLOP/s of model FLOPs. That is 41% of the measured fp32 ceiling, and the final optimized run reaches 57% of the bf16 ceiling.</p>
+<h3 id="worked-example-at-h100-scale">Worked example at H100 scale</h3>
+<p><strong>[arithmetic only; no H100 run]</strong> GPT-2 small (12 layers, <span class="math inline"><span class="math-inline">d_{\text{model}} = 768</span></span>) at <span class="math inline"><span class="math-inline">\text{seq\_len} = 1024</span></span>, counting non-embedding parameters as <span class="math inline"><span class="math-inline">12 \cdot L \cdot d^2 = 84.9\text{M}</span></span>:</p>
+<pre><code class="language-python"># [ran: arithmetic]
+L, d, T = 12, 768, 1024
+f = 6 * 12 * L * d * d + 12 * L * T * d
+print(f&quot;{f/1e9:.3f} GFLOP/token; 40% MFU on one H100 = {0.40 * 989.4e12 / f:,.0f} tok/s&quot;)
+</code></pre>
+<pre><code class="language-text">0.623 GFLOP/token; 40% MFU on one H100 = 635,398 tok/s
+</code></pre>
+<p>If your logged throughput for such a run is 150k tok/s on one H100, MFU is about 9.4%, and one of the five bottleneck classes is eating three quarters of the machine. For a small model, the usual culprits are CPU overhead and fp32 matmuls.</p>
+<h2 id="the-test-subject-a-small-gpt">The test subject: a small GPT</h2>
+<p>All case-study runs use this one file. It trains a byte-level (vocabulary 256) GPT on the bytes of this book. Every optimization is a command-line flag, so each run changes exactly one thing and the diff between two runs is the flag. <strong>[ran]</strong></p>
+<pre><code class="language-python"># gpt.py - tiny byte-level GPT; every optimization is a flag so each run changes one thing.
+import argparse, math, time, torch, torch.nn as nn, torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
+
+class Windows(torch.utils.data.IterableDataset):
+    def __init__(self, path, B, T, ms):
+        self.path, self.B, self.T, self.ms = path, B, T, ms
+    def __iter__(self):
+        data = torch.frombuffer(bytearray(open(self.path, &quot;rb&quot;).read()), dtype=torch.uint8)
+        g = torch.Generator().manual_seed(torch.utils.data.get_worker_info().id if torch.utils.data.get_worker_info() else 0)
+        while True:
+            if self.ms: time.sleep(self.ms / 1e3)          # stand-in for tokenization/augmentation
+            ix = torch.randint(len(data) - self.T - 1, (self.B,), generator=g)
+            xy = torch.stack([data[i:i + self.T + 1] for i in ix]).long()  # (B, T+1)
+            yield xy[:, :-1], xy[:, 1:]                     # (B, T), (B, T)
+
+class Block(nn.Module):
+    def __init__(self, C, H):
+        super().__init__()
+        self.H = H
+        self.ln1, self.ln2 = nn.LayerNorm(C), nn.LayerNorm(C)
+        self.qkv, self.proj = nn.Linear(C, 3 * C), nn.Linear(C, C)
+        self.fc, self.out = nn.Linear(C, 4 * C), nn.Linear(4 * C, C)
+    def attn(self, x):
+        B, T, C = x.shape
+        q, k, v = self.qkv(x).split(C, dim=2)                                # 3 x (B, T, C)
+        q, k, v = (t.view(B, T, self.H, C // self.H).transpose(1, 2) for t in (q, k, v))  # (B, H, T, hd)
+        if args.attn == &quot;sdpa&quot;:
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)      # (B, H, T, hd)
+        else:
+            att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))         # (B, H, T, T)
+            mask = torch.ones(T, T, device=x.device, dtype=torch.bool).tril()
+            att = att.masked_fill(~mask, float(&quot;-inf&quot;)).softmax(dim=-1)
+            y = att @ v                                                      # (B, H, T, hd)
+        return self.proj(y.transpose(1, 2).reshape(B, T, C))                 # (B, T, C)
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        return x + self.out(F.gelu(self.fc(self.ln2(x))))
+
+class GPT(nn.Module):
+    def __init__(self, V, T, C, L, H):
+        super().__init__()
+        self.tok, self.pos = nn.Embedding(V, C), nn.Embedding(T, C)
+        self.blocks = nn.ModuleList(Block(C, H) for _ in range(L))
+        self.ln, self.head = nn.LayerNorm(C), nn.Linear(C, V, bias=False)
+    def forward(self, idx, tgt):
+        x = self.tok(idx) + self.pos(torch.arange(idx.size(1), device=idx.device))  # (B, T, C)
+        for b in self.blocks:
+            x = checkpoint(b, x, use_reentrant=False) if args.ckpt and self.training else b(x)
+        logits = self.head(self.ln(x))                                       # (B, T, V)
+        return F.cross_entropy(logits.flatten(0, 1).float(), tgt.flatten())
+
+if __name__ == &quot;__main__&quot;:                                # DataLoader workers re-import this file (spawn)
+    p = argparse.ArgumentParser()
+    p.add_argument(&quot;--device&quot;, default=&quot;mps&quot; if torch.backends.mps.is_available() else &quot;cpu&quot;)
+    p.add_argument(&quot;--data&quot;, default=&quot;data.bin&quot;)
+    p.add_argument(&quot;--B&quot;, type=int, default=16); p.add_argument(&quot;--T&quot;, type=int, default=256)
+    p.add_argument(&quot;--n_layer&quot;, type=int, default=4); p.add_argument(&quot;--n_embd&quot;, type=int, default=256)
+    p.add_argument(&quot;--n_head&quot;, type=int, default=4)
+    p.add_argument(&quot;--attn&quot;, default=&quot;manual&quot;, choices=[&quot;manual&quot;, &quot;sdpa&quot;])
+    p.add_argument(&quot;--dtype&quot;, default=&quot;fp32&quot;, choices=[&quot;fp32&quot;, &quot;bf16&quot;])
+    p.add_argument(&quot;--opt&quot;, default=&quot;plain&quot;, choices=[&quot;plain&quot;, &quot;foreach&quot;, &quot;fused&quot;])
+    p.add_argument(&quot;--compile&quot;, action=&quot;store_true&quot;)
+    p.add_argument(&quot;--ckpt&quot;, action=&quot;store_true&quot;)             # activation checkpointing per block
+    p.add_argument(&quot;--log_every&quot;, type=int, default=1)        # 1 = loss.item() every step (a host sync)
+    p.add_argument(&quot;--workers&quot;, type=int, default=0)
+    p.add_argument(&quot;--data_ms&quot;, type=float, default=0.0)      # simulated per-batch CPU preprocessing cost
+    p.add_argument(&quot;--profile&quot;, action=&quot;store_true&quot;)
+    p.add_argument(&quot;--steps&quot;, type=int, default=30); p.add_argument(&quot;--warmup&quot;, type=int, default=10)
+    args = p.parse_args()
+    torch.manual_seed(0)
+    dev = torch.device(args.device)
+
+    def sync():
+        if dev.type == &quot;cuda&quot;: torch.cuda.synchronize()
+        elif dev.type == &quot;mps&quot;: torch.mps.synchronize()
+
+    V = 256
+    model = GPT(V, args.T, args.n_embd, args.n_layer, args.n_head).to(dev)
+    N = sum(p.numel() for p in model.parameters())
+    N_nonemb = N - model.tok.weight.numel() - model.pos.weight.numel()
+    opt_kw = {&quot;plain&quot;: dict(foreach=False), &quot;foreach&quot;: dict(foreach=True), &quot;fused&quot;: dict(fused=True)}[args.opt]
+    opt = torch.optim.AdamW(model.parameters(), lr=3e-4, **opt_kw)
+    step_fn = torch.compile(model) if args.compile else model
+    loader = iter(torch.utils.data.DataLoader(Windows(args.data, args.B, args.T, args.data_ms), batch_size=None,
+                  num_workers=args.workers, pin_memory=(dev.type == &quot;cuda&quot;), persistent_workers=args.workers &gt; 0))
+    amp = torch.autocast(dev.type, dtype=torch.bfloat16, enabled=args.dtype == &quot;bf16&quot;)
+
+    # 6N for the matmuls + 12*L*T*C for attention scores/values (non-causal-halved convention, see arithmetic.md)
+    flop_per_tok = 6 * N_nonemb + 12 * args.n_layer * args.T * args.n_embd
+    data_t = 0.0
+    prof = None
+    if args.profile:
+        from torch.profiler import profile, schedule, ProfilerActivity
+        acts = [ProfilerActivity.CPU] + ([ProfilerActivity.CUDA] if dev.type == &quot;cuda&quot; else [])
+        prof = profile(activities=acts, record_shapes=True, profile_memory=True,
+                       schedule=schedule(wait=1, warmup=2, active=3, repeat=1),       # skip 1, warm 2, record 3 steps
+                       on_trace_ready=lambda p: p.export_chrome_trace(&quot;trace.json&quot;))
+        prof.start()
+    rf = torch.profiler.record_function                  # named range; shows up in the trace (and NVTX via emit_nvtx)
+    for step in range(args.warmup + args.steps):
+        if step == args.warmup:
+            sync(); t0 = time.perf_counter(); data_t = 0.0
+        td = time.perf_counter()
+        with rf(&quot;data&quot;):
+            x, y = next(loader)                                # CPU-side batch fetch only
+        data_t += time.perf_counter() - td
+        x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
+        with rf(&quot;forward&quot;), amp:
+            loss = step_fn(x, y)
+        with rf(&quot;backward&quot;):
+            loss.backward()
+        with rf(&quot;optimizer&quot;):
+            opt.step(); opt.zero_grad(set_to_none=True)
+        if step % args.log_every == 0:
+            last = loss.item()                                 # host sync: CPU waits for the GPU here
+        if prof: prof.step()
+    sync(); dt = time.perf_counter() - t0
+    tok_s = args.steps * args.B * args.T / dt
+    print(f&quot;N={N/1e6:.2f}M  step={dt/args.steps*1e3:6.1f}ms  tok/s={tok_s:8.0f}  &quot;
+          f&quot;achieved={tok_s*flop_per_tok/1e12:.3f} TFLOP/s  data_wait={data_t/dt*100:4.1f}%  loss={last:.3f}&quot;)
+    if prof:
+        prof.stop()
+        print(prof.key_averages().table(sort_by=&quot;cpu_time_total&quot;, row_limit=12, max_name_column_width=28))
+        print(prof.key_averages(group_by_input_shape=True).table(sort_by=&quot;self_cpu_time_total&quot;, row_limit=6,
+              max_name_column_width=22, max_shapes_column_width=44))
+</code></pre>
+<pre><code class="language-bash">$ python gpt.py                       # naive baseline on the M4 GPU  [ran]
+N=3.36M  step=  65.6ms  tok/s=   62486  achieved=1.406 TFLOP/s  data_wait= 0.5%  loss=3.226
+</code></pre>
+<p>Two details are worth noticing. The <code>if __name__ == &quot;__main__&quot;:</code> guard is required: on macOS (and anywhere the multiprocessing start method is <code>spawn</code>), DataLoader workers re-import the script, and without the guard every worker would try to train a model. The first <code>--workers 4</code> attempt died with <code>DataLoader worker (pid(s) ...) exited unexpectedly</code> for exactly that reason (see <a href="../foundations/concurrency.html#multiprocessing-and-the-three-start-methods">multiprocessing start methods</a>). And <code>F.cross_entropy(... .float())</code> keeps the loss in fp32 even under bf16 autocast, which is one of the ops that <a href="../training/arithmetic.html#what-must-stay-fp32-and-why">must stay fp32</a>.</p>
+<h2 id="torchprofiler-end-to-end">torch.profiler end to end</h2>
+<p><code>torch.profiler</code> records every PyTorch operator the CPU dispatches (<code>aten::mm</code>, <code>aten::softmax</code>, ...), your own named ranges, and, on CUDA, every kernel and memcpy the GPU executes, linked back to the op that launched it. The <a href="../debug/pytorch.html#torchprofiler">debug chapter section</a> (reference material outside this book's reading order) shows the one-shot <code>with profile(): ...</code> form. A training loop needs the scheduled form.</p>
+<h3 id="schedule-activities-shapes-and-memory">Schedule, activities, shapes and memory</h3>
+<pre><code class="language-python">from torch.profiler import profile, schedule, ProfilerActivity, record_function
+
+prof = profile(
+    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],   # CUDA: kernels + memcpy via CUPTI
+    schedule=schedule(wait=1, warmup=2, active=3, repeat=1),    # per prof.step(): skip, warm (record+discard), record
+    record_shapes=True,       # input shapes per op -&gt; group_by_input_shape, find the one bad shape
+    profile_memory=True,      # allocations/frees per op -&gt; &quot;CPU Mem&quot;/&quot;CUDA Mem&quot; columns
+    with_stack=False,         # True attributes ops to Python file:line; costly, turn on when you need it
+    on_trace_ready=lambda p: p.export_chrome_trace(&quot;trace.json&quot;),
+    # or on_trace_ready=torch.profiler.tensorboard_trace_handler(&quot;./tb&quot;)  -&gt; one file per rank, for HTA (Holistic Trace Analysis, below)/TensorBoard
+)                             # (TensorBoard: a browser dashboard that reads log/trace files from a directory)
+prof.start()
+for step, batch in enumerate(loader):
+    with record_function(&quot;forward&quot;):
+        loss = model(batch)
+    ...
+    prof.step()               # advances the schedule; MUST be called once per iteration
+prof.stop()
+</code></pre>
+<p>What the arguments are for:</p>
+<ul>
+<li><strong><code>schedule</code></strong> exists because the first steps are not representative: they include compilation, cuBLAS autotuning and allocator growth. The profiler also has a warm-up of its own, since CUPTI (the CUDA profiling interface) has startup cost. <code>wait</code> steps are ignored entirely, <code>warmup</code> steps are traced and then thrown away, and <code>active</code> steps are kept. Three active steps are enough to see the steady state without producing a 1 GB trace.</li>
+<li><strong><code>record_function(&quot;name&quot;)</code></strong> adds a named range. Use names that match how you think about the step (<code>data</code>, <code>forward</code>, <code>backward</code>, <code>optimizer</code>, <code>allreduce</code>). They appear in the trace as <code>user_annotation</code> events and, under <code>emit_nvtx</code>, as NVTX ranges in Nsight Systems.</li>
+<li><strong><code>record_shapes</code></strong> and <strong><code>profile_memory</code></strong> add overhead (see below), so use them for diagnosis and leave them off for timing.</li>
+</ul>
+<p><code>ProfilerActivity</code> in this build of PyTorch has <code>CPU, CUDA, HPU, MTIA, XPU</code> and no MPS entry, so on Apple GPUs the profiler sees only CPU-side dispatch. The tables below were therefore taken with <code>--device cpu</code>, where CPU time <em>is</em> compute time.</p>
+<h3 id="reading-key_averages">Reading <code>key_averages()</code></h3>
+<pre><code class="language-text">$ python gpt.py --device cpu --log_every 10 --steps 8 --warmup 0 --profile        [ran, CPU]
+N=3.36M  step= 331.3ms  tok/s=   12363  achieved=0.278 TFLOP/s  data_wait= 0.1%  loss=5.740
+----------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                        Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg       CPU Mem  Self CPU Mem    # of Calls
+----------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+               ProfilerStep*         0.02%     223.641us       100.00%     945.741ms     315.247ms      32.25 KB           0 B             3
+                    backward         0.53%       5.055ms        53.56%     506.543ms     168.848ms    -959.29 MB         -12 B             3
+                     forward         2.19%      20.700ms        39.90%     377.331ms     125.777ms     997.69 MB    -890.25 MB             3
+autograd::engine::evaluat...         1.56%      14.711ms        21.77%     205.930ms       4.290ms    -299.89 MB    -672.00 MB            48
+                    aten::mm        19.13%     180.951ms        19.14%     180.976ms       1.724ms     396.75 MB     396.75 MB           105
+              AddmmBackward0         0.07%     616.864us        18.28%     172.892ms       3.602ms     372.00 MB           0 B            48
+                aten::linear         0.07%     634.049us        15.00%     141.893ms       2.782ms     444.00 MB           0 B            51
+                 aten::addmm        11.36%     107.431ms        14.19%     134.181ms       2.795ms     432.00 MB     432.00 MB            48
+                   aten::bmm        13.69%     129.511ms        13.74%     129.914ms       1.804ms     576.00 MB     576.00 MB            72
+                 aten::copy_         9.45%      89.394ms         9.45%      89.394ms      90.571us           0 B           0 B           987
+autograd::engine::evaluat...         0.67%       6.293ms         8.98%      84.954ms       3.540ms     -48.00 MB    -384.00 MB            24
+                BmmBackward0         0.02%     197.662us         8.32%      78.660ms       3.278ms     336.00 MB           0 B            24
+----------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+Self CPU time total: 945.741ms
+</code></pre>
+<p>How to read it:</p>
+<ul>
+<li><strong>Self</strong> time is time spent in the op itself, excluding the ops it called. <strong>Total</strong> time includes its children. Sort by <code>self_cpu_time_total</code> (or <code>self_cuda_time_total</code> on GPU) to find where cycles go. Sort by total to see which high-level region they belong to. Here the backward pass is 54% of the step and the forward 40%, a ratio of 1.34, well below the 2:1 the FLOP count predicts. Wall-time ratios under the profiler are not FLOP ratios (per-op overhead and non-matmul ops weigh differently in the two passes), so use the trace for <em>where</em>, not for checking the 2:1.</li>
+<li>The matmul family (<code>mm</code>, <code>addmm</code>, <code>bmm</code>) has about 44% self time. For a model this small, that is a healthy share.</li>
+<li><strong><code>aten::copy_</code> with 987 calls and 9.5%</strong> is the thing to chase. Those are dtype and layout copies (the <code>.long()</code> in the data path, <code>contiguous()</code> calls in attention reshapes, the <code>.float()</code> before the loss). At 90 us per call they are individually tiny and collectively a tenth of the step.</li>
+<li>The memory columns show allocation minus deallocation per op. <code>forward</code> allocates about 1 GB over 3 steps and <code>backward</code> frees it: that is the activation memory, about 330 MB per step, which matches the <a href="#measure-what-autograd-saves">saved-tensor count below</a>.</li>
+</ul>
+<p>Grouping by input shape finds the one bad call site among many identical op names:</p>
+<pre><code class="language-text">----------------------  ------------  ------------  ...  ------------  --------------------------------------------
+                  Name    Self CPU %      Self CPU  ...    # of Calls                                  Input Shapes
+----------------------  ------------  ------------  ...  ------------  --------------------------------------------
+             aten::bmm         5.97%      56.443ms  ...            24                [[64, 256, 64], [64, 64, 256]]
+             aten::bmm         5.77%      54.553ms  ...            36               [[64, 256, 256], [64, 256, 64]]
+aten::gelu_backward...         4.80%      45.379ms  ...            12        [[16, 256, 1024], [16, 256, 1024], []]
+           aten::addmm         4.08%      38.568ms  ...            12    [[1024], [4096, 256], [256, 1024], [], []]
+        aten::_softmax         3.92%      37.106ms  ...            12                   [[16, 4, 256, 256], [], []]
+              aten::mm         3.79%      35.839ms  ...            12                    [[4096, 256], [256, 1024]]
+</code></pre>
+<p>The top two rows are the manual attention: <span class="math inline"><span class="math-inline">QK^\top</span></span> producing <span class="math inline"><span class="math-inline">(B \cdot H, T, T) = (64, 256, 256)</span></span> and <span class="math inline"><span class="math-inline">PV</span></span>. The softmax over the <code>(16, 4, 256, 256)</code> scores is fifth. That is the <span class="math inline"><span class="math-inline">T^2</span></span> work that SDPA/FlashAttention replaces, and the trace shows it before you have changed anything.</p>
+<h3 id="exporting-and-opening-a-trace">Exporting and opening a trace</h3>
+<p><code>export_chrome_trace(&quot;trace.json&quot;)</code> writes the <a href="https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU">Chrome Trace Event format</a>: a JSON object with a <code>traceEvents</code> list. Open it in <a href="https://ui.perfetto.dev">Perfetto UI</a> (drag and drop; handles large files, runs locally in the browser) or <code>chrome://tracing</code>. Large traces load faster gzipped (<code>trace.json.gz</code>; Perfetto reads it directly).</p>
+<p>In the UI, each process and thread is a row. On CUDA you get a CPU thread row with nested op slices, plus one row per CUDA stream with kernels. Clicking a kernel highlights a flow arrow back to the <code>cudaLaunchKernel</code> that issued it. Keys: <code>W/S</code> zoom, <code>A/D</code> pan, <code>M</code> marks a slice's extent, and dragging an area gives the summed durations of the selected slices.</p>
+<p>Every slice is one event:</p>
+<pre><code class="language-json">{
+ &quot;ph&quot;: &quot;X&quot;,              // &quot;complete&quot; event: has ts and dur
+ &quot;cat&quot;: &quot;cpu_op&quot;,        // cpu_op | user_annotation | kernel | gpu_memcpy | cuda_runtime | ...
+ &quot;name&quot;: &quot;aten::mm&quot;,
+ &quot;pid&quot;: 59618, &quot;tid&quot;: 3350439,
+ &quot;ts&quot;: 3057069914434.109,  // microseconds
+ &quot;dur&quot;: 1326.621,          // microseconds
+ &quot;args&quot;: { &quot;Input Dims&quot;: [[4096, 256], [256, 256]], &quot;Input type&quot;: [&quot;float&quot;, &quot;float&quot;],
+           &quot;Input Strides&quot;: [[256, 1], [1, 256]], &quot;Sequence number&quot;: 839, ... }
+}
+</code></pre>
+<p>(That is a real event from the trace above, abbreviated. JSON has no comments; they are added here for explanation.) On CUDA traces, kernel events carry <code>args</code> such as grid and block dimensions, and a <code>correlation</code> id that links them to the launching runtime call. The exact field set varies with the PyTorch version, so check your own trace before you script against it.</p>
+<h3 id="reading-a-trace-without-a-gui">Reading a trace without a GUI</h3>
+<p>A trace is data, so query it. This summary prints per-step time split by your <code>record_function</code> ranges, plus the top ops:</p>
+<pre><code class="language-python"># trace_summary.py - read a Chrome trace from torch.profiler without a GUI  [ran]
+import json, sys, collections
+ev = json.load(open(sys.argv[1]))[&quot;traceEvents&quot;]
+X = [e for e in ev if e.get(&quot;ph&quot;) == &quot;X&quot;]                       # complete events: have ts (us) and dur (us)
+print(f&quot;{len(ev)} events, {len(X)} complete; categories:&quot;, dict(collections.Counter(e.get(&quot;cat&quot;) for e in X)))
+steps = sorted((e for e in X if e[&quot;name&quot;].startswith(&quot;ProfilerStep&quot;)), key=lambda e: e[&quot;ts&quot;])
+for s in steps:
+    inside = [e for e in X if e is not s and e.get(&quot;cat&quot;) == &quot;user_annotation&quot; and s[&quot;ts&quot;] &lt;= e[&quot;ts&quot;] &lt; s[&quot;ts&quot;] + s[&quot;dur&quot;]]
+    parts = {e[&quot;name&quot;]: e[&quot;dur&quot;] / 1e3 for e in inside}
+    print(f'{s[&quot;name&quot;]:16s} {s[&quot;dur&quot;]/1e3:7.1f} ms  ' + &quot;  &quot;.join(f&quot;{k}={v:.1f}&quot; for k, v in parts.items()))
+ops = collections.defaultdict(float)
+for e in X:
+    if e.get(&quot;cat&quot;) == &quot;cpu_op&quot;: ops[e[&quot;name&quot;]] += e[&quot;dur&quot;]
+tot = sum(s[&quot;dur&quot;] for s in steps)
+print(&quot;top ops by inclusive time (nested ops double count):&quot;)
+for k, v in sorted(ops.items(), key=lambda kv: -kv[1])[:6]: print(f&quot;  {k:28s} {v/1e3:8.1f} ms  {v/tot*100:5.1f}%&quot;)
+</code></pre>
+<pre><code class="language-text">$ python trace_summary.py trace.json
+29945 events, 22861 complete; categories: {'user_annotation': 24, 'cpu_op': 22836, 'Trace': 1}
+ProfilerStep#3     316.8 ms  data=0.6  enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__=0.5  forward=125.8  backward=171.5  optimizer=18.9  Optimizer.step#AdamW.step=17.0  Optimizer.zero_grad#AdamW.zero_grad=1.8
+ProfilerStep#4     312.4 ms  data=0.4  enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__=0.2  forward=123.1  backward=164.6  optimizer=24.3  Optimizer.step#AdamW.step=21.7  Optimizer.zero_grad#AdamW.zero_grad=2.5
+ProfilerStep#5     316.5 ms  data=0.2  enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__=0.2  forward=128.5  backward=170.5  optimizer=17.2  Optimizer.step#AdamW.step=14.2  Optimizer.zero_grad#AdamW.zero_grad=3.0
+top ops by inclusive time (nested ops double count):
+  autograd::engine::evaluate_function: AddmmBackward0    205.9 ms   21.8%
+  aten::mm                        181.0 ms   19.1%
+  AddmmBackward0                  172.9 ms   18.3%
+  aten::linear                    141.9 ms   15.0%
+  aten::addmm                     134.2 ms   14.2%
+  aten::bmm                       129.9 ms   13.7%
+</code></pre>
+<p>Note that PyTorch adds its own annotations (<code>enumerate(DataLoader)...</code>, <code>Optimizer.step#AdamW.step</code>) next to yours. 23k events over three steps of a 4-layer model is also why you keep <code>active</code> small for large models.</p>
+<p>For multi-rank CUDA traces, Meta's <a href="https://github.com/facebookresearch/HolisticTraceAnalysis">Holistic Trace Analysis</a> does this kind of analysis at scale: temporal breakdown (compute / communication / idle per rank), kernel-type breakdown, and communication-computation overlap. <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python">from hta.trace_analysis import TraceAnalysis          # pip install HolisticTraceAnalysis
+analyzer = TraceAnalysis(trace_dir=&quot;./tb&quot;)            # dir written by tensorboard_trace_handler, one file per rank
+print(analyzer.get_temporal_breakdown())              # per-rank idle / compute / non-compute time
+print(analyzer.get_comm_comp_overlap())               # fraction of comm time overlapped with compute
+</code></pre>
+<h3 id="profiler-overhead-is-real">Profiler overhead is real</h3>
+<p>The profiled CPU run above took 315 ms/step against 173-180 ms unprofiled (<code>python gpt.py --device cpu --attn manual</code>), so with <code>record_shapes</code> and <code>profile_memory</code> on, overhead was about 75% here. On a GPU, CPU-side overhead matters only when it delays launches. In a launch-bound loop it does, so the profiler makes launch-bound loops look <em>more</em> launch-bound. Use the profiler to find <em>where</em> time goes and the plain timer to measure <em>how much</em>.</p>
+<h3 id="what-a-cuda-trace-adds">What a CUDA trace adds</h3>
+<p><strong>[GPU, untested]</strong> With <code>ProfilerActivity.CUDA</code>, <code>key_averages()</code> gains <code>Self CUDA</code> / <code>CUDA total</code> columns, and the trace gains:</p>
+<ul>
+<li><code>cuda_runtime</code> slices on the CPU thread: <code>cudaLaunchKernel</code>, <code>cudaMemcpyAsync</code>, <code>cudaStreamSynchronize</code>. A long <code>cudaStreamSynchronize</code> or <code>cudaMemcpy</code> (DtoH, device to host) is a host sync.</li>
+<li>one <code>kernel</code> row per stream, e.g. <code>ampere_bf16_s16816gemm...</code>, <code>flash_fwd_kernel</code>, <code>triton_poi_fused_...</code> (an Inductor-generated pointwise kernel), and <code>ncclDevKernel_AllReduce_...</code> on the NCCL stream.</li>
+<li><code>gpu_memcpy</code> / <code>gpu_memset</code> slices for transfers.</li>
+<li>a &quot;GPU utilization&quot; style view in TensorBoard / HTA: kernel-busy time divided by wall time, per stream.</li>
+</ul>
+<p>The single most useful thing to look at is the GPU kernel row in steady state. If it is dense, you are kernel-bound and should read the kernel names. If it is full of whitespace, the bottleneck is on the CPU side, and the CPU row above the gap tells you what the CPU was doing instead.</p>
+<h2 id="nsight-systems-with-nvtx-ranges">Nsight Systems with NVTX ranges</h2>
+<p>Nsight Systems (<code>nsys</code>) is NVIDIA's system-wide timeline profiler. Compared with <code>torch.profiler</code>, it sees more and costs less: OS runtime calls, CPU sampling, CUDA API, kernels, memcpys, NCCL, NVLink and PCIe counters, and processes outside PyTorch. It knows nothing about PyTorch semantics unless you tell it. NVTX (NVIDIA Tools Extension) is the API for telling it: named push/pop ranges that appear as labelled bars on the timeline. The command-line reference and the &quot;what you see vs what it implies&quot; table are in <a href="../compute/accelerator/execution-model.html#nsight-systems-where-does-the-time-go">execution-model.md</a>. Here is how to instrument a training loop for it. <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python"># train_nsys.py - only the profiling-relevant lines
+import torch
+nvtx = torch.cuda.nvtx
+
+for step, (x, y) in enumerate(loader):
+    if step == 20: torch.cuda.profiler.start()          # cudaProfilerStart: nsys begins capture here
+    nvtx.range_push(f&quot;step {step}&quot;)
+    nvtx.range_push(&quot;data&quot;);      x, y = x.cuda(non_blocking=True), y.cuda(non_blocking=True); nvtx.range_pop()
+    nvtx.range_push(&quot;forward&quot;);   loss = model(x, y);                                       nvtx.range_pop()
+    nvtx.range_push(&quot;backward&quot;);  loss.backward();                                          nvtx.range_pop()
+    nvtx.range_push(&quot;optimizer&quot;); opt.step(); opt.zero_grad(set_to_none=True);              nvtx.range_pop()
+    nvtx.range_pop()
+    if step == 25: torch.cuda.profiler.stop(); break    # 5 steady-state steps, then exit
+</code></pre>
+<pre><code class="language-bash">nsys profile -t cuda,nvtx,osrt,cudnn,cublas \
+    --capture-range=cudaProfilerApi --capture-range-end=stop \
+    -o gpt_steps --force-overwrite true python train_nsys.py
+nsys stats --report cuda_gpu_kern_sum gpt_steps.nsys-rep     # kernels by total GPU time
+nsys stats --report cuda_api_sum      gpt_steps.nsys-rep     # cudaLaunchKernel count, cudaStreamSynchronize time
+nsys stats --report nvtx_sum          gpt_steps.nsys-rep     # time per NVTX range (older nsys: nvtx_pushpop_sum)
+</code></pre>
+<p>Sketched (not real) shape of the kernel summary:</p>
+<pre><code class="language-text"> Time (%)  Total Time (ns)  Instances  Avg (ns)  ...  Name
+ --------  ---------------  ---------  --------       ------------------------------------------
+     38.1      ...             ...       ...           sm90_xmma_gemm_bf16bf16_bf16f32_...
+     14.7      ...             ...       ...           flash_fwd_kernel / flash_bwd_...
+      9.9      ...             ...       ...           ncclDevKernel_AllReduce_Sum_bf16_RING_LL
+      ...
+</code></pre>
+<p>Three ways to get NVTX ranges without hand-writing them:</p>
+<ul>
+<li><code>with torch.autograd.profiler.emit_nvtx():</code> wraps every autograd op in an NVTX range named after the op (with sequence numbers to match forward and backward ops). It is very detailed and adds overhead, so use it for a few steps.</li>
+<li><code>torch.profiler.record_function</code> ranges become NVTX ranges under <code>emit_nvtx</code>, so the <code>data/forward/backward/optimizer</code> names from <code>gpt.py</code> carry over.</li>
+<li>Recent nsys versions can annotate PyTorch automatically (<code>--pytorch=autograd-nvtx</code>) and sample Python call stacks (<code>--python-sampling=true</code>). Both flags are version-dependent; check <code>nsys profile --help</code> on your install before relying on them.</li>
+</ul>
+<p>Choosing between the two profilers: <code>torch.profiler</code> when the question is &quot;which PyTorch op or module&quot;, nsys when the question involves anything outside PyTorch (dataloader processes, NCCL internals, PCIe/NVLink traffic, CPU scheduling, multiple processes on one node), and <code>ncu</code> once you know <em>which kernel</em> to look at. Remember that <code>ncu</code> replays kernels and locks clocks, so its times are not wall-clock times (<a href="../compute/accelerator/execution-model.html#nsight-compute-why-is-this-kernel-slow">details</a>).</p>
+<h2 id="memory-snapshots-and-finding-oom-causes">Memory: snapshots and finding OOM causes</h2>
+<p><a href="../training/performance/README.html#anatomy-of-models-memory-usage">Anatomy of model's memory usage</a> and <a href="../training/arithmetic.html#total-memory-and-the-caching-allocator">total memory and the caching allocator</a> explain what lives in GPU memory: weights, gradients, optimizer state, activations, temporaries, the CUDA context, NCCL buffers and allocator fragmentation. This section is about <em>measuring</em> which of those is your problem.</p>
+<h3 id="measure-what-autograd-saves">Measure what autograd saves</h3>
+<p>Activation memory is whatever autograd saves for the backward pass. You can count it exactly, on any device, with a saved-tensor hook (<code>torch.autograd.graph.saved_tensors_hooks</code> lets you intercept every tensor the moment autograd saves it):</p>
+<pre><code class="language-python"># mem_probe.py - what autograd saves for backward, per module, with and without checkpointing  [ran, CPU]
+import argparse, collections, torch, gpt
+from torch.autograd.graph import saved_tensors_hooks
+B, T, C, L = 16, 256, 256, 4
+for attn in (&quot;manual&quot;, &quot;sdpa&quot;):
+    for ckpt in (False, True):
+        gpt.args = argparse.Namespace(attn=attn, ckpt=ckpt)
+        torch.manual_seed(0)
+        model = gpt.GPT(256, T, C, L, 4)
+        idx = torch.randint(256, (B, T))                                  # (B, T)
+        seen, total = set(), 0
+        by_shape = collections.Counter()
+        def pack(t):
+            global total
+            key = (t.untyped_storage().data_ptr(), t.dtype)               # count each storage once
+            if key not in seen:
+                seen.add(key); n = t.untyped_storage().nbytes(); total += n
+                by_shape[tuple(t.shape)] += n
+            return t
+        with saved_tensors_hooks(pack, lambda t: t):
+            loss = model(idx, idx)
+        print(f&quot;attn={attn:6s} ckpt={ckpt!s:5s} saved for backward: {total/2**20:6.1f} MiB&quot;)
+        if attn == &quot;manual&quot; and not ckpt:
+            for s, n in by_shape.most_common(4): print(f&quot;    {str(s):22s} {n/2**20:6.1f} MiB&quot;)
+</code></pre>
+<pre><code class="language-text">attn=manual ckpt=False saved for backward:  344.8 MiB
+    (16, 4, 256, 256)        64.0 MiB
+    (16, 256, 1024)          64.0 MiB
+    (4096, 1024)             64.0 MiB
+    (4096, 256)              56.0 MiB
+attn=manual ckpt=True  saved for backward:   28.3 MiB
+attn=sdpa   ckpt=False saved for backward:  280.8 MiB
+attn=sdpa   ckpt=True  saved for backward:   28.3 MiB
+</code></pre>
+<p>Check it by hand. One fp32 attention-probability tensor <code>(16, 4, 256, 256)</code> is <span class="math inline"><span class="math-inline">16 \cdot 4 \cdot 256 \cdot 256 \cdot 4\ \text{B} = 16\ \text{MiB}</span></span>, and 4 layers make 64 MiB. Switching to SDPA removes exactly those 64 MiB, because the fused kernel does not save the <span class="math inline"><span class="math-inline">T \times T</span></span> probabilities. Checkpointing every block leaves only the block inputs (<span class="math inline"><span class="math-inline">16 \cdot 256 \cdot 256 \cdot 4\ \text{B} = 4\ \text{MiB}</span></span> each) plus the head and loss. The count also includes weight tensors that autograd references (they are not extra memory), so treat it as an upper bound on activation bytes. Comparing this number with the <a href="../training/arithmetic.html#korthikanti-et-al-derived">Korthikanti formula</a> for your model is the fastest way to find an op that saves an unexpected fp32 copy.</p>
+<p>On the Apple GPU, <code>torch.mps.current_allocated_memory()</code> and <code>torch.mps.driver_allocated_memory()</code> give current numbers. There is no peak counter or snapshot API on MPS as of PyTorch 2.15, so the CUDA tools below have no Mac equivalent.</p>
+<h3 id="cuda-memory-snapshots">CUDA memory snapshots</h3>
+<p><strong>[GPU, untested]</strong> PyTorch can record every allocation and free with its Python stack, then dump a pickle that the <a href="https://pytorch.org/memory_viz">memory_viz</a> page renders as a timeline of stacked allocations (drag the file in; it runs locally). This is the tool for &quot;what is at the peak&quot;.</p>
+<pre><code class="language-python">import torch
+torch.cuda.memory._record_memory_history(max_entries=100_000)   # private API; stable since ~2.1, check yours
+try:
+    for step in range(5):
+        loss = model(*next(loader)); loss.backward(); opt.step(); opt.zero_grad(set_to_none=True)
+except torch.OutOfMemoryError:
+    pass                                                         # dump even (especially) when it OOMs
+finally:
+    torch.cuda.memory._dump_snapshot(&quot;snap.pickle&quot;)
+    torch.cuda.memory._record_memory_history(enabled=None)       # stop recording
+print(torch.cuda.memory_summary(abbreviated=True))
+print({k: torch.cuda.memory_stats()[k] for k in
+       (&quot;allocated_bytes.all.peak&quot;, &quot;reserved_bytes.all.peak&quot;, &quot;num_alloc_retries&quot;, &quot;num_ooms&quot;)})
+</code></pre>
+<p>How to read the memory_viz &quot;Active Memory Timeline&quot; for a training step: weights, gradients and optimizer state form a flat band at the bottom. Activations stack up during the forward pass in a staircase, one step per layer. The peak usually comes at the start of backward, or <em>during the first <code>optimizer.step()</code></em>, when Adam's <code>exp_avg</code> and <code>exp_avg_sq</code> are allocated for the first time. Click a block to see the line of Python that allocated it. For analysing the snapshot as a dict (fragmentation, owner by frame), see <a href="../training/arithmetic.html#reading-torchcudamemory_snapshot">Reading <code>torch.cuda.memory._snapshot()</code></a>. <code>torch.profiler</code> can also produce a categorized memory timeline (<code>prof.export_memory_timeline(&quot;mem.html&quot;)</code>, which needs <code>record_shapes</code>, <code>profile_memory</code> and <code>with_stack</code>).</p>
+<h3 id="oom-triage">OOM triage</h3>
+<p>Read the OOM message first. It contains the two numbers that decide which branch you are in: &quot;X GiB is allocated by PyTorch&quot; and &quot;Y GiB is reserved by PyTorch but unallocated&quot;.</p>
+<pre><code class="language-text">torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB. GPU 0 has a total capacity of 79.10 GiB
+of which 1.20 GiB is free. Including non-PyTorch memory, this process has 77.88 GiB memory in use. Of the allocated
+memory 70.12 GiB is allocated by PyTorch, and 6.95 GiB is reserved by PyTorch but unallocated. ...
+</code></pre>
+<p>(sketched; the format is real, the numbers are not)</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">symptom</th>
+<th style="text-align:left">likely cause</th>
+<th style="text-align:left">check</th>
+<th style="text-align:left">fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">OOM on step 1, in forward</td>
+<td style="text-align:left">activations too big for this micro-batch</td>
+<td style="text-align:left">saved-tensor count vs formula</td>
+<td style="text-align:left">smaller micro-batch + grad accumulation; SDPA; checkpointing</td>
+</tr>
+<tr>
+<td style="text-align:left">OOM on step 1, at <code>optimizer.step()</code></td>
+<td style="text-align:left">optimizer state allocated lazily on the first step</td>
+<td style="text-align:left">snapshot timeline: jump at first step</td>
+<td style="text-align:left">sharded optimizer (<a href="../training/model-parallelism/derivations.html#zero-and-fsdp">ZeRO/FSDP</a>), 8-bit or <a href="../training/arithmetic.html#bf16-optimizer-states">bf16 states</a>, fused step</td>
+</tr>
+<tr>
+<td style="text-align:left">OOM after N steps, memory creeps</td>
+<td style="text-align:left">a reference leak: <code>losses.append(loss)</code> keeps graphs alive; growing caches</td>
+<td style="text-align:left"><code>memory_allocated()</code> per step rising</td>
+<td style="text-align:left"><code>loss.item()</code> / <code>.detach()</code> before storing</td>
+</tr>
+<tr>
+<td style="text-align:left">OOM only on some batches</td>
+<td style="text-align:left">variable sequence length; one long batch</td>
+<td style="text-align:left">log shape at OOM</td>
+<td style="text-align:left">bucket by length, cap length, <code>expandable_segments:True</code></td>
+</tr>
+<tr>
+<td style="text-align:left">large &quot;reserved but unallocated&quot;</td>
+<td style="text-align:left">fragmentation</td>
+<td style="text-align:left"><code>inactive_split_bytes</code>, <code>num_alloc_retries &gt; 0</code></td>
+<td style="text-align:left"><code>PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>nvidia-smi</code> shows much more than <code>max_memory_reserved</code></td>
+<td style="text-align:left">CUDA context, NCCL buffers, another process</td>
+<td style="text-align:left"><code>nvidia-smi --query-compute-apps=pid,used_memory --format=csv</code></td>
+<td style="text-align:left">account for it; fewer NCCL channels; kill stray processes</td>
+</tr>
+<tr>
+<td style="text-align:left">OOM only at eval</td>
+<td style="text-align:left">eval run without <code>torch.no_grad()</code>, or bigger eval batch</td>
+<td style="text-align:left">snapshot at eval</td>
+<td style="text-align:left"><code>torch.inference_mode()</code></td>
+</tr>
+</tbody>
+</table>
+<p>The leak row is the most common one in research code, and it is easy to reproduce on a CPU:</p>
+<pre><code class="language-python"># leak.py - a stored loss keeps its whole graph (and every saved activation) alive  [ran, CPU]
+import torch, gc
+w = torch.randn(1024, 1024, requires_grad=True)
+def step(): return ((torch.randn(256, 1024) @ w).relu() @ w).sum()   # saves (256,1024) activations
+keep = [step() for _ in range(50)]                                    # BUG: tensors with graphs
+print(&quot;graphs alive:&quot;, sum(1 for o in gc.get_objects() if torch.is_tensor(o) and o.grad_fn is not None))
+keep = [step().item() for _ in range(50)]                             # fix: store python floats
+gc.collect()
+print(&quot;graphs alive:&quot;, sum(1 for o in gc.get_objects() if torch.is_tensor(o) and o.grad_fn is not None))
+</code></pre>
+<pre><code class="language-text">graphs alive: 100
+graphs alive: 0
+</code></pre>
+<p>100, not 50: each stored loss also keeps alive the <code>relu</code> output that the second matmul saved for backward, along with its own <code>grad_fn</code>. Every saved activation of every stored step stays resident until the list goes away.</p>
+<p><code>debug/pytorch.md</code> has a longer walk-through of <a href="../debug/pytorch.html#debugging-cuda-oom-in-forward">OOM in forward</a>, <a href="../debug/pytorch.html#debugging-cuda-oom-in-backward">OOM in backward</a> and <a href="../debug/pytorch.html#overcoming-cuda-oom-due-to-memory-fragmentation">fragmentation</a>.</p>
+<h2 id="spotting-the-four-classic-pathologies">Spotting the four classic pathologies</h2>
+<h3 id="dataloader-starvation">Dataloader starvation</h3>
+<p>The signature is a fraction of wall time spent inside <code>next(loader)</code> (time only the fetch, per <a href="#the-attribution-trap">the attribution trap</a>), or, in a trace, a GPU gap at the start of each step. Simulate a slow preprocessing stage of 50 ms per batch:</p>
+<pre><code class="language-text">$ python gpt.py --log_every 10 --data_ms 50                 [ran, MPS]
+N=3.36M  step=  74.5ms  tok/s=   54996  achieved=1.237 TFLOP/s  data_wait=73.6%  loss=3.245
+$ python gpt.py --log_every 10 --data_ms 50 --workers 4
+N=3.36M  step=  65.0ms  tok/s=   63047  achieved=1.418 TFLOP/s  data_wait= 0.5%  loss=3.137
+$ python gpt.py --log_every 10 --data_ms 0                  # reference: free data
+N=3.36M  step=  64.6ms  tok/s=   63447  achieved=1.427 TFLOP/s  data_wait= 0.3%  loss=3.245
+$ python gpt.py --log_every 1  --data_ms 50                 # same slow data, plus a sync every step
+N=3.36M  step= 124.7ms  tok/s=   32858  achieved=0.739 TFLOP/s  data_wait=43.9%  loss=3.226
+</code></pre>
+<p>Four lessons fit in those four lines:</p>
+<ol>
+<li>50 ms of data work on a 65 ms step cost only 10 ms when the loop had no per-step sync. The CPU slept in the dataloader <em>while</em> the GPU chewed on the previous step's queue, so the work overlapped. Starvation is the part of data time that is not hidden.</li>
+<li>With a sync every step, the overlap disappears and the costs add: 65 + 50 + overhead = 125 ms. Syncs and slow data compound.</li>
+<li>Four workers (separate processes producing batches in parallel; see <a href="../foundations/concurrency.html#part-4-how-the-pytorch-dataloader-works-inside">how the DataLoader works inside</a>) brought the step back to the free-data number.</li>
+<li>&quot;data_wait 73.6%&quot; is not &quot;73.6% of the time is lost&quot;. It is the share of wall time the main thread spent in <code>next()</code>, which includes waiting that overlapped GPU work. The step-time delta (74.5 vs 64.6 ms) is the cost.</li>
+</ol>
+<p>The loss changed with workers (3.137 vs 3.245) because each worker seeds its own generator, so the data order differs. That is expected, but it means a dataloader change is not a pure systems change, and you should compare loss curves over more steps than this. The general settings (<code>num_workers</code>, <code>pin_memory</code>, <code>persistent_workers</code>, <code>prefetch_factor</code>) are in <a href="../training/performance/README.html#dataloader">DataLoader</a>.</p>
+<h3 id="cpu-launch-bound-loops">CPU-launch-bound loops</h3>
+<p>Every eager op costs a few microseconds of Python and dispatcher time before the GPU sees it (<a href="../compute/accelerator/execution-model.html#what-it-costs">what it costs</a>). Shrink the model until each kernel takes about as long as its launch:</p>
+<pre><code class="language-text">$ python gpt.py --n_embd 64 --B 4 --T 64 --steps 100 --warmup 20                   [ran, MPS]
+N=0.24M  step=   6.2ms  tok/s=   41411  achieved=0.062 TFLOP/s  data_wait= 2.1%  loss=3.506
+$ python gpt.py --n_embd 64 --B 4 --T 64 --steps 100 --warmup 20 --log_every 10
+N=0.24M  step=   5.0ms  tok/s=   51496  achieved=0.077 TFLOP/s  ...
+N=0.24M  step=   4.4ms  tok/s=   57850  achieved=0.087 TFLOP/s  ...     (second run)
+</code></pre>
+<p>The profiler counts what the CPU has to do per step:</p>
+<pre><code class="language-python"># count ops in one profiled step  [ran, MPS, after: python gpt.py --n_embd 64 --B 4 --T 64 --log_every 10 --steps 8 --warmup 0 --profile]
+import json
+X = [e for e in json.load(open(&quot;trace.json&quot;))[&quot;traceEvents&quot;] if e.get(&quot;ph&quot;) == &quot;X&quot;]
+s = [e for e in X if e[&quot;name&quot;].startswith(&quot;ProfilerStep&quot;)][-1]
+ops = [e for e in X if e.get(&quot;cat&quot;) == &quot;cpu_op&quot; and s[&quot;ts&quot;] &lt;= e[&quot;ts&quot;] &lt; s[&quot;ts&quot;] + s[&quot;dur&quot;]]
+print(&quot;aten ops in one step:&quot;, len(ops), &quot; step ms:&quot;, round(s[&quot;dur&quot;] / 1e3, 2), &quot; us/op:&quot;, round(s[&quot;dur&quot;] / len(ops), 1))
+</code></pre>
+<pre><code class="language-text">aten ops in one step: 3587  step ms: 8.18  us/op: 2.3
+</code></pre>
+<p>3,587 dispatched ops (nested ones included) for a 4-layer model, at 0.06-0.09 TFLOP/s, which is 2% of the GPU's measured ceiling. Nothing in the math is slow; the step is all overhead. The signature: step time barely changes when you shrink the batch (so achieved FLOP/s falls with it), step time scales with the <em>number of ops</em> rather than their size, and in a CUDA trace you see a GPU row of short kernels separated by gaps, while the CPU row is solid <code>cudaLaunchKernel</code>. The fixes, in order: a bigger micro-batch (more work per launch), fewer ops (<code>torch.compile</code>, fused optimizer), and CUDA graphs (one launch for the whole step).</p>
+<h3 id="host-device-syncs">Host-device syncs</h3>
+<p>A sync forces the CPU to wait until the GPU queue is empty. After it, the GPU sits idle while the CPU launches the next few kernels. Common hidden syncs: <code>.item()</code>, <code>.cpu()</code>, <code>.tolist()</code>, <code>print(tensor)</code>, <code>if tensor.any():</code>, <code>torch.nonzero</code>, boolean-mask indexing <code>x[mask]</code> (the output shape depends on the data), <code>.to(&quot;cuda&quot;)</code> from non-pinned memory, and <code>torch.cuda.empty_cache()</code>.</p>
+<p>The cost scales with how much CPU work the sync exposes. In the launch-bound config above, removing a per-step <code>loss.item()</code> cut the step from 6.2 to 4.4-5.0 ms (20-30%). In the big config, the change was within noise (65.6 vs 64.2 ms), because the GPU work per step dwarfed the exposed launch time.</p>
+<p>PyTorch can flag syncs for you on CUDA: <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python">torch.cuda.set_sync_debug_mode(&quot;warn&quot;)     # &quot;error&quot; raises; 0 / &quot;default&quot; turns it off
+loss = model(x, y)
+n = (y != -100).sum().item()              # -&gt; UserWarning: called a synchronizing CUDA operation
+</code></pre>
+<p>In a trace, look for <code>cudaStreamSynchronize</code>, <code>cudaDeviceSynchronize</code> or <code>cudaMemcpyAsync</code> (DtoH) slices on the CPU thread, with a gap on the GPU row immediately after. Fixes: accumulate metrics on the GPU and call <code>.item()</code> every N steps; replace data-dependent indexing with masking (<code>torch.where</code>); use <code>non_blocking=True</code> with pinned memory for transfers to the device.</p>
+<h3 id="exposed-communication-in-multi-gpu-traces">Exposed communication in multi-GPU traces</h3>
+<p>In data parallelism (DDP), each GPU computes gradients on its own micro-batch, and the gradients are all-reduced (summed across GPUs) before the optimizer step. DDP groups gradients into <strong>buckets</strong> (default 25 MB) and launches each bucket's all-reduce as soon as backward has produced all of that bucket's gradients. The goal is for communication to run <em>while</em> the earlier layers are still computing their gradients. Communication that runs while no compute is running is <strong>exposed</strong>: it adds directly to step time. (<a href="../network/collectives-internals.html#compute-communication-overlap">Compute-communication overlap</a> covers the theory; <a href="../training/model-parallelism/derivations.html#bucketing-and-overlap">DDP bucketing and overlap</a> covers how DDP builds the buckets, including the smaller first bucket and the rebuild after iteration 1.)</p>
+<p>You can watch this happen on a laptop, using the gloo backend (PyTorch's CPU collective library; NCCL's role on CPU):</p>
+<pre><code class="language-python"># ddp_trace.py - torchrun --nproc_per_node 2 ddp_trace.py ; CPU + gloo stand-in for NCCL  [ran, CPU]
+import os, torch, torch.distributed as dist, torch.nn as nn
+from torch.profiler import profile, schedule, ProfilerActivity
+dist.init_process_group(&quot;gloo&quot;); rank = dist.get_rank(); torch.manual_seed(0)
+torch.set_num_threads(4)
+model = nn.Sequential(*[nn.Sequential(nn.Linear(1024, 1024), nn.GELU()) for _ in range(8)])  # 8.4M params
+ddp = nn.parallel.DistributedDataParallel(model, bucket_cap_mb=int(os.environ.get(&quot;BUCKET_MB&quot;, 25)))
+opt = torch.optim.AdamW(ddp.parameters(), lr=1e-3)
+x = torch.randn(64, 1024)                                                   # (B, C)
+with profile(activities=[ProfilerActivity.CPU], schedule=schedule(wait=1, warmup=1, active=2),
+             on_trace_ready=lambda p: p.export_chrome_trace(f&quot;ddp_rank{rank}.json&quot;)) as prof:
+    for _ in range(4):
+        ddp(x).square().mean().backward(); opt.step(); opt.zero_grad(); prof.step()
+if rank == 0:
+    print(prof.key_averages().table(sort_by=&quot;cpu_time_total&quot;, row_limit=10, max_name_column_width=34))
+dist.destroy_process_group()
+</code></pre>
+<pre><code class="language-text">$ GLOO_SOCKET_IFNAME=lo0 torchrun --nproc_per_node 2 --master_addr 127.0.0.1 --master_port 29511 ddp_trace.py
+                              Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls
+                     ProfilerStep*        30.18%      25.531ms       100.00%      84.605ms      42.302ms             2
+                   gloo:all_reduce         0.00%       0.000us             0      33.774ms       8.444ms             4
+         Optimizer.step#AdamW.step         3.18%       2.690ms        32.94%      27.868ms      13.934ms             2
+...
+</code></pre>
+<p>What the command does: <code>torchrun</code> starts 2 copies of the script (<code>--nproc_per_node 2</code>), each a separate rank, and gives them <code>--master_addr</code>/<code>--master_port</code> as the address where they meet to exchange connection details (the <code>TCPStore</code> rendezvous, see <a href="../foundations/networking.html#step-1-rendezvous-over-tcp-the-store">networking</a>). The leading <code>GLOO_SOCKET_IFNAME=lo0</code> sets an environment variable for that one command, telling gloo to use <code>lo0</code>, the Mac's loopback interface (the network interface that only talks to the same machine).</p>
+<p>(Without <code>GLOO_SOCKET_IFNAME=lo0 --master_addr 127.0.0.1</code>, the first attempt on this Mac failed in <code>TCPStore</code> setup and the next one hung, because the hostname did not resolve to a usable interface. See <a href="../foundations/networking.html#which-interface-does-nccl-pick">which interface NCCL and gloo pick</a> for why loopback is the safe choice on one machine.)</p>
+<p>The <code>gloo:all_reduce</code> slices are on a different thread from the compute. To measure what is exposed, take the union of communication intervals and subtract the part that overlaps any compute op on the main thread:</p>
+<pre><code class="language-python"># exposed_comm.py - how much collective time is NOT hidden under compute, from a Chrome trace  [ran]
+import json, sys
+X = [e for e in json.load(open(sys.argv[1]))[&quot;traceEvents&quot;] if e.get(&quot;ph&quot;) == &quot;X&quot;]
+step = [e for e in X if e[&quot;name&quot;].startswith(&quot;ProfilerStep&quot;)]
+main_tid = step[0][&quot;tid&quot;]
+comm = sorted({(e[&quot;ts&quot;], e[&quot;ts&quot;] + e[&quot;dur&quot;]) for e in X if e[&quot;name&quot;].startswith((&quot;gloo:&quot;, &quot;nccl:&quot;))})  # c10d annotations
+compute = sorted((e[&quot;ts&quot;], e[&quot;ts&quot;] + e[&quot;dur&quot;]) for e in X if e[&quot;tid&quot;] == main_tid and e[&quot;name&quot;].startswith(&quot;aten::&quot;)
+                 and &quot;all_reduce&quot; not in e[&quot;name&quot;])
+def union(iv):                                     # merge overlapping intervals -&gt; list of disjoint ones
+    out = []
+    for a, b in sorted(iv):
+        if out and a &lt;= out[-1][1]: out[-1][1] = max(out[-1][1], b)
+        else: out.append([a, b])
+    return out
+def length(iv): return sum(b - a for a, b in iv)
+C, K = union(comm), union(compute)
+overlap = sum(max(0, min(b, d) - max(a, c)) for a, b in C for c, d in K)
+step_us = sum(e[&quot;dur&quot;] for e in step)
+print(f&quot;steps={len(step)} step_total={step_us/1e3:.1f}ms comm={length(C)/1e3:.1f}ms &quot;
+      f&quot;hidden={overlap/1e3:.1f}ms exposed={(length(C)-overlap)/1e3:.1f}ms ({(length(C)-overlap)/step_us*100:.0f}% of step)&quot;)
+</code></pre>
+<p>Varying only the bucket size, two runs each:</p>
+<pre><code class="language-text">bucket_cap_mb=1000  steps=2 step_total=85.2ms comm=25.6ms hidden=0.0ms exposed=25.6ms (30% of step)
+bucket_cap_mb=1000  steps=2 step_total=85.6ms comm=27.2ms hidden=0.0ms exposed=27.2ms (32% of step)
+bucket_cap_mb=25    steps=2 step_total=78.4ms comm=26.8ms hidden=2.0ms exposed=24.8ms (32% of step)
+bucket_cap_mb=25    steps=2 step_total=80.2ms comm=23.1ms hidden=1.7ms exposed=21.4ms (27% of step)
+bucket_cap_mb=1     steps=2 step_total=67.3ms comm=28.3ms hidden=23.7ms exposed=4.6ms (7% of step)
+bucket_cap_mb=1     steps=2 step_total=62.4ms comm=24.3ms hidden=19.5ms exposed=4.9ms (8% of step)
+</code></pre>
+<p>With one giant bucket, nothing can start until backward finishes, so the whole all-reduce is exposed. The model has 33.6 MB of fp32 gradients. With the default setting, after DDP rebuilds its buckets following the first iteration (<a href="../training/model-parallelism/derivations.html#bucketing-and-overlap">how DDP builds buckets</a>), the first bucket is capped small (1 MiB, so here it holds just the last layer's 4 MB gradient), and the second bucket holds all the rest (the <code>gloo:all_reduce</code> count above is 4 calls over 2 profiled steps, so 2 buckets per step), so it only fills once backward is done. Almost all of the traffic therefore waits until late in backward, which gives almost no overlap. With 1 MB buckets (each layer's 4 MB gradient becomes its own bucket), communication starts after the last layer's backward and 80-84% of it hides, and the step gets 21-27% faster. On a real GPU cluster the trade-off has a second side: too-small buckets pay per-collective latency (the alpha term in the <a href="../network/collectives-internals.html#the-alpha-beta-model">alpha-beta model</a>), which is why the default is tens of MB. On this laptop compute and gloo also share the same CPU cores, so treat the exact split as an anecdote. The method transfers unchanged to an NCCL trace: <code>nccl:all_reduce</code> annotations on the CPU side, <code>ncclDevKernel_*</code> kernels on the GPU side, and the same interval arithmetic against compute kernels.</p>
+<p>In a real multi-GPU trace, also look for:</p>
+<ul>
+<li><strong>Stragglers.</strong> One rank's compute is slower, so every other rank's all-reduce starts early and <em>waits</em>. The collective looks slow on every rank except the slow one. Compare the start times of the same collective across ranks.</li>
+<li><strong>Serialized FSDP all-gathers.</strong> With FSDP (fully sharded data parallel: each GPU stores a shard of the parameters and all-gathers a layer just before using it; derived in <a href="../training/model-parallelism/derivations.html#zero-and-fsdp">ZeRO and FSDP</a>), the next layer's all-gather should run during the current layer's compute. A gap of &quot;all-gather, then compute, then all-gather&quot; means prefetching is off or blocked by memory limits.</li>
+<li><strong>Communication and compute fighting over SMs.</strong> NCCL kernels occupy SMs. Overlapped compute kernels slow down a little; that is normal and much cheaper than exposure.</li>
+</ul>
+<h2 id="the-optimization-ladder">The optimization ladder</h2>
+<p>These are the standard changes, roughly in the order you should try them: cheapest and most reliable first. Each row says which bottleneck class the change attacks, what to expect on an NVIDIA GPU (from the cited sources or from first principles, not measured here), how to verify it, and what it did on the M4 test model.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">step</th>
+<th style="text-align:left">attacks</th>
+<th style="text-align:left">expected effect on NVIDIA (not measured here)</th>
+<th style="text-align:left">verify</th>
+<th style="text-align:left">M4 GPU result (ran)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">bf16 autocast (and TF32 for leftover fp32)</td>
+<td style="text-align:left">kernels</td>
+<td style="text-align:left">matmul peak 16x vs strict fp32 on A100 (312 vs 19.5 TF spec); end-to-end usually 2-3x for small models</td>
+<td style="text-align:left">kernel names contain <code>bf16</code>; loss curve matches fp32</td>
+<td style="text-align:left">+11% matmul ceiling; within noise alone, ~1.15x on top of compile</td>
+</tr>
+<tr>
+<td style="text-align:left">remove per-step syncs</td>
+<td style="text-align:left">syncs, CPU overhead</td>
+<td style="text-align:left">large if launch-bound, ~0 if GPU-bound</td>
+<td style="text-align:left">no <code>cudaStreamSynchronize</code> per step</td>
+<td style="text-align:left">20-30% (tiny model), noise (big model)</td>
+</tr>
+<tr>
+<td style="text-align:left">DataLoader workers / pinned memory</td>
+<td style="text-align:left">dataloader</td>
+<td style="text-align:left">eliminates data wait when CPU-side prep is the bottleneck</td>
+<td style="text-align:left"><code>next()</code> time ~0; no GPU gap at step start</td>
+<td style="text-align:left">74.5 -&gt; 65.0 ms with 50 ms/batch prep</td>
+</tr>
+<tr>
+<td style="text-align:left">fused / foreach optimizer</td>
+<td style="text-align:left">CPU overhead</td>
+<td style="text-align:left">fewer kernels in <code>optimizer.step()</code></td>
+<td style="text-align:left">optimizer range time in trace</td>
+<td style="text-align:left">within noise</td>
+</tr>
+<tr>
+<td style="text-align:left">SDPA / FlashAttention</td>
+<td style="text-align:left">kernels, memory</td>
+<td style="text-align:left">FlashAttention paper: 3x end-to-end on GPT-2 at seq 1K vs the Hugging Face Transformers implementation (arXiv:2205.14135); no <span class="math inline"><span class="math-inline">T^2</span></span> activation</td>
+<td style="text-align:left"><code>flash</code>/<code>efficient_attention</code> kernel in trace; activation memory drop</td>
+<td style="text-align:left">memory -64 MiB; speed within noise at <span class="math inline"><span class="math-inline">T=256</span></span></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>torch.compile</code></td>
+<td style="text-align:left">CPU overhead, kernels (fusion)</td>
+<td style="text-align:left">PyTorch 2.0 release: ~1.4x mean training speedup over 163 models on A100 (as of Mar 2023)</td>
+<td style="text-align:left"><code>triton_*</code> kernels; fewer kernels; check graph breaks</td>
+<td style="text-align:left">1.22x (64.2 -&gt; 52.6-53.9 ms)</td>
+</tr>
+<tr>
+<td style="text-align:left">activation checkpointing</td>
+<td style="text-align:left">memory (costs time)</td>
+<td style="text-align:left">+~33% compute for full recompute (<a href="../training/arithmetic.html#what-recomputation-adds">arithmetic</a>); pays when freed memory buys a bigger batch or removes sharding</td>
+<td style="text-align:left">activation memory drop, step time up</td>
+<td style="text-align:left">memory 345 -&gt; 28 MiB; 1.30x slower</td>
+</tr>
+<tr>
+<td style="text-align:left">bigger micro-batch</td>
+<td style="text-align:left">CPU overhead, small-kernel inefficiency</td>
+<td style="text-align:left">better until GPU saturates, then flat; changes optimization dynamics</td>
+<td style="text-align:left">tok/s vs B curve flattens</td>
+<td style="text-align:left">flat (GPU already saturated at B=16)</td>
+</tr>
+<tr>
+<td style="text-align:left">overlap communication</td>
+<td style="text-align:left">communication</td>
+<td style="text-align:left">hides up to min(comm, backward compute)</td>
+<td style="text-align:left">exposed comm from trace</td>
+<td style="text-align:left">30% -&gt; 7% exposed (gloo, CPU)</td>
+</tr>
+<tr>
+<td style="text-align:left">CUDA graphs</td>
+<td style="text-align:left">CPU overhead</td>
+<td style="text-align:left">removes launch cost; matters when kernels are ~us</td>
+<td style="text-align:left">one <code>cudaGraphLaunch</code> per step</td>
+<td style="text-align:left">not available on MPS</td>
+</tr>
+</tbody>
+</table>
+<p>Each step in more detail:</p>
+<h3 id="bf16-mixed-precision">bf16 mixed precision</h3>
+<p>Autocast runs matmuls and convolutions in bf16 while keeping reductions, norms and the loss in fp32 (<a href="../training/arithmetic.html#what-must-stay-fp32-and-why">what must stay fp32</a>). bf16 has the same exponent range as fp32, so unlike fp16 it needs no loss scaling.</p>
+<pre><code class="language-python">torch.backends.cuda.matmul.allow_tf32 = True          # any fp32 matmul left over uses TF32 tensor cores (CUDA)
+torch.backends.cudnn.allow_tf32 = True
+with torch.autocast(&quot;cuda&quot;, dtype=torch.bfloat16):     # &quot;mps&quot; / &quot;cpu&quot; also accepted
+    loss = model(x, y)
+loss.backward()                                        # outside autocast; grads come out in param dtype (fp32)
+</code></pre>
+<p><strong>Verify:</strong> on CUDA the kernel names change from <code>sgemm</code> (single-precision fp32 GEMM)/<code>tf32</code> to <code>bf16</code>, and the loss curve over a few hundred steps stays within seed noise of fp32. On the M4, bf16 alone moved the step from 64.2 to 62.8-66.3 ms, which is within noise: the Apple GPU's bf16 matmul is only 11% faster than fp32 (measured above). On top of <code>torch.compile</code> it gave 51-54 -&gt; 44-47 ms, because Inductor fuses the casts that eager autocast leaves as separate kernels.</p>
+<h3 id="fused-optimizers">Fused optimizers</h3>
+<p>The default AdamW update loops over parameters in Python and launches several kernels per parameter tensor. <code>foreach=True</code> (the CUDA default when available) groups them into multi-tensor kernels. <code>fused=True</code> does the whole update in one or a few kernels.</p>
+<pre><code class="language-python">opt = torch.optim.AdamW(model.parameters(), lr=3e-4, fused=True)   # CUDA/MPS/CPU support varies by version
+</code></pre>
+<p><strong>Verify:</strong> the <code>Optimizer.step#AdamW.step</code> range shrinks in the trace. On CPU it was 14-22 ms of a 315 ms profiled step (5-7%), so even a perfect optimizer would gain little here. On the M4 GPU, <code>plain</code>, <code>foreach</code> and <code>fused</code> were all within the 65-75 ms noise band, and one fused run on the tiny config hit a one-off 11.5 ms outlier: repeat measurements. Expect the win to matter for models with many small parameter tensors, and in launch-bound regimes.</p>
+<h3 id="torchcompile">torch.compile</h3>
+<p><code>torch.compile</code> captures the Python model into a graph (Dynamo), derives the backward graph (AOTAutograd) and generates fused Triton/C++ kernels (Inductor). How it works is in <a href="../compute/accelerator/execution-model.html#torchcompile-internals">torch.compile internals</a>. When it pays off and when it fails are in <a href="../training/performance/README.html#torchcompile">torch.compile</a>.</p>
+<pre><code class="language-python">model = torch.compile(model)                          # default mode: fusion, no CUDA graphs
+# model = torch.compile(model, mode=&quot;max-autotune&quot;)   # + GEMM autotuning and CUDA graphs; longer compile
+</code></pre>
+<pre><code class="language-bash">TORCH_LOGS=graph_breaks python gpt.py --compile       # list every place Dynamo fell back to Python
+TORCH_LOGS=recompiles   python gpt.py --compile       # shape/dtype changes that trigger recompilation
+</code></pre>
+<p><strong>Verify:</strong> the step time drop must survive excluding compile time. The <code>warmup</code> steps in <code>gpt.py</code> absorb compilation; a 1-step run took 2.4 s wall time compiled versus 1.25 s eager (with a warm Inductor cache). Then check for graph breaks and recompiles. On the M4 GPU: 62.2-64.2 ms -&gt; 52.6-53.9 ms (1.2x). On CPU: 179.8 -&gt; 173.4 ms, which is within noise, since the CPU run is dominated by matmuls that compile does not change.</p>
+<h3 id="sdpa-and-flashattention">SDPA and FlashAttention</h3>
+<p><code>F.scaled_dot_product_attention</code> dispatches to a fused attention kernel (FlashAttention-2, memory-efficient attention, cuDNN attention, or a math fallback) chosen by dtype, shape and hardware. The fused kernels never write the <code>(B, H, T, T)</code> score matrix to memory (<a href="../compute/accelerator/execution-model.html#flashattention">FlashAttention</a>).</p>
+<pre><code class="language-diff">-            att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))         # (B, H, T, T)
+-            mask = torch.ones(T, T, device=x.device, dtype=torch.bool).tril()
+-            att = att.masked_fill(~mask, float(&quot;-inf&quot;)).softmax(dim=-1)
+-            y = att @ v                                                      # (B, H, T, hd)
++            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)      # (B, H, T, hd)
+</code></pre>
+<p>To verify which backend ran, force one and see whether it errors: <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python">from torch.nn.attention import sdpa_kernel, SDPBackend
+with sdpa_kernel(SDPBackend.FLASH_ATTENTION):          # raises if flash is not eligible (dtype, head dim, mask...)
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+</code></pre>
+<p>Common reasons it silently falls back to the slow math path: fp32 inputs (flash needs fp16/bf16), an explicit <code>attn_mask</code> instead of <code>is_causal=True</code>, or an unsupported head dimension. In the trace, look for <code>flash_fwd</code>/<code>flash_bwd</code> or <code>efficient_attention</code> kernels instead of <code>bmm</code> + <code>softmax</code>. On the M4 at <span class="math inline"><span class="math-inline">T = 256</span></span> it saved the 64 MiB of saved probabilities (measured above) but not time. The <span class="math inline"><span class="math-inline">T^2</span></span> part is 14% of FLOPs here (3.1M of 22.5M per token), and the payoff grows with sequence length.</p>
+<h3 id="activation-checkpointing">Activation checkpointing</h3>
+<p>Activation checkpointing (gradient checkpointing) discards a block's intermediate activations in the forward pass and recomputes them in the backward pass. It trades about one extra forward pass of compute for memory (<a href="../training/performance/README.html#gradient-checkpointing">Gradient Checkpointing</a>).</p>
+<pre><code class="language-python">from torch.utils.checkpoint import checkpoint
+for b in self.blocks:
+    x = checkpoint(b, x, use_reentrant=False)       # use_reentrant=False is the recommended implementation
+</code></pre>
+<p><strong>Verify:</strong> saved-for-backward bytes fall (345 -&gt; 28 MiB above) and step time rises (64-75 -&gt; 84.6-85.9 ms, 1.3x on the M4, matching the ~4/3 expected for full recompute). Checkpointing is never a speed optimization on its own. It is worth it only when the freed memory buys something faster: a bigger micro-batch, less sharding, or no CPU offload. Selective checkpointing (only some layers, or only the attention core) sits between the two extremes.</p>
+<h3 id="bigger-micro-batches">Bigger micro-batches</h3>
+<p>A bigger micro-batch means more work per kernel launch, which amortizes CPU overhead and fills the GPU better. It stops helping once the GPU is saturated, and it changes the optimization (the effective batch size and the learning rate you should use; see <a href="../training/performance/README.html#batch-sizes">batch sizes</a> and <a href="../training/arithmetic.html#critical-batch-size">critical batch size</a>):</p>
+<pre><code class="language-text">$ python gpt.py --log_every 10 --attn sdpa --opt fused --B 64              [ran, MPS]
+N=3.36M  step= 260.9ms  tok/s=   62800  achieved=1.413 TFLOP/s  ...
+</code></pre>
+<p>4x the batch gave 4x the step time and the same tokens/s: at B=16 this GPU was already saturated, so the batch is not the lever here. On the launch-bound tiny config it would be. Hold the global batch fixed with gradient accumulation when you change the micro-batch for speed reasons.</p>
+<h3 id="overlapping-communication">Overlapping communication</h3>
+<p>For DDP: tune <code>bucket_cap_mb</code> (measured above), set <code>gradient_as_bucket_view=True</code> (saves a gradient copy), and use <code>static_graph=True</code> when the graph does not change between steps. For FSDP2 (<code>torch.distributed.fsdp.fully_shard</code>), forward and backward prefetching of the next layer's all-gather is on by default; check the trace for gaps between all-gather and compute. <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python">ddp = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], bucket_cap_mb=25,
+                                                gradient_as_bucket_view=True, static_graph=True)
+</code></pre>
+<p><strong>Verify</strong> with the exposed-communication measurement above, not with step time alone. A step can get faster for an unrelated reason. Larger designs (tensor and pipeline parallelism, async TP, DiLoCo-style infrequent synchronization, where each worker takes many local optimizer steps and workers average their weights only every few hundred steps) are covered in <a href="../training/model-parallelism/README.html">model parallelism</a>, <a href="../training/model-parallelism/derivations.html">the derivations</a> and <a href="../training/decentralized-training.html">decentralized training</a>.</p>
+<h3 id="cuda-graphs">CUDA graphs</h3>
+<p>A CUDA graph records a step's kernels once and replays them with one launch. That removes the CPU overhead completely, but it requires static shapes and no syncs inside the step (<a href="../compute/accelerator/execution-model.html#cuda-graphs">constraints and manual capture</a>). For training, the easy path is through compile: <strong>[GPU, untested]</strong></p>
+<pre><code class="language-python">model = torch.compile(model, mode=&quot;reduce-overhead&quot;)   # Inductor + CUDA graphs (cudagraph trees)
+# the input batch must keep the same shape every step; pad or bucket variable-length batches
+</code></pre>
+<p><strong>Verify:</strong> the trace shows <code>cudaGraphLaunch</code> instead of thousands of <code>cudaLaunchKernel</code> calls, and the GPU row has no gaps. <code>TORCH_LOGS=cudagraphs</code> (or warnings at runtime) tells you why a graph was skipped, e.g. a CPU tensor input or a mutation. Expect large wins in launch-bound regimes (small models, small batches, decode-style workloads) and near zero for big GPU-bound steps. &quot;Decode&quot; is LLM generation, one token per forward pass reusing the <a href="../models/architectures.html#the-kv-cache">KV cache</a>: each step is many tiny kernels, which is why inference engines lean on CUDA graphs (<a href="../inference/serving-hands-on.html">serving hands-on</a>, a later chapter).</p>
+<h2 id="case-study-naive-to-optimized-step-by-step">Case study: naive to optimized, step by step</h2>
+<p>Starting point: <code>python gpt.py</code>, the naive script above, on the M4 GPU. Each row adds <strong>one</strong> change to the previous row. &quot;runs&quot; shows every measurement I took (30 timed steps after 10 warmup steps each), so you can see the noise. The loss is <code>loss.item()</code> at step 30 and must not move, except where the data order changes.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">#</th>
+<th style="text-align:left">change (flag added)</th>
+<th style="text-align:left">step ms (runs)</th>
+<th style="text-align:right">tok/s (best)</th>
+<th style="text-align:right">achieved TFLOP/s</th>
+<th style="text-align:right">loss@30</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">0</td>
+<td style="text-align:left">naive: manual attention, fp32, plain AdamW, <code>.item()</code> every step</td>
+<td style="text-align:left">66.9, 65.6, 65.6</td>
+<td style="text-align:right">62,486</td>
+<td style="text-align:right">1.41</td>
+<td style="text-align:right">3.226</td>
+</tr>
+<tr>
+<td style="text-align:left">1</td>
+<td style="text-align:left"><code>--log_every 10</code> (remove per-step sync)</td>
+<td style="text-align:left">63.9, 64.2, 64.5</td>
+<td style="text-align:right">64,104</td>
+<td style="text-align:right">1.44</td>
+<td style="text-align:right">3.245</td>
+</tr>
+<tr>
+<td style="text-align:left">2</td>
+<td style="text-align:left"><code>--attn sdpa</code></td>
+<td style="text-align:left">64.0, 68.3, 68.9 / later 62.6, 62.2</td>
+<td style="text-align:right">65,842</td>
+<td style="text-align:right">1.48</td>
+<td style="text-align:right">3.245</td>
+</tr>
+<tr>
+<td style="text-align:left">3</td>
+<td style="text-align:left"><code>--opt fused</code> (on top of 2)</td>
+<td style="text-align:left">73.8, 66.3, 75.9</td>
+<td style="text-align:right">61,800</td>
+<td style="text-align:right">1.39</td>
+<td style="text-align:right">3.245</td>
+</tr>
+<tr>
+<td style="text-align:left">3'</td>
+<td style="text-align:left"><code>--compile</code> (on top of 2, instead of 3)</td>
+<td style="text-align:left">52.6, 53.9 (also 54.8)</td>
+<td style="text-align:right">77,933</td>
+<td style="text-align:right">1.75</td>
+<td style="text-align:right">3.245</td>
+</tr>
+<tr>
+<td style="text-align:left">4</td>
+<td style="text-align:left"><code>--compile --opt fused</code></td>
+<td style="text-align:left">51.3, 50.9</td>
+<td style="text-align:right">80,478</td>
+<td style="text-align:right">1.81</td>
+<td style="text-align:right">3.245</td>
+</tr>
+<tr>
+<td style="text-align:left">5</td>
+<td style="text-align:left"><code>--compile --dtype bf16</code> (no fused)</td>
+<td style="text-align:left">44.2, 46.8</td>
+<td style="text-align:right">92,708</td>
+<td style="text-align:right">2.09</td>
+<td style="text-align:right">3.245</td>
+</tr>
+<tr>
+<td style="text-align:left">6</td>
+<td style="text-align:left"><code>--compile --opt fused --dtype bf16 --workers 2</code></td>
+<td style="text-align:left">43.4, 43.3</td>
+<td style="text-align:right">94,530</td>
+<td style="text-align:right">2.13</td>
+<td style="text-align:right">3.137, 3.138</td>
+</tr>
+</tbody>
+</table>
+<p>The loss changes between rows 0 and 1 (3.226 vs 3.245) because row 0 logs at step 39 and row 1 at step 30: <code>last</code> is the last logged step, not a numerical difference. The row-6 change comes from the worker data order. Both are artifacts of the harness, and they are the kind of thing to explain before claiming anything.</p>
+<p>The result is <strong>65.6 -&gt; 43.3 ms per step, 1.51x</strong>, from 41% to 57% of the measured matmul ceiling. Of the ladder steps, only <code>torch.compile</code> (1.2x) and bf16 <em>on top of</em> compile (1.15x) were clearly outside the noise on this hardware. Removing syncs, SDPA and the fused optimizer were each within the ±8% run-to-run spread at this size. An honest summary is &quot;compile and compile+bf16 helped; the others did nothing measurable on a 3M-parameter model on an Apple GPU at T=256.&quot; On an H100, the same ladder would look different: bf16 would be the largest single step, and SDPA would matter a lot at longer sequence lengths. That is the point of measuring instead of copying someone else's ladder.</p>
+<p>The full diff from naive to optimized, as code rather than flags:</p>
+<pre><code class="language-diff">- loss = model(x, y)
++ model = torch.compile(model)                                    # once, before the loop
++ with torch.autocast(dev.type, dtype=torch.bfloat16):
++     loss = model(x, y)
+- opt = torch.optim.AdamW(model.parameters(), lr=3e-4, foreach=False)
++ opt = torch.optim.AdamW(model.parameters(), lr=3e-4, fused=True)
+- att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1)); ...; y = att @ v
++ y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+- last = loss.item()                                              # every step
++ if step % 10 == 0: last = loss.item()
+- DataLoader(ds, batch_size=None, num_workers=0)
++ DataLoader(ds, batch_size=None, num_workers=2, pin_memory=True, persistent_workers=True)
+</code></pre>
+<p>Reproduce the table:</p>
+<pre><code class="language-bash">P=python
+for a in &quot;&quot; &quot;--log_every 10&quot; &quot;--log_every 10 --attn sdpa&quot; &quot;--log_every 10 --attn sdpa --opt fused&quot; \
+         &quot;--log_every 10 --attn sdpa --compile&quot; &quot;--log_every 10 --attn sdpa --compile --opt fused&quot; \
+         &quot;--log_every 10 --attn sdpa --compile --dtype bf16&quot; \
+         &quot;--log_every 10 --attn sdpa --compile --opt fused --dtype bf16 --workers 2&quot;; do
+  echo &quot;== $a&quot;; for r in 1 2 3; do $P gpt.py $a | tail -1; done      # bash; in zsh use ${=a}
+done
+</code></pre>
+<p>The outer loop sets <code>a</code> to each flag string in turn; the unquoted <code>$a</code> is split on spaces into separate arguments in bash. zsh does not split unquoted variables by default, so there <code>${=a}</code> forces the split (macOS's default shell is zsh). <code>| tail -1</code> keeps only the last line of output, the summary.</p>
+<p>What to do next on a real GPU, in order: rerun this table on CUDA (expect bf16 and TF32 to be large); profile one compiled step and read the kernel row (are the GEMMs <code>bf16</code> tensor-core kernels; what fraction of time is non-GEMM); round the vocabulary and hidden sizes to multiples of 64/128 (<a href="../compute/accelerator/execution-model.html#why-dims-want-multiples-of-8-16-64-128">why</a>); try <code>mode=&quot;max-autotune&quot;</code> for CUDA graphs once shapes are static; and only then reach for <code>ncu</code> on the top kernel.</p>
+<p><strong>Untested on GPU:</strong> every number in this case study is from an Apple M4. No CUDA run was performed for this chapter.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../compute/accelerator/execution-model.html">GPU execution model</a>, especially the roofline and <code>ncu</code> sections, to go from &quot;this kernel dominates&quot; to &quot;why&quot;.</li>
+<li><a href="../training/arithmetic.html">Training arithmetic</a> for deriving the expected step time and memory of any configuration before you run it.</li>
+<li><a href="../training/model-parallelism/README.html">Model parallelism</a> and <a href="../training/decentralized-training.html">decentralized training</a>, where the exposed-communication analysis becomes the central problem.</li>
+<li><a href="../network/debug/README.html">NCCL performance debugging</a> and <a href="../network/collectives-internals.html">collectives internals</a> for when the communication row dominates.</li>
+<li><a href="../inference/serving-hands-on.html">Serving hands-on</a> (later) for the inference-side counterpart (latency budgets, CUDA graphs per batch size).</li>
+<li><a href="../platform/rl-infrastructure.html">RL infrastructure</a> (later), where the same methodology applies to rollout processes (the policy generating samples) and learner processes (the policy training on them), which alternate generation and training.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>PyTorch profiler recipe: https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html</li>
+<li>PyTorch <code>torch.profiler</code> API: https://docs.pytorch.org/docs/stable/profiler.html</li>
+<li>Understanding CUDA memory usage (snapshots, memory_viz): https://docs.pytorch.org/docs/stable/torch_cuda_memory.html</li>
+<li>PyTorch CUDA semantics: asynchronous execution, CUDA graphs, allocator config: https://docs.pytorch.org/docs/stable/notes/cuda.html</li>
+<li>PyTorch performance tuning guide: https://docs.pytorch.org/tutorials/recipes/recipes/tuning_guide.html</li>
+<li>Holistic Trace Analysis: https://github.com/facebookresearch/HolisticTraceAnalysis</li>
+<li>Nsight Systems user guide: https://docs.nvidia.com/nsight-systems/UserGuide/index.html</li>
+<li>Perfetto UI: https://ui.perfetto.dev</li>
+<li>Dao et al., &quot;FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness&quot;, arXiv:2205.14135</li>
+<li>Korthikanti et al., &quot;Reducing Activation Recomputation in Large Transformer Models&quot;, arXiv:2205.05198</li>
+<li>Li et al., &quot;PyTorch Distributed: Experiences on Accelerating Data Parallel Training&quot; (DDP bucketing and overlap), arXiv:2006.15704</li>
+<li>PyTorch 2.0 announcement (torch.compile benchmark methodology and results): https://pytorch.org/get-started/pytorch-2.0/</li>
+<li>Andrej Karpathy, nanoGPT (https://github.com/karpathy/nanoGPT) and llm.c (https://github.com/karpathy/llm.c): small GPT training code with this ladder applied.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../training/arithmetic.html">&larr; Training Arithmetic and Numerics: Going Deeper</a><a class="next" href="../training/fault-tolerance/README.html">Fault Tolerance &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

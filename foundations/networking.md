@@ -336,7 +336,7 @@ $ arp -a | head -2
 
 ### IPv4 addresses and CIDR
 
-An IPv4 address is 32 bits, written as four bytes: `10.1.2.7`. Addresses are grouped into **subnets** using **CIDR** notation: `10.1.2.0/24` means "the first 24 bits are the network, the remaining 8 bits pick a host". That gives 2^8 = 256 addresses, `10.1.2.0` to `10.1.2.255`.
+An IPv4 address is 32 bits, written as four bytes: `10.1.2.7`. Addresses are grouped into **subnets** using **CIDR** notation: `10.1.2.0/24` means "the first 24 bits are the network, the remaining 8 bits pick a host". That gives $2^8 = 256$ addresses, `10.1.2.0` to `10.1.2.255`.
 
 | CIDR | Netmask | Addresses | Range |
 |---|---|---|---|
@@ -654,21 +654,21 @@ These three words get mixed up constantly:
 - **Bandwidth:** the maximum rate the link can carry, such as 400 Gbps. It is a property of the pipe.
 - **Throughput:** the rate you actually achieve. It is always at most the bandwidth, and often much less.
 
-A useful first-order model for the time to send a message of `S` bytes:
+A useful first-order model for the time to send a message of $S$ bytes:
 
-```
-time ≈ latency + S / bandwidth
-```
+$$
+\text{time} \approx \text{latency} + \frac{S}{\text{bandwidth}}
+$$
 
-Small messages are dominated by latency, large ones by bandwidth. Sending 1 GiB over a 400 Gbps link takes at least 2^30 × 8 / 400e9 ≈ 21.5 ms, and the latency term is negligible. Sending 8 bytes takes as long as the latency, whatever the bandwidth. This is why the benchmark chapters plot bandwidth as a function of message size: small messages never reach the peak.
+Small messages are dominated by latency, large ones by bandwidth. Sending 1 GiB over a 400 Gbps link takes at least $2^{30} \times 8 / (400 \times 10^9) \approx 21.5\ \text{ms}$, and the latency term is negligible. Sending 8 bytes takes as long as the latency, whatever the bandwidth. This is why the benchmark chapters plot bandwidth as a function of message size: small messages never reach the peak.
 
 ### Bandwidth-delay product
 
 To keep a pipe full you need enough data in flight to cover a full round trip. The **bandwidth-delay product** (BDP) is:
 
-```
-BDP (bytes) = bandwidth (bits/s) × RTT (s) / 8
-```
+$$
+\text{BDP (bytes)} = \frac{\text{bandwidth (bits/s)} \times \text{RTT (s)}}{8}
+$$
 
 Worked numbers:
 
@@ -696,7 +696,7 @@ IB NDR rack   BDP    0.250 MB   64 KiB window caps at 104.8576 Gbps
 cross-region  BDP  875.000 MB   64 KiB window caps at   0.0075 Gbps
 ```
 
-The implication: if a TCP connection's window is capped at 64 KiB, throughput is capped at window/RTT. That is 65536 × 8 / 0.2 ms ≈ 2.6 Gbps in the data center and only about 7.5 Mbps across a 70 ms link, no matter how fat the pipe is. Linux autotunes socket buffers. The typical default maxima are around 6 MB receive and 4 MB send (`net.ipv4.tcp_rmem` / `tcp_wmem`; check your distro). That is plenty for the data center but far short of the 875 MB a cross-region 100 Gbps link would need. This is why copying a checkpoint across regions over a single TCP stream is slow, and why tools open many parallel streams.
+The implication: if a TCP connection's window is capped at 64 KiB, throughput is capped at $\text{window} / \text{RTT}$. That is $65536 \times 8 / 0.2\ \text{ms} \approx 2.6\ \text{Gbps}$ in the data center and only about 7.5 Mbps across a 70 ms link, no matter how fat the pipe is. Linux autotunes socket buffers. The typical default maxima are around 6 MB receive and 4 MB send (`net.ipv4.tcp_rmem` / `tcp_wmem`; check your distro). That is plenty for the data center but far short of the 875 MB a cross-region 100 Gbps link would need. This is why copying a checkpoint across regions over a single TCP stream is slow, and why tools open many parallel streams.
 
 The InfiniBand row is worth a second look (NDR is the name of InfiniBand's 400 Gbps generation; [InfiniBand](#infiniband) below has the details). The BDP is small because the latency is tiny. On that fabric, software overhead per message, not the window, is the bottleneck.
 
@@ -1396,14 +1396,14 @@ The tools have equivalent knobs: `curl --cacert ca.pem`, `requests.get(url, veri
 
 Networking people and ML people use different units, and vendors take advantage of the confusion.
 
-**Bits vs bytes.** Network links are quoted in **bits per second** with decimal prefixes: 400 Gbps = 400 × 10^9 bits/s. Memory and file sizes are in bytes. Divide by 8:
+**Bits vs bytes.** Network links are quoted in **bits per second** with decimal prefixes: 400 Gbps = $400 \times 10^9$ bits/s. Memory and file sizes are in bytes. Divide by 8:
 
 ```
 400 Gbps NIC          = 50 GB/s
 8 x 400 Gbps per node = 3200 Gbps = 400 GB/s
 ```
 
-Watch the capitalization. `Gb` is gigabit and `GB` is gigabyte. Some benchmark tools also report GiB/s (2^30 bytes/s), which is about 7% less than GB/s for the same number.
+Watch the capitalization. `Gb` is gigabit and `GB` is gigabyte. Some benchmark tools also report GiB/s ($2^{30}$ bytes/s), which is about 7% less than GB/s for the same number.
 
 **Line rate vs payload.** The quoted rate is the raw signaling rate after line encoding. Packet headers, as in the MTU table above, plus protocol overhead mean that application payload always comes out a few percent lower. A well-tuned 400 Gbps InfiniBand link typically delivers somewhere in the high 300s Gbps in `ib_write_bw` (an RDMA bandwidth benchmark from the `perftest` suite; see [iperf3](#iperf3)). Do not expect 400.
 
@@ -1741,9 +1741,9 @@ Properties that matter:
 - There are as many equal-length paths between two leaves as there are spines. That is the raw material for ECMP (below).
 - To grow, you add leaves. To get more bandwidth between leaves, you add spines.
 
-The size limit comes from switch port counts. With 64-port switches, a two-tier non-blocking leaf-spine gives each leaf 32 ports down and 32 up, and each spine can connect to 64 leaves. That caps it at 64 × 32 = 2048 servers. Beyond that you add a third tier.
+The size limit comes from switch port counts. With 64-port switches, a two-tier non-blocking leaf-spine gives each leaf 32 ports down and 32 up, and each spine can connect to 64 leaves. That caps it at $64 \times 32 = 2048$ servers. Beyond that you add a third tier.
 
-A **fat-tree** (a folded Clos network) is the general multi-tier version of this idea. Links get "fatter" (more aggregate bandwidth) toward the root, so the bandwidth between any two halves of the network stays constant. A classic 3-tier fat-tree built from k-port switches connects k^3/4 hosts at full bandwidth. For k=64 that is 65,536. InfiniBand AI clusters are commonly built as fat-trees.
+A **fat-tree** (a folded Clos network) is the general multi-tier version of this idea. Links get "fatter" (more aggregate bandwidth) toward the root, so the bandwidth between any two halves of the network stays constant. A classic 3-tier fat-tree built from k-port switches connects $k^3/4$ hosts at full bandwidth. For $k = 64$ that is 65,536. InfiniBand AI clusters are commonly built as fat-trees.
 
 AI clusters add a twist: **rail-optimized** topologies. In an 8-GPU node, NIC 0 of every node connects to the "rail 0" leaf switches, NIC 1 to rail 1, and so on. GPU *i* on one node reaches GPU *i* on another node in a single leaf hop, and NCCL arranges its traffic to exploit this.
 
@@ -2478,11 +2478,11 @@ Building the `sends` list before applying it matters: every rank sends the value
 Why this is a good algorithm:
 
 - **Every link is busy at every step**, each rank sending one chunk and receiving one. No rank is a hotspot.
-- Each rank sends `2(N−1)` chunks of size `S/N`, so `2(N−1)/N × S` bytes in total. As N grows this approaches **2S, independent of the number of ranks**. Adding GPUs does not increase the bytes per GPU.
+- Each rank sends $2(N-1)$ chunks of size $S/N$, so $\frac{2(N-1)}{N} \times S$ bytes in total. As $N$ grows this approaches **$2S$, independent of the number of ranks**. Adding GPUs does not increase the bytes per GPU.
 
-Worked example: data-parallel all-reduce of bf16 gradients for a 7B-parameter model, S = 7e9 × 2 bytes = 14 GB, across N=8 ranks. Each rank sends 2 × 7/8 × 14 = 24.5 GB. At an achieved 50 GB/s per direction (one 400 Gbps NIC's worth), that takes about 0.49 s per step, before any overlap with compute. That is the kind of arithmetic to do before choosing a parallelism layout.
+Worked example: data-parallel all-reduce of bf16 gradients for a 7B-parameter model, $S = 7 \times 10^9 \times 2\ \text{bytes} = 14\ \text{GB}$, across $N = 8$ ranks. Each rank sends $2 \times \frac{7}{8} \times 14 = 24.5\ \text{GB}$. At an achieved 50 GB/s per direction (one 400 Gbps NIC's worth), that takes about 0.49 s per step, before any overlap with compute. That is the kind of arithmetic to do before choosing a parallelism layout.
 
-The catch is **latency**. A ring takes `2(N−1)` sequential steps, so for small messages or very large N the per-step latency dominates. That is why NCCL also uses **tree** algorithms (logarithmic depth) and, on NVSwitch systems, in-switch reduction (NVLS/SHARP). The full cost models (the alpha-beta model, bus bandwidth vs algorithm bandwidth, when trees beat rings, and how NCCL chooses) are in [collective communication internals](../network/collectives-internals.md). The `busbw` numbers you see in nccl-tests and the book's benchmarks are normalized by exactly the `2(N−1)/N` factor derived above, so that they can be compared directly with link bandwidth.
+The catch is **latency**. A ring takes $2(N-1)$ sequential steps, so for small messages or very large $N$ the per-step latency dominates. That is why NCCL also uses **tree** algorithms (logarithmic depth) and, on NVSwitch systems, in-switch reduction (NVLS/SHARP). The full cost models (the alpha-beta model, bus bandwidth vs algorithm bandwidth, when trees beat rings, and how NCCL chooses) are in [collective communication internals](../network/collectives-internals.md). The `busbw` numbers you see in nccl-tests and the book's benchmarks are normalized by exactly the $2(N-1)/N$ factor derived above, so that they can be compared directly with link bandwidth.
 
 The same all-reduce, for real, over Gloo and TCP on a laptop, is `ddp_gloo.py` in the bootstrap section: `[0, 1, 2] + [0, 10, 20] = [0, 11, 22]` on both ranks.
 

@@ -168,7 +168,7 @@ Please note that most likely it won't be as efficient as [Tensor Parallelism](#t
 
 By default ZeRO uses all GPUs to create a single model replica - that's the model is spread out across all gpus. Which leads to various limitations such as:
 
-1. the global batch size is inflexible - it's always a function of `total_gpus*micro_batch_size` - which on large clusters could lead to a huge global batch size which might be detrimental for efficient convergence. Granted one could use a tiny micro batch size to keep the global batch size in check, but this leads to smaller matrices on each GPU which results in less efficient compute
+1. the global batch size is inflexible - it's always a function of $\text{total\_gpus} \times \text{micro\_batch\_size}$ - which on large clusters could lead to a huge global batch size which might be detrimental for efficient convergence. Granted one could use a tiny micro batch size to keep the global batch size in check, but this leads to smaller matrices on each GPU which results in less efficient compute
 2. the much faster intra-node networking is not being benefited from since the slower inter-node network defines the overall speed of communications.
 
 [ZeRO++](https://arxiv.org/abs/2306.10209) solves the 2nd limitation by introducing Hierarchical Weight Partition for ZeRO (hpZ). In this approach instead of spreading whole model weights across all the gpus, each model replica is restricted to a single node. This increases the memory usage by the total number of nodes, but now the 2x `all_gather` calls to gather the sharded components are performed over a much faster intra-node connection. Only the `reduce_scatter` to aggregate and redistribute gradients is performed over the slower inter-node network.
@@ -235,7 +235,7 @@ Note that conceptually this is the same concept as gradient accumulation steps (
 
 Because of the chunks, PP introduces the concept of micro-batches (MBS). DP splits the global data batch size into mini-batches, so if you have a DP degree of 4, a global batch size of 1024 gets split up into 4 mini-batches of 256 each (1024/4). And if the number of `chunks` (or GAS) is 32 we end up with a micro-batch size of 8 (256/32). Each Pipeline stage works with a single micro-batch at a time.
 
-To calculate the global batch size of the DP + PP setup we then do: `mbs*chunks*dp_degree` (`8*32*4=1024`).
+To calculate the global batch size of the DP + PP setup we then do: $\text{mbs} \times \text{chunks} \times \text{dp\_degree}$ ($8 \times 32 \times 4=1024$).
 
 Let's go back to the diagram.
 
@@ -302,12 +302,12 @@ In this section we use concepts and diagrams from the [Megatron-LM](https://gith
 
 The main building block of any transformer is a fully connected `nn.Linear` followed by a nonlinear activation `GeLU`.
 
-Following the Megatron's paper notation, we can write the dot-product part of it as `Y = GeLU(XA)`, where `X` and `Y` are the input and output vectors, and `A` is the weight matrix.
+Following the Megatron's paper notation, we can write the dot-product part of it as $Y = \operatorname{GeLU}(XA)$, where $X$ and $Y$ are the input and output vectors, and $A$ is the weight matrix.
 
 If we look at the computation in matrix form, it's easy to see how the matrix multiplication can be split between multiple GPUs:
 ![Parallel GEMM](images/parallelism-tp-parallel_gemm.png)
 
-If we split the weight matrix `A` column-wise across `N` GPUs and perform matrix multiplications `XA_1` through `XA_n` in parallel, then we will end up with `N` output vectors `Y_1, Y_2, ..., Y_n` which can be fed into `GeLU` independently:
+If we split the weight matrix $A$ column-wise across $N$ GPUs and perform matrix multiplications $XA_1$ through $XA_n$ in parallel, then we will end up with $N$ output vectors $Y_1, Y_2, \ldots, Y_n$ which can be fed into `GeLU` independently:
 ![independent GeLU](images/parallelism-tp-independent-gelu.png)
 
 Using this principle, we can update an MLP of arbitrary depth, without the need for any synchronization between GPUs until the very end, where we need to reconstruct the output vector from shards. The Megatron-LM paper authors provide a helpful illustration for that:
@@ -379,8 +379,8 @@ On the diagram:
 
 Example: Let's consider seqlen=8K, num_heads=128 and a single node of num_gpus=8
 
-1. each GPU gets a 1K-long chunk of the original sequence (`8K/8`)
-2. each GPU gets assigned 16 sub-heads (`128/8`)
+1. each GPU gets a 1K-long chunk of the original sequence ($8\text{K}/8$)
+2. each GPU gets assigned 16 sub-heads ($128/8$)
 3. a. on gpu0 before `forward` the original sequence is gathered back into 8K tokens
    b. the attention computation is done on the first 16 sub-heads
 
@@ -415,7 +415,7 @@ Paper: [Ring Attention with Blockwise Transformers for Near-Infinite Context](ht
 
 Also known as Ring Self-Attention (RSA), the name coined in the [Colossal-AI's SP](#colossal-ais-sp) paper that proposed the same ring-style passing of keys and values while the queries stay local. Both names are in common use, so [DistFlashAttn](#distflashattn)'s comparison against Ring Self-Attention refers to this technique.
 
-1. Tensors are sharded along the sequence dimension throughout: (`seq_len // N, d_model`)-shaped
+1. Tensors are sharded along the sequence dimension throughout: $(\lfloor \text{seq\_len}/N \rfloor, d_{\text{model}})$-shaped
 2. In the attention layers, every GPU starts by computing the part of the attention scores they are able to w/ their available shards.
 3. Simultaneously, the keys and values from other sequence chunks are communicated around.
 4. Once the keys/values from another chunk are available, each GPU continues on with their attention computation using the key/value tensors from this new segment of the sequence
@@ -493,7 +493,7 @@ When ZeRO-DP is combined with PP (and optionally TP) it typically enables only Z
 
 While it's theoretically possible to use ZeRO stage 2 (gradient sharding) with Pipeline Parallelism, it will have bad performance impacts. There would need to be an additional reduce-scatter collective for every micro-batch to aggregate the gradients before sharding, which adds a potentially significant communication overhead. By nature of Pipeline Parallelism, small micro-batches are used and instead the focus is on trying to balance arithmetic intensity (micro-batch size) with minimizing the Pipeline bubble (number of micro-batches). Therefore those communication costs are going to hurt.
 
-In addition, there are already fewer layers than normal due to PP and so the memory savings won't be huge. PP already reduces gradient size by ``1/PP``, and so gradient sharding savings on top of that are less significant than pure DP.
+In addition, there are already fewer layers than normal due to PP and so the memory savings won't be huge. PP already reduces gradient size by $1/\text{PP}$, and so gradient sharding savings on top of that are less significant than pure DP.
 
 ZeRO stage 3 is not a good choice either for the same reason - more inter-node communications required.
 
@@ -541,7 +541,7 @@ Let's take 10 batches of sequence length 512. If we parallelize them by sample d
 
 * Operator
 
-Layer normalization requires the mean and variance, so standard deviation and mean aren't independent operations. For an illustrative operator decomposition across 2 devices (cuda:0, cuda:1), first copy the input data to both devices, then let cuda:0 reduce `sum(x)` while cuda:1 reduces `sum(x*x)`. The results can be combined as `mean = E[x]` and `variance = E[x*x] - E[x]**2`. This direct moment formula can lose numerical precision, so production implementations typically use a stable reduction algorithm instead. See the PyTorch [`torch.std_mean` documentation](https://docs.pytorch.org/docs/stable/generated/torch.std_mean.html).
+Layer normalization requires the mean and variance, so standard deviation and mean aren't independent operations. For an illustrative operator decomposition across 2 devices (cuda:0, cuda:1), first copy the input data to both devices, then let cuda:0 reduce $\sum x$ while cuda:1 reduces $\sum x^2$. The results can be combined as $\text{mean} = E[x]$ and $\text{variance} = E[x^2] - E[x]^2$. This direct moment formula can lose numerical precision, so production implementations typically use a stable reduction algorithm instead. See the PyTorch [`torch.std_mean` documentation](https://docs.pytorch.org/docs/stable/generated/torch.std_mean.html).
 
 * Attribute
 
@@ -577,8 +577,8 @@ Here is the breakdown of which collectives are used for which parallelization st
 - TP: 2x all-gather and 2x reduce-scatter
 - PP: 2x send + 2x recv - overlapping with compute in the steady phase
 - SP: depends on implementation: with hidden size h, sequence length of N, and parallelism degree of P
-  * Megatron-LM: 2x all-gather and 2x reduce-scatter with volume `4*N*h` per transformers layer [section 3.2 in paper](https://arxiv.org/abs/2309.14509)
-  * DeepSpeed Ulysses: 2x all-to-all with volume `4*N*h/P` per transformers layer [section 3.2 in paper](https://arxiv.org/abs/2309.14509)
+  * Megatron-LM: 2x all-gather and 2x reduce-scatter with volume $4Nh$ per transformers layer [section 3.2 in paper](https://arxiv.org/abs/2309.14509)
+  * DeepSpeed Ulysses: 2x all-to-all with volume $4Nh/P$ per transformers layer [section 3.2 in paper](https://arxiv.org/abs/2309.14509)
 
 It's possible that you will find different implementations that may use different communication patterns.
 
@@ -587,22 +587,27 @@ It's possible that you will find different implementations that may use differen
 
 The ZeRO scalability protocol, be it DeepSpeed ZeRO or PyTorch FSDP, requires a lot more inter-node traffic than TP+PP+DP solutions, and sometimes it can't take advantage of the faster intra-node connectivity, and therefore if your inter-node network is slow your expensive GPUs might be massively bottlenecked by the comms.
 
-The ZeRO protocol partially overlaps comms with compute, so ideally you want to get close to `comms_time <= compute_time`. The overlap is not perfect, so there will be always some network bottleneck, but we want to make sure that `comms_time` is not much larger than `compute_time`.
+The ZeRO protocol partially overlaps comms with compute, so ideally you want to get close to $\text{comms\_time} \le \text{compute\_time}$. The overlap is not perfect, so there will be always some network bottleneck, but we want to make sure that `comms_time` is not much larger than `compute_time`.
 
-In ZeRO-3, we have `all_gather` on weights in `forward`, then `all_gather` on weights in `backward`, last is `reduce_scatter` on gradients in backward. In total there are 3 global collective calls each sending a model size multiplied by how many bytes per parameter are used. e.g. a 10B param model in bf16 under ZeRO-3 will need to send `10*2*3` = 60GB of data.
+In ZeRO-3, we have `all_gather` on weights in `forward`, then `all_gather` on weights in `backward`, last is `reduce_scatter` on gradients in backward. In total there are 3 global collective calls each sending a model size multiplied by how many bytes per parameter are used. e.g. a 10B param model in bf16 under ZeRO-3 will need to send $10 \times 2 \times 3$ = 60GB of data.
 
-In comparison [DistributedDataParallel](https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) (DDP) uses a single `all_reduce` call, but which requires 2x data transmission, and so a 10B param model in bf16 under DDP will need to send `10*2*2` = 40GB of data.
+In comparison [DistributedDataParallel](https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) (DDP) uses a single `all_reduce` call, but which requires 2x data transmission, and so a 10B param model in bf16 under DDP will need to send $10 \times 2 \times 2$ = 40GB of data.
 
 ZeRO-1 which only shards the optimiser states, like DDP, will too need to transmit 40GB of data (one `all_gather` and one `reduce_scatter`.)
 
 Here is how to calculate time in seconds for communication and compute:
 
-- `comms_time = comms_multiplier * n_bytes * model_size_in_B / inter-node-throughput_in_GBps`
-- `compute_time = n_passes * n_bytes * model_size_in_B * seqlen * global_batch_size / (total_gpus * 1e3 * tflops_wo_comms)`
+$$
+\text{comms\_time} = \frac{\text{comms\_multiplier} \cdot \text{n\_bytes} \cdot \text{model\_size\_in\_B}}{\text{inter-node-throughput\_in\_GBps}}
+$$
+
+$$
+\text{compute\_time} = \frac{\text{n\_passes} \cdot \text{n\_bytes} \cdot \text{model\_size\_in\_B} \cdot \text{seqlen} \cdot \text{global\_batch\_size}}{\text{total\_gpus} \cdot 10^3 \cdot \text{tflops\_wo\_comms}}
+$$
 
 The compute time formula is a rough estimate which works for any Transformer-block based model. It ignores any small computations and includes only the massive `matmul`s.
 
-The comms time formula is also a first-order estimate. `comms_multiplier` is the sum of the [busbw correction factors](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth) of the collectives performed in a single step - `2(n-1)/n` for `all_reduce` and `(n-1)/n` each for `all_gather` and `reduce_scatter`, where `n` is the number of ranks - which is where DDP's 2 and ZeRO-3's 3 come from. It drops the `(n-1)/n` part, which is a good approximation for a large number of ranks (0.998 at the 512 ranks used below), but too optimistic for a small one (0.875 at 8 ranks). And the throughput you plug in has to be the measured `busbw` rather than `algbw`, since `algbw` shrinks as ranks are added - though even `busbw` can vary somewhat between collectives at the same payload, because NCCL may pick a different algorithm or protocol for each.
+The comms time formula is also a first-order estimate. `comms_multiplier` is the sum of the [busbw correction factors](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth) of the collectives performed in a single step - $2(n-1)/n$ for `all_reduce` and $(n-1)/n$ each for `all_gather` and `reduce_scatter`, where $n$ is the number of ranks - which is where DDP's 2 and ZeRO-3's 3 come from. It drops the $(n-1)/n$ part, which is a good approximation for a large number of ranks (0.998 at the 512 ranks used below), but too optimistic for a small one (0.875 at 8 ranks). And the throughput you plug in has to be the measured `busbw` rather than `algbw`, since `algbw` shrinks as ranks are added - though even `busbw` can vary somewhat between collectives at the same payload, because NCCL may pick a different algorithm or protocol for each.
 
 As an experiment let's use the data points from [IDEFICS-80B](https://huggingface.co/HuggingFaceM4/idefics-80b/) training.
 
@@ -612,13 +617,13 @@ Values used for IDEFICS-80B training:
 - `model_size_in_B` = `80`
 - `n_bytes` = `2` in case of bf16 which is 2 bytes
 - `comms_multiplier` = `3` in the case of ZeRO-3/FSDP (1x reduce_scatter + 2x all_gather (fwd + bwd)) and 2 in case of ZeRO-1 (1x reduce_scatter + 1x all_gather),
-- additionally, in the case of IDEFICS-80B we decided to [reduce grads in fp32](../dtype.md#when-to-use-fp32-accumulators) to minimize NCCL accumulation loss, so we actually had `comms_multiplier*n_bytes=3*2+2=4*2` for the additional 2 bytes but since half the model was frozen only about half of gradients were sent, so we still have the multiplier of 3.
+- additionally, in the case of IDEFICS-80B we decided to [reduce grads in fp32](../dtype.md#when-to-use-fp32-accumulators) to minimize NCCL accumulation loss, so we actually had $\text{comms\_multiplier} \cdot \text{n\_bytes}=3 \cdot 2+2=4 \cdot 2$ for the additional 2 bytes but since half the model was frozen only about half of gradients were sent, so we still have the multiplier of 3.
 - `n_passes` = `4` with activation recomputation, or `3` w/o it. The model has to do only 1x compute per `forward` and 2x per `backward` (since the grads are calculated twice - once wrt inputs and once wrt weights). And with activation recomputation one more `forward` is done.
 - `total_gpus` = `512`
 - `global_batch_size` = `3584`
 - `seqlen` = `1024`
 - `inter-node-throughput_in_GBps` = 42.5 (340Gbps) (AWS EFA v1)
--`tflops_wo_comms` is the tflops w/o the communication overhead. Not theoretical peak as that is unachievable, but perhaps ~80% in the case of A100@BF16 - so `312*0.8=~250` TFLOPS (rounded up).
+-`tflops_wo_comms` is the tflops w/o the communication overhead. Not theoretical peak as that is unachievable, but perhaps ~80% in the case of A100@BF16 - so $312 \times 0.8 \approx 250$ TFLOPS (rounded up).
 
 We derived 340Gbps inter-node network throughput using `all_reduce_bench.py` with a payload of 4GiB (now renamed to [torch-dist-bench.py](../../network/benchmarks/torch-dist-bench.py) ). In the case of IDEFICS-80B we had 80 layers, so approximately each layer was 1B params large. Which means that each layer was sending 2GB of data for bf16 tensors and 4GB of data with fp32 tensors, which matches the network benchmark. If you were to have a much smaller layer size, I'd recommend adapting the benchmark to that size. For example, if your layer size was only 100M param large, then your payload would be 0.2GB for bf16 tensors. As this is an order of magnitude smaller, the network is likely to give you a lower bandwidth, and you should use that in your calculations.
 
@@ -626,8 +631,8 @@ footnote: if parts of your model are frozen, then there will be less data sent i
 
 Which gives us:
 
-- comms = `3 * 2 * 80 / 42.5` = 11 sec
-- compute = `4 * 2 * 80 * 1024 * 3584 / (512 * 1e3 * 250)` = 18 sec
+- comms = $3 \cdot 2 \cdot 80 / 42.5$ = 11 sec
+- compute = $4 \cdot 2 \cdot 80 \cdot 1024 \cdot 3584 / (512 \cdot 10^3 \cdot 250)$ = 18 sec
 
 If we check against our IDEFICS-80B logs, we see that each iteration took about 49 seconds.
 
@@ -635,7 +640,7 @@ So the good news is that the math checks out as comms + compute are in the ballp
 
 We can do another sanity check by feeding the compute formulae 90TFLOPS that we logged, in which case:
 
-- compute = `4 * 2 * 80 * 1024 * 3584 / (512 * 1e3 * 90)` = 51 sec
+- compute = $4 \cdot 2 \cdot 80 \cdot 1024 \cdot 3584 / (512 \cdot 10^3 \cdot 90)$ = 51 sec
 
 and so 49 and 51 secs are pretty close. Except this tells us nothing since the logged TFLOPS were calculated using this formula, so, of course, it should match.
 
@@ -643,7 +648,7 @@ What I'd expect in the best case is where I have used close to theoretical peak 
 
 What's the conclusion? I'd say more investigation is needed as clearly there are additional hidden bottlenecks here. I no longer have access to this setup to investigate, so I will repeat this exercise afresh when I train another largish model and share the updated math with you. But this workout should give you a feeling for what's going on behind the scenes and how all these numbers work together.
 
-Also this discussion didn't include into the math gradient accumulation steps (GAS). In the case of IDEFICS-80B it wasn't used. If GAS>1 the theoretical compute time doesn't change, but comms time instead of `3*2*M/GBps` would become `GAS*3*2*M/GBps`. The weights gathering via `all_gather` for `forward` and `backward` would transpire as many times as there are gradient accumulation steps. In theory for grads it'd need to happen only once, but since there is no place to store intermediary grads of the gathered weight on each GPU it'll have to be reduced GAS times as well. This is for ZeRO-2 and ZeRO-3. For ZeRO-1 GAS>1 requires no additional comms.
+Also this discussion didn't include into the math gradient accumulation steps (GAS). In the case of IDEFICS-80B it wasn't used. If GAS>1 the theoretical compute time doesn't change, but comms time instead of $3 \cdot 2 \cdot M/\text{GBps}$ would become $\text{GAS} \cdot 3 \cdot 2 \cdot M/\text{GBps}$. The weights gathering via `all_gather` for `forward` and `backward` would transpire as many times as there are gradient accumulation steps. In theory for grads it'd need to happen only once, but since there is no place to store intermediary grads of the gathered weight on each GPU it'll have to be reduced GAS times as well. This is for ZeRO-2 and ZeRO-3. For ZeRO-1 GAS>1 requires no additional comms.
 
 We also didn't discuss the `DataLoader` as a potential bottleneck here, but we tested that it was under 1 sec, i.e. a very small overhead.
 
@@ -651,13 +656,13 @@ Going back to comms math, we also didn't take into an account various hardware l
 
 And now you know how long it'll take to transmit that many GBs over the network of your system. For example, if the network were to be 5x slower than the one we used for IDEFICS-80B training, that is 8.5GBps (68Gbps) then:
 
-- comms = `3 * 2 * 80 / 8.5` = 56 sec
+- comms = $3 \cdot 2 \cdot 80 / 8.5$ = 56 sec
 
 which would definitely be a huge bottleneck compared to the faster compute.
 
 If the network were to be 5x faster, that is 212GBps (1700Gbps) then:
 
-- comms = `3 * 2 * 80 / 212` = 2 sec
+- comms = $3 \cdot 2 \cdot 80 / 212$ = 2 sec
 
 which would be insignificant comparatively to the compute time, especially if some of it is successfully overlapped with the compute.
 

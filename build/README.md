@@ -75,3 +75,31 @@ When included images are too large, make them smaller a bit:
 ```bash
 mogrify -format png -resize 1024x1024\> *png
 ```
+
+
+## Build the website
+
+Every markdown file in the repo becomes an HTML page, with a sidebar in reading order, equations typeset by KaTeX and code highlighting:
+
+```bash
+pip install -r build/requirements.txt
+python build/site/build_site.py          # writes ./site
+cd site && python -m http.server 8000    # preview at http://localhost:8000
+```
+
+The built `site/` directory is committed, so the repo always carries a ready-to-serve website. After changing any markdown, rebuild and check it before committing:
+
+```bash
+python build/site/build_site.py
+python build/site/check_site.py   # every page, heading, paragraph, code block, equation, image and link is present
+```
+
+To deploy on [Vercel](https://vercel.com): import the GitHub repo in the Vercel dashboard. `vercel.json` tells Vercel to serve `site/` as-is, with no build step. Or deploy straight from your machine with `npx vercel deploy site --prod`.
+
+## Equations
+
+Write math with `$...$` (inline) and `$$...$$` (display, on their own lines), the same syntax GitHub renders. The pdf build converts it to MathML and the website renders it with KaTeX. Escape literal dollar signs in prose as `\$`. Check a file with:
+
+```bash
+python build/check-math.py path/to/chapter.md
+```

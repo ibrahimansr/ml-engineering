@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fault Tolerance - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../../compute/README.html">Compute (Stas)</a></li><li><a href="../../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details open><summary>Part 6. Training</summary><ul><li><a href="../../training/README.html">Training (Stas)</a></li><li><a href="../../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/fault-tolerance/README.html" class="current">Fault Tolerance (Stas)</a></li><li><a href="../../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../../inference/README.html">Inference (Stas)</a></li><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../../resources/README.html">Resources (Stas)</a></li><li><a href="../../contributors.html">Contributors (Stas)</a></li><li><a href="../../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="fault-tolerance">Fault Tolerance</h1>
+<p>Regardless of whether you own the ML training hardware or renting it by the hour, in this ever speeding up domain of ML, finishing the training in a timely matter is important. As such if while you were asleep one of the GPUs failed or the checkpoint storage run out of space which led to your training crashing, you'd have discovered upon waking that many training hours were lost.</p>
+<p>Due the prohibitively high cost of ML hardware, it'd be very difficult to provide redundancy fail-over solutions as it's done in Web-services. Nevertheless making your training fault-tolerant is achievable with just a few simple recipes.</p>
+<p>As most serious training jobs are performed in a SLURM environment, it'll be mentioned a lot, but most of this chapter's insights are applicable to any other training environments.</p>
+<h2 id="always-plan-to-have-more-nodes-than-needed">Always plan to have more nodes than needed</h2>
+<p>The reality of the GPU devices is that they tend to fail. Sometimes they just overheat and shut down, but can recover, at other times they just break and require a replacement.</p>
+<p>The situation tends to ameliorate as you use the same nodes for some weeks/months as the bad apples get gradually replaced, but if you are lucky to get a new shipment of GPUs and especially the early GPUs when the technology has just come out, expect a sizeable proportion of those to fail.</p>
+<p>Therefore, if you need 64 nodes to do your training, make sure that you have a few spare nodes and study how quickly you can replace failing nodes should the spares that you have not be enough.</p>
+<p>It's hard to predict what the exact redundancy percentage should be, but 5-10% shouldn't be unreasonable. The more you're in a crunch to complete the training on time, the higher the safety margin should be.</p>
+<p>Once you have the spare nodes available, validate that your SLURM environment will automatically remove any problematic nodes from the pool of available nodes so that it can automatically replace the bad nodes with the good ones.</p>
+<p>If you use a non-SLURM scheduler validate that it too can do unmanned bad node replacements.</p>
+<p>You also need at least one additional node for running various preventative watchdogs (discussed later in this chapter), possibly offloading the checkpoints and doing cleanup jobs.</p>
+<h2 id="rebuilding-the-process-group-in-place">Rebuilding the process group in place</h2>
+<p>The rest of this chapter recovers from a dead rank by exiting and letting the next queued job start on a fresh allocation. Starting from PyTorch 2.14 the communicator itself can be rebuilt in place, so surviving ranks keep their warm process state. That path is experimental as of 2.14: you opt in at <code>init_process_group(..., enable_reconfigure=True)</code>, and the calls (<code>dist._get_reconfigure_handle</code>, <code>dist._reconfigure</code>) are underscored and documented as subject to change. Until they stabilize, keep using spare nodes and a job array as the recovery path.</p>
+<h2 id="queue-up-multiple-training-jobs">Queue up multiple training jobs</h2>
+<p>The next crucial step is to ensure that if the training crashed, there is a new job lined up to take place of the previous one.</p>
+<p>Therefore, when a training is started, instead of using:</p>
+<pre><code class="language-bash">sbatch train.slurm
+</code></pre>
+<p>You'd want to replace that with:</p>
+<pre><code class="language-bash">sbatch --array=1-10%1 train.slurm
+</code></pre>
+<p>This tells SLURM to book a job array of 10 jobs, and if one of the job completes normally or it crashes, it'll immediately schedule the next one.</p>
+<p>footnote: <code>%1</code> in <code>--array=1-10%1</code> tells SLURM to launch the job array serially - one job at a time.</p>
+<p>If you have already started a training without this provision, it's easy to fix without aborting the current job by using the <code>--dependency</code> argument:</p>
+<pre><code class="language-bash">sbatch --array=1-10%1 --dependency=CURRENTLY_RUNNING_JOB_ID train.slurm
+</code></pre>
+<p>So if your launched job looked like this:</p>
+<pre><code class="language-bash">$ squeue -u `whoami` -o &quot;%.10i %9P %20j %.8T %.10M %.8l %.6D %.20S %R&quot;
+     JOBID PARTITION NAME             STATE       TIME   TIME_LIM    NODES  START_TIME     NODELIST(REASON)
+       87    prod    my-training-10b  RUNNING 2-15:52:19 1-16:00:00   64    2023-10-07T01:26:28 node-[1-64]
+</code></pre>
+<p>You will note that the current's <code>JOBID=87</code> and now you can use it in:</p>
+<pre><code class="language-bash">sbatch --array=1-10%1 --dependency=87 train.slurm
+</code></pre>
+<p>and then the new status will appear as:</p>
+<pre><code class="language-bash">$ squeue -u `whoami` -o &quot;%.10i %9P %20j %.8T %.10M %.8l %.6D %.20S %R&quot;
+     JOBID PARTITION NAME             STATE       TIME   TIME_LIM    NODES  START_TIME     NODELIST(REASON)
+       87    prod    my-training-10b  RUNNING 2-15:52:19 1-16:00:00   64    2023-10-07T01:26:28 node-[1-64]
+ 88_[1-10%1]   prod    my-training-10b  PENDING       0:00 1-16:00:00   64                    N/A (Dependency)
+</code></pre>
+<p>So you can see that an array of 10 jobs (<code>88_[1-10%1]</code>) was appended to be started immediately after the current job (<code>87</code>) completes or fails.</p>
+<p>Granted that if the condition that lead to the crash is still there the subsequent job will fail as well. For example, if the storage device is full, no amount of restarts will allow the training to proceed. And we will discuss shortly how to avoid this situation.</p>
+<p>But since the main reason for training crashes is failing GPUs, ensuring that faulty nodes are automatically removed and the new job starts with a new set of nodes makes for a smooth recovery from the crash.</p>
+<p>In the SLURM lingo, the removed nodes are given a new status called <code>drained</code>. Here is an example of a hypothetical SLURM cluster:</p>
+<pre><code class="language-bash">$ sinfo
+PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+prod*       up   infinite       4  drain node-[0-3]
+prod*       up   infinite      47  alloc node-[4-51]
+prod*       up   infinite      23   idle node-[52-73]
+</code></pre>
+<p>Here we have 47 nodes being used (<code>alloc</code>), 23 available (<code>idle</code>) and 4 unavailable (<code>drained</code>).</p>
+<p>The sysadmin is expected to periodically check the drained nodes, fix or replace them and then make them again available to be used by changing their state to <code>idle</code>.</p>
+<p>The other approach is to daisy-chain jobs via <code>--dependency</code> as explained <a href="../../orchestration/slurm/users.html#request-allocation-via-dependency">here</a>. Both of these approaches could also be combined.</p>
+<p>How do you know when the job array or a daisy chain should not resume - well, normally the training loop will exit immediately if it knows the job is done. But you could also add features like <a href="#kill-switch">kill switch</a> which are even easier to use to prevent a job array from running.</p>
+<h2 id="preferring-fixed-accelerator-allocations-to-dynamic-ones">Preferring fixed accelerator allocations to dynamic ones</h2>
+<p>Typically when getting a new set of accelerator nodes, especially when it's a new type of an accelerator that came out recently, many accelerators will fail, making LLM training quite problematic. There can be as large as 10% failure rate early on for new accelerators and still pretty high percentage of failures at later stages. Remember that if you  have 8 accelerators, even one failing accelerator is like all 8 failing from the perspective of the training program.</p>
+<p>If you use a fixed node allocation, after a few months, the bad accelerators will be weeded out and there should be very few accelerators failing. It'll still happen but it'll be a rare event.</p>
+<p>Make sure your provider gives you new accelerators when they fail and doesn't return you the same accelerators after having them cool off (literally). For example, see how to track <a href="../../compute/accelerator/nvidia/debug.html#how-to-detect-if-you-get-the-same-broken-node-again-and-again">the NVIDIA GPUs UUID</a>. Those transient failures are likely to repeat when under heavy stress, so you want those to be replaced for real.</p>
+<p>If you use a dynamic allocation, even a year after a new accelerator type has been released, expect lots of failing accelerators, since you'd be getting rejected nodes by other users. Surely, some clouds are better than others at diligently replacing bad hardware, the problem is that there are many accelerators that don't fail outright and when someone dropped a bad node, the technician looking at it may not see any problems with it when they try it out. And if the user just released the node without reporting it was broken, if the cloud provider isn't re-checking that a node is kosher before giving it to the next user the probability of getting a bad node is extremely high.</p>
+<h2 id="frequent-checkpoint-saving">Frequent checkpoint saving</h2>
+<p>Whenever the training job fails, many hours of training can be lost. This problem is mitigated by a frequent checkpoint saving. When the training is resumed it'll continue from the last checkpoint saved. If the failure occurred 12 hours after the last checkpoint has been saved, 12 hours of training is lost and needs to be re-done. This can be very expensive if the training uses hundreds of GPUs.</p>
+<p>In theory one could save a checkpoint every 10 minutes and only ever lose 10 minutes of training time, but this too would dramatically delay the reaching of the finish line because large models can't be saved quickly and if the saving time starts to create a bottleneck for the training this approach becomes counterproductive.</p>
+<p>Depending on your checkpointing methodology and the speed of your IO storage partition the saving of a large model can take from dozens of seconds to several minutes. Therefore, the optimal approach to saving frequency lies somewhere in the middle.</p>
+<p>The math is quite simple - measure the amount of time it takes to save the checkpoint, multiply it by how many times you'd want to save it and see how much of an additional delay the checkpoint saving will contribute to the total training time.</p>
+<p>Use case: While training BLOOM-176B we had an incredibly fast GPFS over NVME filesystem and it took only 40 seconds to save a 2.3TB checkpoint written concurrently on 384 processes. We saved a checkpoint approximately every 3 hours. As we trained for about 3 months, that means that we saved about 720 checkpoints (<code>90 days * 24h / 3h</code>) - that is an additional 8 hours was spent just saving the checkpoints (<code>720 times * 40 secs / 3600 secs</code>) - or ~0.37% of the total training time (<code>8h / (90 days * 24 hours)</code>). Now say if the IO were to be 5 times slower, which is not uncommon on the cloud unless one pays for premium IO, that would have become 2% of the training time, which would be quite significant.</p>
+<p>footnote: If you don't have a large local storage and you have to offload the checkpoints to the cloud, make sure that the 2 most frequent checkpoints remain local to allow for a quick resume. The reason for 2 and not 1, is that it's possible that the very last checkpoint got corrupted or didn't finish saving if a crash occurred during its saving.</p>
+<p>While this method introduces an overhead to the training, having training checkpoints is hugely useful. Because these allow you to rollback many steps back should there be a divergence, are useful for analysis of various events and many trainings these day switch from in-training single loss measuring eval, which provide little useful signal to a full blown dataset-based evaluation on multiple benchmarks applied to each checkpoint during training. The latter can be done on additional nodes w/o slowing down the training for in-training evals.</p>
+<h2 id="multi-replica-based-fault-tolerance">Multi-Replica-based fault tolerance</h2>
+<p>There is another approach to dealing with accelerator crashes which involves no checkpoint saving. This approach only works in situations where at least two model replicas are used during training.</p>
+<p>Please review the various <a href="../../training/model-parallelism/README.html">model parallelism</a> techniques first to be able to follow along.</p>
+<ul>
+<li>If some variation of 3D model parallelism is used, that is you have either Tensor Parallelism (TP) and/or Pipeline Parallelism (PP) and/or Data Parallelism (DP), the number of replicas is equal to the DP degree.</li>
+<li>If Hybrid ZeRO-DP parallelism is used, then the number of replicas is equal to the degree of hybrid replicas.</li>
+</ul>
+<p>For example, say you have a training setup that uses a 3D parallelism of TP=4, PP=2, DP=2 - so then you have 2 replicas, each using 8 gpus <code>node0</code> and <code>node1</code> (TP=4, PP=2 =&gt; <code>4*2=8</code>) - practically, each replica uses a whole 8-GPU node.</p>
+<p>Additionally you have a standby back up node <code>node2</code> with 8 GPUs idling but ready to be used at a moment's notice.</p>
+<p>Now, say, during training <code>node0.gpu0</code> fails. Since you have a 2nd replica with intact data, you switch over to the standby 8GPU node, RDMA copy the data from the gpus of the 2nd replica and you can continue training where you left off. This is a very simplistic explanation since there are multiple nuances to figuring out such recovery depending at which stage of the iteration loop the failure occurred. It other words there is a complex algorithm to implement.</p>
+<p>Of course, on a large scale training you're likely to have a hundred active nodes and a small handful of back up node.</p>
+<p>This approach is superior to file system checkpointing saving because, you only ever lose one iteration, whereas with file system checkpointing you may lose hundreds of iterations.</p>
+<p>The open-source library that lands closest to this idea is <a href="https://github.com/meta-pytorch/torchft"><code>torchft</code></a> (Meta / PyTorch). It treats each training step as a fault boundary across replica groups, coordinates health with a lighthouse/quorum service, and can heal a failed group by live state transfer from a healthy peer instead of rolling back to a filesystem checkpoint. Out of the box it covers fault-tolerant DDP and HSDP, and <a href="https://github.com/pytorch/torchtitan"><code>torchtitan</code></a> wires it into an end-to-end HSDP training loop - see its <a href="https://github.com/pytorch/torchtitan/tree/main/torchtitan/experiments/torchft"><code>torchft</code> experiment docs</a> and the <a href="https://pytorch.org/blog/fault-tolerant-llama-training-with-2000-synthetic-failures-every-15-seconds-and-no-checkpoints-on-crusoe-l40s/">PyTorch blog write-up of a checkpoint-free run under synthetic failures</a>. The failure domain is a whole replica group rather than a single GPU, and the healing path is peer recovery through torchft's checkpoint transports rather than the RDMA-copy-onto-a-dedicated-standby sketch above - same goal (lose at most a step, keep training), different machinery.</p>
+<p>Related research systems attack the same problem from other angles. <a href="https://github.com/SymbioticLab/Oobleck"><code>Oobleck</code></a> (SOSP'23) keeps logically equivalent pipeline replicas and recovers by re-instantiating precomputed pipeline templates after failures, again without a full checkpoint restart. Earlier spot-instance work such as <a href="https://www.usenix.org/system/files/nsdi23-thorpe.pdf">Bamboo</a> (redundant computation scheduled into pipeline bubbles; NSDI'23) and <a href="https://github.com/microsoft/varuna">Varuna</a> (elastic PP+DP reconfiguration) is in the same family; those codebases are largely dormant now and are useful mainly as design references. Commercial infrastructure layers also exist that migrate a failed GPU onto a spare without changing the training script - a different trade-off (per-GPU failure domain, outside the framework) rather than another torchft clone.</p>
+<h2 id="kill-switch">Kill switch</h2>
+<p>In many SLURM environments users have no <code>sudo</code> access and when one user started a training and went to sleep, and then a problem has been discovered, the other users can't easily stop the training and restart it again.</p>
+<p>This was the situation during BLOOM-176B training and we implemented a kill-switch to handle that. The mechanism is very simple. The training loop polls for a specific file to appear before starting a new iteration and if the file is there the program saves the checkpoint and exits, allowing users other than the one who started the previous training to change things and restart it again. An additional poll was added at the very beginning of <code>main</code> so that if there was a long job array queued by the user who is asleep they could be &quot;burned through&quot; quickly by getting each job exit quickly on start.</p>
+<p>This is also discussed <a href="../../orchestration/slurm/users.html#overcoming-the-lack-of-group-slurm-job-ownership">here</a>.</p>
+<p>This facility helps to minimize the amount of wasted training time.</p>
+<h2 id="save-switch">Save switch</h2>
+<p>While mentioning the kill switch, it might be good to quickly mention its cousin, a save switch. Similarly to the kill switch the save switch is a variation of the former where instead of stopping the training, if the training loop discovers that a save-switch file appears - it will save a checkpoint, but will continue training. It'll also automatically remove the save-switch from the file-system, so that it won't accidentally start saving a checkpoint after every iteration.</p>
+<p>This feature can be very useful for those who watch the training charts. If one sees an interesting or critical situation in the training loss or some other training metric one can quickly ask the training program to save the checkpoint of interest and be able to later reproduce the current situation at will.</p>
+<p>The main use of this feature is around observing training loss spikes and divergences.</p>
+<h2 id="prevention">Prevention</h2>
+<p>The easiest way to avoid losing training time is to prevent certain types of problems from happening. While one can't prevent a GPU from failing, other than ensuring that adequate cooling is provided, one can certainly ensure that there is enough of disk space remaining for the next few days of training. This is typically done by running scheduled watchdogs that monitor various resources and alert the operator of possible problems long before they occur.</p>
+<h3 id="scheduled-watchdogs">Scheduled Watchdogs</h3>
+<p>Before we discuss the various watchdogs it's critical that you have a mechanism that allows you to run scheduled jobs. In the Unix world this is implemented by the <a href="https://en.wikipedia.org/wiki/Cron"><code>crontab</code> facility</a>.</p>
+<p>Here is an example of how <code>~/bin/watch-fs.sh</code> can be launched every hour:</p>
+<pre><code>0 * * * * ~/bin/watch-fs.sh
+</code></pre>
+<p>The link above explains how to configure a crontab job to run at various other frequencies.</p>
+<p>To setup a crontab, execute <code>crontab -e</code> and check which jobs are scheduled <code>crontab -l</code>.</p>
+<p>The reason I don't go into many details is because many SLURM environments don't provide access to the <code>crontab</code> facility. And therefore one needs to use other approaches to scheduling jobs.</p>
+<p>The section on <a href="../../orchestration/slurm/users.html#crontab-emulation">Crontab Emulation</a> discusses how to implement crontab-like SLURM emulation and also <a href="../../orchestration/slurm/users.html#self-perpetuating-slurm-jobs">Self-perpetuating SLURM jobs</a>.</p>
+<h3 id="notification-facility">Notification facility</h3>
+<p>Then you need to have one or more notification facilities.</p>
+<p>The simplest one is to use email to send alerts. To make this one work you need to ensure that you have a way to send an email from the SLURM job. If it isn't already available you can request this feature from your sysadmin or alternatively you might be able to use an external SMTP server provider.</p>
+<p>In addition to email you could probably also setup other notifications, such as SMS alerting and/or if you use Slack to send slack-notifications to a channel of your choice.</p>
+<p>Once you understand how to schedule watchdogs and you have a notification facility working let's next discuss the critical watchdogs.</p>
+<h3 id="is-job-running-watchdog">Is-job-running watchdog</h3>
+<p>The most obvious watchdog is one which checks that there is a training SLURM job running or more are scheduled to run.</p>
+<p>Here is an example <a href="slurm-status.py">slurm-status.py</a> that was used during BLOOM-176B training. This watchdog was sending an email if a job was detected to be neither running nor scheduled and it was also piping its check results into the main training's log file. As we used <a href="../../orchestration/slurm/users.html#crontab-emulation">Crontab Emulation</a>, we simply needed to drop  <a href="slurm-status.slurm">slurm-status.slurm</a> into the <code>cron/cron.hourly/</code> folder and the previously launched SLURM crontab emulating scheduler would launch this check approximately once an hour.</p>
+<p>The key part of the SLURM job is:</p>
+<pre><code class="language-bash">tools/slurm-status.py --job-name $WATCH_SLURM_NAME 2&gt;&amp;1 | tee -a $MAIN_LOG_FILE
+</code></pre>
+<p>which tells the script which job name to watch for, and you can also see that it logs into a log file.</p>
+<p>For example, if you launched the script with:</p>
+<pre><code>tools/slurm-status.py --job-name my-training-10b
+</code></pre>
+<p>and the current status report shows:</p>
+<pre><code class="language-bash">$ squeue -u `whoami` -o &quot;%.10i %9P %20j %.8T %.10M %.8l %.6D %.20S %R&quot;
+  JOBID    PARTITION NAME             STATE       TIME   TIME_LIM    NODES  START_TIME     NODELIST(REASON)
+    87     prod      my-training-10b  RUNNING 2-15:52:19 1-16:00:00  64    2023-10-07T01:26:28 node-[1-64]
+</code></pre>
+<p>then all is good. But if <code>my-training-10b</code> job doesn't show the alert will be sent.</p>
+<p>You can now adapt these scripts to your needs with minimal changes of editing the path and email addresses. And if it wasn't you who launched the job then replace <code>whoami</code> with the name of the user who launched it. <code>whoami</code> only works if it was you who launched it.</p>
+<h3 id="is-job-hanging-watchdog">Is-job-hanging watchdog</h3>
+<p>If the application is doing <code>torch.distributed</code> or alike and a hanging occurs during one of the collectives, it'll eventually timeout and throw an exception, which would restart the training and one could send an alert that the job got restarted.</p>
+<p>However, if the hanging happens during another syscall which may have no timeout, e.g. reading from the disk, the application could easily hang there for hours and nobody will be the wiser.</p>
+<p>Most applications do periodic logging, e.g., most training log the stats of the last N steps every few minutes. Then one could check if the log file has been updated during the expected time-frame - and if it didn't - send an alert. You could write your own, or use <a href="https://github.com/grondo/io-watchdog">io-watchdog</a> for that (no commit since 2019 - treat as functional-but-unmaintained rather than actively developed).</p>
+<h3 id="low-disk-space-alerts">Low disk space alerts</h3>
+<p>The next biggest issue is running out of disk space. If your checkpoints are large and are saved frequently and aren't offloaded elsewhere it's easy to quickly run out of disk space. Moreover, typically multiple team members share the same cluster and it could be that your colleagues could quickly consume a lot of disk space. Ideally, you'd have a storage partition that is dedicated to your training only, but often this is difficult to accomplish. In either case you need to know when disk space is low and space making action is to be performed.</p>
+<p>Now what should be the threshold at which the alerts are triggered. They need to be made not too soon as users will start ignoring these alerts if you start sending those at say, 50% usage. But also the percentage isn't always applicable, because if you have a huge disk space shared with others, 5% of that disk space could translate to many TBs of free disk space. But on a small partition even 25% might be just a few TBs. Therefore really you should know how often you write your checkpoints and how many TBs of disk space you need daily and how much disk space is available.</p>
+<p>Use case: During BLOOM training we wrote a 2.3TB checkpoint every 3 hours, therefore we were consuming 18.4TB a day!</p>
+<p>Moreover, often there will be multiple partitions - faster IO partitions dedicated to checkpoint writing, and slower partitions dedicated to code and libraries, and possibly various other partitions that could be in use and all of those need to be monitored if their availability is required for the training not crashing.</p>
+<p>Here is another caveat - when it comes to distributed file systems not all filesystems can reliably give you a 100% of disk space you acquired. In fact with some of those types you can only reliably use at most ~80% of the allocated storage space. The problem is that these systems use physical discs that they re-balance at the scheduled periods or triggered events, and thus any of these individual discs can reach 100% of their capacity and lead to a failed write, which would crash a training process, even though <code>df</code> would report only 80% space usage on the partition. We didn't have this problem while training BLOOM-176B, but we had it when we trained IDEFICS-80B - 80% there was the new 100%. How do you know if you have this issue - well, usually you discover it while you prepare for the training.</p>
+<p>And this is not all. There is another issue of inodes availability and some storage partitions don't have very large inode quotas. Python packages are notorious for having hundreds to thousands of small files, which combined take very little total space, but which add up to tens of thousands of files in one's virtual environment and suddenly while one has TBs of free disk space available, but runs out of free inodes and discovering their training crashing.</p>
+<p>Finally, many distributed partitions don't show you the disk usage stats in real time and could take up to 30min to update.</p>
+<p>footnote: Use <code>df -ih</code> to see the inodes quota and the current usage.</p>
+<p>footnote: Some filesystems use internal compression and so the reported disk usage can be less than reality if copied elsewhere, which can be confusing.</p>
+<p>So here is <a href="./fs-watchdog.py">fs-watchdog.py</a> that was used during BLOOM-176B training. This watchdog was sending an email if any of the storage requirements thresholds hasn't been met and here is the corresponding <a href="./fs-watchdog.slurm">fs-watchdog.slurm</a> that was driving it.</p>
+<p>If you study the watchdog code you can see that for each partition we were monitoring both the disk usage and inodes. We used special quota tools provided by the HPC to get instant stats for some partitions, but these tools didn't work for all partitions and there we had to fallback to using <code>df</code> and even a much slower <code>du</code>. As such it should be easy to adapt to your usecase.</p>
+<h3 id="dealing-with-slow-memory-leaks">Dealing with slow memory leaks</h3>
+<p>Some programs develop tiny memory leaks which can be very difficult to debug. Do not confuse those with the usage of MMAP where the program uses the CPU memory to read quickly read data from and where the memory usage could appear to grow over time, but this is not real as this memory gets freed when needed. You can read <a href="https://stasosphere.com/entrepreneur-being/301-mmap-memory-leak-investigation/">A Deep Investigation into MMAP Not Leaking Memory</a> to understand why.</p>
+<p>Of course, ideally one would analyze their software and fix the leak, but at times the leak could be coming from a 3rd party package or can be very difficult to diagnose and there isn't often the time to do that.</p>
+<p>When it comes to GPU memory, there is the possible issue of memory fragmentation, where over time more and more tiny unused memory segments add up and make the GPU appear to have a good amount of free memory, but when the program tries to allocate a large tensor from this memory it fails with the OOM error like:</p>
+<pre><code>RuntimeError: CUDA out of memory. Tried to allocate 304.00 MiB (GPU 0; 8.00 GiB total capacity;
+142.76 MiB already allocated; 6.32 GiB free; 158.00 MiB reserved in total by PyTorch)
+</code></pre>
+<p>In this example if there are 6.32GiB free, how comes that 304MiB couldn't be allocated.</p>
+<p>One of the approaches my team developed during IDEFICS-80B training where there was some tiny CPU memory leak that would often take multiple days to lead to running out of CPU memory was to install a watchdog inside the training loop that would check the memory usage and if a threshold was reached it'd voluntarily exit the training loop. The next training job would then resume with all the CPU memory reclaimed.</p>
+<p>footnote: The reality of Machine Learning trainings is that not all problems can be fixed with limited resources and often times a solid workaround provides for a quicker finish line, as compared to &quot;stopping the presses&quot; and potentially delaying the training for weeks, while trying to figure out where the problem is. For example we trained BLOOM-176B with <code>CUDA_LAUNCH_BLOCKING=1</code> because the training would hang without it and after multiple failed attempts to diagnose that we couldn't afford any more waiting and had to proceed as is. Luckily this environment variable that normally is used for debug purposes and which in theory should make some CUDA operations slower didn't actually make any difference to our throughput. But we have never figured out what the problem was and today it doesn't matter at all that we haven't, as we moved on with other projects which aren't impacted by that issue.</p>
+<p>The idea is similar to the kill and save switches discussed earlier, but here instead of polling for a specific file appearance we simply watch how much resident memory is used. For example here is how you'd auto-exit if the OS shows only 5% of the virtual cpu memory remain:</p>
+<pre><code class="language-python">import psutil
+for batch in iterator:
+    total_used_percent = psutil.virtual_memory().percent
+    if total_used_percent &gt; 0.95:
+        print(f&quot;Exiting early since the cpu memory is almost full: ({total_used_percent}%)&quot;)
+        save_checkpoint()
+        sys.exit()
+
+    train_step(batch)
+</code></pre>
+<p>Similar heuristics could be used for setting a threshold for GPU memory usage, except one needs to be aware of cuda tensor caching and python garbage collection scheduling, so to get the actual memory usage you'd need to do first run the garbage collector then empty the cuda cache and only then you will get real memory usage stats and then gracefully exit the training if the GPU is too close to being full.</p>
+<pre><code class="language-python">import gc
+import torch
+
+for batch in iterator:
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # get mem usage in GiBs and exit if less than 2GiB of free GPU memory remain
+    free, total = map(lambda x: x/2**30, torch.cuda.mem_get_info());
+    if free &lt; 2:
+        print(f&quot;Exiting early since the GPU memory is almost full: ({free}GB remain)&quot;)
+        save_checkpoint()
+        sys.exit()
+
+    train_step(batch)
+</code></pre>
+<p>footnote: don't do this unless you really have to, since caching makes things faster. Ideally figure out the fragmentation issue instead. For example, look up <code>max_split_size_mb</code> in the doc for <a href="https://docs.pytorch.org/docs/stable/notes/cuda.html#environment-variables"><code>PYTORCH_ALLOC_CONF</code></a> as it controls how memory is allocated. Some frameworks like <a href="https://github.com/deepspeedai/DeepSpeed">DeepSpeed</a> solve this by pre-allocating tensors at start time and then reuse them again and again preventing the issue of fragmentation altogether.</p>
+<p>footnote: this simplified example would work for a single node. For multiple nodes you'd need to gather the stats from all participating nodes and find the one that has the least amount of memory left and act upon that.</p>
+<h2 id="dealing-with-forced-job-preemption">Dealing with forced job preemption</h2>
+<p>Earlier you have seen how the training can be gracefully stopped with a <a href="#kill-switch">kill switch solution</a> and it's useful when you need to stop or pause the training on demand.</p>
+<p>On HPC clusters SLURM jobs have a maximum runtime. A typical one is 20 hours. This is because on HPCs resources are shared between multiple users/groups and so each is given a time slice to do compute and then the job is forcefully stopped, so that other jobs could use the shared resources.</p>
+<p>footnote: this also means that you can't plan how long the training will take unless your jobs run with the highest priority on the cluster. If your priority is not the highest it's not uncommon to have to wait for hours and sometimes days before your job resumes.</p>
+<p>One could, of course, let the job killed and hope that not many cycles were spent since <a href="#frequent-checkpoint-saving">the last checkpoint was saved</a> and then let the job resume from this checkpoint, but that's quite wasteful and best avoided.</p>
+<p>The efficient solution is to gracefully exit before the hard tile limit is hit and the job is killed by SLURM.</p>
+<p>First, you need to figure out how much time your program needs to gracefully finish. This typically requires 2 durations:</p>
+<ol>
+<li>how long does it take for a single iteration to finish if you have just started a new iteration</li>
+<li>how long does it take to save the checkpoint</li>
+</ol>
+<p>If, for example, the iteration takes 2 minutes at most and the checkpoint saving another 2 minutes, then you need at least 4 minutes of that grace time. To be safe I'd at least double it. There is no harm at exiting a bit earlier, as no resources are wasted.</p>
+<p>So, for example, let's say your HPC allows 100 hour jobs, and then your slurm script will say:</p>
+<pre><code>#SBATCH --time=100:00:00
+</code></pre>
+<h3 id="approach-a-tell-the-program-at-launch-time-when-it-should-start-the-exiting-process">Approach A. Tell the program at launch time when it should start the exiting process:</h3>
+<pre><code class="language-bash">srun ... torchrun ... --exit-duration-in-mins 5990
+</code></pre>
+<p>100h is 6000 minutes and so here we give the program 10 mins to gracefully exit.</p>
+<p>And when you start the program you create a timer and then before every new iteration starts you check if the time limit is reached. If it is you save the checkpoint and exit.</p>
+<p>case study: you can see how this was set <a href="https://github.com/bigscience-workshop/bigscience/blob/58d99c67f643d27b5765a73a2ee2d1ce0a4b2c6b/train/tr11-176B-ml/tr11-176B-ml.slurm#L97-L100">in the BLOOM training job</a> and then acted upon <a href="https://github.com/bigscience-workshop/Megatron-DeepSpeed/blob/e52bdabbde3c6895aceb76c1bced295c2646121f/megatron/training.py#L985-L998">here</a>:</p>
+<pre><code class="language-python">        # Exiting based on duration
+        if args.exit_duration_in_mins:
+            train_time = (time.time() - _TRAIN_START_TIME) / 60.0
+            done_cuda = torch.cuda.IntTensor(
+                [train_time &gt; args.exit_duration_in_mins])
+            torch.distributed.all_reduce(
+                done_cuda, op=torch.distributed.ReduceOp.MAX)
+            done = done_cuda.item()
+            if done:
+                if not saved_checkpoint:
+                    save_checkpoint_and_time(iteration, model, optimizer,
+                                             lr_scheduler)
+                print_datetime('exiting program after {} minutes'.format(train_time))
+                sys.exit()
+</code></pre>
+<p>As you can see since the training is distributed we have to synchronize the exiting event across all ranks</p>
+<p>You could also automate the derivation, by retrieving the <code>EndTime</code> for the running job:</p>
+<pre><code class="language-bash">$ scontrol show -d job $SLURM_JOB_ID | grep Time
+   RunTime=00:00:42 TimeLimit=00:11:00 TimeMin=N/A
+   SubmitTime=2023-10-26T15:18:01 EligibleTime=2023-10-26T15:18:01
+   AccrueTime=2023-10-26T15:18:01
+   StartTime=2023-10-26T15:18:01 EndTime=2023-10-26T15:18:43 Deadline=N/A
+</code></pre>
+<p>and then comparing with the current time in the program and instead setting the graceful exit period. There are other timestamps and durations that can be retrieved as it can be seen from the output.</p>
+<h3 id="approach-b1-sending-a-custom-signal-x-minutes-before-the-end">Approach B.1. Sending a custom signal X minutes before the end</h3>
+<p>In your sbatch script you could set:</p>
+<pre><code>#SBATCH --signal=USR1@600
+</code></pre>
+<p>and then SLURM will send a <code>SIGUSR1</code> signal to your program 10min before job's end time.</p>
+<p>footnote: normally SLURM schedulers send a <code>SIGCONT</code>+<code>SIGTERM</code> signal about 30-60 seconds before the job's time is up, and just as the time is up it will send a <code>SIGCONT</code>+<code>SIGTERM</code>+<code>SIGKILL</code> signal if the job is still running. <code>SIGTERM</code> can be caught and acted upon but 30 seconds is not enough time to gracefully exit a large model training program.</p>
+<p>Let's demonstrate how the signal sending and trapping works. In terminal A, run:</p>
+<pre><code class="language-bash">python -c &quot;
+import time, os, signal
+
+def sighandler(signum, frame):
+    print('Signal handler called with signal', signum)
+    exit(0)
+
+signal.signal(signal.SIGUSR1, sighandler)
+print(os.getpid())
+time.sleep(1000)
+&quot;
+</code></pre>
+<p>it will print the pid of the process, e.g., <code>4034989</code> and will go to sleep (emulating real work). In terminal B now send <code>SIGUSR1</code> signal to the python program in terminal A with:</p>
+<pre><code class="language-bash">kill -s USR1 4034989
+</code></pre>
+<p>The program will trap this signal, call the <code>sighandler</code> which will now print that it was called and exit.</p>
+<pre><code>Signal handler called with signal 10
+</code></pre>
+<p><code>10</code> is the numerical value of <code>SIGUSR1</code>.</p>
+<p>So here is the same thing with the SLURM setup:</p>
+<pre><code class="language-bash">$ cat sigusr1.slurm
+#SBATCH --job-name=sigusr1
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --time=0:03:00
+#SBATCH --partition=mypartition
+#SBATCH --output=%x-%j.out
+#SBATCH --signal=USR1@170
+
+srun python -c &quot;
+import time, os, signal
+
+def sighandler(signum, frame):
+    print('Signal handler called with signal', signum)
+    exit(0)
+
+signal.signal(signal.SIGUSR1, sighandler)
+print(os.getpid())
+time.sleep(1000)
+&quot;
+</code></pre>
+<p>In the SLURM script we told SLURM to send the program a signal 170 seconds before its end and the job itself was set to run for 180 secs (3 mins).</p>
+<p>When this job has been scheduled:</p>
+<pre><code class="language-bash">sbatch sigusr1.slurm
+</code></pre>
+<p>10 seconds (<code>180-170</code>) after the job started, it will exit with the log:</p>
+<pre><code>58307
+Signal handler called with signal 10
+</code></pre>
+<p>which means the job had a pid <code>58307</code> and it caught <code>SIGUSR1</code> (<code>10</code>) and it exited.</p>
+<p>Now that you understand how this machinery works, instead of immediate <code>exit(0)</code> you can set exit-asap flag, finish the currently run iteration, check that the flag is up, save the checkpoint and exit. This is very similar to the code shown in <a href="#approach-a-tell-the-program-at-launch-time-when-it-should-start-the-exiting-process">Approach A</a>.</p>
+<h3 id="approach-b2-choosing-which-process-to-send-the-signal-to">Approach B.2. Choosing which process to send the signal to</h3>
+<p>Now what if your main program isn't the one launched with <code>srun</code> - if you were to use an intermediate launcher like <code>torchrun</code> or <code>accelerate</code> the above recipe won't work, because most likely <code>SIGUSR1</code> won't be propagated from the launcher to its children. In this case we need a slightly more complicated slurm script than the one shown earlier.</p>
+<p>We have to replace:</p>
+<pre><code>#SBATCH --signal=USR1@600
+</code></pre>
+<p>with:</p>
+<pre><code>#SBATCH --signal=B:USR1@600
+</code></pre>
+<p>The added <code>B:</code> tells SLURM not to send the signal to the <code>srun</code> process (launcher) but to the <code>sbatch</code> shell.</p>
+<p>And now we have to change the end of the SLURM script from a typical launcher-based code like:</p>
+<pre><code class="language-bash">CMD=&quot;python -u -m torch.distributed.run ... train.py ...&quot; # real command here
+LOG_FILE=/path/to/logs/main_log.txt
+srun --jobid $SLURM_JOBID bash -c &quot;$CMD&quot; 2&gt;&amp;1 | tee -a $LOG_FILE
+
+</code></pre>
+<p>to this:</p>
+<pre><code class="language-bash">trap 'echo &quot;SIGUSR1 received!&quot;; \
+pid=$(pgrep -f &quot;^python.*(accelerate|deepspeed|torchrun|distributed.run)&quot;); \
+pgrep -P $pid | xargs -r kill -USR1; \
+wait;' SIGUSR1
+
+CMD=&quot;python -u -m torch.distributed.run ... train.py ...&quot; # real command here
+LOG_FILE=/path/to/logs/main_log.txt
+srun --jobid $SLURM_JOBID bash -c &quot;$CMD&quot; 2&gt;&amp;1 | tee -a $LOG_FILE &amp;
+
+wait
+</code></pre>
+<p>Since <code>--signal=B:USR1@600</code> earlier will now send the signal to the <code>sbatch</code> shell we can trap it and do something about it, and that's what the <code>trap</code> line does.</p>
+<p>The magical code inside the signal handler passed to <code>trap</code> finds all processes that are immediate children of any of the launchers like <code>accelerate</code>, <code>deepspeed</code>, <code>torchrun</code> or <code>torch.distributed.run</code> and sends the <code>SIGUSR1</code> signal to them.</p>
+<p>Finally the last change is that in order for <code>trap</code> to work we need to run <code>srun</code> in the background - so we added <code>&amp;</code>  at the end of the <code>srun</code> command and we needed to add <code>wait</code> so that the <code>sbatch</code> shell won't exit until <code>srun</code> finishes.</p>
+<p>Your python code that catches the signal handler remains the same as in Approach B.1.</p>
+<p>Here are the important parts of the SLURM script together:</p>
+<pre><code class="language-bash">$ cat launch.slurm
+#!/bin/bash
+[...]
+#SBATCH --partition=dev
+#SBATCH --signal=B:USR1 # Custom preemption signal
+[...]
+
+trap 'echo &quot;SIGUSR1 received!&quot;; \
+pid=$(pgrep -f &quot;^python.*(accelerate|torchrun|deepspeed|distributed.run)&quot;); \
+pgrep -P $pid | xargs -r kill -USR1; wait;' SIGUSR1
+
+CMD=&quot;python -u -m torch.distributed.run ... train.py ...&quot; # real command here
+LOG_FILE=/path/to/logs/main_log.txt
+srun --jobid $SLURM_JOBID bash -c &quot;$CMD&quot; 2&gt;&amp;1 | tee -a $LOG_FILE &amp;
+
+wait
+</code></pre>
+<p>And your training loop that may have originally looked like this:</p>
+<pre><code class="language-bash">$ cat train.py
+
+for batch in dl:
+    train_iteration(batch)
+</code></pre>
+<p>Now it'll become:</p>
+<pre><code class="language-bash">$ cat train.py
+
+import signal
+import sys
+
+pre_emption_activated = False
+def activate_pre_emption(sig, frame):
+    global pre_emption_activated
+    print(&quot;SIGUSR1 received, saving checkpoint&quot;)
+    pre_emption_activated = True
+
+signal.signal(signal.SIGUSR1, activate_pre_emption)
+
+for batch in dl:
+    train_iteration(batch)
+
+    if pre_emption_activated:
+        save_checkpoint()
+        sys.exit()
+</code></pre>
+<p>Of course, you will probably set a flag in the trainer object in the real software and not use a <code>global</code>, but for the sake of the short demo that's good enough.</p>
+<p>If you want to test this solution, simply change your SLURM script header to:</p>
+<pre><code>#SBATCH --time=0:05:00
+#SBATCH --signal=B:USR1@60
+</code></pre>
+<p>Here we tell SLURM to run the job for 5 minutes only (<code>--time=0:05:00</code>) and we ask it to send <code>SIGUSR1</code> to our <code>sbatch</code> script <code>60</code> seconds before 5 minutes expires, i.e. 4 minutes after the job started.</p>
+<h3 id="qos-based-slurm-preemption">QoS-based SLURM preemption</h3>
+<p>We haven't discussed so far what happens when Quality of Service (QoS) is used, which may also forcefully preempt an existing job. The functionality is the same as job's-allocated-time-is-about-to-end sort of pre-emption, except it can happen any time and not X seconds before the end of the job.</p>
+<p>Consider a SLURM setup where you have <code>--qos=high</code> which can preempt <code>--qos=low</code> jobs and the low priority job has grace time of 10 minutes to shut down:</p>
+<pre><code class="language-bash">$ sacctmgr show qos format=name,priority,preempt,MaxTRESPerUser,GraceTime,Preempt,Flags
+      Name   Priority     MaxTRESPU  GraceTime    Preempt                Flags
+---------- ---------- ------------- ---------- ---------- --------------------
+       low          0                 00:10:00
+      high          0                 00:00:00        low
+</code></pre>
+<p>This is very similar to the time-based pre-emption except here the grace time is hardcoded and can't be modified by the user.</p>
+<p>If a job is launched with <code>--qos=high</code> and there aren't enough nodes, SLURM will kick out a few low priority jobs to make the nodes available for the high priority job.</p>
+<p>By default <code>GraceTime</code> could be very short an insufficient for your program to wind down safely if it gets pre-empted - in which case ask your sysadmin to raise its duration to what will work for your needs.</p>
+<p>Otherwise the same solutions described in Approaches B.1 and B.2 will work for this type of forced pre-emption.</p>
+
+</article>
+<footer><a class="prev" href="../../training/profiling-and-optimization.html">&larr; Profiling and Optimizing Training, Hands-On</a><a class="next" href="../../training/reproducibility/README.html">Reproducibility &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

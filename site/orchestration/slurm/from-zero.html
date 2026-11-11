@@ -1,0 +1,2070 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slurm From Zero - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../../compute/README.html">Compute (Stas)</a></li><li><a href="../../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details open><summary>Part 5. Orchestration</summary><ul><li><a href="../../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../../orchestration/slurm/from-zero.html" class="current">Slurm From Zero</a></li><li><a href="../../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../../training/README.html">Training (Stas)</a></li><li><a href="../../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../../inference/README.html">Inference (Stas)</a></li><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../../resources/README.html">Resources (Stas)</a></li><li><a href="../../contributors.html">Contributors (Stas)</a></li><li><a href="../../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="slurm-from-zero">Slurm From Zero</h1>
+<p>The other Slurm chapters in this book are cheatsheets written for someone who already uses Slurm every day. This chapter is the on-ramp they assume. It starts with what a batch scheduler is, explains how Slurm is put together and what happens between typing <code>sbatch</code> and your processes running on GPUs, and then builds up to complete multi-node PyTorch jobs that survive preemption. It ends with enough administration to understand what the people running the cluster do, and with a comparison against Kubernetes.</p>
+<p>Conventions:</p>
+<ul>
+<li><strong>Nothing Slurm-related was run while writing this chapter.</strong> Slurm daemons need Linux and a cluster, and this chapter was written on a Mac. All <code>sinfo</code>/<code>squeue</code>/<code>sacct</code>/<code>scontrol</code> output below is <strong>sketched</strong>: it follows the real formats (as of Slurm 23.x-25.x), but the job IDs, node names and numbers are made up. All <code>#SBATCH</code> scripts and config files are <strong>untested</strong> as written.</li>
+<li>The Python helpers (the output parser, the GPU-hours and fair-share calculator, the training script and a local <code>srun</code> emulator) <strong>were run</strong>, on macOS with CPython 3.14 and PyTorch 2.15 on CPU. Their output is pasted as-is.</li>
+<li>Slurm's spelling: the project now writes &quot;Slurm&quot; (it used to be &quot;SLURM&quot;, for Simple Linux Utility for Resource Management). Both appear in this book.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../../foundations/linux-and-os.html">Linux and the OS</a>: processes, users and UIDs, signals, cgroups, systemd. Slurm is a layer on top of all of these.</li>
+<li><a href="../../foundations/networking.html">Networking</a>: hostnames, ports, InfiniBand/RoCE. Multi-node training needs ranks to find each other over the network.</li>
+<li><a href="../../foundations/distributed-systems.html">Distributed systems</a>: controllers, heartbeats, rendezvous, failure detection.</li>
+<li><a href="../../foundations/containers-and-virtualization.html">Containers and virtualization</a>: images and namespaces, for the containers-on-Slurm section.</li>
+<li><a href="../../foundations/linux-and-os.html#scripting-essentials">Linux and the OS: scripting essentials</a>: every batch script here is a bash script (<code>set -euo pipefail</code>, <code>${VAR:-default}</code>, <code>$(...)</code>, <code>$((...))</code>), and <a href="../../foundations/linux-and-os.html#how-torchrun-spawns-workers">How torchrun spawns workers</a>.</li>
+<li><a href="../../foundations/distributed-systems.html#core-vocabulary">Distributed systems: core vocabulary</a>: rank, local rank, world size, node rank, <code>MASTER_ADDR</code>/<code>MASTER_PORT</code>, launcher. The Slurm environment variables below map onto exactly these.</li>
+<li><a href="../../compute/gpu-software-stack.html">GPU software stack</a>: driver/toolkit compatibility (for containers) and <a href="../../compute/gpu-software-stack.html#the-environment-variables-an-operator-sets">NCCL's environment variables</a>.</li>
+<li><a href="../../network/collectives-internals.html#timeouts-and-hangs">Collectives internals: timeouts and hangs</a>: why one dead rank makes every other rank hang in an all-reduce.</li>
+<li>Forward links (later chapters, not needed first): <a href="../../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> and <a href="../../orchestration/internals.html">Orchestration internals</a>, referenced for comparisons and for how the scheduler works inside.</li>
+</ul>
+<p>After this chapter, the deeper material is:</p>
+<ul>
+<li><a href="../../orchestration/slurm/users.html">SLURM for Users</a> - a long list of recipes (reusing allocations, rejoining nodes, finding faulty nodes, crontab emulation).</li>
+<li><a href="../../orchestration/slurm/admin.html">SLURM Administration</a> - admin recipes (pdsh, draining, undraining, auto-reboot).</li>
+<li><a href="../../orchestration/slurm/performance.html">SLURM Performance</a> - <code>--cpus-per-task</code> inheritance and hyper-threads.</li>
+<li><a href="../../orchestration/slurm/launchers/README.html">Launchers</a> - ready-made <code>torchrun</code>, <code>accelerate</code>, Lightning and <code>srun</code> launcher scripts.</li>
+<li><a href="../../orchestration/internals.html">Orchestration internals</a> - how <code>select/cons_tres</code>, topology plugins, multifactor priority, backfill and preemption work inside.</li>
+</ul>
+<h2 id="why-a-batch-scheduler-exists">Why a batch scheduler exists</h2>
+<h3 id="the-problem-many-people-few-gpus-long-jobs">The problem: many people, few GPUs, long jobs</h3>
+<p>A <strong>cluster</strong> is a set of computers (called <strong>nodes</strong>) connected by a fast network, with shared storage, that a group of people use together. An AI cluster typically has a few <strong>login nodes</strong> (where you SSH in, edit code and submit work) and tens to thousands of <strong>compute nodes</strong> (each with, say, 8 GPUs) where the work actually runs.</p>
+<p>Without any software in charge, people would SSH into compute nodes and start jobs by hand. That breaks immediately:</p>
+<ul>
+<li>Two people start jobs on the same GPU and both run out of memory.</li>
+<li>A 64-node job needs 64 nodes free <em>at the same time</em>; nobody can coordinate that by hand.</li>
+<li>One person leaves 32 nodes idle overnight &quot;reserved&quot; with an open terminal.</li>
+<li>Nobody knows who used how much, so nobody can be held to a budget.</li>
+</ul>
+<p>A <strong>batch scheduler</strong> (also called a workload manager or resource manager) is the program that owns the compute nodes. You don't run jobs on nodes; you describe what you need (&quot;4 nodes with 8 GPUs each for 12 hours&quot;) and hand the scheduler a script. The scheduler puts the request in a <strong>queue</strong>, decides when and where it runs, starts it, enforces its limits, kills it when its time is up, and records what it used. &quot;Batch&quot; means the work runs unattended, not in your terminal.</p>
+<pre><code>you (login node)            scheduler                    compute nodes
+----------------            ---------                    -------------
+sbatch train.sh  -------&gt;   queue: [yours, bob's, ...]
+                            &quot;4 nodes free at 14:05?&quot;
+                            reserve gpu[001-004]  ------&gt; start train.sh on gpu001
+                                                          (srun fans out to all 4)
+squeue           &lt;-------   &quot;RUNNING, 3:12 elapsed&quot;
+                            time limit hit  ------------&gt; SIGTERM, then SIGKILL
+sacct            &lt;-------   accounting DB: 128 GPU-hours, COMPLETED
+</code></pre>
+<h3 id="why-hpc-and-ai-clusters-use-one">Why HPC and AI clusters use one</h3>
+<p>The key properties a training cluster needs, and that a batch scheduler provides, are:</p>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>What the scheduler does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Exclusive hardware</td>
+<td>A GPU is given to exactly one job; cgroups stop other processes from even seeing it</td>
+</tr>
+<tr>
+<td>Gang allocation</td>
+<td>A multi-node job gets all its nodes at once or not at all (see <a href="../../orchestration/internals.html#why-gang-scheduling-cannot-be-skipped">why gang scheduling matters</a>)</td>
+</tr>
+<tr>
+<td>Fair sharing</td>
+<td>Teams get priority in proportion to their entitled share, adjusted by how much they used recently</td>
+</tr>
+<tr>
+<td>High utilization</td>
+<td>Small jobs are &quot;backfilled&quot; into gaps while a big job waits for enough nodes</td>
+</tr>
+<tr>
+<td>Time limits</td>
+<td>Every job declares a maximum runtime, so the scheduler can plan and nobody holds nodes forever</td>
+</tr>
+<tr>
+<td>Accounting</td>
+<td>Every job's resource use is recorded per user and account</td>
+</tr>
+</tbody>
+</table>
+<p>Slurm is the dominant open-source batch scheduler: it runs a majority of the TOP500 (the twice-yearly list of the world's fastest supercomputers) and most academic and many industrial GPU clusters. Alternatives you may hear of are PBS/Torque, LSF (IBM) and HTCondor, plus Kubernetes-based stacks (covered at the <a href="#slurm-vs-kubernetes">end</a>). SchedMD, the company that develops Slurm, was acquired by NVIDIA (announced December 2025), with Slurm staying open source.</p>
+<p>You can see the scheduler's view of a cluster with one command. This is the first thing to run on any new cluster:</p>
+<pre><code class="language-console">$ sinfo
+PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+debug        up    2:00:00      2   idle gpu[063-064]
+gpu*         up 2-00:00:00      2  drain gpu[007,031]
+gpu*         up 2-00:00:00     44  alloc gpu[001-006,008-030,032-046]
+gpu*         up 2-00:00:00     14   idle gpu[047-060]
+cpu          up 7-00:00:00     16    mix cpu[01-16]
+</code></pre>
+<p>(Sketched.) Reading it: the <code>gpu</code> partition (the <code>*</code> marks the default) has 44 nodes busy, 14 free and 2 taken out of service (&quot;drained&quot;); jobs there can run at most 2 days. The <a href="#core-concepts">next sections</a> define every one of these words.</p>
+<h2 id="slurm-architecture">Slurm architecture</h2>
+<p><img src="images/slurm-arch.gif" alt="Slurm components: client commands talk to slurmctld; slurmctld talks to slurmd on every compute node and to slurmdbd, which stores accounting in a database" /></p>
+<p>(<a href="https://slurm.schedmd.com/quickstart.html">source</a>)</p>
+<h3 id="the-daemons">The daemons</h3>
+<p>A <strong>daemon</strong> is a long-running background process, usually started by systemd. Slurm is three daemons plus a set of command-line tools:</p>
+<table>
+<thead>
+<tr>
+<th>Daemon</th>
+<th>Runs on</th>
+<th>Port (default)</th>
+<th>Job</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slurmctld</code></td>
+<td>1 controller node (+ optional backup)</td>
+<td>6817</td>
+<td>The brain. Holds the state of every node and job in memory, runs the scheduling loop, decides which job goes where</td>
+</tr>
+<tr>
+<td><code>slurmd</code></td>
+<td>Every compute node</td>
+<td>6818</td>
+<td>The hands. Reports node health and resources, launches and kills processes when the controller says so</td>
+</tr>
+<tr>
+<td><code>slurmdbd</code></td>
+<td>1 node (often the controller)</td>
+<td>6819</td>
+<td>Accounting. Writes job records, users, accounts and QoS to a MySQL/MariaDB database</td>
+</tr>
+<tr>
+<td><code>slurmrestd</code></td>
+<td>Optional</td>
+<td>configurable</td>
+<td>A REST API over the same RPCs, for dashboards and automation</td>
+</tr>
+</tbody>
+</table>
+<p>There is also <strong><code>slurmstepd</code></strong>, which is not a daemon you start: <code>slurmd</code> forks one <code>slurmstepd</code> per job step per node. It is the parent of your actual processes: it sets up their cgroup, switches to your user ID, sets the environment, forwards their stdout/stderr, collects their resource usage and reports their exit codes.</p>
+<p>Why split it this way? The controller has to have one consistent view of the whole cluster to make gang-scheduling and fair-share decisions, so it is centralized (the <a href="../../foundations/distributed-systems.html">distributed systems chapter</a> explains why a single leader is the simple answer to consistency). The node daemons need to act locally and fast (start 8 processes, kill a runaway one) and keep working on a running job even if the controller briefly goes away. Accounting is a separate daemon so that a slow database never stalls scheduling, and so that several clusters can share one accounting database.</p>
+<p>The controller saves its state to disk (<code>StateSaveLocation</code>), so restarting <code>slurmctld</code> does not lose the queue or kill running jobs; running jobs keep running under their <code>slurmd</code>s while the controller is down.</p>
+<p>On a cluster where you are a user you can still see all of this:</p>
+<pre><code class="language-console">$ scontrol ping
+Slurmctld(primary) at ctl01 is UP
+Slurmctld(backup) at ctl02 is UP
+
+$ scontrol show config | grep -E '^(ClusterName|SlurmctldHost|SLURM_VERSION|SelectType|SchedulerType|PriorityType|AuthType|ProctrackType|TaskPlugin)'
+AuthType                = auth/munge
+ClusterName             = tiny
+PriorityType            = priority/multifactor
+ProctrackType           = proctrack/cgroup
+SchedulerType           = sched/backfill
+SelectType              = select/cons_tres
+SLURM_VERSION           = 24.11.1
+SlurmctldHost[0]        = ctl01
+SlurmctldHost[1]        = ctl02
+TaskPlugin              = task/cgroup,task/affinity
+</code></pre>
+<p>(Sketched.)</p>
+<h3 id="authentication-munge">Authentication: munge</h3>
+<p>Every message between Slurm components says &quot;this request comes from user alice, UID 1001&quot;. Something must stop a user from forging &quot;I am root&quot;. Slurm's traditional answer is <strong>MUNGE</strong> (MUNGE Uid 'N' Gid Emporium), a tiny authentication service:</p>
+<ul>
+<li>Every node in the cluster runs the <code>munged</code> daemon and has the <strong>same secret key</strong> in <code>/etc/munge/munge.key</code>.</li>
+<li>When <code>sbatch</code> sends a request, it asks the local <code>munged</code> to create a <strong>credential</strong>: your UID and GID plus a timestamp, encrypted and signed with the shared key. Only <code>munged</code> (running as the <code>munge</code> user) can read the key, so a user cannot forge a credential for someone else.</li>
+<li>The receiving daemon asks its own <code>munged</code> to decode it. If the key matches and the timestamp is recent (default TTL 300 s), it trusts the UID.</li>
+</ul>
+<p>Consequences: the key must be identical on every node, and <strong>clocks must be synchronized</strong> (run NTP/chrony), or credentials are rejected as expired or &quot;rewound&quot;. Since Slurm 23.11 there is also a built-in <code>auth/slurm</code> plugin that uses a shared <code>slurm.key</code> instead of munge; most existing clusters still use munge.</p>
+<p>Testing munge is the first step when &quot;nothing works&quot;:</p>
+<pre><code class="language-console">$ munge -n | unmunge | grep -E 'STATUS|UID'
+STATUS:          Success (0)
+UID:             alice (1001)
+$ munge -n | ssh gpu001 unmunge | grep STATUS     # cross-node: proves keys and clocks match
+STATUS:          Success (0)
+</code></pre>
+<p>(Sketched; this is the standard check from the munge docs.)</p>
+<h3 id="the-config-files">The config files</h3>
+<p>All of these live in <code>/etc/slurm/</code> (or wherever the site installed Slurm):</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Read by</th>
+<th>What it says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slurm.conf</code></td>
+<td>everything</td>
+<td>Cluster name, controller host, plugins, scheduling and priority settings, every node and partition</td>
+</tr>
+<tr>
+<td><code>gres.conf</code></td>
+<td><code>slurmd</code></td>
+<td>Which GPUs (and other generic resources) each node has, which device files, which CPU cores are close to them</td>
+</tr>
+<tr>
+<td><code>cgroup.conf</code></td>
+<td><code>slurmd</code></td>
+<td>Which limits to enforce with cgroups (cores, memory, devices)</td>
+</tr>
+<tr>
+<td><code>slurmdbd.conf</code></td>
+<td><code>slurmdbd</code> only</td>
+<td>Database host, user and password (so it is mode 600, owned by the <code>slurm</code> user)</td>
+</tr>
+<tr>
+<td><code>topology.conf</code></td>
+<td><code>slurmctld</code></td>
+<td>Optional switch hierarchy for network-aware placement (see <a href="../../orchestration/internals.html#topology-topologytree">internals</a>)</td>
+</tr>
+<tr>
+<td><code>plugstack.conf</code></td>
+<td><code>srun</code>, <code>slurmd</code></td>
+<td>Optional SPANK plugins (shared libraries that <code>srun</code> and <code>slurmd</code> load to add flags and hooks), e.g. Pyxis for containers</td>
+</tr>
+</tbody>
+</table>
+<p><code>slurm.conf</code> must be identical on all nodes (Slurm warns if hashes differ). Larger sites use <strong>configless</strong> mode: the controller serves the config files and each <code>slurmd</code> fetches them at startup (<code>SlurmctldParameters=enable_configless</code> on the controller, <code>slurmd --conf-server ctl01</code> on nodes). A minimal working set of these files is in the <a href="#a-small-cluster-admin-intro">admin section</a>.</p>
+<h3 id="what-happens-from-sbatch-to-processes-on-nodes">What happens from <code>sbatch</code> to processes on nodes</h3>
+<p>This is the most useful picture in the chapter. Follow a 2-node, 16-GPU job:</p>
+<pre><code>login node                 ctl01: slurmctld                   gpu001: slurmd                 gpu002: slurmd
+----------                 ----------------                   --------------                 --------------
+sbatch train.sh
+  | munge cred + script + env
+  +-----------------------&gt; 1. validate: account? QoS? limits?
+  &lt;----- &quot;Submitted 4242&quot;    store job, state=PENDING
+                           2. scheduling loop / backfill:
+                              priority order, find 2 free nodes
+                              state=RUNNING, nodes=gpu[001-002]
+                           3. send batch-launch RPC ---------&gt;  4. prolog (if configured)
+                                                                   fork slurmstepd (step &quot;batch&quot;)
+                                                                   cgroup, setuid(alice), env
+                                                                   exec: bash train.sh
+                                                                     |
+                                                                   5. srun python train.py
+                           &lt;-------- &quot;create step 4242.0&quot; ----------+
+                           6. grant step, sign credential
+                              -----------------------------------&gt;  slurmd   ------------------&gt;  slurmd
+                                                                   7. slurmstepd (step 0)        slurmstepd (step 0)
+                                                                      fork 8 tasks                  fork 8 tasks
+                                                                      SLURM_PROCID=0..7             SLURM_PROCID=8..15
+                                                                   stdout/stderr ------&gt; srun (gpu001) --&gt; slurm-4242.out
+                                                                   8. tasks exit; codes -&gt; srun -&gt; batch shell exits
+                           &lt;------------------------- 9. job complete, epilog, nodes freed (state CG -&gt; idle)
+                           10. slurmdbd: write accounting record
+</code></pre>
+<p>Step by step:</p>
+<ol>
+<li><code>sbatch</code> reads your script, pulls out the <code>#SBATCH</code> lines, and sends the whole script plus your current environment to <code>slurmctld</code>. The controller checks your account, QoS and limits, assigns a <strong>job ID</strong>, and stores the job as <code>PENDING</code>. <code>sbatch</code> returns immediately; the script has not started.</li>
+<li>The scheduler runs whenever something changes (a job ends, a job is submitted) and periodically as backfill (default every 30 s). It walks pending jobs in priority order and finds nodes. When it finds a fit it marks the job <code>RUNNING</code> and records the allocation.</li>
+<li>The controller sends the script to <code>slurmd</code> on the <strong>first</strong> node of the allocation (the &quot;batch host&quot;).</li>
+<li>That <code>slurmd</code> runs the site's <strong>prolog</strong> if there is one (a script the admins configure to run on each node just before a job starts, typically a quick GPU health check; its counterpart, the <strong>epilog</strong>, runs just after the job ends), forks a <code>slurmstepd</code> for the special <strong>batch step</strong>, which creates a cgroup, drops privileges to your UID, sets <code>SLURM_*</code> variables and runs your script with bash. Your script runs <strong>on one node only</strong>, on one CPU core by default.</li>
+<li>Inside the script you call <code>srun</code>. <code>srun</code> is how work reaches the other nodes.</li>
+<li><code>srun</code> asks the controller to create a <strong>job step</strong> inside the existing allocation. The controller checks it fits and signs a credential.</li>
+<li><code>srun</code> contacts <code>slurmd</code> on every node of the step (with large jobs, through a fan-out tree, <code>TreeWidth</code>), each forks a <code>slurmstepd</code> for that step, which forks the <strong>tasks</strong> (your processes) and sets per-task variables like <code>SLURM_PROCID</code>. stdout/stderr from all tasks is streamed back to <code>srun</code>, which writes it to the job's output file.</li>
+<li>When all tasks exit, <code>srun</code> returns the highest exit code. The batch script continues; when it exits, the job ends.</li>
+<li><code>slurmd</code> runs the epilog, kills any leftover processes in the job's cgroups, and the nodes return to <code>idle</code>. While this cleanup runs the job shows state <code>CG</code> (completing).</li>
+<li>The controller sends the final record (start, end, nodes, exit code, TRES used: the CPUs, memory and GPUs consumed; TRES is defined <a href="#cpus-memory-gpus-gres-and-tres">below</a>) to <code>slurmdbd</code>.</li>
+</ol>
+<p>The two most common beginner mistakes both come from this picture: running <code>python train.py</code> in the batch script <em>without</em> <code>srun</code> (it runs once, on one node, while the other nodes sit idle), and expecting <code>SLURM_PROCID</code> in the batch script to differ per rank (it is 0, because the batch script is one process; see <a href="../../orchestration/slurm/users.html#slurm_procid-early-interpolation">early interpolation</a>).</p>
+<h2 id="core-concepts">Core concepts</h2>
+<p><img src="images/slurm-entities.gif" alt="Slurm entities: partitions group nodes; a job holds an allocation of nodes in a partition; job steps run inside the allocation" /></p>
+<p>(<a href="https://slurm.schedmd.com/quickstart.html">source</a>)</p>
+<h3 id="nodes-partitions-and-node-states">Nodes, partitions, and node states</h3>
+<ul>
+<li>A <strong>node</strong> is one computer, as Slurm knows it: a name, a CPU layout (sockets, cores, threads), memory, GRES (GPUs) and <strong>features</strong> (free-form tags like <code>h100,ib</code>, which jobs can require with <code>--constraint</code>).</li>
+<li>A <strong>partition</strong> is a named group of nodes with its own policy: maximum time limit, who may use it, default and maximum resources per job, priority tier. Think of it as a queue. A node can be in several partitions (e.g. <code>gpu</code> and <code>gpu-preempt</code>). On the command line, <code>-p</code> selects one.</li>
+</ul>
+<p>Node states you'll see in <code>sinfo</code> (full list in <a href="../../orchestration/slurm/users.html#node-state-codes">node state codes</a>):</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>idle</code></td>
+<td>Up, nothing running</td>
+</tr>
+<tr>
+<td><code>alloc</code></td>
+<td>Fully allocated</td>
+</tr>
+<tr>
+<td><code>mix</code></td>
+<td>Partly allocated (some cores/GPUs free)</td>
+</tr>
+<tr>
+<td><code>drain</code> / <code>drng</code></td>
+<td>An admin or health check took it out of service; <code>drng</code> = still running a job that will finish first</td>
+</tr>
+<tr>
+<td><code>down</code></td>
+<td>Slurm can't reach <code>slurmd</code>, or it was marked down</td>
+</tr>
+<tr>
+<td><code>comp</code></td>
+<td>Jobs completing (epilog / killing processes)</td>
+</tr>
+<tr>
+<td><code>resv</code></td>
+<td>In a reservation</td>
+</tr>
+<tr>
+<td><code>*</code> suffix (<code>idle*</code>)</td>
+<td>Not responding</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-console">$ scontrol show node gpu007
+NodeName=gpu007 Arch=x86_64 CoresPerSocket=48
+   CPUAlloc=0 CPUEfctv=192 CPUTot=192 CPULoad=0.03
+   AvailableFeatures=h100,ib
+   ActiveFeatures=h100,ib
+   Gres=gpu:h100:8(S:0-1)
+   NodeAddr=gpu007 NodeHostName=gpu007 Version=24.11.1
+   RealMemory=2000000 AllocMem=0 FreeMem=1984211 Sockets=2 Boards=1
+   State=IDLE+DRAIN ThreadsPerCore=2 TmpDisk=0 Weight=1
+   Partitions=gpu
+   CfgTRES=cpu=192,mem=2000000M,billing=192,gres/gpu=8
+   AllocTRES=
+   Reason=XID 79 GPU fell off the bus [root@2026-11-03T09:12:44]
+</code></pre>
+<p>(Sketched.) The <code>Reason</code> on a drained node is the first place to look when a node is missing. <code>CfgTRES</code> is what the node offers; <code>AllocTRES</code> is what is currently given out.</p>
+<h3 id="jobs-allocations-steps-and-tasks">Jobs, allocations, steps and tasks</h3>
+<p>This is the mental model that makes everything else make sense:</p>
+<ul>
+<li>A <strong>job</strong> is a request plus, once granted, an <strong>allocation</strong>: a reserved set of resources (specific nodes, cores, memory, GPUs) for a period of time. The allocation is like a booking. It does nothing on its own.</li>
+<li>A <strong>job step</strong> is a set of processes launched <em>inside</em> the allocation, by <code>srun</code>. A job can run many steps one after another (or several at the same time if they fit). Steps are numbered <code>4242.0</code>, <code>4242.1</code>, ...; there are also special steps: <code>4242.batch</code> (the batch script itself), <code>4242.extern</code> (processes that entered the job from outside, e.g. via SSH with <code>pam_slurm_adopt</code>: a PAM module, i.e. a plugin to Linux's login-authentication stack, that lets you SSH into a node only while you have a job there and puts your SSH session into that job's cgroup) and <code>4242.interactive</code> (the shell started by <code>salloc</code> on some configurations).</li>
+<li>A <strong>task</strong> is one process of a step. For PyTorch launched by <code>srun</code>, one task = one GPU = one rank. For <code>torchrun</code>, one task per node, and <code>torchrun</code> spawns the per-GPU workers itself.</li>
+</ul>
+<pre><code>job 4242  (allocation: gpu[001-002], 16 GPUs, 192 CPUs/node, 12h)
+├── 4242.batch     bash train.sh                 on gpu001 only, 1 task
+├── 4242.extern    (ssh sessions, if allowed)
+├── 4242.0         srun python prep.py           1 task on gpu001
+└── 4242.1         srun python train.py          16 tasks: 8 on gpu001, 8 on gpu002
+                    ├── task 0  (SLURM_PROCID=0, SLURM_LOCALID=0, node 0)
+                    ├── ...
+                    └── task 15 (SLURM_PROCID=15, SLURM_LOCALID=7, node 1)
+</code></pre>
+<p><code>sbatch</code> creates a job and runs its batch step. <code>salloc</code> creates a job and gives you a shell. <code>srun</code> creates a step inside an existing job; if you run <code>srun</code> outside any job, it first creates a job (allocation) and then a step in it, all in one go. The <code>sacct</code> view of a running job shows the same structure:</p>
+<pre><code class="language-console">$ sacct -j 4242 --format=JobID,JobName%12,AllocCPUS,State,ExitCode,Elapsed
+JobID             JobName  AllocCPUS      State ExitCode    Elapsed
+------------ ------------ ---------- ---------- -------- ----------
+4242             train.sh        384    RUNNING      0:0   03:12:40
+4242.batch          batch        192    RUNNING      0:0   03:12:40
+4242.extern        extern        384    RUNNING      0:0   03:12:40
+4242.0             python          1  COMPLETED      0:0   00:00:31
+4242.1             python        384    RUNNING      0:0   03:12:01
+</code></pre>
+<p>(Sketched.)</p>
+<h3 id="cpus-memory-gpus-gres-and-tres">CPUs, memory, GPUs, GRES and TRES</h3>
+<ul>
+<li><strong>CPU</strong> in Slurm means whatever the node exposes as the smallest allocatable unit: usually a hardware thread if hyper-threading is on (<code>ThreadsPerCore=2</code>), so a 2x48-core node is <code>CPUs=192</code>. See <a href="../../orchestration/slurm/users.html#hyper-threads">hyper-threads</a> and <a href="../../orchestration/slurm/performance.html#to-enable-hyper-threads-or-not">performance</a>.</li>
+<li><strong>Memory</strong> is requested per node (<code>--mem</code>), per CPU (<code>--mem-per-cpu</code>) or per GPU (<code>--mem-per-gpu</code>), in MB by default. <code>--mem=0</code> means &quot;all of the node's memory&quot;.</li>
+<li><strong>GRES</strong> (generic resources) are countable devices that aren't CPUs or memory, defined in <code>gres.conf</code>. GPUs are <code>gpu</code>, optionally typed: <code>gpu:h100:8</code>. You request them with <code>--gres=gpu:8</code> (per node) or the newer <code>--gpus-per-node=8</code>, <code>--gpus=16</code> (per job) or <code>--gpus-per-task=1</code>.</li>
+<li><strong>TRES</strong> (trackable resources) is the umbrella accounting name: <code>cpu</code>, <code>mem</code>, <code>node</code>, <code>gres/gpu</code>, <code>billing</code>, etc. Limits and accounting are expressed in TRES: <code>MaxTRESPerUser=gres/gpu=16</code>.</li>
+</ul>
+<p>When a job gets GPUs, Slurm sets <code>CUDA_VISIBLE_DEVICES</code> for its processes, and with <code>ConstrainDevices=yes</code> in <code>cgroup.conf</code> the other GPUs' device files are blocked by the cgroup, so the job physically cannot touch them.</p>
+<pre><code class="language-console">$ srun -p gpu --gpus-per-node=2 --pty bash -c 'echo CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES SLURM_JOB_GPUS=$SLURM_JOB_GPUS; nvidia-smi -L'
+CUDA_VISIBLE_DEVICES=0,1 SLURM_JOB_GPUS=4,5
+GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-...)
+GPU 1: NVIDIA H100 80GB HBM3 (UUID: GPU-...)
+</code></pre>
+<p>(Sketched.) <code>--pty</code> attaches your terminal to the task, so an interactive command (here a one-off <code>bash -c</code>, elsewhere a shell) behaves as if run locally. The job got physical GPUs 4 and 5 (<code>SLURM_JOB_GPUS</code>), but inside the cgroup it sees only two devices, numbered 0 and 1. Code should always use local indices (<code>LOCAL_RANK</code>), never hard-coded physical ones.</p>
+<h3 id="accounts-associations-qos-and-fair-share">Accounts, associations, QoS and fair share</h3>
+<p>These live in the accounting database run by <code>slurmdbd</code>; <strong><code>sacctmgr</code></strong> is the command that queries and edits it (users can read, admins can write).</p>
+<ul>
+<li>An <strong>account</strong> is a billing bucket in the accounting database, usually a team or project (<code>research</code>, <code>inference</code>). Accounts form a tree under <code>root</code>. You submit with <code>--account=research</code> (or get your default).</li>
+<li>An <strong>association</strong> is a (cluster, account, user, partition) tuple. Limits and fair-share shares are attached to associations. &quot;AssocGrpGRES&quot; in a pending reason means a limit on <em>your association</em> is hit.</li>
+<li>A <strong>QoS</strong> (quality of service) is a named policy you can attach to jobs: a priority boost, limits (<code>MaxTRESPerUser</code>, <code>MaxWall</code>, <code>GrpTRES</code>), and preemption relationships (&quot;<code>high</code> can preempt <code>low</code>&quot;). <code>--qos=high</code>. Typical sites have <code>normal</code>, <code>high</code> (limited), <code>low</code>/<code>preemptible</code> (cheap, can be killed).</li>
+<li><strong>Fair share</strong>: each account has a share (e.g. 25% of the cluster). Its recent usage, decayed with a half-life (default 7 days), is compared to its share; use more than your share and your jobs' priority drops. The formula and the multifactor priority are in <a href="../../orchestration/internals.html#priority-prioritymultifactor">internals</a>; a <a href="#gpu-hours-and-fair-share-calculator">calculator</a> is below.</li>
+</ul>
+<pre><code class="language-console">$ sacctmgr show assoc user=$USER format=Cluster,Account,User,Partition,Share,QOS%30,DefaultQOS,GrpTRES%20
+   Cluster    Account       User  Partition     Share                            QOS   Def QOS              GrpTRES
+---------- ---------- ---------- ---------- --------- ------------------------------ --------- --------------------
+      tiny   research      alice                    1                 high,low,normal    normal
+
+$ sacctmgr show qos format=Name,Priority,MaxWall,MaxTRESPU%20,GrpTRES%20,Preempt,PreemptMode
+      Name   Priority     MaxWall            MaxTRESPU              GrpTRES    Preempt PreemptMode
+---------- ---------- ----------- -------------------- -------------------- ---------- -----------
+    normal          0  2-00:00:00                                                 low     requeue
+      high       1000  1-00:00:00         gres/gpu=64                             low     requeue
+       low          0  7-00:00:00                                                         requeue
+
+$ sprio -l -j 4261
+          JOBID PARTITION     USER  ACCOUNT   PRIORITY       SITE        AGE  FAIRSHARE    JOBSIZE  PARTITION        QOS
+           4261 gpu            bob  ablate       4180          0        120       3930        130          0          0
+</code></pre>
+<p>(Sketched.) <code>sprio</code> shows the components of a pending job's priority; <code>sshare</code> (shown in <a href="../../orchestration/slurm/users.html#fairshare">users.md</a>) shows usage and fair-share factors.</p>
+<h2 id="looking-at-the-cluster-sinfo-squeue-sacct-scontrol">Looking at the cluster: sinfo, squeue, sacct, scontrol</h2>
+<p>Four commands answer almost every question. <code>sinfo</code> = the nodes, <code>squeue</code> = the queue now, <code>sacct</code> = history (from the database), <code>scontrol</code> = the controller's full record of anything.</p>
+<h3 id="sinfo-what-hardware-exists-and-what-state-its-in">sinfo: what hardware exists and what state it's in</h3>
+<pre><code class="language-console">$ sinfo -N -p gpu -o &quot;%N %t %C %G %m %f&quot; | head -5      # per node: state, CPUs A/I/O/T, GRES, mem, features
+NODELIST STATE CPUS(A/I/O/T) GRES MEMORY AVAIL_FEATURES
+gpu001 alloc 192/0/0/192 gpu:h100:8(S:0-1) 2000000 h100,ib
+gpu002 mix 96/96/0/192 gpu:h100:8(S:0-1) 2000000 h100,ib
+gpu007 drain 0/0/192/192 gpu:h100:8(S:0-1) 2000000 h100,ib
+gpu047 idle 0/192/0/192 gpu:h100:8(S:0-1) 2000000 h100,ib
+
+$ sinfo -R                                   # why nodes are down/drained
+REASON                                 USER      TIMESTAMP           NODELIST
+XID 79 GPU fell off the bus            root      2026-11-03T09:12:44 gpu007
+NHC: ib0 link down                     root      2026-11-04T22:01:03 gpu031
+
+$ sinfo -s                                   # summary: A/I/O/T = allocated/idle/other/total
+PARTITION AVAIL  TIMELIMIT   NODES(A/I/O/T) NODELIST
+debug        up    2:00:00          0/2/0/2 gpu[063-064]
+gpu*         up 2-00:00:00       44/14/2/60 gpu[001-060]
+cpu          up 7-00:00:00      16/0/0/16   cpu[01-16]
+</code></pre>
+<p>(Sketched.) <code>NHC:</code> reasons come from the node health check script (LBNL NHC, configured in the <a href="#slurmconf">admin section</a>), which drains a node automatically when a check fails. To see how many GPUs are actually free you need per-node GRES usage: <code>sinfo -N -O &quot;NodeList:10,StateCompact:8,Gres:22,GresUsed:30&quot;</code> (the <code>-O</code>/<code>--Format</code> field names are in <code>man sinfo</code>; <code>GresUsed</code> exists in recent versions).</p>
+<h3 id="squeue-what-is-queued-and-running">squeue: what is queued and running</h3>
+<pre><code class="language-console">$ squeue -p gpu
+  JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+   4261       gpu  big-run      bob PD       0:00     64 (Resources)
+   4260       gpu ablation      bob PD       0:00      4 (Priority)
+ 4251_[3-9]   gpu    sweep    alice PD       0:00      1 (QOSMaxGRESPerUser)
+   4250       gpu eval-ckp    alice PD       0:00      1 (Dependency)
+   4242       gpu pretrain    alice  R 1-02:11:09     16 gpu[001-016]
+ 4251_2       gpu    sweep    alice  R      12:01      1 gpu017
+</code></pre>
+<p>(Sketched.) Columns: <code>ST</code> is the state code (<code>PD</code> pending, <code>R</code> running, <code>CG</code> completing, <code>CF</code> configuring/booting nodes, <code>S</code> suspended; full list in <a href="../../orchestration/slurm/users.html#job-state-codes">job state codes</a>). For running jobs the last column is the node list; for pending jobs it is the <strong>reason</strong> in parentheses. <code>4251_[3-9]</code> is a job array with tasks 3-9 still pending.</p>
+<p>Useful variants:</p>
+<pre><code class="language-bash">squeue --me                                   # only my jobs (Slurm 20.11+)
+squeue --me --start                           # estimated start times for pending jobs (from backfill)
+squeue --me -o &quot;%.10i %.20j %.2t %.10M %.10l %.6D %b %R&quot;   # id, name, state, elapsed, limit, nodes, tres-per-node, reason
+squeue -h -o '%i|%u|%P|%j|%T|%M|%D|%b|%R'     # machine-readable, no header: feed to the parser below
+</code></pre>
+<p>The <code>--start</code> estimate is only as good as other users' <code>--time</code> values, since backfill plans with time limits, not real runtimes.</p>
+<h3 id="sacct-what-happened">sacct: what happened</h3>
+<p><code>squeue</code> forgets a job a few minutes after it ends (<code>MinJobAge</code>); <code>sacct</code> asks <code>slurmdbd</code> and remembers everything.</p>
+<pre><code class="language-console">$ sacct -X -S now-2days --format=JobID,JobName%15,State,ExitCode,Elapsed,AllocTRES%50,NodeList
+JobID                JobName      State ExitCode    Elapsed                                          AllocTRES        NodeList
+------------ --------------- ---------- -------- ---------- -------------------------------------------------- ---------------
+4100             pretrain-7b  COMPLETED      0:0   10:00:00 billing=1536,cpu=1536,gres/gpu=128,mem=16000G,node+    gpu[001-016]
+4101             pretrain-7b     FAILED      1:0   00:03:12 billing=1536,cpu=1536,gres/gpu=128,mem=16000G,node+    gpu[001-016]
+4102                ablation    TIMEOUT     0:15 2-00:00:00     billing=96,cpu=96,gres/gpu=8,mem=1000G,node=1          gpu033
+4104                 tok-eval OUT_OF_ME+    0:125   00:45:00     billing=12,cpu=12,gres/gpu=1,mem=120G,node=1          gpu040
+</code></pre>
+<p>(Sketched.) <code>-X</code> shows only the allocation line, not the steps. <code>ExitCode</code> is <code>code:signal</code>: <code>1:0</code> means the process exited with code 1 (a Python exception), <code>0:15</code> means it was killed by signal 15 (SIGTERM, here from the time limit). <code>0:125</code> on an <code>OUT_OF_MEMORY</code> job is not a real signal number: it is Slurm's internal OOM marker (253) squeezed into the 7-bit signal field. <code>%15</code> widens a column; <code>+</code> means truncated. For scripts, always use <code>-P</code> (<code>--parsable2</code>, <code>|</code>-separated, no truncation):</p>
+<pre><code class="language-bash">sacct -X -P -S now-7days -o JobID,User,State,Elapsed,AllocTRES,ExitCode
+</code></pre>
+<h3 id="scontrol-the-full-record-and-changing-things">scontrol: the full record, and changing things</h3>
+<pre><code class="language-console">$ scontrol show job 4242
+JobId=4242 JobName=pretrain-7b
+   UserId=alice(1001) GroupId=alice(1001) MCS_label=N/A
+   Priority=12150 Nice=0 Account=research QOS=normal
+   JobState=RUNNING Reason=None Dependency=(null)
+   Requeue=1 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+   RunTime=1-02:11:09 TimeLimit=2-00:00:00 TimeMin=N/A
+   SubmitTime=2026-11-04T08:01:12 EligibleTime=2026-11-04T08:01:12
+   StartTime=2026-11-04T08:03:40 EndTime=2026-11-06T08:03:40 Deadline=N/A
+   Partition=gpu AllocNode:Sid=login01:88123
+   NodeList=gpu[001-016] BatchHost=gpu001
+   NumNodes=16 NumCPUs=3072 NumTasks=128 CPUs/Task=24 ReqB:S:C:T=0:0:*:*
+   ReqTRES=cpu=3072,mem=32000000M,node=16,billing=3072,gres/gpu=128
+   AllocTRES=cpu=3072,mem=32000000M,node=16,billing=3072,gres/gpu=128
+   Command=/home/alice/run/pretrain.sbatch
+   WorkDir=/home/alice/run
+   StdOut=/home/alice/run/logs/pretrain-7b-4242.out
+   TresPerNode=gres/gpu:8
+</code></pre>
+<p>(Sketched.) Everything about the job is here: <code>BatchHost</code> (where the script runs), <code>Restarts</code> (how many times it was requeued), <code>EndTime</code> (when the time limit hits), <code>StdOut</code> (where the log is). Users can modify their own pending jobs, within limits:</p>
+<pre><code class="language-bash">scontrol hold 4260                     # keep it pending
+scontrol release 4260
+scontrol update job 4260 TimeLimit=6:00:00      # users can lower a limit; raising needs an admin
+scontrol update job 4260 Partition=debug
+scontrol show hostnames gpu[001-003,007]        # expand a node list: one host per line
+scancel 4260                           # cancel; scancel --me --state=PENDING cancels all my pending jobs
+</code></pre>
+<h2 id="interactive-work-salloc-and-srun">Interactive work: salloc and srun</h2>
+<h3 id="getting-an-allocation-with-salloc">Getting an allocation with salloc</h3>
+<p><code>salloc</code> requests an allocation and gives you a shell while it lasts. It is how you debug on real GPUs.</p>
+<pre><code class="language-console">login01$ salloc -p gpu --nodes=1 --gpus-per-node=8 --cpus-per-task=96 --time=2:00:00
+salloc: Pending job allocation 4270
+salloc: job 4270 queued and waiting for resources
+salloc: job 4270 has been allocated resources
+salloc: Granted job allocation 4270
+salloc: Waiting for resource configuration
+salloc: Nodes gpu047 are ready for job
+gpu047$ nvidia-smi -L | wc -l
+8
+gpu047$ exit
+salloc: Relinquishing job allocation 4270
+</code></pre>
+<p>(Sketched.) Where the shell runs depends on the site: with <code>LaunchParameters=use_interactive_step</code> (common on recent installs) you land on the first compute node, as above. Without it, the shell stays <strong>on the login node</strong> with <code>SLURM_JOB_ID</code> set, and you must use <code>srun</code> to run anything on the allocated node. Check with <code>hostname</code> before running anything heavy. Exiting the shell releases the allocation; to keep it alive across disconnects see <a href="../../orchestration/slurm/users.html#how-to-keep-an-salloc-allocation-alive-while-exiting-its-shell">keeping an salloc alive</a> and <a href="../../orchestration/slurm/users.html#how-to-rejoin-the-allocated-node-interactively">rejoining it</a>.</p>
+<h3 id="srun-launching-a-step">srun: launching a step</h3>
+<p>Inside any allocation (salloc shell or sbatch script), <code>srun</code> launches tasks across the allocated nodes:</p>
+<pre><code class="language-console">gpu047$ srun --ntasks=4 -l hostname        # -l / --label prefixes each line with the task number
+0: gpu047
+2: gpu047
+1: gpu047
+3: gpu047
+
+login01$ salloc -p gpu -N2 --ntasks-per-node=8 --gpus-per-node=8 -t 1:00:00
+gpu001$ srun -l bash -c 'echo rank=$SLURM_PROCID local=$SLURM_LOCALID node=$SLURM_NODEID host=$(hostname)' | sort -n | sed -n '1p;8,9p;16p'
+ 0: rank=0 local=0 node=0 host=gpu001
+ 7: rank=7 local=7 node=0 host=gpu001
+ 8: rank=8 local=0 node=1 host=gpu002
+15: rank=15 local=7 node=1 host=gpu002
+</code></pre>
+<p>(Sketched.) <code>sed -n '1p;8,9p;16p'</code> prints only lines 1, 8-9 and 16 (<code>;</code> separates sed commands), to keep the output short. Note the single quotes: <code>$SLURM_PROCID</code> must be expanded by each task's shell, not by your shell before <code>srun</code> runs. <code>srun</code> without an allocation gets one first, which is the fastest way to grab a GPU shell:</p>
+<pre><code class="language-bash">srun -p debug --gpus=1 --cpus-per-task=16 --time=30:00 --pty bash   # --pty: attach a terminal to task 0
+srun --jobid=4242 --overlap --pty bash                              # a shell inside your running job, to inspect it
+</code></pre>
+<p><code>--overlap</code> lets the new step share resources already used by the running training step, which otherwise would block the new step from starting.</p>
+<h2 id="batch-jobs-sbatch-and-its-directives">Batch jobs: sbatch and its directives</h2>
+<h3 id="a-first-batch-script">A first batch script</h3>
+<p>A batch script is a bash script whose leading <code>#SBATCH</code> comments are read by <code>sbatch</code> as command-line options (anything on the <code>sbatch</code> command line overrides them). They must come before the first non-comment line.</p>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=hello
+#SBATCH --partition=debug
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --gpus-per-node=1
+#SBATCH --time=00:10:00
+#SBATCH --output=logs/%x-%j.out
+
+set -euo pipefail
+echo &quot;job $SLURM_JOB_ID on $(hostname), GPUs: $CUDA_VISIBLE_DEVICES&quot;
+srun python -c 'import torch; print(torch.cuda.get_device_name(0))'
+</code></pre>
+<pre><code class="language-console">$ mkdir -p logs &amp;&amp; sbatch hello.sbatch
+Submitted batch job 4280
+$ sbatch --parsable hello.sbatch          # just the ID, for scripts: JOB=$(sbatch --parsable ...)
+4281
+$ cat logs/hello-4280.out
+job 4280 on gpu063, GPUs: 0
+NVIDIA H100 80GB HBM3
+</code></pre>
+<p>(Sketched.) The <code>logs/</code> directory must exist before the job starts: Slurm does not create it, and a job whose output file can't be opened fails immediately with no log at all.</p>
+<h3 id="the-directives-that-matter">The directives that matter</h3>
+<table>
+<thead>
+<tr>
+<th>Directive</th>
+<th>Meaning and advice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--job-name=NAME</code></td>
+<td>Shown in <code>squeue</code>; <code>%x</code> in file names. Name it after the experiment</td>
+</tr>
+<tr>
+<td><code>--partition=P</code></td>
+<td>Which partition (queue)</td>
+</tr>
+<tr>
+<td><code>--account=A</code></td>
+<td>Which account to bill; required on many clusters</td>
+</tr>
+<tr>
+<td><code>--qos=Q</code></td>
+<td>Which QoS (priority, limits, preemptibility)</td>
+</tr>
+<tr>
+<td><code>--nodes=N</code></td>
+<td>Number of nodes. <code>--nodes=2-4</code> allows a range</td>
+</tr>
+<tr>
+<td><code>--ntasks-per-node=K</code></td>
+<td>Tasks per node that <code>srun</code> launches. 8 for srun-launched ranks on 8-GPU nodes, 1 for <code>torchrun</code></td>
+</tr>
+<tr>
+<td><code>--ntasks=T</code></td>
+<td>Total tasks (alternative to per-node)</td>
+</tr>
+<tr>
+<td><code>--cpus-per-task=C</code></td>
+<td>Cores per task: dataloader workers and threads live here. Total cores / tasks per node</td>
+</tr>
+<tr>
+<td><code>--gpus-per-node=G</code> / <code>--gres=gpu:G</code></td>
+<td>GPUs per node. <code>--gres=gpu:h100:8</code> to require a type</td>
+</tr>
+<tr>
+<td><code>--gpus-per-task=1</code></td>
+<td>One GPU bound to each task. Can stop CUDA IPC/NVLink P2P (one process reading another process's GPU memory directly) between tasks if devices are cgrouped per task; most training scripts use <code>--gpus-per-node</code> and pick by <code>LOCAL_RANK</code></td>
+</tr>
+<tr>
+<td><code>--mem=M</code> / <code>--mem=0</code></td>
+<td>Memory per node; <code>0</code> = all of it. Default is often small (<code>DefMemPerCPU</code>), a common silent OOM cause</td>
+</tr>
+<tr>
+<td><code>--time=T</code></td>
+<td>Time limit: <code>MM</code>, <code>HH:MM:SS</code>, <code>D-HH:MM:SS</code>. Hard kill when reached. Shorter = backfills sooner</td>
+</tr>
+<tr>
+<td><code>--exclusive</code></td>
+<td>Whole nodes, nobody else on them, even if you didn't request all CPUs/GPUs</td>
+</tr>
+<tr>
+<td><code>--output=F</code> / <code>--error=F</code></td>
+<td>Log paths. <code>%j</code> job ID, <code>%x</code> job name, <code>%N</code> first node, <code>%A</code>/<code>%a</code> array job/task ID. If only <code>--output</code>, stderr goes there too</td>
+</tr>
+<tr>
+<td><code>--open-mode=append</code></td>
+<td>Append instead of truncating; required for requeued jobs or each restart erases the log</td>
+</tr>
+<tr>
+<td><code>--signal=[B:]SIG@SECS</code></td>
+<td>Send SIG this many seconds before the time limit (±60 s). <code>B:</code> = only the batch shell; without it, all step tasks</td>
+</tr>
+<tr>
+<td><code>--requeue</code> / <code>--no-requeue</code></td>
+<td>Whether the job may be requeued after node failure or preemption</td>
+</tr>
+<tr>
+<td><code>--dependency=TYPE:ID</code></td>
+<td>Start only after another job; see <a href="#dependencies-and-pipelines">below</a></td>
+</tr>
+<tr>
+<td><code>--array=0-99%8</code></td>
+<td>Job array: 100 tasks, at most 8 at once</td>
+</tr>
+<tr>
+<td><code>--constraint=FEAT</code></td>
+<td>Only nodes with this feature (<code>--constraint=h100&amp;ib</code>)</td>
+</tr>
+<tr>
+<td><code>--exclude=NODES</code> / <code>--nodelist=NODES</code></td>
+<td>Avoid / require specific nodes. <code>--exclude</code> is how you dodge a known-bad node</td>
+</tr>
+<tr>
+<td><code>--switches=1@2:00:00</code></td>
+<td>Topology: at most 1 leaf switch, wait up to 2 h for it (<a href="../../orchestration/internals.html#topology-topologytree">internals</a>)</td>
+</tr>
+<tr>
+<td><code>--hint=nomultithread</code></td>
+<td>Use physical cores only</td>
+</tr>
+<tr>
+<td><code>--export=ALL</code> / <code>NONE</code> / <code>VAR=val</code></td>
+<td>Which environment to pass in (default ALL); see <a href="../../orchestration/slurm/users.html#environment-variables">users.md</a></td>
+</tr>
+<tr>
+<td><code>--chdir=DIR</code></td>
+<td>Working directory (default: where you ran <code>sbatch</code>)</td>
+</tr>
+<tr>
+<td><code>--mail-type=END,FAIL --mail-user=me@x</code></td>
+<td>Email on events, if the site configured mail</td>
+</tr>
+<tr>
+<td><code>--begin=now+1hour</code></td>
+<td>Don't start before this time</td>
+</tr>
+<tr>
+<td><code>--reservation=R</code></td>
+<td>Run in an admin-created reservation</td>
+</tr>
+<tr>
+<td><code>--wait-all-nodes=1</code></td>
+<td>Don't start the script until every node has booted (clusters that power nodes up on demand)</td>
+</tr>
+</tbody>
+</table>
+<p>You can check what Slurm would do with a script without submitting it:</p>
+<pre><code class="language-console">$ sbatch --test-only train.sbatch
+sbatch: Job 4290 to start at 2026-11-05T19:40:00 using 384 processors on nodes gpu[047-048] in partition gpu
+</code></pre>
+<p>(Sketched; <code>--test-only</code> validates the request and returns a start estimate, it doesn't queue the job.)</p>
+<h3 id="a-complete-single-node-gpu-job">A complete single-node GPU job</h3>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=sft-1node
+#SBATCH --partition=gpu
+#SBATCH --account=research
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=8          # one task (= one rank) per GPU
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=24           # 192 CPUs / 8 tasks
+#SBATCH --mem=0                      # all node memory
+#SBATCH --exclusive
+#SBATCH --time=08:00:00
+#SBATCH --output=logs/%x-%j.out
+
+set -euo pipefail
+cd &quot;$SLURM_SUBMIT_DIR&quot;
+
+# reconstructibility: record what ran
+echo &quot;job=$SLURM_JOB_ID nodes=$SLURM_JOB_NODELIST sha=$(git rev-parse HEAD) dirty=$(git status --porcelain | wc -l)&quot;
+git diff &gt; &quot;logs/${SLURM_JOB_ID}.diff&quot;
+scontrol show job &quot;$SLURM_JOB_ID&quot; &gt; &quot;logs/${SLURM_JOB_ID}.job&quot;
+
+source .venv/bin/activate
+export MASTER_ADDR=$(hostname)
+export MASTER_PORT=$((10000 + SLURM_JOB_ID % 50000))
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK   # see performance.md: srun may not inherit it
+
+srun --kill-on-bad-exit=1 python -u train.py --config configs/sft.yaml
+</code></pre>
+<p>Untested. <code>train.py</code> is the script in the <a href="#multi-node-pytorch-training">multi-node section</a>; it reads <code>SLURM_PROCID</code>/<code>SLURM_LOCALID</code> itself. <code>git status --porcelain</code> prints one line per modified file, so <code>dirty=0</code> means a clean tree. <code>--kill-on-bad-exit=1</code> kills all ranks as soon as one exits non-zero (instead of leaving the rest hung in a collective), and <code>python -u</code> disables output buffering so log lines appear immediately.</p>
+<h2 id="job-arrays-and-dependencies">Job arrays and dependencies</h2>
+<h3 id="job-arrays-many-similar-jobs">Job arrays: many similar jobs</h3>
+<p>A <strong>job array</strong> is one submission that creates many jobs differing only in <code>SLURM_ARRAY_TASK_ID</code>. Use it for sweeps, evaluation over many checkpoints, or data preprocessing shards. It is much lighter on the controller than a for-loop of <code>sbatch</code> calls.</p>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=lr-sweep
+#SBATCH --partition=gpu
+#SBATCH --array=0-11%4               # 12 tasks, at most 4 running at once
+#SBATCH --gpus-per-node=1
+#SBATCH --cpus-per-task=12
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/%x-%A_%a.out   # %A = array job id, %a = task index
+
+set -euo pipefail
+LRS=(1e-4 2e-4 3e-4 6e-4)            # bash array: (a b c); ${LRS[i]} is element i, 0-based
+SEEDS=(0 1 2)
+LR=${LRS[$((SLURM_ARRAY_TASK_ID % 4))]}
+SEED=${SEEDS[$((SLURM_ARRAY_TASK_ID / 4))]}
+echo &quot;task $SLURM_ARRAY_TASK_ID of $SLURM_ARRAY_TASK_COUNT: lr=$LR seed=$SEED&quot;
+srun python -u train_small.py --lr &quot;$LR&quot; --seed &quot;$SEED&quot; --out &quot;runs/lr${LR}_s${SEED}&quot;
+</code></pre>
+<pre><code class="language-console">$ sbatch lr-sweep.sbatch
+Submitted batch job 4300
+$ squeue --me -n lr-sweep
+     JOBID PARTITION     NAME  USER ST   TIME  NODES NODELIST(REASON)
+4300_[4-11]      gpu lr-sweep alice PD   0:00      1 (JobArrayTaskLimit)
+    4300_0       gpu lr-sweep alice  R   1:03      1 gpu050
+    4300_1       gpu lr-sweep alice  R   1:03      1 gpu050
+    4300_2       gpu lr-sweep alice  R   1:03      1 gpu051
+    4300_3       gpu lr-sweep alice  R   1:03      1 gpu051
+$ scontrol update job 4300 ArrayTaskThrottle=8      # change the %4 limit while it runs
+$ scancel 4300_7                                    # cancel one task
+</code></pre>
+<p>(Sketched; untested.) Each task is a separate job with its own ID in <code>sacct</code> (<code>4300_0</code>, ...). The maximum array index is <code>MaxArraySize</code> (default 1001, so indices 0-1000). Job arrays can also chain a long training run through repeated time slots with <code>%1</code>; see <a href="../../orchestration/slurm/users.html#job-arrays">job arrays</a> and <a href="../../orchestration/slurm/users.html#job-array-trains-and-their-suspend-and-release">job array trains</a>.</p>
+<h3 id="dependencies-and-pipelines">Dependencies and pipelines</h3>
+<p><code>--dependency</code> holds a job until a condition on other jobs is met:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Start when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>after:ID</code></td>
+<td>ID has started</td>
+</tr>
+<tr>
+<td><code>afterok:ID</code></td>
+<td>ID completed with exit code 0</td>
+</tr>
+<tr>
+<td><code>afternotok:ID</code></td>
+<td>ID failed (non-zero, timeout, node fail)</td>
+</tr>
+<tr>
+<td><code>afterany:ID</code></td>
+<td>ID ended, any way</td>
+</tr>
+<tr>
+<td><code>aftercorr:ID</code></td>
+<td>the same-index task of array ID succeeded</td>
+</tr>
+<tr>
+<td><code>singleton</code></td>
+<td>no other job with the same name and user is running</td>
+</tr>
+</tbody>
+</table>
+<p>A preprocess → train → eval pipeline, submitted all at once:</p>
+<pre><code class="language-bash">#!/bin/bash
+# submit_pipeline.sh -- run on the login node
+set -euo pipefail
+PRE=$(sbatch --parsable preprocess.sbatch)
+TRAIN=$(sbatch --parsable --dependency=afterok:$PRE train.sbatch)
+EVAL=$(sbatch --parsable --dependency=afterok:$TRAIN --kill-on-invalid-dep=yes eval.sbatch)
+NOTIFY=$(sbatch --parsable --dependency=afternotok:$TRAIN notify_failure.sbatch)
+echo &quot;preprocess=$PRE train=$TRAIN eval=$EVAL notify=$NOTIFY&quot;
+</code></pre>
+<p>If <code>train</code> fails, <code>eval</code>'s dependency can never be satisfied; it shows <code>(DependencyNeverSatisfied)</code> and sits in the queue forever unless <code>--kill-on-invalid-dep=yes</code> (or the site's <code>kill_invalid_depend</code> setting) cancels it. <code>--dependency=singleton</code> with a fixed job name is an easy way to make sure only one copy of a long training run is ever active, even if you submit several in advance.</p>
+<h2 id="environment-variables-and-torchdistributed-ranks">Environment variables and torch.distributed ranks</h2>
+<h3 id="what-slurm-sets">What Slurm sets</h3>
+<p>Slurm sets dozens of <code>SLURM_*</code> variables. Some are per job (the same in the batch script and in every task) and some are <strong>per task, set only by <code>srun</code></strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Scope</th>
+<th>Example</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SLURM_JOB_ID</code></td>
+<td>job</td>
+<td><code>4242</code></td>
+<td>Job ID</td>
+</tr>
+<tr>
+<td><code>SLURM_JOB_NAME</code></td>
+<td>job</td>
+<td><code>pretrain-7b</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SLURM_JOB_NODELIST</code></td>
+<td>job</td>
+<td><code>gpu[001-016]</code></td>
+<td>Compressed node list; expand with <code>scontrol show hostnames</code></td>
+</tr>
+<tr>
+<td><code>SLURM_NNODES</code> / <code>SLURM_JOB_NUM_NODES</code></td>
+<td>job</td>
+<td><code>16</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>SLURM_NTASKS</code></td>
+<td>job</td>
+<td><code>128</code></td>
+<td>Total tasks (if tasks were requested)</td>
+</tr>
+<tr>
+<td><code>SLURM_NTASKS_PER_NODE</code></td>
+<td>job</td>
+<td><code>8</code></td>
+<td>Only if <code>--ntasks-per-node</code> was given</td>
+</tr>
+<tr>
+<td><code>SLURM_TASKS_PER_NODE</code></td>
+<td>job</td>
+<td><code>8(x16)</code></td>
+<td>Compressed per-node task counts</td>
+</tr>
+<tr>
+<td><code>SLURM_CPUS_PER_TASK</code></td>
+<td>job</td>
+<td><code>24</code></td>
+<td>Only if <code>--cpus-per-task</code> was given</td>
+</tr>
+<tr>
+<td><code>SLURM_GPUS_ON_NODE</code></td>
+<td>node</td>
+<td><code>8</code></td>
+<td>GPUs allocated on this node</td>
+</tr>
+<tr>
+<td><code>SLURM_SUBMIT_DIR</code></td>
+<td>job</td>
+<td><code>/home/alice/run</code></td>
+<td>Where <code>sbatch</code> was run</td>
+</tr>
+<tr>
+<td><code>SLURM_ARRAY_JOB_ID</code> / <code>SLURM_ARRAY_TASK_ID</code></td>
+<td>job</td>
+<td><code>4300</code> / <code>7</code></td>
+<td>Arrays only</td>
+</tr>
+<tr>
+<td><code>SLURM_RESTART_COUNT</code></td>
+<td>job</td>
+<td><code>2</code></td>
+<td>Times this job was requeued (absent or 0 on first run)</td>
+</tr>
+<tr>
+<td><code>SLURM_PROCID</code></td>
+<td><strong>task</strong></td>
+<td><code>0..127</code></td>
+<td>Global task index</td>
+</tr>
+<tr>
+<td><code>SLURM_LOCALID</code></td>
+<td><strong>task</strong></td>
+<td><code>0..7</code></td>
+<td>Task index on this node</td>
+</tr>
+<tr>
+<td><code>SLURM_NODEID</code></td>
+<td><strong>task</strong></td>
+<td><code>0..15</code></td>
+<td>Index of this node within the step</td>
+</tr>
+<tr>
+<td><code>SLURM_STEP_ID</code></td>
+<td>task</td>
+<td><code>0</code></td>
+<td>Step number</td>
+</tr>
+<tr>
+<td><code>CUDA_VISIBLE_DEVICES</code></td>
+<td>task</td>
+<td><code>0,1,...,7</code></td>
+<td>GPUs this task may use</td>
+</tr>
+</tbody>
+</table>
+<p>To see them for yourself:</p>
+<pre><code class="language-bash">srun -N2 --ntasks-per-node=2 bash -c 'env | grep -E &quot;^SLURM_(PROCID|LOCALID|NODEID|NTASKS)=&quot; | sort | tr &quot;\n&quot; &quot; &quot;; echo'
+</code></pre>
+<h3 id="mapping-to-torchdistributed">Mapping to torch.distributed</h3>
+<p><code>torch.distributed.init_process_group(init_method=&quot;env://&quot;)</code> (the default) needs four variables: <code>MASTER_ADDR</code>, <code>MASTER_PORT</code>, <code>RANK</code>, <code>WORLD_SIZE</code>, plus <code>LOCAL_RANK</code> by convention for picking the GPU. There are two ways to get them:</p>
+<table>
+<thead>
+<tr>
+<th>torch name</th>
+<th>srun-launched ranks (1 task per GPU)</th>
+<th>torchrun (1 task per node)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RANK</code></td>
+<td><code>SLURM_PROCID</code></td>
+<td>set by torchrun: <code>node_rank * nproc_per_node + local_rank</code></td>
+</tr>
+<tr>
+<td><code>LOCAL_RANK</code></td>
+<td><code>SLURM_LOCALID</code></td>
+<td>set by torchrun</td>
+</tr>
+<tr>
+<td><code>WORLD_SIZE</code></td>
+<td><code>SLURM_NTASKS</code></td>
+<td>set by torchrun: <code>nnodes * nproc_per_node</code></td>
+</tr>
+<tr>
+<td><code>LOCAL_WORLD_SIZE</code></td>
+<td><code>SLURM_NTASKS_PER_NODE</code></td>
+<td>set by torchrun</td>
+</tr>
+<tr>
+<td>node rank</td>
+<td><code>SLURM_NODEID</code></td>
+<td><code>--node_rank $SLURM_NODEID</code>, or assigned by c10d rendezvous (<a href="../../orchestration/internals.html#c10d-rendezvous">may differ</a>)</td>
+</tr>
+<tr>
+<td><code>MASTER_ADDR</code></td>
+<td>first host of <code>SLURM_JOB_NODELIST</code>, exported in sbatch</td>
+<td><code>--rdzv_endpoint</code> host</td>
+</tr>
+<tr>
+<td><code>MASTER_PORT</code></td>
+<td>any free port, same on all nodes</td>
+<td>rendezvous port</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># in the sbatch script, before srun: same value for every task
+export MASTER_ADDR=$(scontrol show hostnames &quot;$SLURM_JOB_NODELIST&quot; | head -n 1)
+export MASTER_PORT=$((10000 + SLURM_JOB_ID % 50000))   # job-specific, avoids clashes with other jobs on node 0
+</code></pre>
+<p>Which to use? <strong>srun-launched ranks</strong> keep Slurm in charge of every process: it accounts for them, signals them, kills them, and labels their output. <strong>torchrun</strong> adds its own agent per node that can restart workers in place and does a rendezvous; it is what most framework docs assume. Both work well. The one hard rule: with srun-launched ranks, <code>--ntasks-per-node</code> = GPUs per node; with torchrun, <code>--ntasks-per-node=1</code>, or you get 8 torchruns per node each spawning 8 workers.</p>
+<p>Under the hood the mapping is just this, which is the <code>dist_env</code> function in the training script below:</p>
+<pre><code class="language-python">import os
+if &quot;RANK&quot; not in os.environ:                          # not under torchrun -&gt; srun-launched
+    os.environ[&quot;RANK&quot;] = os.environ[&quot;SLURM_PROCID&quot;]
+    os.environ[&quot;LOCAL_RANK&quot;] = os.environ[&quot;SLURM_LOCALID&quot;]
+    os.environ[&quot;WORLD_SIZE&quot;] = os.environ[&quot;SLURM_NTASKS&quot;]
+</code></pre>
+<h2 id="multi-node-pytorch-training">Multi-node PyTorch training</h2>
+<h3 id="the-training-script">The training script</h3>
+<p>This one script runs under srun-launched ranks or under torchrun, logs per rank, checkpoints atomically, resumes, and stops cleanly on <code>SIGUSR1</code>/<code>SIGTERM</code> (used in the <a href="#preemption-requeue-and-checkpointing">preemption section</a>). The model is a toy so that the Slurm parts stay visible.</p>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;Minimal multi-node DDP training script for Slurm: works under torchrun or as srun-launched ranks,
+logs per rank, checkpoints atomically, resumes, and exits cleanly on SIGUSR1/SIGTERM.
+
+Exit codes: 0 = finished, 99 = stopped early after checkpointing (batch script should requeue).
+&quot;&quot;&quot;
+import logging
+import os
+import signal
+import sys
+import time
+
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+
+TOTAL_STEPS = int(os.environ.get(&quot;TOTAL_STEPS&quot;, 200))
+CKPT_EVERY = int(os.environ.get(&quot;CKPT_EVERY&quot;, 50))
+CKPT_DIR = os.environ.get(&quot;CKPT_DIR&quot;, &quot;checkpoints&quot;)
+LOG_DIR = os.environ.get(&quot;LOG_DIR&quot;, &quot;logs&quot;)
+STEP_SLEEP = float(os.environ.get(&quot;STEP_SLEEP&quot;, 0))  # demo only: make steps slow enough to signal
+REQUEUE_EXIT = 99
+
+
+def dist_env():
+    &quot;&quot;&quot;Map whichever launcher we're under onto the env:// variables torch.distributed expects.&quot;&quot;&quot;
+    if &quot;RANK&quot; in os.environ:                      # torchrun already set RANK/LOCAL_RANK/WORLD_SIZE
+        return int(os.environ[&quot;RANK&quot;]), int(os.environ[&quot;LOCAL_RANK&quot;]), int(os.environ[&quot;WORLD_SIZE&quot;])
+    rank = int(os.environ[&quot;SLURM_PROCID&quot;])        # srun: one task per GPU
+    local_rank = int(os.environ[&quot;SLURM_LOCALID&quot;])
+    world_size = int(os.environ[&quot;SLURM_NTASKS&quot;])
+    os.environ.update(RANK=str(rank), LOCAL_RANK=str(local_rank), WORLD_SIZE=str(world_size))
+    # MASTER_ADDR / MASTER_PORT must be exported by the sbatch script (same value on every node)
+    return rank, local_rank, world_size
+
+
+def setup_logging(rank):
+    os.makedirs(LOG_DIR, exist_ok=True)
+    job = os.environ.get(&quot;SLURM_JOB_ID&quot;, &quot;local&quot;)
+    handlers = [logging.FileHandler(f&quot;{LOG_DIR}/{job}-rank{rank:04d}.log&quot;)]
+    if rank == 0:
+        handlers.append(logging.StreamHandler(sys.stdout))
+    host = os.uname().nodename.split(&quot;.&quot;)[0]
+    logging.basicConfig(level=logging.INFO, handlers=handlers,
+                        format=f&quot;%(asctime)s {host} r{rank} %(message)s&quot;)
+    return logging.getLogger()
+
+
+STOP = {&quot;sig&quot;: None}
+
+
+def on_signal(signum, frame):
+    STOP[&quot;sig&quot;] = signum  # only set a flag; never checkpoint inside a signal handler
+
+
+def save_ckpt(step, model, opt, log):
+    os.makedirs(CKPT_DIR, exist_ok=True)
+    tmp, final = f&quot;{CKPT_DIR}/last.pt.tmp&quot;, f&quot;{CKPT_DIR}/last.pt&quot;
+    torch.save({&quot;step&quot;: step, &quot;model&quot;: model.state_dict(), &quot;opt&quot;: opt.state_dict(),
+                &quot;rng&quot;: torch.get_rng_state()}, tmp)
+    os.replace(tmp, final)  # atomic on POSIX: a crash mid-save never leaves a half-written last.pt
+    log.info(f&quot;saved checkpoint at step {step}&quot;)
+
+
+def main():
+    rank, local_rank, world_size = dist_env()
+    log = setup_logging(rank)
+    signal.signal(signal.SIGUSR1, on_signal)
+    signal.signal(signal.SIGTERM, on_signal)
+
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device, backend = torch.device(&quot;cuda&quot;, local_rank), &quot;nccl&quot;
+    else:
+        device, backend = torch.device(&quot;cpu&quot;), &quot;gloo&quot;
+    dist.init_process_group(backend)  # reads MASTER_ADDR, MASTER_PORT, RANK, WORLD_SIZE
+    log.info(f&quot;world_size={world_size} local_rank={local_rank} device={device} &quot;
+             f&quot;restart={os.environ.get('SLURM_RESTART_COUNT', 0)}&quot;)
+
+    torch.manual_seed(0)  # same init on every rank; DDP also broadcasts rank 0's weights
+    model = nn.Sequential(nn.Linear(32, 64), nn.ReLU(), nn.Linear(64, 1)).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-2)
+    start = 0
+    if os.path.exists(f&quot;{CKPT_DIR}/last.pt&quot;):
+        ck = torch.load(f&quot;{CKPT_DIR}/last.pt&quot;, map_location=device)
+        model.load_state_dict(ck[&quot;model&quot;]); opt.load_state_dict(ck[&quot;opt&quot;]); start = ck[&quot;step&quot;]
+        log.info(f&quot;resumed from step {start}&quot;)
+    ddp = nn.parallel.DistributedDataParallel(model, device_ids=[local_rank] if device.type == &quot;cuda&quot; else None)
+
+    g = torch.Generator().manual_seed(1000 + rank)  # each rank draws a different data shard
+    w_true = torch.ones(32, 1)
+    step = start
+    for step in range(start + 1, TOTAL_STEPS + 1):
+        x = torch.randn(64, 32, generator=g)                  # (B, D) per rank
+        y = x @ w_true + 0.01 * torch.randn(64, 1, generator=g)  # (B, 1)
+        loss = nn.functional.mse_loss(ddp(x.to(device)), y.to(device))
+        opt.zero_grad(set_to_none=True)
+        loss.backward()                                       # all-reduce of grads happens here
+        opt.step()
+        time.sleep(STEP_SLEEP)
+
+        # Signals may reach only some ranks (or arrive at different steps). Agree collectively,
+        # so every rank stops after the SAME step; otherwise the others hang in the next all-reduce.
+        stop = torch.tensor([1.0 if STOP[&quot;sig&quot;] else 0.0], device=device)
+        dist.all_reduce(stop, op=dist.ReduceOp.MAX)
+        if step % 20 == 0:
+            log.info(f&quot;step {step} loss {loss.item():.4f}&quot;)
+        if step % CKPT_EVERY == 0 or stop.item() or step == TOTAL_STEPS:
+            if rank == 0:
+                save_ckpt(step, model, opt, log)
+            dist.barrier()  # nobody exits before the checkpoint is on disk
+        if stop.item():
+            log.info(f&quot;stop requested (local signal: {STOP['sig']}), exiting after step {step}&quot;)
+            dist.destroy_process_group()
+            sys.exit(REQUEUE_EXIT)
+    log.info(f&quot;done at step {step}&quot;)
+    dist.destroy_process_group()
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<p>Design notes, each a real failure mode:</p>
+<ul>
+<li><strong>The signal handler only sets a flag.</strong> Python runs handlers between bytecodes on the main thread; doing I/O or collectives inside one can deadlock. The loop checks the flag at a step boundary.</li>
+<li><strong>The stop decision is all-reduced.</strong> Slurm may deliver the signal to some ranks before others, or the signal may arrive during different steps on different ranks. If rank 2 stops and the rest call the next all-reduce, they hang until the NCCL timeout. One scalar <code>MAX</code> all-reduce per step costs microseconds compared to a gradient all-reduce. (For very short steps, check every N steps instead.)</li>
+<li><strong>Checkpoint is written to a temp file and renamed.</strong> <code>os.replace</code> is atomic on a POSIX filesystem, so a kill during the save never corrupts <code>last.pt</code>. Real runs with sharded state use <code>torch.distributed.checkpoint</code>; see <a href="../../training/checkpoints/README.html">checkpoints</a>.</li>
+<li><strong>Per-rank log files</strong> (<code>logs/&lt;job&gt;-rank0042.log</code>) plus rank 0 on stdout. When one rank out of 512 misbehaves, you want its own file, not 512 interleaved streams.</li>
+</ul>
+<h3 id="testing-the-slurm-path-without-slurm">Testing the Slurm path without Slurm</h3>
+<p>You can test everything except the actual multi-node network on a laptop by emulating what <code>srun</code> gives each task. This little emulator sets the per-task variables and forwards signals, like <code>srun</code> does:</p>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;Emulate what `srun` gives each task, on one machine, to test Slurm-launched code without Slurm.
+usage: fake_srun.py NNODES NTASKS_PER_NODE cmd...   (prints each task's pid; exit code = max task code)&quot;&quot;&quot;
+import os
+import signal
+import subprocess
+import sys
+
+nnodes, per_node, cmd = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3:]
+ntasks = nnodes * per_node
+procs = []
+for node in range(nnodes):
+    for local in range(per_node):
+        env = dict(os.environ,
+                   SLURM_JOB_ID=os.environ.get(&quot;SLURM_JOB_ID&quot;, &quot;777&quot;),
+                   SLURM_NNODES=str(nnodes), SLURM_NTASKS=str(ntasks),
+                   SLURM_NODEID=str(node), SLURM_LOCALID=str(local),
+                   SLURM_PROCID=str(node * per_node + local),  # block distribution: fill node 0 first
+                   MASTER_ADDR=&quot;127.0.0.1&quot;, MASTER_PORT=os.environ.get(&quot;MASTER_PORT&quot;, &quot;29512&quot;))
+        procs.append(subprocess.Popen(cmd, env=env))
+        print(f&quot;task {node * per_node + local} pid {procs[-1].pid}&quot;, flush=True)
+
+# like srun: forward signals we receive to every task
+for s in (signal.SIGUSR1, signal.SIGTERM):
+    signal.signal(s, lambda signum, frame: [p.send_signal(signum) for p in procs])
+sys.exit(max(p.wait() for p in procs))
+</code></pre>
+<p>The test: run 2 &quot;nodes&quot; x 2 tasks, send <code>SIGUSR1</code> to <strong>only task 2</strong> partway through (the worst case: one rank hears the signal, the others don't), then relaunch and check it resumes.</p>
+<pre><code class="language-bash">export STEP_SLEEP=0.05 TOTAL_STEPS=200 PY=python3
+$PY fake_srun.py 2 2 $PY train.py &gt; run1.out 2&gt;&amp;1 &amp; SR=$!
+sleep 6; PID=$(grep &quot;task 2 pid&quot; run1.out | awk '{print $4}'); kill -USR1 $PID; wait $SR; echo &quot;exit=$?&quot;
+grep -v pid run1.out; tail -1 logs/777-rank0002.log
+echo &quot;=== resume&quot;; $PY fake_srun.py 2 2 $PY train.py 2&gt;&amp;1 | grep -v pid; echo &quot;exit=${PIPESTATUS[0]}&quot;
+</code></pre>
+<p>Real output (macOS, PyTorch 2.15 CPU, gloo backend):</p>
+<pre><code>exit=99
+2026-11-05 16:23:07,854 my-laptop r0 world_size=4 local_rank=0 device=cpu restart=0
+2026-11-05 16:23:09,934 my-laptop r0 step 20 loss 0.6728
+2026-11-05 16:23:11,124 my-laptop r0 step 40 loss 0.8285
+2026-11-05 16:23:11,717 my-laptop r0 saved checkpoint at step 50
+2026-11-05 16:23:12,332 my-laptop r0 step 60 loss 0.1001
+2026-11-05 16:23:12,760 my-laptop r0 saved checkpoint at step 67
+2026-11-05 16:23:12,761 my-laptop r0 stop requested (local signal: None), exiting after step 67
+2026-11-05 16:23:12,761 my-laptop r2 stop requested (local signal: 30), exiting after step 67
+=== resume
+2026-11-05 16:23:15,457 my-laptop r0 world_size=4 local_rank=0 device=cpu restart=0
+2026-11-05 16:23:17,263 my-laptop r0 resumed from step 67
+2026-11-05 16:23:18,073 my-laptop r0 step 80 loss 0.0468
+...
+2026-11-05 16:23:25,199 my-laptop r0 step 200 loss 0.0126
+2026-11-05 16:23:25,206 my-laptop r0 saved checkpoint at step 200
+2026-11-05 16:23:25,206 my-laptop r0 done at step 200
+exit=0
+</code></pre>
+<p>Rank 0 never received a signal (<code>local signal: None</code>) but stopped after the same step as rank 2 (which got signal 30, <code>SIGUSR1</code> on macOS; it is 10 on Linux), the checkpoint landed at step 67, the exit code was 99, and the relaunch resumed at step 67. One run, one machine: this verifies the control flow, not NCCL or a real filesystem. The torchrun branch of <code>dist_env</code> was <strong>not</strong> exercised here: <code>torchrun</code>'s c10d rendezvous hung on this Mac on a hostname lookup, so treat that path as untested.</p>
+<h3 id="launch-with-srun-launched-ranks">Launch with srun-launched ranks</h3>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=ddp-srun
+#SBATCH --partition=gpu
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=8          # = GPUs per node: each task is one rank
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=24           # 192 / 8
+#SBATCH --mem=0
+#SBATCH --exclusive
+#SBATCH --time=12:00:00
+#SBATCH --output=logs/%x-%j.out
+
+set -euo pipefail
+cd &quot;$SLURM_SUBMIT_DIR&quot;
+source .venv/bin/activate
+
+export MASTER_ADDR=$(scontrol show hostnames &quot;$SLURM_JOB_NODELIST&quot; | head -n 1)
+export MASTER_PORT=$((10000 + SLURM_JOB_ID % 50000))
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
+export PYTHONUNBUFFERED=1
+export LOG_DIR=logs/$SLURM_JOB_ID CKPT_DIR=/shared/ckpt/$SLURM_JOB_NAME
+
+# --- NCCL / torch.distributed (see &quot;NCCL settings&quot; below) ---
+export NCCL_DEBUG=WARN
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+
+echo &quot;nodes=$SLURM_JOB_NODELIST master=$MASTER_ADDR:$MASTER_PORT world=$SLURM_NTASKS&quot;
+# --kill-on-bad-exit=1: if any rank dies, kill the rest now instead of letting them hang in a collective
+# -l: prefix each output line with its task number
+srun --kill-on-bad-exit=1 --wait=60 -l python -u train.py
+</code></pre>
+<p>Untested. The <code>python</code> here runs once per task (32 times), and <code>train.py</code> reads <code>SLURM_PROCID</code> and friends at runtime, so there is no <a href="../../orchestration/slurm/users.html#slurm_procid-early-interpolation">early-interpolation</a> problem. The book's <a href="launchers/srun-launcher.slurm">srun launcher</a> does the same by setting <code>RANK=\$SLURM_PROCID</code> inside <code>bash -c</code>.</p>
+<h3 id="launch-with-torchrun">Launch with torchrun</h3>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=ddp-torchrun
+#SBATCH --partition=gpu
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=1          # ONE torchrun per node; it spawns the 8 workers
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=192          # all cores go to the single task, torchrun's workers share them
+#SBATCH --mem=0
+#SBATCH --exclusive
+#SBATCH --time=12:00:00
+#SBATCH --output=logs/%x-%j.out
+
+set -euo pipefail
+cd &quot;$SLURM_SUBMIT_DIR&quot;
+source .venv/bin/activate
+
+export MASTER_ADDR=$(scontrol show hostnames &quot;$SLURM_JOB_NODELIST&quot; | head -n 1)
+export MASTER_PORT=$((10000 + SLURM_JOB_ID % 50000))
+export OMP_NUM_THREADS=$((SLURM_CPUS_PER_TASK / 8))
+export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
+export LOG_DIR=logs/$SLURM_JOB_ID CKPT_DIR=/shared/ckpt/$SLURM_JOB_NAME
+export NCCL_DEBUG=WARN
+
+# single quotes: nothing here is expanded until each node's task runs it
+srun --kill-on-bad-exit=1 bash -c 'torchrun \
+    --nnodes &quot;$SLURM_NNODES&quot; \
+    --nproc_per_node 8 \
+    --rdzv_id &quot;$SLURM_JOB_ID&quot; \
+    --rdzv_backend c10d \
+    --rdzv_endpoint &quot;$MASTER_ADDR:$MASTER_PORT&quot; \
+    --max_restarts 0 \
+    --tee 3 \
+    train.py'
+</code></pre>
+<p>Untested. <code>--tee 3</code> makes torchrun copy each worker's stdout and stderr (3 = both) into the agent's output. <code>--max_restarts 0</code> leaves restarting to Slurm (requeue), which also moves you off a bad node; see <a href="../../orchestration/internals.html#what-happens-on-a-worker-failure">what happens on a worker failure</a> for when in-place restarts help. The book's <a href="launchers/torchrun-launcher.slurm">torchrun launcher</a> is the same pattern with more comments. Note that <code>SIGUSR1</code> from <code>--signal</code> reaches the torchrun agent, not your workers, and the agent's default response is to die; to forward it, use the <code>trap</code> recipe in <a href="../../training/fault-tolerance/README.html#approach-b2-choosing-which-process-to-send-the-signal-to">Fault Tolerance</a>. This is one reason this chapter's preemption example uses srun-launched ranks.</p>
+<h3 id="nccl-settings-and-per-rank-logging">NCCL settings and per-rank logging</h3>
+<p>NCCL is the library that does the GPU collectives; most multi-node problems surface as NCCL problems. A sensible block for the sbatch script, with what each does:</p>
+<pre><code class="language-bash"># Logging. WARN in production; INFO for a first run on a new cluster (prints the chosen transports, rings, NICs).
+export NCCL_DEBUG=WARN
+# export NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,NET
+export NCCL_DEBUG_FILE=logs/$SLURM_JOB_ID/nccl-%h-%p.log   # %h host, %p pid: one file per process
+
+# Which interface NCCL uses for its TCP bootstrap (and for sockets if there's no IB). Exclude loopback/docker.
+export NCCL_SOCKET_IFNAME=^lo,docker0
+# Which InfiniBand HCAs to use; usually auto-detected correctly. Set only if NCCL picks the wrong ones.
+# export NCCL_IB_HCA=mlx5
+
+# PyTorch side: fail instead of hanging forever when a collective times out.
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+# Extra consistency checks on collectives (slow; debugging only).
+# export TORCH_DISTRIBUTED_DEBUG=DETAIL
+</code></pre>
+<p>Don't copy NCCL tuning variables (<code>NCCL_ALGO</code>, <code>NCCL_PROTO</code>, buffer sizes) from other clusters; the defaults are tuned per topology and wrong overrides cost bandwidth. Verify the fabric with a bus-bandwidth test first (<a href="../../debug/nccl-performance-debug.html">nccl-tests and debugging</a>, <a href="../../network/benchmarks/README.html">network benchmarks</a>). Variable names have changed over PyTorch versions (<code>NCCL_ASYNC_ERROR_HANDLING</code> became <code>TORCH_NCCL_ASYNC_ERROR_HANDLING</code>), so check against your version's docs.</p>
+<p>Three levels of per-rank output, from coarse to fine:</p>
+<pre><code class="language-bash">srun -l python -u train.py                                  # one file, every line prefixed &quot;17: &quot;
+srun --output=logs/%x-%j-%t.out python -u train.py          # one file per task (%t = task id), from Slurm
+# plus the per-rank logging.FileHandler inside train.py, which survives whatever srun does with stdout
+grep -l Traceback logs/4242/*rank*.log | head               # -l: list only the files that match. Which ranks crashed?
+</code></pre>
+<h2 id="preemption-requeue-and-checkpointing">Preemption, requeue and checkpointing</h2>
+<h3 id="how-jobs-get-stopped">How jobs get stopped</h3>
+<p>A running job can be stopped by Slurm for three reasons, and each gives you a different warning:</p>
+<table>
+<thead>
+<tr>
+<th>Cause</th>
+<th>What Slurm sends</th>
+<th>Warning time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time limit</td>
+<td><code>SIGTERM</code> to all tasks, then <code>SIGKILL</code> after <code>KillWait</code></td>
+<td><code>KillWait</code> (default 30 s): too short to checkpoint a large model</td>
+</tr>
+<tr>
+<td>Your <code>--signal=USR1@600</code></td>
+<td><code>SIGUSR1</code> 600 s (±60) before the time limit</td>
+<td>As much as you asked for</td>
+</tr>
+<tr>
+<td>Preemption (<code>PreemptMode=REQUEUE</code> or <code>CANCEL</code>)</td>
+<td><code>SIGCONT</code>+<code>SIGTERM</code>, then <code>SIGKILL</code> after the QoS/partition <code>GraceTime</code></td>
+<td><code>GraceTime</code>, set by the admin; ask what it is</td>
+</tr>
+<tr>
+<td>Node failure</td>
+<td>Nothing: the node is gone</td>
+<td>None. Only periodic checkpoints help</td>
+</tr>
+</tbody>
+</table>
+<p>So a preemption-safe job needs: periodic checkpoints (for node failures), a handler that checkpoints on <code>SIGTERM</code> within <code>GraceTime</code> (for preemption), and a <code>--signal</code> that fires early enough to checkpoint before the time limit. The script above handles both signals. How often to checkpoint periodically is the Young/Daly calculation in <a href="../../orchestration/internals.html#optimal-checkpoint-interval-youngdaly">internals</a>.</p>
+<h3 id="the-self-requeuing-batch-script">The self-requeuing batch script</h3>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=pretrain-preemptible
+#SBATCH --partition=gpu
+#SBATCH --qos=low                    # cheap, preemptible
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=8
+#SBATCH --gpus-per-node=8
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=0
+#SBATCH --exclusive
+#SBATCH --time=04:00:00              # short slots backfill sooner; we chain them
+#SBATCH --signal=USR1@600            # SIGUSR1 to every task (not the batch shell) 10 min before the limit
+#SBATCH --requeue                    # allow requeue (after preemption, node failure, or our own request)
+#SBATCH --open-mode=append           # requeued runs keep the same job id and output file: don't truncate it
+#SBATCH --output=logs/%x-%j.out
+
+set -uo pipefail                     # no -e: we need srun's exit code
+cd &quot;$SLURM_SUBMIT_DIR&quot;
+source .venv/bin/activate
+MAX_RESTARTS=30
+
+echo &quot;=== $(date -Is) job=$SLURM_JOB_ID restart=${SLURM_RESTART_COUNT:-0} nodes=$SLURM_JOB_NODELIST&quot;   # date -Is: ISO-8601 timestamp
+export MASTER_ADDR=$(scontrol show hostnames &quot;$SLURM_JOB_NODELIST&quot; | head -n 1)
+export MASTER_PORT=$((10000 + SLURM_JOB_ID % 50000))
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK
+export CKPT_DIR=/shared/ckpt/$SLURM_JOB_NAME          # same path across restarts -&gt; resume works
+export LOG_DIR=logs/$SLURM_JOB_ID/restart${SLURM_RESTART_COUNT:-0}
+export TOTAL_STEPS=100000 CKPT_EVERY=1000
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+
+srun --kill-on-bad-exit=1 --wait=60 python -u train.py
+rc=$?
+echo &quot;=== $(date -Is) srun exit code $rc&quot;
+
+# [ a -eq b ] / [ a -lt b ]: integer equal / less-than tests (the single-bracket form of [[ ]])
+if [ &quot;$rc&quot; -eq 99 ]; then                              # train.py checkpointed on SIGUSR1 and wants more time
+    if [ &quot;${SLURM_RESTART_COUNT:-0}&quot; -lt &quot;$MAX_RESTARTS&quot; ]; then
+        echo &quot;requeueing&quot;; scontrol requeue &quot;$SLURM_JOB_ID&quot;
+    else
+        echo &quot;hit MAX_RESTARTS=$MAX_RESTARTS, not requeueing&quot;
+    fi
+fi
+exit &quot;$rc&quot;
+</code></pre>
+<p>Untested. What happens in each case:</p>
+<ul>
+<li><strong>Time limit approaching</strong>: at T-10 min every rank gets <code>SIGUSR1</code>, they agree to stop, rank 0 checkpoints, all exit 99, the script calls <code>scontrol requeue</code>, the job goes back to <code>PENDING</code> with the same ID, and next time it starts <code>train.py</code> resumes from <code>last.pt</code>. <code>SLURM_RESTART_COUNT</code> counts the cycles; <code>MAX_RESTARTS</code> stops a crash loop.</li>
+<li><strong>Preempted by a higher-QoS job</strong>: every process in the job, including the batch shell, gets <code>SIGTERM</code>. The ranks checkpoint within <code>GraceTime</code> and exit; the shell is killed; Slurm requeues the job itself because <code>PreemptMode=REQUEUE</code> and <code>--requeue</code>. The script's requeue line doesn't run, which is fine.</li>
+<li><strong>A node dies</strong>: the job ends with <code>NODE_FAIL</code>. If the site sets <code>JobRequeue=1</code> (or you passed <code>--requeue</code>), Slurm requeues it and it resumes from the last periodic checkpoint. The bad node is drained by the health check and won't be picked again.</li>
+<li><strong>A real bug</strong> (exit 1): no requeue; you read the log.</li>
+</ul>
+<p>Why not catch <code>SIGUSR1</code> in the batch shell with <code>trap</code> instead? You can (it's Approach B.2 in <a href="../../training/fault-tolerance/README.html#dealing-with-forced-job-preemption">Fault Tolerance</a>), but then the shell must forward the signal to the right processes. Without <code>B:</code>, Slurm delivers it to every task directly, which is simpler when tasks are your ranks.</p>
+<p>To test this on a real cluster without waiting hours:</p>
+<pre><code class="language-bash">sbatch --time=0:08:00 --signal=USR1@240 --export=ALL,TOTAL_STEPS=1000000 pretrain-preemptible.sbatch
+# or trigger it by hand on a running job:
+scancel --signal=USR1 4242            # to all tasks; add --batch (-b) to signal only the batch shell
+sacct -j 4242 --format=JobID,State,ExitCode,Start,End --duplicates   # --duplicates shows each requeued run
+</code></pre>
+<p>The alternative to requeueing the same job is a chain: submit the next job with <code>--dependency=afterany:$SLURM_JOB_ID</code> at the start of each run, or use a job array with <code>%1</code> (<a href="../../orchestration/slurm/users.html#job-array-trains-and-their-suspend-and-release">job array trains</a>). Chains give each segment its own job ID and log, which some people find easier to read; requeue keeps one ID and keeps your queue position logic simple.</p>
+<h2 id="debugging-pending-stuck-and-failed-jobs">Debugging pending, stuck and failed jobs</h2>
+<h3 id="why-is-my-job-pending">Why is my job pending?</h3>
+<p>The <code>NODELIST(REASON)</code> column tells you. The common reasons, and what to do:</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Meaning</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Priority</code></td>
+<td>Higher-priority jobs are ahead of you</td>
+<td>Wait. <code>sprio -j ID</code> shows why; <code>squeue --start</code> gives an estimate</td>
+</tr>
+<tr>
+<td><code>Resources</code></td>
+<td>You're next, but not enough nodes/GPUs are free yet</td>
+<td>Wait; shorter <code>--time</code> lets backfill start you sooner</td>
+</tr>
+<tr>
+<td><code>Dependency</code></td>
+<td>Waiting for another job</td>
+<td>Expected</td>
+</tr>
+<tr>
+<td><code>DependencyNeverSatisfied</code></td>
+<td>The job you depend on failed</td>
+<td><code>scancel</code>, fix, resubmit; use <code>--kill-on-invalid-dep=yes</code></td>
+</tr>
+<tr>
+<td><code>QOSMaxGRESPerUser</code>, <code>QOSMaxGRESPerAccount</code></td>
+<td>You've hit a QoS GPU limit</td>
+<td>Wait for your own jobs to finish, or use another QoS</td>
+</tr>
+<tr>
+<td><code>AssocGrpGRES</code>, <code>AssocGrpGRESMinutes</code></td>
+<td>Your account's GPU or GPU-minute cap is hit</td>
+<td>Talk to whoever owns the account budget</td>
+</tr>
+<tr>
+<td><code>AssocMaxJobsLimit</code>, <code>QOSMaxJobsPerUserLimit</code></td>
+<td>Too many running jobs</td>
+<td>Wait</td>
+</tr>
+<tr>
+<td><code>ReqNodeNotAvail, UnavailableNodes:...</code></td>
+<td>A node you asked for (or need) is down/drained/reserved</td>
+<td>Remove <code>--nodelist</code>, or wait for maintenance to end</td>
+</tr>
+<tr>
+<td><code>PartitionTimeLimit</code></td>
+<td><code>--time</code> exceeds the partition's maximum</td>
+<td>It will never start: lower <code>--time</code></td>
+</tr>
+<tr>
+<td><code>PartitionNodeLimit</code></td>
+<td>More nodes than the partition allows per job</td>
+<td>It will never start: request fewer</td>
+</tr>
+<tr>
+<td><code>BadConstraints</code></td>
+<td>No node matches <code>--constraint</code>/<code>--gres</code></td>
+<td>Fix the request (typo in GPU type?)</td>
+</tr>
+<tr>
+<td><code>BeginTime</code></td>
+<td><code>--begin</code> in the future, or just requeued</td>
+<td>Expected; requeued jobs get a short delay</td>
+</tr>
+<tr>
+<td><code>JobHeldUser</code> / <code>JobHeldAdmin</code></td>
+<td>Held</td>
+<td><code>scontrol release ID</code> (admin holds need the admin)</td>
+</tr>
+<tr>
+<td><code>JobArrayTaskLimit</code></td>
+<td>Array <code>%N</code> throttle</td>
+<td>Expected</td>
+</tr>
+<tr>
+<td><code>Reservation</code></td>
+<td>Waiting for a reservation to start</td>
+<td>Expected</td>
+</tr>
+<tr>
+<td><code>launch failed requeued held</code></td>
+<td>The job failed to start on a node and was held</td>
+<td>Look at the node; <code>scontrol release</code> after it's fixed</td>
+</tr>
+</tbody>
+</table>
+<p>The full list is in <code>man squeue</code> (&quot;JOB REASON CODES&quot;). The diagnostic sequence:</p>
+<pre><code class="language-bash">squeue -j 4261 -o &quot;%i %T %r %S %Q&quot;            # state, reason, est. start, priority
+scontrol show job 4261 | grep -E 'Reason|Priority|StartTime|ReqTRES|TimeLimit|Partition|QOS'
+sprio -l -j 4261                               # priority breakdown
+sshare -U -l                                   # my usage vs share
+sinfo -p gpu -s                                # is the partition actually full?
+</code></pre>
+<h3 id="why-is-my-running-job-stuck">Why is my running job stuck?</h3>
+<p>A job that is <code>R</code> but makes no progress (log stopped updating) is usually a hung collective: one rank crashed, OOMed or is in a different code path, and the others wait in an all-reduce until the NCCL timeout (10 minutes by default, longer if you raised it). To look inside:</p>
+<pre><code class="language-bash">srun --jobid=4242 --overlap -N1 -w gpu003 --pty bash              # a shell on one of the job's nodes (-w = --nodelist)
+srun --jobid=4242 --overlap --ntasks-per-node=1 bash -c 'hostname; nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv,noheader' 
+sstat -j 4242.0 --format=JobID,AveCPU,MaxRSS,MaxDiskRead,MaxDiskWrite  # live usage of a running step
+</code></pre>
+<p>Then get Python stack traces from every rank with <code>py-spy dump</code>: the recipe is in <a href="../../orchestration/slurm/users.html#run-py-spy-or-any-other-monitor-program-across-all-nodes">running py-spy on all nodes</a>, and how to read them is in <a href="../../debug/torch-distributed-hanging-solutions.html">diagnosing hangs</a>. The rank whose stack is in a different place is the culprit. 100% GPU utilization on all GPUs with no progress is the signature of NCCL spinning in a collective.</p>
+<h3 id="why-did-my-job-fail">Why did my job fail?</h3>
+<pre><code class="language-console">$ sacct -j 4101 --format=JobID,JobName,State,ExitCode,DerivedExitCode,Elapsed,MaxRSS,NodeList
+JobID           JobName      State ExitCode DerivedExitCode    Elapsed     MaxRSS        NodeList
+------------ ---------- ---------- -------- --------------- ---------- ---------- ---------------
+4101         pretrain-+     FAILED      1:0             0:0   00:03:12                gpu[001-016]
+4101.batch        batch     FAILED      1:0                   00:03:12      8212K          gpu001
+4101.extern      extern  COMPLETED      0:0                   00:03:12          0    gpu[001-016]
+4101.0           python     FAILED      1:0                   00:03:01     61.2G    gpu[001-016]
+
+$ grep -n -m3 -E 'Error|error:|Traceback' logs/pretrain-7b-4101.out
+1412: 37: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 GiB. GPU 5 has a total capacity of 79.10 GiB ...
+1450:srun: error: gpu005: task 37: Exited with exit code 1
+1451:srun: Job step aborted: Waiting up to 62 seconds for job step to finish.
+</code></pre>
+<p>(Sketched.) Read the first error, not the last: after one rank dies, <code>--kill-on-bad-exit</code> kills the rest, and their messages bury the original. With <code>srun -l</code>, the <code>37:</code> prefix tells you which rank it was. Decoding the outcome:</p>
+<table>
+<thead>
+<tr>
+<th>State / message</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FAILED</code>, ExitCode <code>1:0</code></td>
+<td>Your program exited non-zero: an exception. Read the traceback</td>
+</tr>
+<tr>
+<td><code>TIMEOUT</code>, <code>0:15</code>; log says <code>*** JOB 4102 ON gpu033 CANCELLED AT ... DUE TO TIME LIMIT ***</code></td>
+<td>Hit <code>--time</code></td>
+</tr>
+<tr>
+<td><code>CANCELLED by 1001</code></td>
+<td>Someone (UID 1001) ran <code>scancel</code></td>
+</tr>
+<tr>
+<td><code>PREEMPTED</code>, log says <code>DUE TO PREEMPTION</code></td>
+<td>A higher-priority job took the nodes</td>
+</tr>
+<tr>
+<td><code>OUT_OF_MEMORY</code>; log says <code>Detected 1 oom_kill event in StepId=...</code></td>
+<td>Host RAM cgroup limit, not GPU memory. Raise <code>--mem</code> or use <code>--mem=0</code></td>
+</tr>
+<tr>
+<td><code>NODE_FAIL</code></td>
+<td>A node stopped responding. Not your bug; requeue</td>
+</tr>
+<tr>
+<td>ExitCode <code>0:9</code></td>
+<td><code>SIGKILL</code>: OOM killer, or killed after a signal grace period</td>
+</tr>
+<tr>
+<td><code>srun: error: Unable to create step for job ...: More processors requested than permitted</code></td>
+<td>The step asks for more tasks/CPUs than the allocation has; check <code>--ntasks-per-node</code> × <code>--cpus-per-task</code></td>
+</tr>
+<tr>
+<td>Job fails instantly with no log</td>
+<td>Output directory doesn't exist, or the script isn't readable from the compute node</td>
+</tr>
+</tbody>
+</table>
+<p><code>seff JOBID</code> (a contrib tool, installed on many clusters) prints CPU and memory efficiency of a finished job, useful for right-sizing <code>--mem</code> and <code>--cpus-per-task</code>.</p>
+<h3 id="a-parser-for-squeue-and-sacct-output">A parser for squeue and sacct output</h3>
+<p>When you have hundreds of jobs, read the queue with code. This parser handles the <code>|</code>-separated output (<code>-h -o</code> for <code>squeue</code>, <code>-P</code> for <code>sacct</code>), compressed host lists, Slurm's duration formats and TRES strings, and sums GPU-hours by user and final state.</p>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;Parse squeue/sacct --parsable2 output: hostlists, elapsed times, TRES strings, GPU-hours.
+
+Feed it real output:
+    squeue --me -h -o '%i|%u|%P|%j|%T|%M|%D|%b|%R' | python3 slurm_parse.py squeue
+    sacct -X -P -S now-7days -o JobID,User,State,Elapsed,AllocTRES,ExitCode | python3 slurm_parse.py sacct
+With no stdin it runs a self-check on sample output.
+&quot;&quot;&quot;
+import re
+import sys
+from collections import Counter, defaultdict
+
+
+def expand_hostlist(s):
+    &quot;&quot;&quot;'gpu[001-003,007],login1' -&gt; ['gpu001', 'gpu002', 'gpu003', 'gpu007', 'login1'].
+    Limitation: one bracket group per host (covers 99% of clusters); use `scontrol show hostnames` for nested ranges.&quot;&quot;&quot;
+    hosts = []
+    for prefix, inner, plain in re.findall(r&quot;([^,\[]+)\[([^\]]+)\]|([^,\[\]]+)&quot;, s):
+        if plain:
+            hosts.append(plain)
+            continue
+        for part in inner.split(&quot;,&quot;):
+            lo, _, hi = part.partition(&quot;-&quot;)
+            width = len(lo)  # keep zero padding: 001-003
+            for i in range(int(lo), int(hi or lo) + 1):
+                hosts.append(f&quot;{prefix}{i:0{width}d}&quot;)
+    return hosts
+
+
+def parse_elapsed(s):
+    &quot;&quot;&quot;Slurm durations: 'D-HH:MM:SS', 'HH:MM:SS', 'MM:SS', 'M:SS.mmm' -&gt; seconds.&quot;&quot;&quot;
+    days, _, rest = s.rpartition(&quot;-&quot;)
+    parts = [float(p) for p in rest.split(&quot;:&quot;)]
+    while len(parts) &lt; 3:
+        parts.insert(0, 0.0)
+    h, m, sec = parts
+    return int(days or 0) * 86400 + h * 3600 + m * 60 + sec
+
+
+def parse_tres(s):
+    &quot;&quot;&quot;'billing=96,cpu=96,gres/gpu=8,mem=1000G,node=1' -&gt; dict (values kept as strings).&quot;&quot;&quot;
+    return dict(kv.split(&quot;=&quot;, 1) for kv in s.split(&quot;,&quot;) if &quot;=&quot; in kv)
+
+
+def parse_parsable(text, header=None):
+    &quot;&quot;&quot;`-P`/`--parsable2` output -&gt; list of dicts. sacct prints a header; squeue -h does not.&quot;&quot;&quot;
+    lines = [l for l in text.strip().splitlines() if l]
+    if header is None:
+        header, lines = lines[0].split(&quot;|&quot;), lines[1:]
+    return [dict(zip(header, l.split(&quot;|&quot;))) for l in lines]
+
+
+def gpus_of(row):
+    tres = parse_tres(row.get(&quot;AllocTRES&quot;, &quot;&quot;))
+    # gres/gpu=8 and also typed gres/gpu:h100=8; count only the untyped total
+    return int(tres.get(&quot;gres/gpu&quot;, 0))
+
+
+def gpu_hours(rows):
+    &quot;&quot;&quot;Per-user GPU-hours and per-state GPU-hours from sacct -X rows.&quot;&quot;&quot;
+    by_user, by_state = defaultdict(float), defaultdict(float)
+    for r in rows:
+        h = gpus_of(r) * parse_elapsed(r[&quot;Elapsed&quot;]) / 3600
+        by_user[r[&quot;User&quot;]] += h
+        by_state[r[&quot;State&quot;].split()[0]] += h  # 'CANCELLED by 1234' -&gt; 'CANCELLED'
+    return dict(by_user), dict(by_state)
+
+
+SQUEUE_FIELDS = [&quot;JobID&quot;, &quot;User&quot;, &quot;Partition&quot;, &quot;Name&quot;, &quot;State&quot;, &quot;Time&quot;, &quot;Nodes&quot;, &quot;TRES&quot;, &quot;Reason&quot;]
+
+
+def squeue_summary(rows):
+    pending = Counter(r[&quot;Reason&quot;] for r in rows if r[&quot;State&quot;] == &quot;PENDING&quot;)
+    running_nodes = sum(int(r[&quot;Nodes&quot;]) for r in rows if r[&quot;State&quot;] == &quot;RUNNING&quot;)
+    return pending, running_nodes
+
+
+SAMPLE_SQUEUE = &quot;&quot;&quot;\
+4242|alice|gpu|pretrain-7b|RUNNING|1-02:11:09|16|gres/gpu:8|gpu[001-016]
+4250|alice|gpu|eval-ckpt|PENDING|0:00|1|gres/gpu:8|(Dependency)
+4251_[3-9]|alice|gpu|sweep|PENDING|0:00|1|gres/gpu:1|(QOSMaxGRESPerUser)
+4251_2|alice|gpu|sweep|RUNNING|12:01|1|gres/gpu:1|gpu017
+4260|bob|gpu|ablation|PENDING|0:00|4|gres/gpu:8|(Priority)
+4261|bob|gpu|big-run|PENDING|0:00|64|gres/gpu:8|(Resources)
+&quot;&quot;&quot;
+
+SAMPLE_SACCT = &quot;&quot;&quot;\
+JobID|User|State|Elapsed|AllocTRES|ExitCode
+4100|alice|COMPLETED|10:00:00|billing=1536,cpu=1536,gres/gpu=128,mem=16000G,node=16|0:0
+4101|alice|FAILED|00:03:12|billing=1536,cpu=1536,gres/gpu=128,mem=16000G,node=16|1:0
+4102|bob|TIMEOUT|2-00:00:00|billing=96,cpu=96,gres/gpu=8,mem=1000G,node=1|0:15
+4103|bob|CANCELLED by 1001|01:30:00|billing=384,cpu=384,gres/gpu=32,mem=4000G,node=4|0:15
+4104|carol|OUT_OF_MEMORY|00:45:00|billing=12,cpu=12,gres/gpu=1,mem=120G,node=1|0:125
+4105|carol|COMPLETED|00:20:00|billing=4,cpu=4,mem=16G,node=1|0:0
+&quot;&quot;&quot;
+
+
+def selfcheck():
+    assert expand_hostlist(&quot;gpu[001-003,007],login1&quot;) == [&quot;gpu001&quot;, &quot;gpu002&quot;, &quot;gpu003&quot;, &quot;gpu007&quot;, &quot;login1&quot;]
+    assert len(expand_hostlist(&quot;gpu[001-016]&quot;)) == 16
+    assert parse_elapsed(&quot;1-02:11:09&quot;) == 86400 + 2 * 3600 + 11 * 60 + 9
+    assert parse_elapsed(&quot;12:01&quot;) == 721 and parse_elapsed(&quot;0:00&quot;) == 0
+    assert parse_tres(&quot;billing=96,cpu=96,gres/gpu=8,node=1&quot;)[&quot;gres/gpu&quot;] == &quot;8&quot;
+
+    rows = parse_parsable(SAMPLE_SQUEUE, header=SQUEUE_FIELDS)
+    pending, running_nodes = squeue_summary(rows)
+    print(&quot;pending reasons:&quot;, dict(pending))
+    print(&quot;nodes held by running jobs:&quot;, running_nodes)
+    for r in rows:
+        if r[&quot;State&quot;] == &quot;RUNNING&quot; and r[&quot;Reason&quot;].startswith(&quot;gpu&quot;):
+            print(f&quot;  {r['JobID']:&gt;10} on {len(expand_hostlist(r['Reason']))} hosts, &quot;
+                  f&quot;running {parse_elapsed(r['Time']) / 3600:.1f} h&quot;)
+
+    by_user, by_state = gpu_hours(parse_parsable(SAMPLE_SACCT))
+    print(&quot;GPU-hours by user: &quot;, {k: round(v, 1) for k, v in by_user.items()})
+    print(&quot;GPU-hours by state:&quot;, {k: round(v, 1) for k, v in by_state.items()})
+    assert round(by_user[&quot;alice&quot;], 1) == round(128 * 10 + 128 * 192 / 3600, 1)
+    print(&quot;selfcheck ok&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    if sys.stdin.isatty() or len(sys.argv) &lt; 2:
+        selfcheck()
+    elif sys.argv[1] == &quot;squeue&quot;:
+        pending, nodes = squeue_summary(parse_parsable(sys.stdin.read(), header=SQUEUE_FIELDS))
+        print(&quot;pending reasons:&quot;, dict(pending), &quot;| running nodes:&quot;, nodes)
+    elif sys.argv[1] == &quot;sacct&quot;:
+        by_user, by_state = gpu_hours(parse_parsable(sys.stdin.read()))
+        for u, h in sorted(by_user.items(), key=lambda kv: -kv[1]):
+            print(f&quot;{u:&gt;12} {h:10.1f} GPU-h&quot;)
+        print(&quot;by state:&quot;, {k: round(v, 1) for k, v in by_state.items()})
+</code></pre>
+<p>Real output of the self-check on the sample data (which mirrors the sketched <code>squeue</code>/<code>sacct</code> output above):</p>
+<pre><code class="language-console">$ python3 slurm_parse.py
+pending reasons: {'(Dependency)': 1, '(QOSMaxGRESPerUser)': 1, '(Priority)': 1, '(Resources)': 1}
+nodes held by running jobs: 17
+        4242 on 16 hosts, running 26.2 h
+      4251_2 on 1 hosts, running 0.2 h
+GPU-hours by user:  {'alice': 1286.8, 'bob': 432.0, 'carol': 0.8}
+GPU-hours by state: {'COMPLETED': 1280.0, 'FAILED': 6.8, 'TIMEOUT': 384.0, 'CANCELLED': 48.0, 'OUT_OF_MEMORY': 0.8}
+selfcheck ok
+
+$ printf 'JobID|User|State|Elapsed|AllocTRES|ExitCode\n9|z|COMPLETED|01:00:00|gres/gpu=4,gres/gpu:h100=4|0:0\n' | python3 slurm_parse.py sacct
+           z        4.0 GPU-h
+by state: {'COMPLETED': 4.0}
+</code></pre>
+<p>The <code>by state</code> line is the one to show your team: in this sample, 384 of the ~1,720 GPU-hours (22%) went to a job that hit its time limit. If that job didn't checkpoint before the limit, the work since its last periodic checkpoint was lost.</p>
+<h3 id="gpu-hours-and-fair-share-calculator">GPU-hours and fair-share calculator</h3>
+<p>Before submitting a big run, do the arithmetic: how many GPU-hours, how much preemption will cost, and what it will do to your team's priority. The fair-share part uses the classic formula <span class="math inline"><span class="math-inline">F = 2^{-U/S}</span></span> with usage decayed by a 7-day half-life; Slurm's default Fair Tree algorithm ranks associations differently but moves in the same direction (<a href="../../orchestration/internals.html#priority-prioritymultifactor">internals</a> has the details).</p>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;GPU-hour budget and classic Slurm fair-share arithmetic.
+
+Classic fair-share factor (priority/multifactor, pre-Fair-Tree formula):
+    F = 2 ** (-U / S)
+U = your decayed usage / everyone's decayed usage, S = your normalized share.
+Usage decays with PriorityDecayHalfLife (default 7 days): a GPU-hour used d days ago
+counts 2 ** (-d / half_life). Fair Tree (the default since 19.05) ranks differently
+but moves in the same direction, so this is the intuition, not the exact number.
+&quot;&quot;&quot;
+import math
+
+
+def gpu_hours(nodes, gpus_per_node, hours):
+    return nodes * gpus_per_node * hours
+
+
+def decayed(daily_usage, half_life_days=7.0):
+    &quot;&quot;&quot;daily_usage[0] is today, [1] yesterday, ... -&gt; decayed total.&quot;&quot;&quot;
+    return sum(u * 2 ** (-d / half_life_days) for d, u in enumerate(daily_usage))
+
+
+def fairshare_factor(my_usage, total_usage, share):
+    return 2 ** (-(my_usage / total_usage) / share)
+
+
+def days_to_recover(u_over_s, half_life_days=7.0):
+    &quot;&quot;&quot;Days of zero usage until U/S falls to 1 (F back to 0.5), assuming the rest of the
+    cluster keeps the total decayed usage constant. Steady-state assumption.&quot;&quot;&quot;
+    return max(0.0, half_life_days * math.log2(u_over_s))
+
+
+if __name__ == &quot;__main__&quot;:
+    # 1. budget: a 3-day run on 16 nodes x 8 GPUs, with a requeue tax
+    run = gpu_hours(nodes=16, gpus_per_node=8, hours=72)
+    print(f&quot;16 nodes x 8 GPUs x 72 h = {run:,} GPU-h&quot;)
+    # each preemption loses on average half a checkpoint interval + restart time
+    ckpt_interval_h, restart_h, preemptions = 1.0, 0.25, 6
+    lost = preemptions * (ckpt_interval_h / 2 + restart_h) * 16 * 8
+    print(f&quot;{preemptions} preemptions at 1 h ckpt interval, 15 min restart: {lost:,.0f} GPU-h lost &quot;
+          f&quot;({lost / run:.1%})&quot;)
+    assert run == 9216
+
+    # 2. fair share: 1024-GPU cluster, team A entitled to 25%, three teams
+    cluster_gpus, half_life = 1024, 7.0
+    # GPU-hours per day over the last 14 days (index 0 = today)
+    team_a = [24 * 512] * 3 + [24 * 128] * 11       # burned 512 GPUs for the last 3 days
+    team_b = [24 * 384] * 14
+    team_c = [24 * 128] * 14
+    teams = {&quot;A&quot;: (team_a, 0.25), &quot;B&quot;: (team_b, 0.50), &quot;C&quot;: (team_c, 0.25)}
+    total = sum(decayed(u, half_life) for u, _ in teams.values())
+    print(f&quot;\n{'team':&gt;4} {'share':&gt;6} {'decayed GPU-h':&gt;14} {'U':&gt;6} {'U/S':&gt;5} {'F':&gt;6}&quot;)
+    for name, (usage, share) in teams.items():
+        d = decayed(usage, half_life)
+        f = fairshare_factor(d, total, share)
+        print(f&quot;{name:&gt;4} {share:6.2f} {d:14,.0f} {d / total:6.3f} {d / total / share:5.2f} {f:6.3f}&quot;)
+    u_over_s = decayed(team_a, half_life) / total / 0.25
+    print(f&quot;team A, U/S={u_over_s:.2f}: ~{days_to_recover(u_over_s, half_life):.1f} idle days to get back to F=0.5&quot;)
+
+    assert abs(fairshare_factor(1, 4, 0.25) - 0.5) &lt; 1e-12
+    assert abs(days_to_recover(2.0) - 7.0) &lt; 1e-12
+    print(&quot;selfcheck ok&quot;)
+</code></pre>
+<p>Real output:</p>
+<pre><code class="language-console">$ python3 fairshare.py
+16 nodes x 8 GPUs x 72 h = 9,216 GPU-h
+6 preemptions at 1 h ckpt interval, 15 min restart: 576 GPU-h lost (6.2%)
+
+team  share  decayed GPU-h      U   U/S      F
+   A   0.25         49,562  0.336  1.35  0.393
+   B   0.50         73,316  0.498  1.00  0.502
+   C   0.25         24,439  0.166  0.66  0.631
+team A, U/S=1.35: ~3.0 idle days to get back to F=0.5
+selfcheck ok
+</code></pre>
+<p>How to read it: team A used 4x its normal rate (512 GPUs instead of 128) for three days. That alone pushed it from below its share to 35% over (<span class="math inline"><span class="math-inline">U/S = 1.35</span></span>), and its fair-share factor fell from above 0.5 to 0.39, so team C's jobs (<span class="math inline"><span class="math-inline">F = 0.63</span></span>) now go first. Because usage decays with a 7-day half-life, even if team A stops completely it takes about <span class="math inline"><span class="math-inline">7 \cdot \log_2(1.35) = 3.0</span></span> days to get back to parity. This is why a team that burns its share in a sprint waits in the queue the next week. The real number for your cluster comes from <code>sshare -l</code> (the <code>RawUsage</code> column is in decayed TRES-billing-seconds; <code>TRESBillingWeights</code> decides how much a GPU counts against a CPU).</p>
+<p>The preemption line is the other half of the trade: a <code>low</code> QoS that's 6% more expensive per useful GPU-hour (at 6 preemptions per 3 days and a 1-hour checkpoint interval) is a good deal if it starts days earlier.</p>
+<h2 id="containers-on-slurm">Containers on Slurm</h2>
+<h3 id="why-not-just-docker">Why not just Docker</h3>
+<p><a href="../../foundations/containers-and-virtualization.html">Containers</a> package your software stack (CUDA, PyTorch, NCCL, your dependencies) into an image so every node runs the same thing. Docker is the common way to build images, but on shared clusters you rarely run <code>docker run</code>:</p>
+<ul>
+<li>The Docker daemon runs as root, and anyone who can talk to it is effectively root on the node. On a multi-user cluster that's not acceptable.</li>
+<li>Containers started by the Docker daemon are children of the daemon, not of <code>slurmstepd</code>, so they escape the job's cgroups: Slurm can't account for, limit, or kill them.</li>
+<li>Multi-node training wants the host network (InfiniBand devices, no NAT) and the host's shared filesystems; that's what HPC container runtimes do by default.</li>
+</ul>
+<p>So HPC clusters use runtimes that run unprivileged as your user, inside the job's cgroup, and are launched by <code>srun</code>: <strong>Enroot + Pyxis</strong> (NVIDIA) and <strong>Apptainer</strong> (formerly Singularity). Both consume ordinary Docker/OCI images; you still build with Docker on your laptop or in CI (continuous integration: a service that builds and tests your code automatically on every push).</p>
+<h3 id="pyxis-and-enroot">Pyxis and Enroot</h3>
+<p><strong>Enroot</strong> turns a Docker image into a SquashFS file (a compressed read-only filesystem image) and runs it with unprivileged user namespaces. <strong>Pyxis</strong> is a Slurm SPANK plugin (a plugin loaded by <code>srun</code> and <code>slurmd</code>) that adds <code>--container-*</code> flags to <code>srun</code>, so each task starts inside the container.</p>
+<pre><code class="language-bash"># pull once into a shared filesystem as a squashfs file (avoids every node pulling from the registry)
+enroot import -o /shared/images/pytorch-24.10.sqsh docker://nvcr.io#nvidia/pytorch:24.10-py3
+
+# in the sbatch script: each of the 32 tasks starts inside the container
+srun --container-image=/shared/images/pytorch-24.10.sqsh \
+     --container-mounts=/shared:/shared,&quot;$SLURM_SUBMIT_DIR&quot;:/workspace \
+     --container-workdir=/workspace \
+     --kill-on-bad-exit=1 -l \
+     python -u train.py
+</code></pre>
+<p>Untested. Notes: the <code>#</code> in <code>nvcr.io#nvidia/...</code> is Enroot's separator between registry and image name. <code>--container-name=pt</code> keeps the unpacked container around for later steps in the same job, so a second <code>srun</code> doesn't unpack again. Environment variables from the sbatch script (<code>MASTER_ADDR</code>, <code>SLURM_*</code>) pass into the container. Check <code>srun --help | grep container</code> to see whether your cluster has Pyxis.</p>
+<h3 id="apptainer">Apptainer</h3>
+<p>Apptainer uses a single-file image format, <code>.sif</code>. It is common on academic HPC because it needs no Slurm plugin.</p>
+<pre><code class="language-bash">apptainer build /shared/images/pytorch-24.10.sif docker://nvcr.io/nvidia/pytorch:24.10-py3
+
+srun --kill-on-bad-exit=1 -l \
+    apptainer exec --nv --bind /shared,/scratch /shared/images/pytorch-24.10.sif \
+    python -u train.py
+</code></pre>
+<p>Untested. <code>--nv</code> binds the host's NVIDIA driver libraries and GPU devices into the container. Apptainer shares the host network and your home directory by default, so the container sees the same InfiniBand devices as the host; the image still needs a compatible RDMA userspace (NGC PyTorch images include one).</p>
+<p>With either runtime, the container's CUDA userspace must be compatible with the host's NVIDIA driver (newer driver than toolkit is fine; the other way around generally isn't). See the <a href="../../compute/gpu-software-stack.html">GPU software stack</a> chapter for why.</p>
+<h2 id="a-small-cluster-admin-intro">A small-cluster admin intro</h2>
+<p>This section is enough to understand what admins do and to build a two-node test cluster. It is not a production guide; see <a href="../../orchestration/slurm/admin.html">SLURM Administration</a> for more recipes and the <a href="https://slurm.schedmd.com/quickstart_admin.html">official quick start admin guide</a> for the full procedure. Everything here is <strong>untested</strong>.</p>
+<h3 id="install-and-munge">Install and munge</h3>
+<p>On Ubuntu/Debian the daemons are packaged (versions lag upstream; large sites build from source or use SchedMD's packages):</p>
+<pre><code class="language-bash"># controller (ctl01)
+sudo apt install munge slurmctld slurmdbd mariadb-server slurm-client
+# each compute node
+sudo apt install munge slurmd slurm-client
+
+# create the munge key once, on ctl01, then copy it to every node
+sudo dd if=/dev/urandom bs=1 count=1024 of=/etc/munge/munge.key
+sudo chown munge:munge /etc/munge/munge.key &amp;&amp; sudo chmod 400 /etc/munge/munge.key
+for n in gpu01 gpu02; do sudo scp -p /etc/munge/munge.key $n:/etc/munge/munge.key; done
+sudo systemctl enable --now munge               # on every node
+munge -n | ssh gpu01 unmunge | grep STATUS      # STATUS: Success (0)
+</code></pre>
+<p>Also needed and not shown: the same users with the same UIDs on every node (a central user directory such as LDAP, read on each node by SSSD), a shared filesystem for <code>/home</code>, NTP, the NVIDIA driver on GPU nodes, and a <code>slurm</code> system user.</p>
+<h3 id="slurmconf">slurm.conf</h3>
+<p><code>slurmd -C</code> on a compute node prints its hardware in <code>slurm.conf</code> syntax, which is the easiest way to get the <code>NodeName</code> line right:</p>
+<pre><code class="language-console">gpu01$ slurmd -C
+NodeName=gpu01 CPUs=192 Boards=1 SocketsPerBoard=2 CoresPerSocket=48 ThreadsPerCore=2 RealMemory=2063731
+UpTime=3-04:11:52
+</code></pre>
+<p>(Sketched.) A minimal <code>slurm.conf</code> for one controller and two 8-GPU nodes:</p>
+<pre><code class="language-ini"># /etc/slurm/slurm.conf -- identical on every node
+ClusterName=tiny
+SlurmctldHost=ctl01
+SlurmUser=slurm
+AuthType=auth/munge
+
+StateSaveLocation=/var/spool/slurmctld     # controller state; must survive restarts (and be shared with a backup controller)
+SlurmdSpoolDir=/var/spool/slurmd
+SlurmctldLogFile=/var/log/slurm/slurmctld.log
+SlurmdLogFile=/var/log/slurm/slurmd.log
+
+# processes and resources: track with cgroups, allocate cores + memory + GRES
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup,task/affinity
+SelectType=select/cons_tres
+SelectTypeParameters=CR_Core_Memory
+GresTypes=gpu
+PrologFlags=Contain                        # create the extern step at job start (needed for pam_slurm_adopt)
+
+# scheduling and priority
+SchedulerType=sched/backfill
+PriorityType=priority/multifactor
+PriorityDecayHalfLife=7-0
+PriorityWeightFairshare=10000
+PriorityWeightAge=1000
+PriorityWeightQOS=10000
+PreemptType=preempt/qos
+PreemptMode=REQUEUE
+
+# accounting
+AccountingStorageType=accounting_storage/slurmdbd
+AccountingStorageHost=ctl01
+AccountingStorageTRES=gres/gpu
+AccountingStorageEnforce=associations,limits,qos
+JobAcctGatherType=jobacct_gather/cgroup
+
+# behavior
+ReturnToService=1                          # a node that was DOWN for not responding comes back when slurmd registers
+KillWait=30
+JobRequeue=1
+HealthCheckProgram=/usr/sbin/nhc           # optional: LBNL Node Health Check drains broken nodes
+HealthCheckInterval=300
+
+# nodes: RealMemory a bit below `slurmd -C` to leave room for the OS
+NodeName=gpu[01-02] CPUs=192 Boards=1 SocketsPerBoard=2 CoresPerSocket=48 ThreadsPerCore=2 RealMemory=2000000 Gres=gpu:h100:8 Features=h100 State=UNKNOWN
+
+# partitions
+PartitionName=gpu   Nodes=gpu[01-02] Default=YES MaxTime=2-00:00:00 DefMemPerCPU=8000 State=UP TRESBillingWeights=&quot;CPU=0.0625,GRES/gpu=1.0&quot;
+PartitionName=debug Nodes=gpu02 MaxTime=02:00:00 PriorityTier=10 State=UP
+</code></pre>
+<p>The billing weights here make one GPU cost 1.0 and the node's 192 CPUs cost 12, i.e. a full node bills 8 + 12 = 20 per second. Pick weights so <code>billing</code> approximates what you actually want to ration (often just GPUs).</p>
+<h3 id="gresconf-and-cgroupconf">gres.conf and cgroup.conf</h3>
+<pre><code class="language-ini"># /etc/slurm/gres.conf
+# Easiest: let slurmd ask the NVIDIA driver (needs Slurm built with NVML support)
+AutoDetect=nvml
+
+# Or explicit, with CPU affinity (GPUs 0-3 on socket 0, 4-7 on socket 1):
+# NodeName=gpu[01-02] Name=gpu Type=h100 File=/dev/nvidia[0-3] Cores=0-47
+# NodeName=gpu[01-02] Name=gpu Type=h100 File=/dev/nvidia[4-7] Cores=48-95
+</code></pre>
+<pre><code class="language-ini"># /etc/slurm/cgroup.conf
+CgroupPlugin=autodetect     # cgroup v2 on current distros
+ConstrainCores=yes          # a job can only run on its allocated cores
+ConstrainRAMSpace=yes       # memory limit = allocation; exceeding it -&gt; OUT_OF_MEMORY
+ConstrainSwapSpace=yes
+ConstrainDevices=yes        # a job can only open its allocated /dev/nvidiaN
+</code></pre>
+<p><code>ConstrainDevices=yes</code> is what makes GPU allocation real: without it, <code>CUDA_VISIBLE_DEVICES</code> is only a suggestion and a job can open any GPU on the node.</p>
+<h3 id="accounting-slurmdbd-and-sacctmgr">Accounting: slurmdbd and sacctmgr</h3>
+<pre><code class="language-ini"># /etc/slurm/slurmdbd.conf  (chmod 600, owned by slurm)
+AuthType=auth/munge
+DbdHost=ctl01
+SlurmUser=slurm
+StorageType=accounting_storage/mysql
+StorageHost=localhost
+StorageUser=slurm
+StoragePass=change-me
+StorageLoc=slurm_acct_db
+LogFile=/var/log/slurm/slurmdbd.log
+PidFile=/run/slurmdbd.pid
+</code></pre>
+<pre><code class="language-bash">sudo systemctl enable --now slurmdbd slurmctld      # on ctl01 (slurmdbd first)
+sudo systemctl enable --now slurmd                  # on gpu01, gpu02
+
+sudo sacctmgr -i add cluster tiny
+sudo sacctmgr -i add account research Description=&quot;research&quot; Organization=lab
+sudo sacctmgr -i add account inference Description=&quot;serving&quot; Organization=lab
+sudo sacctmgr -i modify account research set fairshare=3     # 3:1 shares vs inference
+sudo sacctmgr -i add user alice Account=research
+sudo sacctmgr -i add qos low Priority=0
+sudo sacctmgr -i add qos high Priority=1000 MaxTRESPerUser=gres/gpu=8
+sudo sacctmgr -i modify qos normal set preempt=low
+sudo sacctmgr -i modify qos high set preempt=low
+sudo sacctmgr -i modify user alice set qos=normal,high,low defaultqos=normal
+</code></pre>
+<pre><code class="language-console">$ sinfo
+PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+gpu*         up 2-00:00:00      2   idle gpu[01-02]
+debug        up    2:00:00      1   idle gpu02
+</code></pre>
+<p>(Sketched.) If nodes show <code>down*</code> or <code>unk*</code> instead, check in this order: <code>systemctl status slurmd</code> on the node, <code>munge -n | ssh node unmunge</code>, the same <code>slurm.conf</code> on both sides, <code>slurmd -D -vvv</code> in the foreground on the node to see the error, and the <code>slurmctld.log</code>.</p>
+<h3 id="day-to-day-draining-resuming-adding-nodes">Day-to-day: draining, resuming, adding nodes</h3>
+<pre><code class="language-bash"># take a node out of service; running jobs finish, no new ones start
+sudo scontrol update nodename=gpu02 state=drain reason=&quot;xid 79 gpu3, RMA ticket 1234&quot;
+sinfo -R
+# after the repair
+sudo scontrol update nodename=gpu02 state=resume
+
+# after editing slurm.conf (copy to all nodes first, unless configless)
+sudo scontrol reconfigure
+
+# reserve the whole cluster for maintenance next Tuesday; backfill won't start jobs that would overlap it
+sudo scontrol create reservation reservationname=maint starttime=2026-11-10T08:00:00 duration=4:00:00 \
+     nodes=ALL users=root flags=maint,ignore_jobs
+</code></pre>
+<p>Adding a node means adding it to the <code>NodeName</code> and <code>PartitionName</code> lines everywhere. On older releases that required restarting <code>slurmctld</code> and all <code>slurmd</code>s rather than just <code>reconfigure</code>; newer releases also support dynamic nodes (<code>slurmd -Z</code> registering itself). Check the docs for your version before doing it on a live cluster. More node management recipes (pdsh across nodes, undraining nodes killed by slow exits, auto-reboot) are in <a href="../../orchestration/slurm/admin.html#node-management">admin.md</a>, and automatic health-check draining is in <a href="../../orchestration/internals.html#automatic-node-draining">internals</a>.</p>
+<h2 id="slurm-vs-kubernetes">Slurm vs Kubernetes</h2>
+<p><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes</a> (k8s) is the other system that manages GPU fleets. It is taught in the next chapter; to follow this comparison you only need the sketch from <a href="../../foundations/distributed-systems.html#core-vocabulary">distributed systems</a>: Kubernetes runs everything as <strong>pods</strong> (one or more containers scheduled together on one node); you describe the state you want (e.g. &quot;3 copies of this server&quot;) in a YAML file, and <strong>controllers</strong> (control loops inside Kubernetes) keep creating, restarting or deleting pods until the real state matches it. <code>kubectl</code> is its command-line client. The two systems were designed for opposite workloads:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Slurm</th>
+<th>Kubernetes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Designed for</td>
+<td>Batch jobs that start, run to completion, and end</td>
+<td>Long-running services that should always be up, plus batch</td>
+</tr>
+<tr>
+<td>Unit of work</td>
+<td>Job (allocation) and steps; processes on bare nodes</td>
+<td>Pod (containers); controllers keep a desired state</td>
+</tr>
+<tr>
+<td>Gang scheduling</td>
+<td>Built in: a job gets all its nodes or none</td>
+<td>Not in the default scheduler; added by Kueue, Volcano, KAI (<a href="../../orchestration/internals.html#why-the-default-kube-scheduler-fails-at-gang-scheduling">internals</a>)</td>
+</tr>
+<tr>
+<td>Queueing, fair share, QoS, accounting</td>
+<td>Built in, mature</td>
+<td>Kueue quotas/borrowing; accounting is DIY</td>
+</tr>
+<tr>
+<td>Topology-aware placement</td>
+<td><code>topology/tree</code>, <code>topology/block</code></td>
+<td>Emerging (Kueue TAS, KAI)</td>
+</tr>
+<tr>
+<td>Users interact via</td>
+<td>SSH to a login node, <code>sbatch</code>, shared <code>/home</code></td>
+<td><code>kubectl</code>, YAML, container images, CI</td>
+</tr>
+<tr>
+<td>Software environment</td>
+<td>Host OS + modules/venv, optionally containers</td>
+<td>Always containers</td>
+</tr>
+<tr>
+<td>Networking</td>
+<td>Host network, InfiniBand directly</td>
+<td>Pod networking; RDMA needs extra plugins (<a href="../../orchestration/internals.html#rdma-networking-for-pods">internals</a>)</td>
+</tr>
+<tr>
+<td>Autoscaling, rolling updates, load balancing</td>
+<td>Not really</td>
+<td>Core features</td>
+</tr>
+<tr>
+<td>Failure handling</td>
+<td>Requeue the job; drain the node</td>
+<td>Restart the pod; reschedule elsewhere</td>
+</tr>
+</tbody>
+</table>
+<p>How labs use them in practice:</p>
+<ul>
+<li><strong>Pre-training and large fine-tuning</strong> usually run on Slurm, or on Kubernetes with a gang scheduler bolted on. Researchers like the SSH-and-<code>sbatch</code> workflow, the shared filesystem and the direct InfiniBand access.</li>
+<li><strong>Inference serving</strong> almost always runs on Kubernetes: it needs autoscaling, load balancing, rolling deploys and health checks, none of which Slurm does. See <a href="../../orchestration/internals.html#inference-serving-orchestration">inference serving orchestration</a> and <a href="../../inference/serving-hands-on.html">serving hands-on</a>.</li>
+<li><strong>RL</strong> is the awkward middle: trainers look like Slurm jobs, rollout/inference workers look like a service, and environments look like many small sandboxes. Labs run all of it in one large Slurm allocation, all of it on Kubernetes, or the trainer on Slurm and the rest on k8s. See <a href="../../platform/rl-infrastructure.html">RL infrastructure</a>.</li>
+<li><strong>Cloud GPU providers</strong> increasingly offer &quot;Slurm on Kubernetes&quot; (Slinky, Soperator, SUNK), so users get <code>sbatch</code> while the platform team runs k8s underneath. The trade-offs are in <a href="../../orchestration/internals.html#slurm-on-k8s-and-k8s-alongside-slurm">Slurm on k8s</a>.</li>
+</ul>
+<p>For a single team with a few hundred GPUs doing mostly training, Slurm is less to learn and less to operate. Once you also serve models, run CI and data pipelines on the same hardware, Kubernetes' generality starts paying for its complexity.</p>
+<p>The same 2-node training job in both, to make the difference concrete. The Kubernetes half is a <strong>preview</strong>: it is a YAML manifest (YAML is introduced in <a href="../../foundations/toolkit.html#yaml">the toolkit chapter</a>; <code>key: value</code> pairs, indentation for nesting, <code>-</code> for list items) for a <code>PyTorchJob</code>, an object type added by the Kubeflow training operator, with one &quot;Master&quot; pod and one &quot;Worker&quot; pod, each running <code>torchrun</code> with 8 GPUs. Skim it now; <a href="../../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> explains every line.</p>
+<pre><code class="language-bash"># Slurm: one file, you're on the cluster already
+sbatch --nodes=2 --ntasks-per-node=8 --gpus-per-node=8 --time=12:00:00 ddp-srun.sbatch
+</code></pre>
+<pre><code class="language-yaml"># Kubernetes (sketch; needs the Kubeflow Training Operator + a gang scheduler such as Kueue)
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: ddp
+  labels: {kueue.x-k8s.io/queue-name: research}
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: pytorch
+            image: registry.example.com/train:abc123
+            command: [&quot;torchrun&quot;, &quot;--nproc_per_node=8&quot;, &quot;train.py&quot;]
+            resources: {limits: {nvidia.com/gpu: 8}}
+    Worker:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: pytorch
+            image: registry.example.com/train:abc123
+            command: [&quot;torchrun&quot;, &quot;--nproc_per_node=8&quot;, &quot;train.py&quot;]
+            resources: {limits: {nvidia.com/gpu: 8}}
+</code></pre>
+<p>Untested. The k8s version needs an image built and pushed, an operator installed, and a queue configured; in return it gets declarative restarts and lives alongside everything else on the platform. The <a href="../../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> chapter builds this up properly; the <code>PyTorchJob</code> API version and operator names change over time, so check the Kubeflow docs for the current ones.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../../orchestration/slurm/users.html">SLURM for Users</a> - every recipe there should now make sense: reusing allocations, rejoining nodes, finding faulty nodes, crontab emulation.</li>
+<li><a href="../../orchestration/slurm/launchers/README.html">Launchers</a> - the complete torchrun, accelerate, Lightning and srun launcher scripts.</li>
+<li><a href="../../orchestration/slurm/performance.html">SLURM Performance</a> and <a href="../../orchestration/slurm/admin.html">SLURM Administration</a>.</li>
+<li><a href="../../orchestration/internals.html">Orchestration internals</a> - how Slurm's node selection, topology, priority, backfill and preemption work, and the same problems on Kubernetes.</li>
+<li><a href="../../training/fault-tolerance/README.html">Fault Tolerance</a> - signal-handling variants, kill and save switches, watchdogs.</li>
+<li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing hangs</a> and <a href="../../debug/nccl-performance-debug.html">NCCL debugging</a>.</li>
+<li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> - the other half of GPU orchestration.</li>
+<li><a href="../../training/decentralized-training.html">Decentralized training</a> - what changes when there's no single scheduler owning all the nodes.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>SchedMD documentation, <a href="https://slurm.schedmd.com/documentation.html">https://slurm.schedmd.com/documentation.html</a>, especially: <a href="https://slurm.schedmd.com/quickstart.html">Quick Start User Guide</a>, <a href="https://slurm.schedmd.com/quickstart_admin.html">Quick Start Administrator Guide</a>, <a href="https://slurm.schedmd.com/sbatch.html">sbatch</a> and <a href="https://slurm.schedmd.com/srun.html">srun</a> man pages (the &quot;OUTPUT ENVIRONMENT VARIABLES&quot; sections), <a href="https://slurm.schedmd.com/squeue.html">squeue</a> (&quot;JOB REASON CODES&quot;), <a href="https://slurm.schedmd.com/gres.html">Generic Resource (GRES) Scheduling</a>, <a href="https://slurm.schedmd.com/cgroups.html">Cgroups Guide</a>, <a href="https://slurm.schedmd.com/preempt.html">Preemption</a>, <a href="https://slurm.schedmd.com/priority_multifactor.html">Multifactor Priority</a>, <a href="https://slurm.schedmd.com/fair_tree.html">Fair Tree</a>, <a href="https://slurm.schedmd.com/job_array.html">Job Array Support</a>, <a href="https://slurm.schedmd.com/rosetta.pdf">Rosetta Stone of Workload Managers</a> (PBS/LSF/SGE equivalents).</li>
+<li>Yoo, Jette, Grondona, &quot;SLURM: Simple Linux Utility for Resource Management&quot;, JSSPP 2003 - the original design paper.</li>
+<li><a href="https://github.com/dun/munge">MUNGE</a> and its <a href="https://github.com/dun/munge/wiki/Installation-Guide">installation guide</a>.</li>
+<li><a href="https://github.com/NVIDIA/pyxis">Pyxis</a> and <a href="https://github.com/NVIDIA/enroot">Enroot</a> (NVIDIA); <a href="https://apptainer.org/docs/">Apptainer documentation</a>.</li>
+<li>PyTorch, <a href="https://pytorch.org/docs/stable/elastic/run.html">torchrun (Elastic Launch)</a> and <a href="https://pytorch.org/docs/stable/distributed.html">torch.distributed</a> (environment variable initialization).</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html">NCCL environment variables</a>.</li>
+<li><a href="https://github.com/mej/nhc">LBNL Node Health Check (NHC)</a> - the common <code>HealthCheckProgram</code>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../../orchestration/README.html">&larr; Orchestration</a><a class="next" href="../../orchestration/slurm/README.html">Working in SLURM Environment &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

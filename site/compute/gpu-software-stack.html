@@ -1,0 +1,1513 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details open><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html" class="current">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="the-gpu-node-software-stack-from-zero-drivers-cuda-nccl-and-fabric-bring-up">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</h1>
+<p>A GPU server fresh from the vendor is a box of very expensive silicon that does nothing. Before <code>torch.cuda.is_available()</code> returns <code>True</code> and an 8-node all-reduce runs at line rate, about a dozen pieces of software have to be installed at matching versions, in the right order, on the host or in the container. Each one can be missing, the wrong version or half-loaded. When that happens the failure usually shows up somewhere else: NCCL complains, PyTorch hangs, or a job runs at a tenth of the speed it should.</p>
+<p>This chapter goes through that stack one layer at a time, from firmware up to framework wheels. For each layer it covers what the layer is, why it exists, which versions must match, how to install and pin it on Ubuntu, and how to check it is healthy. The chapter ends with a node acceptance script that checks the whole stack and prints PASS or FAIL. An operator runs something like it on every node before a scheduler is allowed to give that node to users.</p>
+<p>Conventions:</p>
+<ul>
+<li>Python marked <strong>[ran]</strong> was executed on an Apple Silicon Mac (CPython 3.14.5, macOS 15) while writing this chapter. The output pasted under it is the real output.</li>
+<li>Package names and versions marked <strong>[apt, verified]</strong> were read from the Ubuntu 24.04 and NVIDIA CUDA apt repositories on 2026-11-05, using <code>apt-cache policy &lt;package&gt;</code> (which prints the versions apt could install and from which repository) inside an <code>ubuntu:24.04</code> amd64 container. They will drift, so treat them as &quot;as of Nov 2026&quot;.</li>
+<li>Shell sessions on GPU nodes (<code>nvidia-smi</code>, <code>ibstat</code>, <code>dcgmi</code>, ...) are <strong>untested</strong> here, because there was no GPU or InfiniBand hardware. Their output is sketched from the tools' documented formats with the details trimmed. The commands and flags are real. The specific numbers in the sketched output are only examples.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../foundations/linux-and-os.html">Linux and the OS</a>, especially <a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path">shared libraries and <code>LD_LIBRARY_PATH</code></a>, <a href="../foundations/linux-and-os.html#cuda-driver-vs-runtime-vs-toolkit-why-cuda-version-mismatch-happens">CUDA driver vs runtime vs toolkit</a>, <a href="../foundations/linux-and-os.html#systemd-and-services">systemd</a> and <a href="../foundations/linux-and-os.html#package-management-apt-vs-conda-vs-pip-vs-uv">package management</a>.</li>
+<li><a href="../foundations/computer-architecture.html">Computer architecture</a>: <a href="../foundations/computer-architecture.html#pcie">PCIe</a>, <a href="../foundations/computer-architecture.html#dma">DMA</a>, <a href="../foundations/computer-architecture.html#gpudirect-cutting-the-cpu-and-its-memory-out-of-the-path">GPUDirect</a>, <a href="../foundations/computer-architecture.html#nvlink-and-nvswitch">NVLink and NVSwitch</a> and <a href="../foundations/computer-architecture.html#a-map-of-a-gpu-server">the map of a GPU server</a>.</li>
+<li><a href="../foundations/networking.html">Networking</a>, especially <a href="../foundations/networking.html#hpc-networking-rdma-infiniband-roce-efa">HPC networking: RDMA, InfiniBand, RoCE, EFA</a>.</li>
+<li><a href="../foundations/toolkit.html">Toolkit</a>: the terminal basics, Make and the &quot;compiling C&quot; sections (section 6 builds perftest with <code>./configure</code> and <code>make</code>, section 7 builds nccl-tests with <code>make</code>), and regular expressions (the acceptance script's parsers).</li>
+<li><a href="../foundations/linux-and-os.html">Linux and the OS</a> also for the shell itself: <a href="../foundations/linux-and-os.html#pipes-and-redirection">pipes and redirection</a>, <a href="../foundations/linux-and-os.html#scripting-essentials">scripting essentials</a> (<code>for</code> loops, <code>$(...)</code>), <a href="../foundations/linux-and-os.html#proc-and-sys-the-kernel-as-files">/proc and /sys</a>, <a href="../foundations/linux-and-os.html#logs-journalctl-and-dmesg">logs: journalctl and dmesg</a> (Xid errors) and <a href="../foundations/linux-and-os.html#how-torchrun-spawns-workers">how torchrun spawns workers</a>.</li>
+<li><a href="../foundations/containers-and-virtualization.html">Containers and virtualization</a>, for the container half of the host-vs-container split, especially <a href="../foundations/containers-and-virtualization.html#6-gpus-in-containers">GPUs in containers</a> and <a href="../foundations/containers-and-virtualization.html#iommu-vfio-and-pcie-passthrough">IOMMU, VFIO and PCIe passthrough</a> (IOMMU, ACS, SR-IOV).</li>
+<li><a href="../foundations/distributed-systems.html">Distributed systems</a>: ranks, launchers and <a href="../foundations/distributed-systems.html#collectives-the-workhorse-of-distributed-training">collectives</a>; and <a href="../foundations/networking.html#how-pytorch-distributed-bootstraps">Networking</a> for how NCCL bootstraps and picks interfaces.</li>
+<li>Helpful: <a href="../compute/accelerator/execution-model.html">the GPU execution model</a> and <a href="../compute/accelerator/writing-kernels.html">writing kernels</a> (where <code>nvcc</code>, PTX and SASS come from).</li>
+<li>Forward links (later chapters, not needed first): <a href="../network/collectives-internals.html">collectives internals</a> (algbw/busbw, NCCL algorithms), <a href="../orchestration/slurm/from-zero.html">Slurm from zero</a> (<code>srun</code>, <code>scontrol</code>, draining, health checks), <a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> and <a href="../orchestration/internals.html">orchestration internals</a> (DaemonSets, taints, device plugins, the GPU Operator). Where this chapter uses their commands it explains just enough to follow.</li>
+</ul>
+<h2 id="1-the-map-what-runs-where">1. The map: what runs where</h2>
+<h3 id="the-layers-bottom-to-top">The layers, bottom to top</h3>
+<p>Each layer of the stack depends only on the layers below it. Here it is from the bottom up:</p>
+<pre><code>                                                         lives in        changes how often
+ +--------------------------------------------------+
+ | your code: train.py, vLLM, ...                    |   container/venv  every commit
+ | framework: torch, jax (+ triton)                  |   container/venv  weeks
+ | CUDA libraries: cuBLAS, cuDNN, NCCL, cuFFT, ...   |   container/venv  weeks (pip wheels)
+ | CUDA runtime: libcudart.so                        |   container/venv  with the framework
+ +--------------------------------------------------+  &lt;- the container boundary
+ | user-space driver: libcuda.so, libnvidia-ml.so    |   HOST (injected) must equal kernel module
+ | container runtime hook: nvidia-container-toolkit  |   HOST            months
+ | driver daemons: nvidia-persistenced, fabricmanager|   HOST            with the driver
+ |   nvidia-dcgm, nv-hostengine                      |
+ | RDMA user space: libibverbs, librdmacm, providers |   both (see 6)    months
+ | kernel modules: nvidia, nvidia_uvm, nvidia_peermem|   HOST            months (driver upgrade)
+ |   mlx5_core, mlx5_ib, ib_uverbs                   |
+ | Linux kernel                                      |   HOST            months
+ | BIOS/UEFI settings, BMC                           |   HOST (board)    rarely
+ | firmware: GPU VBIOS, NVSwitch, NIC (ConnectX), PSU|   on the devices  rarely, by vendor bundle
+ +--------------------------------------------------+
+</code></pre>
+<p>Some terms, one sentence each:</p>
+<ul>
+<li><strong>Firmware</strong> is software stored on a device's own flash memory that runs on the device itself, for example the GPU's VBIOS or the NIC's firmware. The operating system never runs it. It can only flash a new version.</li>
+<li>The <strong>BMC</strong> (baseboard management controller) is a small computer on the motherboard with its own network port. It lets you power-cycle the server, open its console and flash firmware even when the OS is dead.</li>
+<li>A <strong>kernel module</strong> (<code>.ko</code> file) is code loaded into the running Linux kernel. GPU and NIC drivers are kernel modules because only the kernel may program device registers, handle interrupts and map device memory.</li>
+<li>The <strong>user-space driver</strong> (<code>libcuda.so</code>) is the library your process calls to talk to that kernel module. It is part of the &quot;driver&quot;, not part of &quot;CUDA&quot;, and it must have exactly the same version as the kernel module.</li>
+<li>The <strong>CUDA runtime</strong> (<code>libcudart.so</code>) is the friendlier API (<code>cudaMalloc</code>, <code>cudaMemcpy</code>, kernel launches) built on top of <code>libcuda</code>. It ships with the toolkit and with framework wheels.</li>
+<li>The <strong>CUDA toolkit</strong> is the developer kit: the <code>nvcc</code> compiler, headers, the runtime and the math libraries. You need it to <em>compile</em> CUDA code, but not to run PyTorch from a wheel.</li>
+</ul>
+<p>NVIDIA's own diagram of the boundary between &quot;driver&quot; and &quot;toolkit&quot;:</p>
+<p><img src="images/cuda-driver-toolkit-components.png" alt="CUDA toolkit vs driver components" /></p>
+<p>(<a href="https://docs.nvidia.com/deploy/cuda-compatibility/">source</a>)</p>
+<h3 id="why-the-split-is-where-it-is">Why the split is where it is</h3>
+<p>The dividing line is &quot;kernel vs process&quot;. The kernel module and <code>libcuda.so</code> speak a private protocol to each other through <code>ioctl</code> calls on <code>/dev/nvidia*</code> (an <code>ioctl</code> is the generic &quot;send this device a driver-specific command&quot; <a href="../foundations/linux-and-os.html#system-calls-the-only-door">system call</a>; <code>/dev/nvidia*</code> are the <a href="../foundations/linux-and-os.html#everything-is-a-file">device files</a> the driver creates). Because that protocol changes between driver versions, the two must match exactly. Everything above <code>libcuda</code> uses a stable, versioned API, so it can be newer or older within the rules of <a href="#2-versions-and-the-compatibility-rules">section 2</a>.</p>
+<p>That one fact explains the host-vs-container split:</p>
+<ul>
+<li><strong>Host only:</strong> the kernel is shared by every container on the machine. So <code>nvidia.ko</code>, and therefore <code>libcuda.so</code> (which must match it), have to come from the host. The NVIDIA Container Toolkit mounts the host's <code>libcuda.so</code> into each GPU container when it starts (<a href="#5-containers-and-the-gpu">section 5</a>).</li>
+<li><strong>In the container or venv:</strong> the CUDA runtime, cuBLAS, cuDNN, NCCL and the framework. These are ordinary user-space libraries, so each image can bring its own, and two jobs on the same node can use different CUDA runtimes.</li>
+</ul>
+<p>So &quot;CUDA 12.8 on the node&quot; is usually a meaningless phrase. The node has a <em>driver</em>. Each image or venv has a <em>runtime</em>. The admin owns the first and the user owns the second.</p>
+<h3 id="taking-inventory-of-a-node-layer-by-layer">Taking inventory of a node, layer by layer</h3>
+<p>These are the commands that answer &quot;what is installed at each layer?&quot; <strong>[untested: needs a Linux GPU node]</strong></p>
+<pre><code class="language-bash"># firmware / hardware
+sudo dmidecode -s system-product-name              # e.g. &quot;PowerEdge XE9680&quot;
+nvidia-smi --query-gpu=index,name,vbios_version --format=csv,noheader
+lspci -nn | grep -Ei 'nvidia|mellanox'             # GPUs, NVSwitches, ConnectX NICs
+cat /sys/class/infiniband/mlx5_0/fw_ver            # NIC firmware, e.g. 28.43.1014
+
+# kernel + modules
+uname -r                                           # e.g. 6.8.0-87-generic
+cat /proc/driver/nvidia/version                    # the LOADED nvidia.ko, and whether it is the open flavor
+lsmod | grep -E '^(nvidia|mlx5|ib_)'               # which modules are loaded
+dkms status                                        # which modules are built for which kernels
+
+# user-space driver + daemons
+nvidia-smi | head -4                               # driver version, max CUDA the driver supports
+systemctl is-active nvidia-persistenced nvidia-fabricmanager nvidia-dcgm
+
+# runtime + libraries (per environment, not per node!)
+python -c 'import torch; print(torch.__version__, torch.version.cuda, torch.cuda.nccl.version())'
+nvcc --version 2&gt;/dev/null | tail -1               # only if a toolkit is installed
+</code></pre>
+<p>Sketch of the interesting lines on an 8x H100 node:</p>
+<pre><code>$ cat /proc/driver/nvidia/version
+NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  580.95.05  Release Build  (dvs-builder@U16-I1-N08-12-1)  ...
+GCC version:  gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04)
+
+$ lsmod | grep -E '^(nvidia|mlx5|ib_)'
+nvidia_peermem         16384  0
+nvidia_uvm           2088960  4
+nvidia_drm            135168  0
+nvidia_modeset       1638400  1 nvidia_drm
+nvidia              104701952  110 nvidia_uvm,nvidia_peermem,nvidia_modeset
+mlx5_ib               520192  0
+mlx5_core            2723840  1 mlx5_ib
+ib_uverbs             200704  3 nvidia_peermem,rdma_ucm,mlx5_ib
+</code></pre>
+<p>Tools in that block, one line each: <code>dmidecode</code> reads the motherboard's description of itself (model, BIOS version); <code>lspci</code> lists every device on the PCIe bus (<a href="../foundations/computer-architecture.html#pcie">PCIe</a>); <code>lsmod</code> lists the kernel modules currently loaded (<code>modprobe &lt;name&gt;</code> loads one, <code>modprobe -r &lt;name&gt;</code> unloads it); <code>dkms</code> is explained <a href="#dkms-why-the-driver-gets-rebuilt-when-the-kernel-changes">below</a>; <code>systemctl is-active</code> asks systemd whether a <a href="../foundations/linux-and-os.html#systemd-and-services">service</a> is running.</p>
+<p>The modules: <code>nvidia</code> is the core driver. <code>nvidia_uvm</code> handles unified memory and is needed by CUDA. <code>nvidia_modeset</code> and <code>nvidia_drm</code> handle display and are harmless on servers. <code>nvidia_peermem</code> lets the NIC DMA directly into GPU memory (<a href="#gpudirect-rdma-the-nic-reads-gpu-memory">GPUDirect RDMA</a>). <code>mlx5_core</code> and <code>mlx5_ib</code> are the ConnectX NIC driver and its InfiniBand/RDMA part. <code>ib_uverbs</code> exposes RDMA to user space.</p>
+<p>On this Mac, the framework layer exists but there is nothing underneath it. That makes the point that <code>torch.version.cuda</code> describes the wheel, not the machine: <strong>[ran]</strong></p>
+<pre><code class="language-python">import torch
+print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.backends.mps.is_available())
+</code></pre>
+<pre><code>2.15.0 None False True
+</code></pre>
+<p>The macOS wheel is built without CUDA (<code>None</code>). On Linux, <code>pip install torch</code> 2.15.0 pulls in a whole CUDA user space as wheels. This is the wheel's real dependency list from PyPI on 2026-11-05: <strong>[ran]</strong></p>
+<pre><code class="language-bash">curl -s https://pypi.org/pypi/torch/json | python3 -c &quot;
+import json,sys; d=json.load(sys.stdin); print(d['info']['version'])
+[print(r) for r in d['info']['requires_dist'] if 'nvidia' in r or 'cuda' in r]&quot;
+</code></pre>
+<pre><code>2.15.0
+cuda-toolkit[cublas,cudart,cufft,cufile,cupti,cusolver,cusparse,nvjitlink,nvrtc,nvtx]==13.2.2; platform_system == &quot;Linux&quot;
+cuda-bindings&lt;14,&gt;=13.0.3; platform_system == &quot;Linux&quot; and python_version &lt; &quot;3.15&quot;
+nvidia-cudnn-cu13==9.26.0.51; platform_system == &quot;Linux&quot;
+nvidia-cusparselt-cu13==0.8.1; platform_system == &quot;Linux&quot;
+nvidia-nccl-cu13==2.30.7; platform_system == &quot;Linux&quot;
+nvidia-nvshmem-cu13==3.7.2; platform_system == &quot;Linux&quot;
+</code></pre>
+<p>So the default PyPI <code>torch</code> 2.15.0 brings CUDA runtime 13.2.2 and NCCL 2.30.7, and it needs a driver that speaks CUDA 13 (<code>&gt;= 580</code>, see below). No <code>nvcc</code> and no <code>libcuda</code> are in that list. <code>libcuda</code> always comes from the host.</p>
+<h2 id="2-versions-and-the-compatibility-rules">2. Versions and the compatibility rules</h2>
+<h3 id="reading-the-three-version-numbers">Reading the three version numbers</h3>
+<p>The <a href="../foundations/linux-and-os.html#cuda-driver-vs-runtime-vs-toolkit-why-cuda-version-mismatch-happens">Linux chapter's table</a> introduced the four &quot;CUDA versions&quot;. Here is what each one tells an operator:</p>
+<pre><code>$ nvidia-smi | head -4
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.95.05              Driver Version: 580.95.05      CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+$ python -c 'import torch; print(torch.version.cuda)'
+13.2
+$ nvcc --version | tail -1
+Cuda compilation tools, release 12.8, V12.8.93
+</code></pre>
+<ul>
+<li><code>Driver Version: 580.95.05</code> is the version of the user-space driver that <code>nvidia-smi</code> loaded. It is read as <code>&lt;branch&gt;.&lt;minor&gt;.&lt;patch&gt;</code>. The <strong>branch</strong> (580) is what matters for compatibility. Patches inside a branch are bug and security fixes.</li>
+<li><code>CUDA Version: 13.0</code> is the newest CUDA API that this driver <em>natively</em> implements. It is not an installed toolkit.</li>
+<li><code>torch.version.cuda</code> is the runtime the framework was built against and ships with.</li>
+<li><code>nvcc</code> is the toolkit on <code>PATH</code>, if any. It matters only when you compile extensions. Its <em>major</em> version must match <code>torch.version.cuda</code>'s major version.</li>
+</ul>
+<p>Here the runtime is 13.2 and the driver's native version is 13.0, and that works. The next section explains why.</p>
+<h3 id="the-four-rules">The four rules</h3>
+<p>As of CUDA 13.5 (November 2026), from <a href="https://docs.nvidia.com/deploy/cuda-compatibility/">NVIDIA's compatibility guide</a>:</p>
+<ol>
+<li><strong>Backward compatibility.</strong> A newer driver runs anything built for an older CUDA. A 620 driver runs a CUDA 11.8 binary.</li>
+<li><strong>Minor-version compatibility (CUDA 11+).</strong> Within one CUDA major version, a runtime from a newer minor version runs on any driver at or above that major version's floor, with a limited feature set (features that need a newer driver, such as some PTX JIT paths, will fail). The floors are 11.x: <code>&gt;= 450.80.02</code>, 12.x: <code>&gt;= 525.60.13</code>, 13.x: <code>&gt;= 580</code> (NVIDIA's own example uses 580.65.06, the driver released with 13.0). This is why runtime 13.2 runs on driver 580.</li>
+<li><strong>Forward compatibility across major versions</strong> needs the <code>cuda-compat-&lt;major&gt;-&lt;minor&gt;</code> package, and <strong>only on datacenter GPUs</strong> (plus some RTX &quot;NGC-ready&quot; SKUs and Jetson, NVIDIA's embedded boards). That package is a newer <code>libcuda.so</code> placed in <code>/usr/local/cuda-X.Y/compat/</code> and loaded through <code>LD_LIBRARY_PATH</code>. It runs on top of an older kernel module, and only on specific supported driver branches.</li>
+<li><strong>Architecture support is separate.</strong> The runtime and the binary must also know your GPU. Each GPU has a <strong>compute capability</strong> (<code>sm_80</code> for A100, <code>sm_90</code> for H100/H200, <code>sm_100</code> for B200). A binary contains machine code (SASS) for some capabilities and maybe PTX, an intermediate code the driver can JIT-compile for newer ones. CUDA added <code>sm_90</code> support in 11.8 and Blackwell <code>sm_100</code> in 12.8. A CUDA 12.4 wheel on a B200 therefore fails with <code>no kernel image is available for execution on the device</code> even with a perfect driver.</li>
+</ol>
+<p>Rules 1 to 3 as code, so you can paste in the two numbers from a node and get an answer: <strong>[ran]</strong></p>
+<pre><code class="language-python"># cuda_compat.py - can this CUDA runtime run on this driver? (rules as of CUDA 13.5 / Nov 2026)
+MIN_DRIVER = {11: (450, 80, 2), 12: (525, 60, 13), 13: (580, 65, 6)}  # minor-version-compat floor per major
+
+def v(s):
+    return tuple(int(x) for x in s.split(&quot;.&quot;))
+
+def verdict(driver, runtime, datacenter_gpu=True):
+    d, (major, minor) = v(driver), v(runtime)[:2]
+    native_major = max(m for m, floor in MIN_DRIVER.items() if d &gt;= floor) if d &gt;= MIN_DRIVER[11] else None
+    if native_major is None:
+        return &quot;FAIL: driver older than any CUDA 11+ floor&quot;
+    if major &lt;= native_major:
+        return f&quot;OK: driver speaks CUDA {native_major}.x; runtime {runtime} runs (backward/minor-version compat)&quot;
+    if datacenter_gpu:
+        return f&quot;NEEDS cuda-compat-{major}-{minor}: newer major than driver, forward-compat package (datacenter GPUs only)&quot;
+    return &quot;FAIL: runtime major newer than driver and forward compat is datacenter-only&quot;
+
+if __name__ == &quot;__main__&quot;:
+    for drv, rt, dc in [(&quot;550.54.15&quot;, &quot;12.1&quot;, True), (&quot;550.54.15&quot;, &quot;12.8&quot;, True), (&quot;575.57.08&quot;, &quot;13.2&quot;, True),
+                        (&quot;575.57.08&quot;, &quot;13.2&quot;, False), (&quot;580.95.05&quot;, &quot;13.2&quot;, True), (&quot;620.70.06&quot;, &quot;11.8&quot;, True),
+                        (&quot;418.87.01&quot;, &quot;12.1&quot;, True)]:
+        print(f&quot;driver {drv:&lt;10} runtime {rt:&lt;5} dc={dc!s:&lt;5} -&gt; {verdict(drv, rt, dc)}&quot;)
+    assert verdict(&quot;580.95.05&quot;, &quot;13.2&quot;).startswith(&quot;OK&quot;)
+    assert verdict(&quot;575.57.08&quot;, &quot;13.2&quot;).startswith(&quot;NEEDS&quot;)
+    assert verdict(&quot;575.57.08&quot;, &quot;13.2&quot;, False).startswith(&quot;FAIL&quot;)
+</code></pre>
+<pre><code>driver 550.54.15  runtime 12.1  dc=True  -&gt; OK: driver speaks CUDA 12.x; runtime 12.1 runs (backward/minor-version compat)
+driver 550.54.15  runtime 12.8  dc=True  -&gt; OK: driver speaks CUDA 12.x; runtime 12.8 runs (backward/minor-version compat)
+driver 575.57.08  runtime 13.2  dc=True  -&gt; NEEDS cuda-compat-13-2: newer major than driver, forward-compat package (datacenter GPUs only)
+driver 575.57.08  runtime 13.2  dc=False -&gt; FAIL: runtime major newer than driver and forward compat is datacenter-only
+driver 580.95.05  runtime 13.2  dc=True  -&gt; OK: driver speaks CUDA 13.x; runtime 13.2 runs (backward/minor-version compat)
+driver 620.70.06  runtime 11.8  dc=True  -&gt; OK: driver speaks CUDA 13.x; runtime 11.8 runs (backward/minor-version compat)
+driver 418.87.01  runtime 12.1  dc=True  -&gt; FAIL: driver older than any CUDA 11+ floor
+</code></pre>
+<p>The script does not check rule 4 (architecture). To check that on a GPU, run <code>python -c 'import torch; print(torch.cuda.get_arch_list(), torch.cuda.get_device_capability())'</code> and make sure your device's <code>sm_XY</code> (or an older PTX) is in the list. <strong>[untested]</strong></p>
+<h3 id="which-driver-branch-ships-with-which-toolkit">Which driver branch ships with which toolkit</h3>
+<p>Each CUDA minor release is built and tested with one driver branch, and its <code>cuda-compat</code> package contains that branch's <code>libcuda</code>. Reading the <code>cuda-compat-*</code> versions from NVIDIA's apt repo gives the pairing <strong>[apt, verified]</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>CUDA toolkit</th>
+<th>cuda-compat package version (= driver branch)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>12.4</td>
+<td>550.163.01</td>
+</tr>
+<tr>
+<td>12.6</td>
+<td>560.35.05</td>
+</tr>
+<tr>
+<td>12.8</td>
+<td>570.211.01</td>
+</tr>
+<tr>
+<td>12.9</td>
+<td>575.57.08</td>
+</tr>
+<tr>
+<td>13.0</td>
+<td>580.196.07</td>
+</tr>
+<tr>
+<td>13.1</td>
+<td>590.48.01</td>
+</tr>
+<tr>
+<td>13.2</td>
+<td>595.112.07</td>
+</tr>
+<tr>
+<td>13.3</td>
+<td>610.57.04</td>
+</tr>
+<tr>
+<td>13.4</td>
+<td>615.71.10</td>
+</tr>
+<tr>
+<td>13.5</td>
+<td>620.70.06</td>
+</tr>
+</tbody>
+</table>
+<p>The package versions are the <em>latest patch</em> of each branch, not the version that originally shipped with the toolkit. Use this table to see which branch belongs with which toolkit, not to find exact minimums.</p>
+<p>The CUDA container images encode the same rules in an environment variable that the container toolkit checks at launch. From <code>nvidia/cuda:13.0.2-base-ubuntu24.04</code> (trimmed, <strong>[ran]</strong> on 2026-11-05 by inspecting the image):</p>
+<pre><code>CUDA_VERSION=13.0.2
+NVIDIA_REQUIRE_CUDA=cuda&gt;=13.0 brand=tesla,driver&gt;=535,driver&lt;536 brand=tesla,driver&gt;=550,driver&lt;551
+                    brand=tesla,driver&gt;=565,driver&lt;566 brand=tesla,driver&gt;=570,driver&lt;571 brand=tesla,driver&gt;=575,driver&lt;576 ...
+</code></pre>
+<p>Read it as: &quot;this image needs a driver that natively speaks CUDA &gt;= 13.0, <strong>or</strong> one of the datacenter (&quot;tesla&quot;) branches 535/550/565/570/575, which can run it through the bundled forward-compat <code>libcuda</code>&quot;. Those are the branches NVIDIA supports for forward compatibility. A driver from any other pre-580 branch is refused.</p>
+<h3 id="how-a-version-mismatch-shows-up">How a version mismatch shows up</h3>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Layer</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Failed to initialize NVML: Driver/library version mismatch</code></td>
+<td>kernel module vs <code>libnvidia-ml</code></td>
+<td>apt upgraded the user-space libraries, but the old <code>nvidia.ko</code> is still loaded</td>
+<td>reboot (or unload and reload the modules, <a href="#upgrading-without-breaking-the-node">section 3</a>)</td>
+</tr>
+<tr>
+<td><code>CUDA driver version is insufficient for CUDA runtime version</code> / <code>torch.cuda.is_available()</code> is <code>False</code> with a warning</td>
+<td>runtime vs driver</td>
+<td>runtime major is newer than the driver</td>
+<td>upgrade the driver, use a <code>cu12x</code> wheel, or <code>cuda-compat</code></td>
+</tr>
+<tr>
+<td><code>no kernel image is available for execution on the device</code></td>
+<td>binary vs GPU</td>
+<td>wheel or extension built without your <code>sm_XY</code></td>
+<td>newer wheel, or rebuild with <code>TORCH_CUDA_ARCH_LIST</code></td>
+</tr>
+<tr>
+<td><code>The detected CUDA version (12.8) mismatches the version that was used to compile PyTorch (13.2)</code></td>
+<td><code>nvcc</code> vs torch</td>
+<td>compiling an extension with the wrong toolkit</td>
+<td>point <code>CUDA_HOME</code> at a toolkit with the matching major version</td>
+</tr>
+<tr>
+<td><code>cudaErrorSystemNotReady</code> / &quot;system not yet initialized&quot; (error 802)</td>
+<td>Fabric Manager</td>
+<td>NVSwitch system and FM not running or not finished</td>
+<td><a href="#fabric-manager-required-on-nvswitch-systems">section 4</a></td>
+</tr>
+<tr>
+<td><code>nvidia-smi</code> hangs for seconds, first CUDA call slow</td>
+<td>persistence</td>
+<td>no persistence daemon, so the driver tears down state between processes</td>
+<td><a href="#persistence-mode">persistence mode</a></td>
+</tr>
+<tr>
+<td><code>libcuda.so.1: cannot open shared object file</code> in a container</td>
+<td>container runtime</td>
+<td>started without <code>--gpus</code> or without the NVIDIA runtime</td>
+<td><a href="#5-containers-and-the-gpu">section 5</a></td>
+</tr>
+</tbody>
+</table>
+<p>To see which libraries a process actually loaded, use the <a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path"><code>LD_DEBUG</code> and <code>/proc/&lt;pid&gt;/maps</code> recipes in the Linux chapter</a>. The one-line version for CUDA: <strong>[untested]</strong></p>
+<pre><code class="language-bash">python -c 'import torch; torch.zeros(1).cuda(); import os; os.system(f&quot;grep -oE \&quot;/[^ ]*(libcuda|libcudart|libnccl)[^ ]*\&quot; /proc/{os.getpid()}/maps | sort -u&quot;)'
+# /usr/lib/x86_64-linux-gnu/libcuda.so.580.95.05                              &lt;- host driver
+# /venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcudart.so.13           &lt;- wheel runtime
+# /venv/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2              &lt;- wheel NCCL
+</code></pre>
+<h2 id="3-installing-and-upgrading-the-nvidia-driver-on-ubuntu">3. Installing and upgrading the NVIDIA driver on Ubuntu</h2>
+<h3 id="where-the-driver-can-come-from">Where the driver can come from</h3>
+<p>On Ubuntu 22.04/24.04/26.04 there are three sources. Pick one per fleet and never mix them on the same node.</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Package names (as of Nov 2026)</th>
+<th>Pros</th>
+<th>Cons</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ubuntu archive (&quot;restricted&quot;)</td>
+<td><code>nvidia-driver-570-server-open</code>, <code>nvidia-fabricmanager-570</code>, <code>nvidia-utils-570-server</code></td>
+<td>Canonical signs the modules for Secure Boot. <code>ubuntu-drivers</code> picks one for you.</td>
+<td>lags NVIDIA by weeks</td>
+</tr>
+<tr>
+<td>NVIDIA CUDA network repo</td>
+<td><code>nvidia-open</code> (latest), <code>nvidia-open-580</code> (one branch, up to 580), <code>nvidia-driver-pinning-&lt;branch&gt;</code>, <code>cuda-drivers</code></td>
+<td>newest drivers, NVIDIA's documented path, matching FM/DCGM/NCCL in the same repo</td>
+<td>you sign the modules for Secure Boot (or Secure Boot is off)</td>
+</tr>
+<tr>
+<td><code>.run</code> installer</td>
+<td><code>NVIDIA-Linux-x86_64-&lt;ver&gt;.run</code></td>
+<td>no repo needed</td>
+<td>invisible to apt; the next <code>apt upgrade</code> can half-overwrite it. Avoid on fleets.</td>
+</tr>
+</tbody>
+</table>
+<p>All the names above were checked against the repos <strong>[apt, verified]</strong>. For example, the Ubuntu archive had <code>nvidia-driver-570-server-open 570.211.01-0ubuntu1.24.04.1</code> and the CUDA repo had <code>nvidia-open 620.70.06-1ubuntu1</code>.</p>
+<p>The <code>-server</code> packages in Ubuntu's archive are the datacenter-branch builds with a longer support lifecycle. Prefer them over the desktop <code>nvidia-driver-NNN</code> on servers.</p>
+<p>NVIDIA ships several driver <em>branches</em> at once: production branches with long support and short-lived &quot;new feature&quot; branches. Pick a long-lived production branch for a fleet and move between branches deliberately. Check <a href="https://docs.nvidia.com/datacenter/tesla/drivers/index.html">NVIDIA's driver lifecycle documentation</a> for which branches are long-term support right now. I have not verified the current LTS list.</p>
+<h3 id="open-vs-proprietary-kernel-modules">Open vs proprietary kernel modules</h3>
+<p>Since 2022 NVIDIA has published the source of its GPU kernel modules (<a href="https://github.com/NVIDIA/open-gpu-kernel-modules">open-gpu-kernel-modules</a>, dual MIT/GPLv2). The open modules are possible because Turing and later GPUs run most of the driver logic on an on-GPU microcontroller, the <strong>GSP</strong> (GPU System Processor). The kernel module is then mostly a thin shim, and NVIDIA could open-source it without exposing much.</p>
+<p>The practical rules (as of driver 620):</p>
+<ul>
+<li>Turing (T4), Ampere (A100), Hopper (H100/H200) and Blackwell (B200/B300) can all use the open modules. Grace Hopper and Blackwell <em>require</em> them.</li>
+<li>Pre-Turing GPUs such as Volta (V100) need the proprietary modules, which are only available on older branches.</li>
+<li>NVIDIA's own install guide now documents only the open flavor. Since R560 it has been the default.</li>
+</ul>
+<p>Check which one is loaded: <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ grep -o 'Open Kernel Module' /proc/driver/nvidia/version &amp;&amp; echo open || echo proprietary
+Open Kernel Module
+open
+$ modinfo nvidia | grep -E '^(version|license)'
+version:        580.95.05
+license:        Dual MIT/GPL          # proprietary builds say &quot;NVIDIA&quot;
+</code></pre>
+<h3 id="dkms-why-the-driver-gets-rebuilt-when-the-kernel-changes">DKMS: why the driver gets rebuilt when the kernel changes</h3>
+<p>A kernel module is compiled against one specific kernel version's internal interfaces, which are not stable. When Ubuntu installs a new kernel, every out-of-tree module (a module not shipped inside the Linux source tree: NVIDIA's, and sometimes DOCA-OFED, the RDMA NIC stack from <a href="#the-software-inbox-rdma-core-vs-doca-ofed">section 6</a>) has to be rebuilt for it. <strong>DKMS</strong> (Dynamic Kernel Module Support) automates that. The driver package installs the module <em>source</em> under <code>/usr/src/nvidia-&lt;ver&gt;/</code>, and an apt hook recompiles it for every kernel that gets installed. The <code>nvidia-dkms-*-open</code> package is the DKMS piece. The precompiled alternative (<code>linux-modules-nvidia-*</code> in Ubuntu) ships modules already built for Canonical's kernels.</p>
+<p>This only works if the kernel headers for the target kernel are installed, so put <code>linux-headers-$(uname -r)</code> (or the <code>linux-headers-generic</code> metapackage) in your base image. A missing header package is the most common reason a node comes back from a kernel update with no GPU. <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ dkms status
+nvidia/580.95.05, 6.8.0-85-generic, x86_64: installed
+nvidia/580.95.05, 6.8.0-87-generic, x86_64: installed      # one line per kernel it is built for
+
+# after installing a kernel without headers, the module silently isn't there for it:
+$ ls /lib/modules/6.8.0-88-generic/updates/dkms/ 2&gt;&amp;1
+ls: cannot access '/lib/modules/6.8.0-88-generic/updates/dkms/': No such file or directory
+$ sudo apt install linux-headers-6.8.0-88-generic &amp;&amp; sudo dkms autoinstall -k 6.8.0-88-generic
+</code></pre>
+<p><strong>Secure Boot</strong> is a feature of UEFI (the firmware interface that replaced the classic BIOS; people still say &quot;BIOS&quot; for both) that refuses to load unsigned kernel code. Canonical's precompiled modules are signed. DKMS-built modules are signed with a local key (a <strong>MOK</strong>, machine owner key), which someone must enroll at the console on the next boot (<code>sudo mokutil --import /var/lib/shim-signed/mok/MOK.der</code>). Fleets usually either use signed modules or turn Secure Boot off in the BIOS. If <code>modprobe nvidia</code> fails with <code>Key was rejected by service</code>, this is the cause.</p>
+<h3 id="a-clean-install-from-the-nvidia-repo">A clean install from the NVIDIA repo</h3>
+<p>Compute-only (headless), open modules, pinned to the 580 branch. These follow <a href="https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/ubuntu.html">NVIDIA's Ubuntu install guide</a>. <strong>[untested]</strong></p>
+<p>Reading the block: <code>echo -e &quot;...&quot; | sudo tee FILE</code> writes a file that only root may write (<code>sudo echo &gt; FILE</code> would not work, because the redirection is done by your unprivileged shell). Files in <code>/etc/modprobe.d/</code> are options for <code>modprobe</code>; <code>blacklist nouveau</code> stops the kernel loading <strong>nouveau</strong>, the community-written open-source NVIDIA driver, which would otherwise grab the GPU first. <code>update-initramfs -u</code> rebuilds the <strong>initramfs</strong>, the small boot-time filesystem that loads early drivers, so the blacklist also applies at boot. <code>dpkg -i</code> installs a downloaded <code>.deb</code> package file directly (<code>apt</code> is the higher-level tool that downloads and resolves dependencies, see <a href="../foundations/linux-and-os.html#package-management-apt-vs-conda-vs-pip-vs-uv">package management</a>); <code>-y</code> answers yes to prompts and <code>-V</code> shows the versions it picks.</p>
+<pre><code class="language-bash"># 0. nothing else may own the GPU: blacklist nouveau (the reverse-engineered open driver)
+echo -e &quot;blacklist nouveau\noptions nouveau modeset=0&quot; | sudo tee /etc/modprobe.d/blacklist-nouveau.conf
+sudo update-initramfs -u
+
+# 1. headers for DKMS, and the NVIDIA repo
+sudo apt install -y linux-headers-$(uname -r)
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb &amp;&amp; sudo apt update
+
+# 2. pin the branch BEFORE installing (NVIDIA's recommendation), then the compute-only driver
+sudo apt install -y nvidia-driver-pinning-580
+sudo apt install -y -V libnvidia-compute nvidia-dkms-open      # compute-only; 'nvidia-open' = full driver
+sudo apt install -y nvidia-persistenced                        # if not pulled in already
+
+# 3. reboot and verify
+sudo reboot
+nvidia-smi -L
+</code></pre>
+<p>Starting with branch 590, NVIDIA's Ubuntu packages dropped the branch number from their names (<code>nvidia-open</code> rather than <code>nvidia-open-590</code>). Choosing a branch or an exact version is now done only with the <code>nvidia-driver-pinning-*</code> packages. The repo has both <code>nvidia-driver-pinning-580</code> (branch) and <code>nvidia-driver-pinning-580.126.20</code> (exact version) <strong>[apt, verified]</strong>.</p>
+<h3 id="pinning-making-apt-upgrade-safe">Pinning: making <code>apt upgrade</code> safe</h3>
+<p>An unattended <code>apt upgrade</code> that moves a node from 580 to 620 while jobs are running is a classic outage. The new user-space libraries no longer match the loaded kernel module, and every new process fails with the NVML mismatch error until someone reboots. The pinning package is simply an apt preferences file (files in <code>/etc/apt/preferences.d/</code> tell apt which version of a package to prefer when several are available). This is the real content of <code>nvidia-driver-pinning-580</code>, extracted from the .deb <strong>[apt, verified]</strong>:</p>
+<pre><code># /etc/apt/preferences.d/nvidia-driver-pin  (from nvidia-driver-pinning-580)
+Package: src:nvidia-graphics-drivers-580:any src:nvidia-kmod-open:any
+Pin: version 580*
+Pin-Priority: 1000
+
+Package: src:nvidia-modprobe src:nvidia-persistenced src:nvidia-settings src:nvidia-xconfig
+Pin: version 580*
+Pin-Priority: 1000
+
+Package: src:cuda-drivers:any src:nvidia-open:any
+Pin: version 580*
+Pin-Priority: 1000
+
+Package: src:libnvidia-nscq src:libnvsdm src:nvidia-fabricmanager src:nvidia-imex src:nvlink5 src:fabricmanager src:imex
+Pin: version 580*
+Pin-Priority: 1000
+</code></pre>
+<p><code>Pin-Priority: 1000</code> means &quot;prefer this version even if it means a downgrade&quot;. The pin covers every source package of the driver, including Fabric Manager and IMEX (a daemon for sharing GPU memory across nodes on rack-scale systems, <a href="#fabric-manager-required-on-nvswitch-systems">below</a>), so they all stay on the same branch. That matters because before driver 620, Fabric Manager must match the driver exactly (see below).</p>
+<p>Belt and braces for a fleet: also keep the driver out of unattended upgrades, and pin the kernel too, since a kernel change triggers a DKMS rebuild. <strong>[untested]</strong></p>
+<p>In the block below, <code>dpkg-query -W -f='${Package}\n'</code> prints the name of every installed package, one per line, and <code>apt-mark hold</code> freezes each one at its current version. <code>cat &lt;&lt;'EOF' ... EOF</code> is a <strong>heredoc</strong>: the lines between the two <code>EOF</code> markers become the command's standard input (the quotes around <code>'EOF'</code> stop the shell from expanding <code>$</code> inside), and <code>| sudo tee FILE</code> writes them to a root-owned file.</p>
+<pre><code class="language-bash"># hold exact versions (stricter than the branch pin)
+sudo apt-mark hold $(dpkg-query -W -f='${Package}\n' | grep -E '^(nvidia|libnvidia|linux-(image|headers|modules))')
+# keep unattended-upgrades away from them
+cat &lt;&lt;'EOF' | sudo tee /etc/apt/apt.conf.d/51nvidia-no-unattended
+Unattended-Upgrade::Package-Blacklist { &quot;nvidia-&quot;; &quot;libnvidia-&quot;; &quot;linux-&quot;; };
+EOF
+apt-mark showhold | head
+</code></pre>
+<h3 id="upgrading-without-breaking-the-node">Upgrading without breaking the node</h3>
+<p>A driver upgrade means &quot;nothing may hold <code>/dev/nvidia*</code> open, swap the modules, verify&quot;. The order matters. <strong>[untested]</strong></p>
+<p>Step 1 is a preview of the cluster schedulers taught later. A <strong>scheduler</strong> (Slurm or Kubernetes) is the service that decides which jobs run on which nodes. <strong>Draining</strong> a node tells it &quot;let running jobs finish, but place nothing new here&quot;; <strong>resuming</strong> puts the node back in service. <code>scontrol update nodename=... state=drain reason=...</code> is Slurm's admin command for that (<a href="../orchestration/slurm/from-zero.html#day-to-day-draining-resuming-adding-nodes">Slurm: draining and resuming</a>), and <code>kubectl drain</code> is the Kubernetes equivalent (<a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>). <code>hostname -s</code> prints this machine's short name. <code>lsof /dev/nvidia*</code> lists processes that have the GPU device files open (<a href="../foundations/linux-and-os.html#lsof-and-ss-open-files-and-network-ports">lsof</a>).</p>
+<pre><code class="language-bash"># 1. drain: tell the scheduler to stop placing jobs, wait for running ones
+sudo scontrol update nodename=$(hostname -s) state=drain reason=&quot;driver 580-&gt;620&quot;   # Slurm
+# kubectl drain $(hostname) --ignore-daemonsets                                     # Kubernetes
+
+# 2. stop everything that holds the GPU open
+sudo systemctl stop nvidia-dcgm nvidia-fabricmanager nvidia-persistenced
+sudo lsof /dev/nvidia* 2&gt;/dev/null          # must print nothing; kill or stop what it shows
+
+# 3. move the pin, upgrade, reboot (a reboot is the reliable way to get matching modules loaded)
+sudo apt install -y nvidia-driver-pinning-620 &amp;&amp; sudo apt purge -y nvidia-driver-pinning-580
+sudo apt update &amp;&amp; sudo apt install -y libnvidia-compute nvidia-dkms-open nvidia-fabricmanager
+sudo reboot
+
+# 3b. (no-reboot variant, when nothing else depends on the modules)
+#     sudo modprobe -r nvidia_peermem nvidia_uvm nvidia_drm nvidia_modeset nvidia &amp;&amp; sudo modprobe nvidia
+
+# 4. verify, then run the acceptance script (section 10) before resuming
+cat /proc/driver/nvidia/version &amp;&amp; nvidia-smi -L
+sudo python3 node_accept.py --gpus 8 --driver 620.70.06 &amp;&amp; sudo scontrol update nodename=$(hostname -s) state=resume
+</code></pre>
+<p>Roll the upgrade one node at a time and keep a canary node on the new driver for a few days of real jobs before rolling out to the rest. Driver regressions do happen, and a fleet-wide rollback is far more expensive than a slow rollout.</p>
+<h2 id="4-driver-level-services-and-gpu-health">4. Driver-level services and GPU health</h2>
+<h3 id="persistence-mode">Persistence mode</h3>
+<p>Normally the kernel driver tears down a GPU's state when the last process using it exits, and rebuilds it when the next process opens it. On datacenter GPUs that rebuild takes from hundreds of milliseconds to a few seconds per GPU. It makes every <code>nvidia-smi</code> call slow, and it resets settings such as application clocks between jobs. <strong>Persistence mode</strong> keeps the driver state alive with no clients. The supported way to get it is the <code>nvidia-persistenced</code> daemon, which holds the device files open. The older <code>nvidia-smi -pm 1</code> sets a legacy flag inside the driver. <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ sudo systemctl enable --now nvidia-persistenced
+$ nvidia-smi --query-gpu=index,persistence_mode --format=csv,noheader
+0, Enabled
+...
+7, Enabled
+$ time nvidia-smi -L &gt;/dev/null     # with persistence: well under a second on an idle node
+</code></pre>
+<h3 id="fabric-manager-required-on-nvswitch-systems">Fabric Manager: required on NVSwitch systems</h3>
+<p>On an HGX/DGX board, the 8 GPUs are not wired directly to each other. Each GPU connects to several <strong>NVSwitch</strong> chips, and the switches route NVLink traffic between them. Someone has to program the switches' routing tables and assign GPUs to partitions at boot. That is <strong>Fabric Manager</strong> (FM), a host daemon (<code>nvidia-fabricmanager.service</code>). Until FM has finished, CUDA on these systems refuses to start, and new CUDA processes get <code>cudaErrorSystemNotReady</code>. PCIe GPUs (L4, L40S, H100 PCIe) and machines without NVSwitch don't need FM.</p>
+<p>Rules (as of driver 620, from the <a href="https://docs.nvidia.com/datacenter/tesla/fabric-manager-user-guide/index.html">Fabric Manager user guide</a>):</p>
+<ul>
+<li><strong>For drivers before 620, the FM package version must match the driver version exactly.</strong> A 580.95.05 driver with FM 580.82.07 refuses to start. This is why the pinning file above includes <code>src:nvidia-fabricmanager</code>. Starting with 620, FM is versioned separately (the repo has <code>nvidia-fabricmanager</code> as a transitional package to <code>nvidia-fabricmanager-direct 2.0.0</code> <strong>[apt, verified]</strong>). I haven't seen this on hardware, so check the guide for which FM version goes with which driver.</li>
+<li>On <strong>HGX B200/B300</strong>, the 4th-generation NVSwitches share their design with InfiniBand switches, and FM also needs the <strong>NVLink Subnet Manager</strong> (<code>nvlsm</code> package) plus an OFED/rdma-core stack. The shipped <code>nv-fabricmanager-start.sh</code> starts FM and NVLSM as the platform requires.</li>
+<li>Rack-scale NVL72 systems manage NVLink from the switch trays (NVIDIA calls this NMX) and use <code>nvidia-imex</code> for cross-node GPU memory sharing. That is beyond a single-node bring-up.</li>
+</ul>
+<p>Install, start, verify. <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ sudo apt install -y nvidia-fabricmanager            # pinned to the driver branch by the pinning package
+$ sudo systemctl enable --now nvidia-fabricmanager
+$ systemctl is-active nvidia-fabricmanager
+active
+$ nvidia-smi -q -i 0 | grep -i -A 2 Fabric
+    Fabric
+        State                             : Completed
+        Status                            : Success
+</code></pre>
+<p><code>State: In Progress</code> is normal for a few seconds after boot. Anything other than <code>Completed / Success</code> once FM is up means the GPU isn't part of the NVLink fabric. Look at <code>journalctl -u nvidia-fabricmanager</code> and <code>/var/log/fabricmanager.log</code>.</p>
+<h3 id="nvlink-and-topology-checks">NVLink and topology checks</h3>
+<p>Once FM is happy, check that the links actually trained and at what speed, and look at how GPUs and NICs connect. The <a href="../compute/accelerator/nvidia/debug.html#how-to-check-error-counters-of-nvlink-links">NVIDIA debug chapter</a> covers NVLink error counters and <a href="../network/debug/README.html#how-to-check-if-p2p-is-supported">P2P checks</a> in detail. The bring-up version: <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ nvidia-smi nvlink -s | head -4                 # every link should show a speed, none &quot;&lt;inactive&gt;&quot;
+GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-...)
+         Link 0: 26.562 GB/s
+         Link 1: 26.562 GB/s
+         ...
+$ nvidia-smi nvlink -s | grep -c 'GB/s'          # 8 GPUs x 18 links on H100 = 144
+144
+$ nvidia-smi topo -m                             # trimmed
+        GPU0  GPU1  ...  NIC0  NIC1  ...  CPU Affinity  NUMA Affinity
+GPU0     X    NV18  ...  PIX   NODE  ...  0-55          0
+GPU1    NV18   X    ...  NODE  PIX   ...  0-55          0
+NIC0    PIX   NODE  ...   X    NODE
+Legend: NV# = NVLink (# links), PIX = same PCIe switch, NODE = same NUMA node, SYS = across sockets
+</code></pre>
+<p>The two things to check in <code>topo -m</code>: every GPU pair is <code>NV18</code> (all 18 links, on H100), and every GPU has a NIC at <code>PIX</code> distance. A GPU whose nearest NIC is <code>SYS</code> sends its network traffic across the CPU socket link, which roughly halves its inter-node bandwidth. If that happens, something is wrong with the cabling, the BIOS or the slot assignment.</p>
+<p>18 links times 25 GBps per link per direction gives the H100's advertised 450 GBps per direction. The 26.562 shown per link is the raw signalling rate before encoding overhead. <a href="../network/README.html#nvlink">network/README.md</a> has the arithmetic.</p>
+<h3 id="ecc-row-remapping-clocks-and-gpu-reset">ECC, row remapping, clocks and GPU reset</h3>
+<p><strong>ECC</strong> (error-correcting code) memory stores a few extra check bits per word, so the hardware can fix single-bit flips and at least detect multi-bit ones. A <em>corrected</em> error is silent and harmless; an <em>uncorrected</em> one means data was lost and the process using it is killed. <strong>Row remapping</strong> is how HBM retires a bad memory row: the GPU records the row and swaps in a spare one at the next reset. These health fields are queryable in one CSV line per GPU. The acceptance script below uses exactly this query. The <a href="../compute/accelerator/nvidia/debug.html#how-to-check-gpu-memory-row-remapping-health">NVIDIA debug chapter</a> explains how to read row remapping and <a href="../compute/accelerator/nvidia/debug.html#xid-errors">Xid errors</a>. <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ nvidia-smi --query-gpu=index,ecc.mode.current,ecc.errors.uncorrected.volatile.total,remapped_rows.pending,remapped_rows.failure,pcie.link.width.current,pcie.link.width.max,clocks_event_reasons.hw_slowdown --format=csv,noheader
+0, Enabled, 0, No, No, 16, 16, Not Active
+...
+$ sudo nvidia-smi -i 3 -r          # reset one GPU (needs no processes on it, and on NVSwitch systems often all GPUs)
+</code></pre>
+<p>Two traps. First, the PCIe <em>generation</em> drops on an idle GPU to save power, so check link <em>width</em> at idle and check generation only under load. Second, ECC mode changes take effect only after a reset. ECC should always be enabled on training nodes.</p>
+<h3 id="dcgm-the-health-daemon-and-diagnostics">DCGM: the health daemon and diagnostics</h3>
+<p><strong>DCGM</strong> (Data Center GPU Manager) is NVIDIA's fleet-management layer. It runs a host engine daemon (<code>nv-hostengine</code>, packaged as the <code>nvidia-dcgm</code> service) that watches health continuously, collects metrics (exported via <code>dcgm-exporter</code> to Prometheus, a widely used time-series database that polls services for numbers and feeds dashboards and alerts) and runs diagnostic suites (<code>dcgmi diag</code>). As of DCGM 4.7.1 the Ubuntu packages are split by CUDA major version: <code>datacenter-gpu-manager-4-cuda13</code>, <code>-cuda12</code>, <code>-cuda11</code>, <code>-cuda-all</code> <strong>[apt, verified]</strong>. The CUDA-specific part is the stress kernels the diagnostics run. <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ sudo apt install -y datacenter-gpu-manager-4-cuda13
+$ sudo systemctl enable --now nvidia-dcgm
+$ dcgmi discovery -l | head -6            # does DCGM see all 8 GPUs and the NVSwitches?
+8 GPUs found.
++--------+----------------------------------------------------------------------+
+| GPU ID | Device Information                                                   |
++--------+----------------------------------------------------------------------+
+| 0      | Name: NVIDIA H100 80GB HBM3                                          |
+$ dcgmi health -s a                       # enable background watches for all subsystems
+$ dcgmi health -c                         # ...and later ask whether anything tripped
+$ dcgmi diag -r 1                         # seconds: deployment/software checks
+$ dcgmi diag -r 2                         # ~minutes: + short stress, PCIe, memory
+</code></pre>
+<p>Level 1 belongs in every job prolog (a <strong>prolog</strong> is a script the scheduler runs on each node just before a job starts; an <strong>epilog</strong> runs just after it ends. Slurm's are introduced in <a href="../orchestration/slurm/from-zero.html#what-happens-from-sbatch-to-processes-on-nodes">Slurm from zero</a>). Level 2 belongs in acceptance and after any hardware intervention. Levels 3 and 4 (tens of minutes) are for burn-in and RMA evidence. <a href="../compute/accelerator/nvidia/debug.html#running-diagnostics">The debug chapter</a> has example failure output and a Slurm script.</p>
+<h3 id="sharing-one-gpu-mig-and-mps">Sharing one GPU: MIG and MPS</h3>
+<p>Training nodes use whole GPUs. Inference and RL rollout fleets often have many small workloads, such as a 1B reward model or a tokenizer service, and one H100 per small workload is wasteful. There are three ways to share a GPU:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Isolation</th>
+<th>How it works</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Time-slicing</strong> (default)</td>
+<td>none: shared memory space, context switches</td>
+<td>the driver round-robins contexts</td>
+<td>dev boxes</td>
+</tr>
+<tr>
+<td><strong>MPS</strong> (Multi-Process Service)</td>
+<td>memory not isolated, compute can be capped</td>
+<td>a daemon merges many processes' work into one GPU context so their kernels run <em>concurrently</em></td>
+<td>many cooperative processes of one user, e.g. MPI ranks or a rollout worker pool</td>
+</tr>
+<tr>
+<td><strong>MIG</strong> (Multi-Instance GPU, A100/H100/B200)</td>
+<td>hardware: separate SMs, L2 slices, memory controllers</td>
+<td>the GPU is partitioned into up to 7 instances, each of which looks like its own GPU</td>
+<td>multi-tenant inference, guaranteed QoS (quality of service: a promised share of throughput and latency)</td>
+</tr>
+</tbody>
+</table>
+<p>MIG. Each profile name is <code>&lt;compute slices&gt;g.&lt;memory&gt;gb</code>. An H100 80GB has 7 compute slices, so it can be split into seven <code>1g.10gb</code> instances. <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ sudo nvidia-smi -i 0 -mig 1                       # enable MIG mode on GPU 0 (may require a GPU reset)
+$ nvidia-smi mig -i 0 -lgip                         # list GPU-instance profiles and how many fit
+|   0  MIG 1g.10gb       19     7/7        9.75       No     16     1     0   |
+|   0  MIG 3g.40gb        9     2/2       39.25       No     60     3     0   |
+|   0  MIG 7g.80gb        0     1/1       79.25       No    132     7     0   |
+$ sudo nvidia-smi mig -i 0 -cgi 3g.40gb,1g.10gb,1g.10gb -C   # create GPU instances + compute instances
+$ nvidia-smi -L
+GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-...)
+  MIG 3g.40gb     Device  0: (UUID: MIG-1f0e...)
+  MIG 1g.10gb     Device  1: (UUID: MIG-7a31...)
+  MIG 1g.10gb     Device  2: (UUID: MIG-c55d...)
+$ CUDA_VISIBLE_DEVICES=MIG-7a31... python serve.py   # a process sees exactly one instance
+$ sudo nvidia-smi mig -i 0 -dci &amp;&amp; sudo nvidia-smi mig -i 0 -dgi   # tear down
+</code></pre>
+<p>MPS. <strong>[untested]</strong></p>
+<pre><code class="language-bash">export CUDA_MPS_PIPE_DIRECTORY=/tmp/mps-pipe CUDA_MPS_LOG_DIRECTORY=/tmp/mps-log
+sudo nvidia-smi -i 0 -c EXCLUSIVE_PROCESS     # only the MPS server may open the GPU directly
+nvidia-cuda-mps-control -d                    # start the control daemon
+CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=25 python worker.py &amp;   # each client capped at 25% of SMs
+CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=25 python worker.py &amp;
+echo quit | nvidia-cuda-mps-control           # stop
+</code></pre>
+<p>The MPS caveat: a fatal fault in one client (an illegal memory access, for example) can take down every client sharing that MPS server. MPS is for cooperating processes, not for isolating tenants. On Kubernetes (taught later, in <a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>), the NVIDIA <strong>device plugin</strong> (an agent on each node that tells the cluster how many GPUs, or MIG slices, the node has) and the <strong>GPU Operator</strong> (a bundle that installs the driver, container toolkit and device plugin on every node) expose MIG and time-slicing as schedulable resources (<a href="../orchestration/internals.html#exposing-gpus-device-plugins">device plugins</a>, <a href="../orchestration/internals.html#nvidia-gpu-operator-components">GPU Operator components</a>).</p>
+<h2 id="5-containers-and-the-gpu">5. Containers and the GPU</h2>
+<h3 id="what---gpus-all-actually-does">What <code>--gpus all</code> actually does</h3>
+<p>A container is a normal process with its own namespaces (<a href="../foundations/containers-and-virtualization.html">containers chapter</a>). This section is the operator's view of <a href="../foundations/containers-and-virtualization.html#6-gpus-in-containers">GPUs in containers</a>; re-read <a href="../foundations/containers-and-virtualization.html#what-a-cuda-program-needs-from-the-host">what a CUDA program needs from the host</a> and <a href="../foundations/containers-and-virtualization.html#the-nvidia-container-toolkit">the NVIDIA Container Toolkit</a> if the details have faded, and <a href="../foundations/containers-and-virtualization.html#the-run-flags-that-matter-for-ml">the run flags that matter for ML</a> for <code>docker run</code> options such as <code>--rm</code>, <code>--gpus</code> and <code>--ulimit</code>. To use the GPU it needs three things the image cannot provide: the device nodes <code>/dev/nvidia0..7</code>, <code>/dev/nvidiactl</code> and <code>/dev/nvidia-uvm</code>; the host's <code>libcuda.so</code> and <code>libnvidia-ml.so</code>, which match the host's kernel module; and binaries such as <code>nvidia-smi</code>. The <strong>NVIDIA Container Toolkit</strong> injects all three when the container starts. It works as a hook in the OCI runtime (<a href="../foundations/containers-and-virtualization.html#4-the-standards-oci-containerd-runc-and-cri">OCI and runc</a>) that runs after the container's filesystem is set up but before your process starts:</p>
+<p><img src="images/nvidia-container-toolkit-architecture.png" alt="NVIDIA Container Toolkit architecture" /></p>
+<p>(<a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/arch-overview.html">source</a>)</p>
+<p>The proof that <code>libcuda</code> is not in the image: this is the CUDA 13.0 base image, inspected without a GPU <strong>[ran]</strong>:</p>
+<pre><code class="language-bash">docker run --rm --platform linux/amd64 nvidia/cuda:13.0.2-base-ubuntu24.04 \
+  bash -c 'find / -xdev -name &quot;libcuda.so*&quot;; echo ---; env | grep ^LD_LIBRARY_PATH; dpkg -l | grep -E &quot;cuda|nvidia&quot; | awk &quot;{print \$2, \$3}&quot;'
+</code></pre>
+<p>(trimmed to the relevant lines)</p>
+<pre><code>/usr/local/cuda-13.0/compat/libcuda.so.580.95.05
+/usr/local/cuda-13.0/compat/libcuda.so.1
+/usr/local/cuda-13.0/compat/libcuda.so
+---
+LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64
+cuda-compat-13-0 580.95.05-0ubuntu1
+cuda-cudart-13-0 13.0.96-1
+cuda-toolkit-13-0-config-common 13.0.96-1
+cuda-toolkit-13-config-common 13.0.96-1
+cuda-toolkit-config-common 13.0.96-1
+</code></pre>
+<p>The only <code>libcuda</code> in the image is the <strong>forward-compat</strong> copy (rule 3 above), which is used only when the host driver is too old. Otherwise the toolkit mounts the host's <code>/usr/lib/x86_64-linux-gnu/libcuda.so.&lt;host-version&gt;</code> and the dynamic loader uses that one. The image brings the runtime (<code>cuda-cudart-13-0</code>) and nothing else. The <code>-runtime</code> and <code>-devel</code> image variants add the math libraries and <code>nvcc</code>.</p>
+<h3 id="installing-and-configuring-the-toolkit">Installing and configuring the toolkit</h3>
+<p>As of Nov 2026 the toolkit is <code>nvidia-container-toolkit 1.20.1</code> in NVIDIA's repo <strong>[apt, verified]</strong>. There are two ways to hand GPUs to containers. The legacy runtime hook is what <code>--gpus</code> uses. <strong>CDI</strong> (Container Device Interface) is a vendor-neutral YAML spec that lists the device nodes and mounts. Docker 25+, Podman and containerd all understand CDI, and Kubernetes is moving to it. <strong>[untested]</strong></p>
+<pre><code class="language-bash">sudo apt install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker &amp;&amp; sudo systemctl restart docker   # legacy hook path
+docker run --rm --gpus all nvidia/cuda:13.0.2-base-ubuntu24.04 nvidia-smi -L
+
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml                            # CDI path
+nvidia-ctk cdi list            # nvidia.com/gpu=0 ... nvidia.com/gpu=7, nvidia.com/gpu=all
+docker run --rm --device nvidia.com/gpu=all nvidia/cuda:13.0.2-base-ubuntu24.04 nvidia-smi -L
+</code></pre>
+<p>Regenerate the CDI spec after every driver upgrade. It contains versioned library paths such as <code>libcuda.so.580.95.05</code>, so a stale spec points at files that no longer exist.</p>
+<p>For multi-node training containers you also need the RDMA devices (<code>/dev/infiniband/*</code>), <code>--ulimit memlock=-1</code> (RDMA pins memory) and a larger <code>/dev/shm</code>. Those are listed in <a href="../network/debug/README.html#nccl-with-docker-containers">NCCL with docker containers</a>.</p>
+<h2 id="6-the-rdma-side-of-the-node">6. The RDMA side of the node</h2>
+<p>The GPUs talk to each other inside the node over NVLink. Between nodes they talk through NICs on the <strong>backend network</strong>, usually InfiniBand or RoCE (<a href="../network/README.html#cluster-networks">cluster networks</a>). The <a href="../foundations/networking.html#hpc-networking-rdma-infiniband-roce-efa">networking foundations chapter</a> explains RDMA, queue pairs and verbs. This section is the operator's view of the same thing: what to install, what healthy looks like, and how to measure it.</p>
+<h3 id="the-software-inbox-rdma-core-vs-doca-ofed">The software: inbox rdma-core vs DOCA-OFED</h3>
+<p>The RDMA stack has the same shape as the GPU stack:</p>
+<pre><code> libnccl / UCX / MPI / perftest            (apps)
+ libibverbs + librdmacm + provider (libmlx5)   &lt;- user space, &quot;rdma-core&quot;
+ ------------------------------------------------
+ ib_uverbs, rdma_ucm, ib_core               &lt;- kernel RDMA core
+ mlx5_ib (RDMA part) + mlx5_core (NIC)      &lt;- kernel driver for ConnectX
+ ConnectX firmware                           &lt;- on the NIC
+</code></pre>
+<p>Two ways to get it:</p>
+<ul>
+<li><strong>Inbox</strong>: the mainline Linux kernel's <code>mlx5</code> drivers plus Ubuntu's <code>rdma-core</code> packages. In Ubuntu 24.04 these are <code>rdma-core</code>, <code>ibverbs-utils</code>, <code>infiniband-diags</code> and <code>perftest</code>, all version 50.0 (perftest 24.01) <strong>[apt, verified]</strong>. This is enough for NCCL over InfiniBand or RoCE on recent kernels.</li>
+<li><strong>DOCA-OFED</strong>: NVIDIA's packaged, newer copy of the same drivers and libraries, plus tools such as <code>mlnx_qos</code> and <code>show_gids</code>. It is the successor to <strong>MLNX_OFED</strong>, which NVIDIA has been retiring in favor of DOCA (<a href="https://docs.nvidia.com/doca/sdk/doca-host-installation-and-upgrade/index.html">DOCA host installation</a>). Vendors' reference stacks and the NVIDIA GPU Operator's network operator usually assume it. It installs DKMS kernel modules, so the same header and pinning discipline as the GPU driver applies.</li>
+</ul>
+<p>Pick one per fleet. Mixing inbox and OFED libraries on the same node produces confusing errors such as <code>libibverbs: Warning: couldn't load driver 'mlx5'</code>.</p>
+<p>Inbox install and first look. <strong>[untested]</strong></p>
+<pre><code class="language-bash">sudo apt install -y rdma-core ibverbs-utils infiniband-diags perftest
+lsmod | grep -E '^(mlx5_ib|ib_uverbs|rdma_ucm)'
+rdma link show
+# link mlx5_0/1 state ACTIVE physical_state LINK_UP netdev ibp24s0
+# link mlx5_1/1 state ACTIVE physical_state LINK_UP netdev ibp41s0
+# ...
+# link mlx5_8/1 state ACTIVE physical_state LINK_UP netdev enp157s0f0np0     &lt;- frontend Ethernet NIC
+</code></pre>
+<h3 id="nic-firmware-and-port-mode">NIC firmware and port mode</h3>
+<p>ConnectX NICs are both InfiniBand and Ethernet adapters, and the port type is a firmware setting. A NIC that arrived configured as Ethernet will never join your InfiniBand fabric, however correct the software is. The tools are NVIDIA's <strong>MFT</strong> (Mellanox Firmware Tools): <code>mst</code> to discover devices, <code>mlxconfig</code> for settings and <code>mlxfwmanager</code> for firmware. <strong>[untested]</strong></p>
+<pre><code class="language-bash">sudo mst start
+sudo mlxfwmanager --query | grep -E 'Device Type|Versions|FW'        # firmware per NIC, and if an update is available
+sudo mlxconfig -d /dev/mst/mt4129_pciconf0 query | grep -E 'LINK_TYPE|ADVANCED_PCI_SETTINGS|ATS'
+#  LINK_TYPE_P1    IB(1)        &lt;- 1 = InfiniBand, 2 = Ethernet
+sudo mlxconfig -d /dev/mst/mt4129_pciconf0 set LINK_TYPE_P1=1         # takes effect after a reboot or firmware reset
+</code></pre>
+<p>Firmware must be the same on every NIC in the fleet, as with the GPU VBIOS and NVSwitch firmware. Most vendors ship a firmware bundle per server model. Apply the whole bundle rather than individual components.</p>
+<h3 id="infiniband-for-operators-ports-the-subnet-manager-lids">InfiniBand for operators: ports, the subnet manager, LIDs</h3>
+<p>An InfiniBand fabric does not configure itself. A <strong>subnet manager</strong> (SM), running on a managed switch or on one host as <code>opensm</code>, discovers every port, assigns each one a <strong>LID</strong> (a 16-bit local address used for switch forwarding) and computes the routing tables. Until the SM has done this, a cabled and lit port sits in the <code>Initialize</code> state and carries no traffic. Each port moves through <strong>Down → Initialize → Armed → Active</strong>. <strong>Physical state</strong> (<code>LinkUp</code>, <code>Polling</code>, <code>Disabled</code>) is the electrical layer underneath. Each device also has a permanent 64-bit <strong>GUID</strong>, like a MAC address.</p>
+<p>Healthy output. <strong>[untested]</strong></p>
+<pre><code>$ ibstat mlx5_0
+CA 'mlx5_0'
+        CA type: MT4129
+        Number of ports: 1
+        Firmware version: 28.43.1014
+        Port 1:
+                State: Active
+                Physical state: LinkUp
+                Rate: 400
+                Base lid: 112
+                SM lid: 1
+                Port GUID: 0x946dae03004f1a2c
+                Link layer: InfiniBand
+
+$ ibv_devinfo -d mlx5_0 | grep -E 'hca_id|fw_ver|state|active_mtu|link_layer'
+hca_id: mlx5_0
+        fw_ver:                         28.43.1014
+                        state:                  PORT_ACTIVE (4)
+                        active_mtu:             4096 (5)
+                        link_layer:             InfiniBand
+</code></pre>
+<p>How to read a bad port:</p>
+<table>
+<thead>
+<tr>
+<th>What you see</th>
+<th>Meaning</th>
+<th>Look at</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>State: Initialize</code>, <code>Physical state: LinkUp</code></td>
+<td>cable fine, no SM reached this port</td>
+<td>is <code>opensm</code> / the switch SM running? is the port on the right fabric partition?</td>
+</tr>
+<tr>
+<td><code>State: Down</code>, <code>Physical state: Polling</code></td>
+<td>no electrical link</td>
+<td>cable, transceiver, switch port disabled</td>
+</tr>
+<tr>
+<td><code>Rate: 200</code> on a 400G fabric</td>
+<td>link trained at a lower speed or fewer lanes</td>
+<td>bad cable or transceiver, usually. Reseat, then swap</td>
+</tr>
+<tr>
+<td><code>link_layer: Ethernet</code> on a port meant for IB</td>
+<td>firmware port type</td>
+<td><code>mlxconfig LINK_TYPE_P1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Everything <code>ibstat</code> prints is also in sysfs (the <code>/sys</code> tree of kernel-provided files, see <a href="../foundations/linux-and-os.html#proc-and-sys-the-kernel-as-files">/proc and /sys</a>) as plain files, which is what scripts should read: <strong>[untested]</strong></p>
+<pre><code class="language-bash">for p in /sys/class/infiniband/*/ports/*; do
+  echo &quot;$(basename $(dirname $(dirname $p)))/$(basename $p): $(cat $p/state) | $(cat $p/rate) | $(cat $p/link_layer)&quot;
+done
+# mlx5_0/1: 4: ACTIVE | 400 Gb/sec (4X NDR) | InfiniBand
+</code></pre>
+<p>For the whole fabric, <code>iblinkinfo</code> (every link the SM sees) and <code>ibdiagnet</code> (a full fabric scan with error report) are switch-team tools, but worth knowing by name.</p>
+<h3 id="roce-in-one-page">RoCE in one page</h3>
+<p><strong>RoCEv2</strong> carries the InfiniBand transport inside UDP/IP over Ethernet (<a href="../foundations/networking.html#roce-and-lossless-ethernet">foundations</a>). For an operator, three things differ from IB:</p>
+<ol>
+<li><strong>No subnet manager, so addressing is IP.</strong> Each port has a table of <strong>GIDs</strong> (global IDs). Each entry is an IP address paired with a RoCE version. NCCL must be told which entry to use with <code>NCCL_IB_GID_INDEX</code>. Index 3 is typically RoCEv2 over IPv4, but always check rather than assume.</li>
+<li><strong>Losslessness is your problem.</strong> RDMA's transport tolerates loss badly, so RoCE fabrics use <strong>PFC</strong> (priority flow control, pause frames on one traffic class) and <strong>ECN</strong> (switches mark packets during congestion, and the receiver sends back <strong>CNP</strong> packets that slow the sender). The NIC and the switches must agree on which traffic class carries RoCE.</li>
+<li><strong>MTU</strong>: jumbo frames (9000) on the Ethernet, and a 4096 RDMA MTU on top.</li>
+</ol>
+<p>Finding the right GID index with nothing but sysfs: <strong>[untested]</strong></p>
+<pre><code class="language-bash">d=/sys/class/infiniband/mlx5_0/ports/1
+for i in $(ls $d/gids); do
+  gid=$(cat $d/gids/$i 2&gt;/dev/null); type=$(cat $d/gid_attrs/types/$i 2&gt;/dev/null)
+  [ &quot;$gid&quot; != &quot;0000:0000:0000:0000:0000:0000:0000:0000&quot; ] &amp;&amp; echo &quot;$i  $type  $gid  $(cat $d/gid_attrs/ndevs/$i 2&gt;/dev/null)&quot;
+done
+# 0  IB/RoCE v1  fe80:0000:0000:0000:...          ens1np0
+# 1  RoCE v2     fe80:0000:0000:0000:...          ens1np0
+# 2  IB/RoCE v1  0000:0000:0000:0000:0000:ffff:0a00:130c  ens1np0
+# 3  RoCE v2     0000:0000:0000:0000:0000:ffff:0a00:130c  ens1np0   &lt;- IPv4 10.0.19.12, RoCEv2: use 3
+</code></pre>
+<h3 id="counters-how-to-tell-a-sick-link-from-a-busy-one">Counters: how to tell a sick link from a busy one</h3>
+<p>Each port keeps hardware counters in <code>/sys/class/infiniband/&lt;dev&gt;/ports/&lt;n&gt;/counters/</code> (IB-spec counters) and <code>hw_counters/</code> (mlx5-specific counters, the interesting ones for RoCE). The ones to alert on:</p>
+<table>
+<thead>
+<tr>
+<th>Counter</th>
+<th>Healthy</th>
+<th>Non-zero means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>symbol_error</code></td>
+<td>0, or growing very slowly</td>
+<td>bit errors on the wire: cable or transceiver degrading</td>
+</tr>
+<tr>
+<td><code>link_downed</code></td>
+<td>0 since boot</td>
+<td>the link flapped. Each flap stalls or kills NCCL jobs</td>
+</tr>
+<tr>
+<td><code>port_rcv_errors</code></td>
+<td>0</td>
+<td>malformed packets received</td>
+</tr>
+<tr>
+<td><code>local_link_integrity_errors</code>, <code>excessive_buffer_overrun_errors</code></td>
+<td>0</td>
+<td>link quality / flow-control trouble</td>
+</tr>
+<tr>
+<td><code>port_xmit_wait</code></td>
+<td>grows under load</td>
+<td>time spent waiting for credit: congestion, not a fault</td>
+</tr>
+<tr>
+<td><code>hw_counters/out_of_sequence</code>, <code>packet_seq_err</code> (RoCE)</td>
+<td>~0</td>
+<td>packet loss on a &quot;lossless&quot; fabric: PFC/ECN misconfigured</td>
+</tr>
+<tr>
+<td><code>hw_counters/np_cnp_sent</code>, <code>rp_cnp_handled</code> (RoCE)</td>
+<td>grows under load</td>
+<td>congestion control is working, which is fine in moderation</td>
+</tr>
+</tbody>
+</table>
+<p><code>port_xmit_data</code> and <code>port_rcv_data</code> count bytes <strong>divided by 4</strong>. The IB spec counts in 4-byte words, and many hand-rolled dashboards are off by 4x because of it. To turn two samples into a rate: <strong>[ran]</strong></p>
+<pre><code class="language-python"># ib_counters.py - turn two samples of port_xmit_data into Gb/s.
+# port_xmit_data / port_rcv_data count octets DIVIDED BY 4 (IB spec &quot;PortXmitData&quot;), so multiply by 4.
+def gbps(sample0, sample1, seconds):
+    return (sample1 - sample0) * 4 * 8 / seconds / 1e9
+
+if __name__ == &quot;__main__&quot;:
+    # e.g. two reads of /sys/class/infiniband/mlx5_0/ports/1/counters/port_xmit_data 10 s apart
+    s0, s1 = 1_000_000_000, 1_000_000_000 + 117_187_500_000
+    print(f&quot;{gbps(s0, s1, 10.0):.1f} Gb/s&quot;)
+    assert abs(gbps(0, 125_000_000_000, 10.0) - 400.0) &lt; 1e-9
+</code></pre>
+<pre><code>375.0 Gb/s
+</code></pre>
+<p><code>perfquery -x</code> (from <code>infiniband-diags</code>) reads the same counters through the management interface, and <code>perfquery -x -R</code> resets them. Resetting before a test makes any errors during the test stand out.</p>
+<h3 id="perftest-measuring-one-link">perftest: measuring one link</h3>
+<p><code>ib_write_bw</code> measures a single NIC-to-NIC path with RDMA writes and no NCCL involved. It is the first thing to run between two new nodes. <a href="../network/README.html#measuring-the-inter-node-fabric-on-its-own">network/README.md</a> explains what it does and does not isolate. <strong>[untested]</strong></p>
+<pre><code class="language-bash"># node A (server)
+ib_write_bw -d mlx5_0 -F --report_gbits -D 10
+# node B (client): same flags + server address. RoCE: add -x &lt;gid index&gt; on both sides
+ib_write_bw -d mlx5_0 -F --report_gbits -D 10 10.0.19.12
+---------------------------------------------------------------------------------------
+ #bytes     #iterations    BW peak[Gb/sec]    BW average[Gb/sec]   MsgRate[Mpps]
+ 65536      ...            0.00               391.27               0.746
+---------------------------------------------------------------------------------------
+ib_write_lat -d mlx5_0 -F 10.0.19.12         # latency: expect low single-digit microseconds
+</code></pre>
+<p>The expected result is a little below line rate. A 400 Gb/s NDR port typically gives somewhere in the high 300s (<a href="../foundations/networking.html#units-reading-spec-sheets-without-getting-fooled">why</a>). In bytes: 400 Gb/s / 8 = 50 GB/s per NIC, and 400 GB/s for a node with eight. Run the test for every NIC pair (<code>mlx5_0</code> to <code>mlx5_0</code>, and so on), not just one. A single slow rail limits every collective that uses it.</p>
+<p><code>--use_cuda=&lt;gpu index&gt;</code> makes perftest register GPU memory instead of host memory. That tests GPUDirect RDMA, next. It requires a perftest built with CUDA support (<code>./configure</code> from the <a href="https://github.com/linux-rdma/perftest">perftest repo</a> with CUDA headers available; <code>./configure</code> is the conventional script that inspects your system and writes a Makefile, after which <code>make</code> compiles the C code, see the Make and compiling-C sections of the <a href="../foundations/toolkit.html#reading-c">toolkit</a>). I have not checked whether Ubuntu's <code>perftest</code> package is built that way, so assume you have to build it.</p>
+<h3 id="gpudirect-rdma-the-nic-reads-gpu-memory">GPUDirect RDMA: the NIC reads GPU memory</h3>
+<p>Without <strong>GPUDirect RDMA</strong> (GDR), NCCL sending a GPU buffer to another node copies it to host memory first and lets the NIC read it from there. With GDR, the NIC DMAs straight out of GPU memory across the PCIe switch they share (<a href="../foundations/computer-architecture.html#gpudirect-cutting-the-cpu-and-its-memory-out-of-the-path">why that matters</a>). For that, the RDMA stack must be able to <em>register</em> GPU memory: pin it and get bus addresses the NIC can use. There are two mechanisms:</p>
+<ul>
+<li><strong><code>nvidia_peermem</code></strong>, a kernel module shipped with the driver (since R470) that plugs into the RDMA core's peer-memory interface. Load it with <code>modprobe nvidia_peermem</code> and persist it in <code>/etc/modules-load.d/</code>.</li>
+<li><strong>DMA-BUF</strong>, the mainline Linux mechanism for sharing device memory between drivers (kernel 5.12+). It needs the open GPU kernel modules and a NIC driver and rdma-core that support it. Recent NCCL versions use it automatically when it is available, so <code>nvidia_peermem</code> is not needed on such systems.</li>
+</ul>
+<p>The PCIe side must also cooperate. <strong>ACS</strong> (Access Control Services) on PCIe switches forces peer-to-peer traffic up to the root complex, which kills GDR performance. Disable it for bare metal (<a href="../network/benchmarks/README.html#disable-access-control-services">how</a>). An IOMMU in translating mode can do the same, so <code>iommu=pt</code> (passthrough) on the kernel command line (the boot options the bootloader hands to Linux; you can read the current ones in <code>/proc/cmdline</code>) is common on GPU nodes. ACS and the IOMMU were introduced in <a href="../foundations/containers-and-virtualization.html#iommu-vfio-and-pcie-passthrough">IOMMU, VFIO and PCIe passthrough</a>.</p>
+<p>Checking that GDR is actually used. The NCCL log is the ground truth. <code>NCCL_DEBUG=INFO</code> makes NCCL print its setup decisions and <code>NCCL_DEBUG_SUBSYS</code> limits that to some subsystems; <code>torchrun ...</code> stands for whatever launch command your job uses (<a href="../foundations/networking.html#step-2-nccl-builds-its-own-connections">how NCCL builds its connections and how to read these lines</a>). <strong>[untested]</strong></p>
+<pre><code class="language-bash">$ lsmod | grep nvidia_peermem || echo &quot;no peermem (fine if NCCL uses DMA-BUF)&quot;
+$ NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,NET torchrun ... 2&gt;&amp;1 | grep -E 'GPU Direct RDMA|DMA-BUF|via NET'
+NCCL INFO NET/IB : GPU Direct RDMA (nvidia-peermem) enabled for HCA 0 'mlx5_0'
+NCCL INFO Channel 00/0 : 0[0] -&gt; 8[0] [send] via NET/IB/0/GDRDMA
+</code></pre>
+<p><code>via NET/IB/0/GDRDMA</code> means GDR is used. <code>via NET/IB/0</code> without <code>/GDRDMA</code> means traffic is staged through host memory. <code>via NET/Socket</code> means no RDMA at all, which is the order-of-magnitude slowdown <a href="../network/debug/README.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">network debug</a> teaches you to spot. The exact wording of these log lines changes between NCCL versions, so grep loosely.</p>
+<h2 id="7-nccl-install-configure-test">7. NCCL: install, configure, test</h2>
+<h3 id="which-nccl-you-are-running">Which NCCL you are running</h3>
+<p><strong>NCCL</strong> is the library that implements collectives (all-reduce, all-gather, ...) across GPUs. It picks NVLink, PCIe, InfiniBand or sockets per connection (<a href="../network/collectives-internals.html">collectives internals</a>). It is a user-space library, so it lives with the framework, not on the host: <code>torch</code> 2.15.0 pins <code>nvidia-nccl-cu13==2.30.7</code>, while the CUDA apt repo had <code>libnccl2 2.32.3-1+cuda13.4</code> and PyPI had <code>nvidia-nccl-cu13 2.32.3</code> <strong>[apt, verified; ran]</strong>. Two NCCLs on one node is normal. What matters is which one <em>your process</em> loaded. <strong>[untested]</strong></p>
+<pre><code class="language-bash">python -c 'import torch; print(torch.cuda.nccl.version())'               # (2, 30, 7): what torch was built with
+NCCL_DEBUG=VERSION torchrun --nproc_per_node 2 your_script.py 2&gt;&amp;1 | grep 'NCCL version'
+# NCCL INFO NCCL version 2.30.7+cuda13.2                                  # what actually got loaded
+</code></pre>
+<p>An <code>LD_LIBRARY_PATH</code> or <code>LD_PRELOAD</code> (a list of libraries the <a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path">dynamic loader</a> loads into the process before anything else, so their symbols win) pointing at a system <code>libnccl.so.2</code> can make torch load a different NCCL than the one it was built with. Sometimes that is deliberate, to pick up a fix. Sometimes it is an accident that causes hangs. The <code>NCCL version</code> line settles which one you got.</p>
+<h3 id="network-plugins">Network plugins</h3>
+<p>NCCL natively speaks IB verbs (which covers RoCE) and TCP sockets. Other fabrics use a <strong>net plugin</strong>, a shared library NCCL loads at start-up (<code>libnccl-net.so</code>, or one chosen with <code>NCCL_NET_PLUGIN</code>). Examples: AWS's <code>aws-ofi-nccl</code> for EFA, Google's plugins for GPUDirect-TCPX/gIB, and the SHARP plugin for in-network reductions on IB. If a cloud image ships a plugin, it must be visible inside your container too. A missing plugin shows up as a silent fallback to <code>NET/Socket</code>.</p>
+<h3 id="the-environment-variables-an-operator-sets">The environment variables an operator sets</h3>
+<p>The full list is in <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html">NCCL's env docs</a>. Debug variables are explained in <a href="../network/debug/README.html#useful-nccl-debug-environment-variables">network debug</a> and performance variables in <a href="../network/benchmarks/README.html#performance-oriented-nccl-environment-variables">network benchmarks</a>. The ones that are really <em>node configuration</em> rather than tuning, and so belong in <code>/etc/nccl.conf</code> or the cluster's job environment (the networking chapter showed <a href="../foundations/networking.html#which-interface-does-nccl-pick">which interface NCCL picks and why <code>NCCL_SOCKET_IFNAME</code> matters</a>):</p>
+<pre><code class="language-bash"># /etc/nccl.conf  (NCCL reads KEY=VALUE lines from here; the environment overrides it)
+NCCL_SOCKET_IFNAME=enp157s0f0np0     # bootstrap/OOB (out-of-band setup traffic) interface: the frontend NIC, NOT docker0/lo
+NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7   # backend NICs only; excludes the frontend mlx5_8
+NCCL_IB_GID_INDEX=3                  # RoCE only: the RoCEv2/IPv4 GID found above
+# NCCL_NET_GDR_LEVEL=PIX             # only use GDR when NIC and GPU share a PCIe switch (default heuristics are usually right)
+# NCCL_TOPO_DUMP_FILE=/tmp/topo.xml  # dump what NCCL thinks the topology is, for debugging
+</code></pre>
+<p>Everything else (<code>NCCL_ALGO</code>, <code>NCCL_PROTO</code>, channel counts) is tuning. Leave it at the defaults unless a benchmark shows a specific improvement.</p>
+<h3 id="nccl-tests-single-node-then-two-then-all">nccl-tests: single node, then two, then all</h3>
+<p><a href="https://github.com/NVIDIA/nccl-tests">nccl-tests</a> is the standard burn-in. <a href="../network/benchmarks/README.html#nccl-tests">Network benchmarks</a> shows how to build it against the NCCL your PyTorch uses. For multi-node runs build with MPI (<code>make MPI=1 MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi</code>; <code>make VAR=value</code> passes a setting to the Makefile, see Make in the <a href="../foundations/toolkit.html#make-and-makefiles">toolkit</a>). The bring-up sequence: <strong>[untested]</strong></p>
+<p>Just enough to read the launch lines below. <strong>MPI</strong> (Message Passing Interface) is the older HPC standard for multi-process programs; nccl-tests uses it only to start one process per GPU on every node and tell each its rank, the job <code>torchrun</code> does for PyTorch (<a href="../foundations/distributed-systems.html#core-vocabulary">launchers</a>). <code>mpirun -np 16 -N 8 --hostfile hosts</code> starts 16 processes, 8 per node, on the machines listed one per line in the file <code>hosts</code> (over SSH), and <code>-x VAR</code> copies an environment variable to all of them. <code>srun -N 2 --ntasks-per-node=8 --gpus-per-task=1</code> is Slurm's way to do the same on 2 allocated nodes, with one GPU per process; <code>--mpi=pmix</code> tells Slurm to hand MPI the rank information through the PMIx interface. Slurm and <code>srun</code> are taught in <a href="../orchestration/slurm/from-zero.html#srun-launching-a-step">Slurm from zero</a>. In the nccl-tests flags, <code>-b</code>/<code>-e</code> are the smallest and largest message size, <code>-f 2</code> doubles the size each step, and <code>-g</code> is GPUs per process.</p>
+<pre><code class="language-bash"># 1. one node, NVLink only: one process driving 8 GPUs
+./build/all_reduce_perf -b 8 -e 8G -f 2 -g 8
+# 2. two nodes, one process per GPU (this is the shape training uses)
+srun -N 2 --ntasks-per-node=8 --gpus-per-task=1 --mpi=pmix ./build/all_reduce_perf -b 8 -e 8G -f 2 -g 1
+#    or without Slurm:
+mpirun -np 16 -N 8 --hostfile hosts -x NCCL_DEBUG=WARN -x NCCL_IB_HCA ./build/all_reduce_perf -b 8 -e 8G -f 2 -g 1
+# 3. the whole cluster, then bisect if a run is slow (halve the node list until the slow node is isolated)
+</code></pre>
+<p>Output, trimmed:</p>
+<pre><code>#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)
+  8589934592    2147483648     float     sum      -1    ...     ...     ...      0      ...     ...     ...      0
+# Out of bounds values : 0 OK
+# Avg bus bandwidth    : ...
+</code></pre>
+<p>Read <code>busbw</code> at the large sizes and <code>#wrong</code> everywhere. A non-zero <code>#wrong</code> means <strong>data corruption</strong>, which is a hardware problem: fail the node. <code>algbw</code> (algorithm bandwidth) is simply message size divided by time. <span class="math inline"><span class="math-inline">\text{busbw} = \text{algbw} \times 2(n-1)/n</span></span> for all-reduce, where <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> is the per-rank traffic factor of the <a href="../foundations/networking.html#ring-all-reduce-step-by-step">ring all-reduce</a> (the full derivation is in the next chapter, <a href="../network/collectives-internals.html#algbw-vs-busbw">algbw vs busbw</a>). It is normalized so that it can be compared with link bandwidth regardless of <span class="math inline"><span class="math-inline">n</span></span> (<a href="../network/benchmarks/README.html#how-the-bandwidth-is-measured">derivation</a>). For <span class="math inline"><span class="math-inline">n=8</span></span> the factor is <span class="math inline"><span class="math-inline">2 \cdot 7/8 = 1.75</span></span>. What &quot;good&quot; looks like depends on the SKU and the NCCL version. Don't use a number from a blog post. Record the value from a node you know is good and fail nodes that fall well below it. The acceptance script below has exactly that knob. <a href="../network/README.html#real-network-throughput">Network README</a> lists measured numbers for several systems.</p>
+<p>When nccl-tests hangs or is slow, work through <a href="../network/debug/README.html">network debug</a> and <a href="../debug/nccl-performance-debug.html">NCCL performance debug</a>. Most of what you'll find is in the layers covered above: a missing <code>nvidia_peermem</code>, a port at the wrong rate, the wrong GID index, or FM not running.</p>
+<h2 id="8-amd--rocm-equivalents">8. AMD / ROCm equivalents</h2>
+<p>The architecture is the same and the names differ. On AMD the kernel driver is <code>amdgpu</code>, which is in the mainline kernel. AMD also ships a newer copy as <code>amdgpu-dkms</code>. ROCm is the user-space stack, and RCCL is AMD's NCCL fork. It keeps NCCL's API and reads the same <code>NCCL_*</code> environment variables.</p>
+<table>
+<thead>
+<tr>
+<th>Job</th>
+<th>NVIDIA</th>
+<th>AMD / ROCm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kernel driver</td>
+<td><code>nvidia.ko</code> (open) via DKMS</td>
+<td><code>amdgpu</code> (inbox or <code>amdgpu-dkms</code>)</td>
+</tr>
+<tr>
+<td>install</td>
+<td><code>nvidia-open</code> / <code>libnvidia-compute</code> + pinning</td>
+<td><code>amdgpu-install --usecase=rocm</code> or the ROCm apt repo</td>
+</tr>
+<tr>
+<td>inventory/health CLI</td>
+<td><code>nvidia-smi</code></td>
+<td><code>amd-smi</code> (newer) / <code>rocm-smi</code></td>
+</tr>
+<tr>
+<td>GPU programming API</td>
+<td>CUDA</td>
+<td>HIP (CUDA-like C++ API; <code>hipcc</code> compiles it)</td>
+</tr>
+<tr>
+<td>device info</td>
+<td><code>nvidia-smi -q</code>, <code>deviceQuery</code></td>
+<td><code>rocminfo</code> (look for <code>gfx942</code> = MI300X)</td>
+</tr>
+<tr>
+<td>intra-node fabric</td>
+<td>NVLink/NVSwitch + Fabric Manager</td>
+<td>Infinity Fabric / xGMI (no FM daemon)</td>
+</tr>
+<tr>
+<td>fleet daemon, diagnostics</td>
+<td>DCGM, <code>dcgmi diag</code></td>
+<td>RDC (ROCm Data Center), RVS (ROCm Validation Suite), AMD's field health check tools</td>
+</tr>
+<tr>
+<td>collectives + tests</td>
+<td>NCCL, nccl-tests</td>
+<td>RCCL, <a href="https://github.com/ROCm/rccl-tests">rccl-tests</a> (same CLI: <code>all_reduce_perf -b 8 -e 8G -f 2 -g 8</code>)</td>
+</tr>
+<tr>
+<td>containers</td>
+<td><code>--gpus all</code> / CDI</td>
+<td><code>--device=/dev/kfd --device=/dev/dri --group-add video</code></td>
+</tr>
+<tr>
+<td>framework check</td>
+<td><code>torch.version.cuda</code></td>
+<td><code>torch.version.hip</code> (and <code>torch.cuda.*</code> still works)</td>
+</tr>
+<tr>
+<td>device selection</td>
+<td><code>CUDA_VISIBLE_DEVICES</code></td>
+<td><code>HIP_VISIBLE_DEVICES</code> / <code>ROCR_VISIBLE_DEVICES</code> (<a href="../compute/accelerator/amd/debug.html#hip_visible_devices--cuda_visible_devices--rocr_visible_devices">details</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>The equivalent of the inventory step. <strong>[untested]</strong></p>
+<pre><code class="language-bash">amd-smi version                       # amdgpu driver + ROCm version
+amd-smi list                          # one line per GPU with BDF (PCI bus:device.function address) and UUID
+rocminfo | grep -E '^\s+Name:\s+gfx' | sort | uniq -c    # &quot;8  Name: gfx942&quot;
+amd-smi topology                      # xGMI link matrix, like nvidia-smi topo -m
+python -c 'import torch; print(torch.__version__, torch.version.hip, torch.cuda.device_count())'
+</code></pre>
+<p>The same version rule applies: the kernel driver is on the host and ROCm is in the container. AMD publishes a compatibility matrix between ROCm releases and <code>amdgpu</code> driver versions on the <a href="https://rocm.docs.amd.com/en/latest/">ROCm docs site</a>. On AMD multi-GPU nodes, IOMMU settings are a frequent cause of hangs (<a href="../compute/accelerator/amd/debug.html#hangs-or-slow-multi-gpu-runs-and-iommu">AMD debug</a>).</p>
+<h2 id="9-bring-up-order-the-runbook">9. Bring-up order: the runbook</h2>
+<p>Bring a node up from the bottom of the stack to the top, and test each layer before moving to the next. A failure is then always in the layer you just added.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Step</th>
+<th>Gate (don't continue until)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Flash the vendor firmware bundle (BIOS, BMC, GPU VBIOS, NVSwitch, NIC)</td>
+<td>versions match the fleet manifest</td>
+</tr>
+<tr>
+<td>2</td>
+<td>BIOS: SR-IOV/IOMMU as your design needs, Above-4G decoding on (lets the BIOS map devices with large memory windows, such as GPUs, above the 4 GB address line), ACS off (bare metal), performance power profile</td>
+<td><code>lspci</code> shows all GPUs and NICs at full width</td>
+</tr>
+<tr>
+<td>3</td>
+<td>OS image with kernel + headers pinned, nouveau blacklisted</td>
+<td><code>uname -r</code> = manifest</td>
+</tr>
+<tr>
+<td>4</td>
+<td>GPU driver (open, pinned)</td>
+<td><code>nvidia-smi -L</code> lists all GPUs</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>nvidia-persistenced</code>, Fabric Manager (+ NVLSM on B200/B300)</td>
+<td>fabric <code>Completed/Success</code>, all NVLinks active</td>
+</tr>
+<tr>
+<td>6</td>
+<td>DCGM</td>
+<td><code>dcgmi diag -r 2</code> passes</td>
+</tr>
+<tr>
+<td>7</td>
+<td>RDMA stack + NIC port type + <code>nvidia_peermem</code> / DMA-BUF</td>
+<td>every backend port <code>Active</code> at line rate, zero error counters</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Container toolkit (+ CDI spec)</td>
+<td><code>nvidia-smi -L</code> inside a container</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Single-node nccl-tests</td>
+<td><code>#wrong</code> = 0, busbw at the fleet baseline</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Two-node <code>ib_write_bw</code> per rail, then two-node nccl-tests</td>
+<td>GDR in the log, busbw at the baseline</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Hand to the scheduler, with the acceptance script as a health check</td>
+<td>runs on every boot and as a prolog/epilog</td>
+</tr>
+</tbody>
+</table>
+<p>Write the expected versions for steps 1 to 8 into a <strong>manifest</strong> checked into git. Then the acceptance script can check &quot;is this node what we said it is&quot;, not just &quot;does this node work&quot;.</p>
+<h2 id="10-a-node-acceptance-script">10. A node acceptance script</h2>
+<h3 id="what-it-checks-and-why">What it checks and why</h3>
+<p>One Python file, standard library only, so it runs before any venv exists. Each check prints a <code>PASS</code>, <code>FAIL</code> or <code>SKIP</code> line, and the exit code is 1 if anything failed. A scheduler can therefore use it directly as a health check. The checks follow the layers of this chapter:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Layer</th>
+<th>FAIL when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>kernel module</td>
+<td>driver</td>
+<td><code>nvidia.ko</code> not loaded, or version != <code>--driver</code></td>
+</tr>
+<tr>
+<td>nvidia-smi / gpu count / gpu health</td>
+<td>driver, hardware</td>
+<td>NVML mismatch, wrong GPU count, persistence off, ECC off, uncorrected ECC, row remap pending/failed, PCIe width degraded, HW slowdown</td>
+</tr>
+<tr>
+<td>xid errors</td>
+<td>hardware</td>
+<td>any <code>NVRM: Xid</code> in this boot's kernel log</td>
+</tr>
+<tr>
+<td>nvswitch fabric</td>
+<td>FM</td>
+<td>any GPU's fabric state not <code>Completed/Success</code></td>
+</tr>
+<tr>
+<td>nvlink</td>
+<td>NVLink</td>
+<td>an inactive link, or GPUs with different link counts</td>
+</tr>
+<tr>
+<td>cuda + torch</td>
+<td>runtime</td>
+<td>a matmul on any GPU disagrees with an fp64 CPU reference, or P2P is missing</td>
+</tr>
+<tr>
+<td>rdma ports</td>
+<td>RDMA</td>
+<td>a port not <code>ACTIVE</code>, wrong rate, non-zero error counters</td>
+</tr>
+<tr>
+<td>gpudirect rdma</td>
+<td>RDMA ↔ GPU</td>
+<td>neither <code>nvidia_peermem</code> nor the DMA-BUF prerequisites</td>
+</tr>
+<tr>
+<td>dcgm diag</td>
+<td>everything</td>
+<td>any <code>Fail</code> at the chosen level</td>
+</tr>
+<tr>
+<td>nccl all_reduce</td>
+<td>NCCL + NVLink</td>
+<td><code>#wrong</code> != 0 or busbw below <code>--min-busbw</code></td>
+</tr>
+<tr>
+<td>container gpus</td>
+<td>container toolkit</td>
+<td>the container sees a different number of GPUs</td>
+</tr>
+</tbody>
+</table>
+<p>The parsers are pure functions, separate from the code that runs the commands. <code>--selftest</code> feeds them canned tool output (and a fake <code>/sys/class/infiniband</code> tree) and asserts on the results. That way the parsing is tested even on a laptop. Tool output formats do change between versions. When one does, add the new output as a fixture and rerun the selftest.</p>
+<h3 id="the-script">The script</h3>
+<pre><code class="language-python">#!/usr/bin/env python3
+&quot;&quot;&quot;GPU node acceptance test. Prints one PASS/FAIL/SKIP line per check, exits 1 on any FAIL.
+
+  sudo python3 node_accept.py --gpus 8 --driver 580.95.05 --ib-rate 400 \
+      --nccl-tests ~/nccl-tests/build --min-busbw 350 --dcgm-level 2
+  python3 node_accept.py --selftest      # runs the parsers against canned outputs, no GPU needed
+&quot;&quot;&quot;
+import argparse, glob, os, platform, re, shutil, subprocess, sys, tempfile
+
+SYS = os.environ.get(&quot;ACCEPT_SYSFS&quot;, &quot;/sys&quot;)  # point at a fake tree to test the RDMA checks
+results = []
+
+
+def sh(cmd, timeout=900):
+    try:
+        p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, f&quot;timeout after {timeout}s&quot;
+    return p.returncode, p.stdout + p.stderr
+
+
+def report(name, ok, detail=&quot;&quot;):
+    status = {True: &quot;PASS&quot;, False: &quot;FAIL&quot;, None: &quot;SKIP&quot;}[ok]
+    results.append(status)
+    print(f&quot;[{status}] {name:&lt;24} {detail}&quot;, flush=True)
+
+
+def read(path, default=&quot;&quot;):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+# ---------------- pure parsers: everything below here is exercised by --selftest ----------------
+
+GPU_FIELDS = (&quot;index,pci.bus_id,persistence_mode,ecc.mode.current,ecc.errors.uncorrected.volatile.total,&quot;
+              &quot;remapped_rows.pending,remapped_rows.failure,pcie.link.width.current,pcie.link.width.max,&quot;
+              &quot;clocks_event_reasons.hw_slowdown&quot;)
+
+
+def parse_csv(text, fields=GPU_FIELDS):
+    keys = fields.split(&quot;,&quot;)
+    return [dict(zip(keys, (c.strip() for c in line.split(&quot;,&quot;))))
+            for line in text.strip().splitlines() if line.strip()]
+
+
+def gpu_problems(g):
+    p = []
+    if g[&quot;persistence_mode&quot;] != &quot;Enabled&quot;: p.append(&quot;persistence off&quot;)
+    if g[&quot;ecc.mode.current&quot;] != &quot;Enabled&quot;: p.append(&quot;ECC off&quot;)
+    if g[&quot;ecc.errors.uncorrected.volatile.total&quot;] not in (&quot;0&quot;, &quot;[N/A]&quot;):
+        p.append(f&quot;uncorrected ECC={g['ecc.errors.uncorrected.volatile.total']}&quot;)
+    if g[&quot;remapped_rows.pending&quot;] == &quot;Yes&quot;: p.append(&quot;row remap pending: reset GPU&quot;)
+    if g[&quot;remapped_rows.failure&quot;] == &quot;Yes&quot;: p.append(&quot;row remap failed: RMA&quot;)
+    if g[&quot;pcie.link.width.current&quot;] != g[&quot;pcie.link.width.max&quot;]:
+        p.append(f&quot;PCIe x{g['pcie.link.width.current']} of x{g['pcie.link.width.max']}&quot;)
+    if g[&quot;clocks_event_reasons.hw_slowdown&quot;] == &quot;Active&quot;: p.append(&quot;HW slowdown&quot;)
+    return p
+
+
+def parse_kmod(proc_version):
+    &quot;&quot;&quot;/proc/driver/nvidia/version -&gt; (version, is_open).&quot;&quot;&quot;
+    m = re.search(r&quot;Kernel Module(?: for \S+)?\s+(\d+\.\d+(?:\.\d+)?)&quot;, proc_version)
+    return (m.group(1) if m else None), (&quot;Open Kernel Module&quot; in proc_version)
+
+
+def parse_fabric(smi_q):
+    &quot;&quot;&quot;nvidia-smi -q -&gt; list of (state, status), one per GPU that reports a fabric.&quot;&quot;&quot;
+    pairs = re.findall(r&quot;Fabric\s*\n\s*State\s*:\s*(.+?)\s*\n\s*Status\s*:\s*(.+?)\s*\n&quot;, smi_q)
+    return [p for p in pairs if p[0] != &quot;N/A&quot;]
+
+
+def parse_nvlink(status_text):
+    &quot;&quot;&quot;nvidia-smi nvlink -s -&gt; {gpu: (active_links, inactive_links)}.&quot;&quot;&quot;
+    out, gpu = {}, None
+    for line in status_text.splitlines():
+        if m := re.match(r&quot;GPU (\d+):&quot;, line):
+            gpu = int(m.group(1)); out[gpu] = [0, 0]
+        elif gpu is not None and re.match(r&quot;\s+Link \d+:&quot;, line):
+            out[gpu][1 if &quot;inactive&quot; in line.lower() else 0] += 1
+    return {g: tuple(v) for g, v in out.items()}
+
+
+def parse_xids(kernel_log):
+    &quot;&quot;&quot;dmesg / journalctl -k text -&gt; sorted set of (pci_addr, xid).&quot;&quot;&quot;
+    return sorted(set(re.findall(r&quot;NVRM: Xid \(PCI:([0-9a-fA-F:.]+)\): (\d+)&quot;, kernel_log)))
+
+
+def parse_busbw(nccl_out):
+    m = re.search(r&quot;Avg bus bandwidth\s*:\s*([\d.]+)&quot;, nccl_out)
+    wrong = re.search(r&quot;Out of bounds values\s*:\s*(\d+)&quot;, nccl_out)
+    return (float(m.group(1)) if m else None), (int(wrong.group(1)) if wrong else None)
+
+
+IB_ERR_COUNTERS = (&quot;symbol_error&quot;, &quot;link_downed&quot;, &quot;port_rcv_errors&quot;, &quot;local_link_integrity_errors&quot;,
+                   &quot;excessive_buffer_overrun_errors&quot;)
+
+
+def rdma_ports(sysfs=None):
+    &quot;&quot;&quot;Walk /sys/class/infiniband -&gt; list of dicts, one per (device, port).&quot;&quot;&quot;
+    sysfs = sysfs or SYS
+    ports = []
+    for pdir in sorted(glob.glob(f&quot;{sysfs}/class/infiniband/*/ports/*&quot;)):
+        dev, port = pdir.split(&quot;/&quot;)[-3], pdir.split(&quot;/&quot;)[-1]
+        errs = {c: int(read(f&quot;{pdir}/counters/{c}&quot;, &quot;0&quot;) or 0) for c in IB_ERR_COUNTERS}
+        ports.append(dict(name=f&quot;{dev}/{port}&quot;, state=read(f&quot;{pdir}/state&quot;), rate=read(f&quot;{pdir}/rate&quot;),
+                          link_layer=read(f&quot;{pdir}/link_layer&quot;), errors={k: v for k, v in errs.items() if v}))
+    return ports
+
+
+def port_problems(p, want_rate):
+    probs = []
+    if &quot;ACTIVE&quot; not in p[&quot;state&quot;]: probs.append(f&quot;state={p['state'] or '?'}&quot;)
+    rate = float(p[&quot;rate&quot;].split()[0]) if p[&quot;rate&quot;] else 0.0
+    if want_rate and rate != want_rate: probs.append(f&quot;rate={p['rate']}&quot;)
+    if p[&quot;errors&quot;]: probs.append(f&quot;errors={p['errors']}&quot;)
+    return probs
+
+
+# ---------------- checks: each one calls report() exactly once ----------------
+
+def check_driver(args):
+    kmod = read(&quot;/proc/driver/nvidia/version&quot;)
+    if not kmod:
+        return report(&quot;kernel module&quot;, False, &quot;nvidia.ko not loaded (/proc/driver/nvidia/version missing)&quot;)
+    ver, is_open = parse_kmod(kmod)
+    ok = args.driver is None or ver == args.driver
+    report(&quot;kernel module&quot;, ok, f&quot;{ver} ({'open' if is_open else 'proprietary'})&quot;
+           + (&quot;&quot; if ok else f&quot;, expected {args.driver}&quot;))
+
+
+def check_gpus(args):
+    if not shutil.which(&quot;nvidia-smi&quot;):
+        return report(&quot;nvidia-smi&quot;, False, &quot;not on PATH&quot;)
+    rc, out = sh(f&quot;nvidia-smi --query-gpu={GPU_FIELDS} --format=csv,noheader,nounits&quot;)
+    if rc != 0:  # 'Driver/library version mismatch' lands here: user-space libs != loaded nvidia.ko
+        return report(&quot;nvidia-smi&quot;, False, out.strip().splitlines()[-1] if out.strip() else f&quot;rc={rc}&quot;)
+    gpus = parse_csv(out)
+    report(&quot;gpu count&quot;, len(gpus) == args.gpus, f&quot;{len(gpus)} found, expected {args.gpus}&quot;)
+    bad = {g[&quot;pci.bus_id&quot;]: gpu_problems(g) for g in gpus if gpu_problems(g)}
+    report(&quot;gpu health&quot;, not bad, &quot;; &quot;.join(f&quot;{k}: {', '.join(v)}&quot; for k, v in bad.items()) or
+           &quot;persistence, ECC, row remap, PCIe width, HW slowdown ok&quot;)
+
+
+def check_xids(args):
+    rc, out = sh(&quot;journalctl -k -b --no-pager 2&gt;/dev/null || dmesg 2&gt;/dev/null&quot;)
+    if not out.strip():
+        return report(&quot;xid errors&quot;, None, &quot;no kernel log access (run as root)&quot;)
+    xids = parse_xids(out)
+    report(&quot;xid errors&quot;, not xids, &quot;, &quot;.join(f&quot;Xid {x} on {pci}&quot; for pci, x in xids) or &quot;none since boot&quot;)
+
+
+def check_fabric(args):
+    rc, out = sh(&quot;nvidia-smi -q&quot;)
+    pairs = parse_fabric(out) if rc == 0 else []
+    if not pairs:
+        return report(&quot;nvswitch fabric&quot;, None, &quot;no GPU reports a fabric state (no NVSwitch or pre-Hopper)&quot;)
+    bad = [p for p in pairs if p != (&quot;Completed&quot;, &quot;Success&quot;)]
+    _, svc = sh(&quot;systemctl is-active nvidia-fabricmanager&quot;)
+    report(&quot;nvswitch fabric&quot;, not bad, f&quot;{len(pairs)} GPUs Completed/Success, fabricmanager {svc.strip()}&quot;
+           if not bad else f&quot;{bad[:2]}... fabricmanager={svc.strip()}&quot;)
+
+
+def check_nvlink(args):
+    rc, out = sh(&quot;nvidia-smi nvlink -s&quot;)
+    links = parse_nvlink(out) if rc == 0 else {}
+    if not any(a for a, _ in links.values()):
+        return report(&quot;nvlink&quot;, None, &quot;no active NVLink links reported&quot;)
+    counts = {a for a, _ in links.values()}
+    inactive = {g: i for g, (_, i) in links.items() if i}
+    report(&quot;nvlink&quot;, len(counts) == 1 and not inactive,
+           f&quot;active links per GPU: {sorted(counts)}&quot; + (f&quot;, inactive: {inactive}&quot; if inactive else &quot;&quot;))
+
+
+def check_cuda(args):
+    code = r&quot;&quot;&quot;
+import torch
+n = torch.cuda.device_count()
+assert n &gt; 0, &quot;torch sees no GPUs&quot;
+for d in range(n):
+    a = torch.randn(2048, 2048, device=f&quot;cuda:{d}&quot;)            # (N, N)
+    ref = (a.double().cpu() @ a.double().cpu())                # (N, N) fp64 on CPU
+    err = ((a @ a).double().cpu() - ref).abs().max().item() / ref.abs().max().item()
+    assert err &lt; 1e-3, f&quot;cuda:{d} matmul rel err {err:.2e}&quot;
+    torch.cuda.synchronize(d)
+p2p = all(torch.cuda.can_device_access_peer(i, j) for i in range(n) for j in range(n) if i != j)
+print(f&quot;torch {torch.__version__} cuda {torch.version.cuda}, {n} GPUs matmul ok, p2p={'all' if p2p else 'MISSING'}&quot;)
+&quot;&quot;&quot;
+    try:
+        p = subprocess.run([sys.executable, &quot;-c&quot;, code], capture_output=True, text=True, timeout=300)
+        rc, out = p.returncode, p.stdout + p.stderr
+    except subprocess.TimeoutExpired:
+        rc, out = 124, &quot;timeout after 300s&quot;
+    if &quot;No module named 'torch'&quot; in out:
+        return report(&quot;cuda + torch&quot;, None, &quot;torch not installed in this python&quot;)
+    last = out.strip().splitlines()[-1] if out.strip() else f&quot;rc={rc}&quot;
+    report(&quot;cuda + torch&quot;, rc == 0 and &quot;p2p=all&quot; in last, last)
+
+
+def check_rdma(args):
+    ports = [p for p in rdma_ports() if not args.hcas or p[&quot;name&quot;].split(&quot;/&quot;)[0] in args.hcas]
+    if not ports:
+        return report(&quot;rdma ports&quot;, None if args.ib_rate is None else False, &quot;no RDMA devices in /sys/class/infiniband&quot;)
+    bad = {p[&quot;name&quot;]: port_problems(p, args.ib_rate) for p in ports if port_problems(p, args.ib_rate)}
+    report(&quot;rdma ports&quot;, not bad, &quot;; &quot;.join(f&quot;{k}: {', '.join(v)}&quot; for k, v in bad.items()) or
+           f&quot;{len(ports)} ports ACTIVE, {ports[0]['rate']}, {ports[0]['link_layer']}, no error counters&quot;)
+
+
+def check_gdr(args):
+    if not glob.glob(f&quot;{SYS}/class/infiniband/*&quot;):
+        return report(&quot;gpudirect rdma&quot;, None, &quot;no RDMA devices&quot;)
+    _, lsmod = sh(&quot;lsmod&quot;)
+    if re.search(r&quot;^nvidia_peermem\s&quot;, lsmod, re.M):
+        return report(&quot;gpudirect rdma&quot;, True, &quot;nvidia_peermem loaded&quot;)
+    _, is_open = parse_kmod(read(&quot;/proc/driver/nvidia/version&quot;))
+    kernel = tuple(int(x) for x in re.findall(r&quot;\d+&quot;, platform.release())[:2])
+    ok = is_open and kernel &gt;= (5, 12)
+    report(&quot;gpudirect rdma&quot;, ok, &quot;dma-buf path possible (open kmod, kernel &gt;= 5.12): confirm GDRDMA in NCCL log&quot;
+           if ok else &quot;neither nvidia_peermem nor dma-buf (open kmod + kernel &gt;= 5.12) available&quot;)
+
+
+def check_dcgm(args):
+    if args.dcgm_level == 0 or not shutil.which(&quot;dcgmi&quot;):
+        return report(&quot;dcgm diag&quot;, None, &quot;disabled or dcgmi not installed&quot;)
+    rc, out = sh(f&quot;dcgmi diag -r {args.dcgm_level}&quot;, timeout=3600)
+    fails = [l.strip() for l in out.splitlines() if re.search(r&quot;\bFail\b&quot;, l)]
+    report(&quot;dcgm diag&quot;, rc == 0 and not fails, f&quot;-r {args.dcgm_level}: &quot; + (&quot;; &quot;.join(fails[:3]) or &quot;all Pass&quot;))
+
+
+def check_nccl(args):
+    binary = os.path.join(args.nccl_tests or &quot;&quot;, &quot;all_reduce_perf&quot;)
+    if not args.nccl_tests or not os.access(binary, os.X_OK):
+        return report(&quot;nccl all_reduce&quot;, None, &quot;pass --nccl-tests &lt;dir with all_reduce_perf&gt;&quot;)
+    rc, out = sh(f&quot;{binary} -b 4G -e 4G -g {args.gpus} -w 5 -n 20&quot;)
+    busbw, wrong = parse_busbw(out)
+    ok = rc == 0 and wrong == 0 and busbw is not None and busbw &gt;= args.min_busbw
+    report(&quot;nccl all_reduce&quot;, ok, f&quot;busbw {busbw} GB/s (min {args.min_busbw}), wrong={wrong}&quot;)
+
+
+def check_container(args):
+    if not args.container:
+        return report(&quot;container gpus&quot;, None, &quot;pass --container &lt;image&gt; to test the container runtime&quot;)
+    rc, out = sh(f&quot;docker run --rm --gpus all {args.container} nvidia-smi -L&quot;, timeout=600)
+    n = len(re.findall(r&quot;^GPU \d+:&quot;, out, re.M))
+    report(&quot;container gpus&quot;, rc == 0 and n == args.gpus, f&quot;{n} GPUs visible inside {args.container}&quot;)
+
+
+CHECKS = [check_driver, check_gpus, check_xids, check_fabric, check_nvlink, check_cuda,
+          check_rdma, check_gdr, check_dcgm, check_nccl, check_container]
+
+
+# ---------------- selftest: canned outputs from the tools, asserts on the parsers ----------------
+
+def selftest():
+    csv = (&quot;0, 00000000:18:00.0, Enabled, Enabled, 0, No, No, 16, 16, Not Active\n&quot;
+           &quot;1, 00000000:2A:00.0, Disabled, Enabled, 2, Yes, No, 8, 16, Active\n&quot;)
+    g = parse_csv(csv)
+    assert gpu_problems(g[0]) == []
+    assert gpu_problems(g[1]) == [&quot;persistence off&quot;, &quot;uncorrected ECC=2&quot;, &quot;row remap pending: reset GPU&quot;,
+                                  &quot;PCIe x8 of x16&quot;, &quot;HW slowdown&quot;], gpu_problems(g[1])
+    assert parse_kmod(&quot;NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  580.95.05  Release Build&quot;) \
+        == (&quot;580.95.05&quot;, True)
+    assert parse_kmod(&quot;NVRM version: NVIDIA UNIX x86_64 Kernel Module  550.54.15  Tue Mar  5&quot;) == (&quot;550.54.15&quot;, False)
+    q = (&quot;GPU 00000000:18:00.0\n    Fabric\n        State                     : Completed\n&quot;
+         &quot;        Status                    : Success\n        CliqueId : 0\n&quot;
+         &quot;GPU 00000000:2A:00.0\n    Fabric\n        State                     : In Progress\n&quot;
+         &quot;        Status                    : N/A\n&quot;)
+    assert parse_fabric(q) == [(&quot;Completed&quot;, &quot;Success&quot;), (&quot;In Progress&quot;, &quot;N/A&quot;)]
+    nvl = (&quot;GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-a)\n\t Link 0: 26.562 GB/s\n\t Link 1: 26.562 GB/s\n&quot;
+           &quot;GPU 1: NVIDIA H100 80GB HBM3 (UUID: GPU-b)\n\t Link 0: 26.562 GB/s\n\t Link 1: &lt;inactive&gt;\n&quot;)
+    assert parse_nvlink(nvl) == {0: (2, 0), 1: (1, 1)}
+    log = (&quot;[  812.1] NVRM: Xid (PCI:0000:2a:00): 79, pid=1234, GPU has fallen off the bus.\n&quot;
+           &quot;[  812.2] NVRM: Xid (PCI:0000:2a:00): 79, pid=1234, GPU has fallen off the bus.\n&quot;)
+    assert parse_xids(log) == [(&quot;0000:2a:00&quot;, &quot;79&quot;)]
+    assert parse_busbw(&quot;#  Out of bounds values : 0 OK\n# Avg bus bandwidth    : 361.48 \n&quot;) == (361.48, 0)
+    with tempfile.TemporaryDirectory() as root:  # fake /sys with one healthy and one sick port
+        for dev, state, rate, sym in [(&quot;mlx5_0&quot;, &quot;4: ACTIVE&quot;, &quot;400 Gb/sec (4X NDR)&quot;, &quot;0&quot;),
+                                      (&quot;mlx5_1&quot;, &quot;1: DOWN&quot;, &quot;10 Gb/sec (4X SDR)&quot;, &quot;17&quot;)]:
+            d = f&quot;{root}/class/infiniband/{dev}/ports/1&quot;
+            os.makedirs(f&quot;{d}/counters&quot;)
+            for name, val in [(&quot;state&quot;, state), (&quot;rate&quot;, rate), (&quot;link_layer&quot;, &quot;InfiniBand&quot;),
+                              (&quot;counters/symbol_error&quot;, sym), (&quot;counters/link_downed&quot;, &quot;0&quot;)]:
+                with open(f&quot;{d}/{name}&quot;, &quot;w&quot;) as f:
+                    f.write(val + &quot;\n&quot;)
+        ports = rdma_ports(root)
+        assert port_problems(ports[0], 400) == []
+        assert port_problems(ports[1], 400) == [&quot;state=1: DOWN&quot;, &quot;rate=10 Gb/sec (4X SDR)&quot;,
+                                                &quot;errors={'symbol_error': 17}&quot;], port_problems(ports[1], 400)
+    print(&quot;selftest: all parser assertions passed&quot;)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument(&quot;--gpus&quot;, type=int, default=8)
+    ap.add_argument(&quot;--driver&quot;, help=&quot;exact expected driver version, e.g. 580.95.05&quot;)
+    ap.add_argument(&quot;--ib-rate&quot;, type=float, help=&quot;expected per-port rate in Gb/s, e.g. 400&quot;)
+    ap.add_argument(&quot;--hcas&quot;, nargs=&quot;*&quot;, help=&quot;only check these RDMA devices, e.g. mlx5_0 mlx5_1&quot;)
+    ap.add_argument(&quot;--dcgm-level&quot;, type=int, default=1, choices=[0, 1, 2, 3, 4])
+    ap.add_argument(&quot;--nccl-tests&quot;, help=&quot;directory containing all_reduce_perf&quot;)
+    # Note: busbw floor is a calibration knob; set it from a known-good node of the same SKU
+    ap.add_argument(&quot;--min-busbw&quot;, type=float, default=0.0)
+    ap.add_argument(&quot;--container&quot;, help=&quot;image to test GPU visibility inside, e.g. nvidia/cuda:13.0.2-base-ubuntu24.04&quot;)
+    ap.add_argument(&quot;--selftest&quot;, action=&quot;store_true&quot;)
+    args = ap.parse_args()
+    if args.selftest:
+        return selftest()
+    print(f&quot;node acceptance on {platform.node()} ({platform.system()} {platform.release()})&quot;)
+    for check in CHECKS:
+        try:
+            check(args)
+        except Exception as e:  # a crashing check is a failing check, keep going
+            report(check.__name__.removeprefix(&quot;check_&quot;), False, f&quot;check crashed: {e!r}&quot;)
+    fails = results.count(&quot;FAIL&quot;)
+    print(f&quot;\n{'NODE FAIL' if fails else 'NODE PASS'}: {results.count('PASS')} pass, {fails} fail, &quot;
+          f&quot;{results.count('SKIP')} skip&quot;)
+    sys.exit(1 if fails else 0)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<h3 id="running-it">Running it</h3>
+<p>The selftest and a real run on this Mac. There is no NVIDIA stack, so the two driver checks fail and everything else skips. The exit code is 1, which is what a scheduler must see on a non-GPU host. <strong>[ran]</strong></p>
+<pre><code>$ python3 node_accept.py --selftest
+selftest: all parser assertions passed
+
+$ python3 node_accept.py --gpus 8; echo rc=$?
+node acceptance on my-laptop.local (Darwin 24.6.0)
+[FAIL] kernel module            nvidia.ko not loaded (/proc/driver/nvidia/version missing)
+[FAIL] nvidia-smi               not on PATH
+[SKIP] xid errors               no kernel log access (run as root)
+[SKIP] nvswitch fabric          no GPU reports a fabric state (no NVSwitch or pre-Hopper)
+[SKIP] nvlink                   no active NVLink links reported
+[SKIP] cuda + torch             torch not installed in this python
+[SKIP] rdma ports               no RDMA devices in /sys/class/infiniband
+[SKIP] gpudirect rdma           no RDMA devices
+[SKIP] dcgm diag                disabled or dcgmi not installed
+[SKIP] nccl all_reduce          pass --nccl-tests &lt;dir with all_reduce_perf&gt;
+[SKIP] container gpus           pass --container &lt;image&gt; to test the container runtime
+
+NODE FAIL: 0 pass, 2 fail, 9 skip
+rc=1
+</code></pre>
+<p>With a python that has torch (the Mac's MPS-only build), the CUDA check gets further and fails for the right reason <strong>[ran]</strong>:</p>
+<pre><code>[FAIL] cuda + torch             AssertionError: torch sees no GPUs
+</code></pre>
+<p>On a healthy 8x H100 InfiniBand node it should look like this. <strong>[untested]</strong> This output is a sketch, not a capture.</p>
+<pre><code>$ sudo python3 node_accept.py --gpus 8 --driver 580.95.05 --ib-rate 400 \
+    --hcas mlx5_0 mlx5_1 mlx5_2 mlx5_3 mlx5_4 mlx5_5 mlx5_6 mlx5_7 \
+    --nccl-tests /opt/nccl-tests/build --min-busbw 350 --dcgm-level 2 \
+    --container nvidia/cuda:13.0.2-base-ubuntu24.04
+node acceptance on gpu-017 (Linux 6.8.0-87-generic)
+[PASS] kernel module            580.95.05 (open)
+[PASS] gpu count                8 found, expected 8
+[PASS] gpu health               persistence, ECC, row remap, PCIe width, HW slowdown ok
+[PASS] xid errors               none since boot
+[PASS] nvswitch fabric          8 GPUs Completed/Success, fabricmanager active
+[PASS] nvlink                   active links per GPU: [18]
+[PASS] cuda + torch             torch 2.15.0 cuda 13.2, 8 GPUs matmul ok, p2p=all
+[PASS] rdma ports               8 ports ACTIVE, 400 Gb/sec (4X NDR), InfiniBand, no error counters
+[PASS] gpudirect rdma           nvidia_peermem loaded
+[PASS] dcgm diag                -r 2: all Pass
+[PASS] nccl all_reduce          busbw ... GB/s (min 350.0), wrong=0
+[PASS] container gpus           8 GPUs visible inside nvidia/cuda:13.0.2-base-ubuntu24.04
+
+NODE PASS: 12 pass, 0 fail, 0 skip
+</code></pre>
+<p><code>--min-busbw 350</code> is a placeholder. Set it to around 90% of the value you measure on a known-good node of the same SKU, driver and NCCL version.</p>
+<h3 id="wiring-it-into-the-scheduler">Wiring it into the scheduler</h3>
+<p>Preview: this uses Slurm and Kubernetes vocabulary taught in <a href="../orchestration/slurm/from-zero.html">Slurm from zero</a> and <a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>; skim it now and come back. Just enough to follow: <code>slurm.conf</code> is Slurm's cluster-wide config file, and its <code>HealthCheckProgram</code> setting names a script every node runs periodically. A Kubernetes <strong>DaemonSet</strong> runs one copy of a container on every node (<a href="../orchestration/kubernetes-from-zero.html#daemonset">DaemonSet</a>); an <strong>init container</strong> runs to completion before a pod's main container starts; <strong>labels</strong> are key/value tags on a node, and a <strong>taint</strong> marks a node so that ordinary workloads are not scheduled on it (<a href="../orchestration/kubernetes-from-zero.html#taints-and-tolerations">taints and tolerations</a>).</p>
+<ul>
+<li><strong>Slurm</strong>: run a fast subset as the node health check (<code>HealthCheckProgram</code> in <code>slurm.conf</code>, typically every few minutes, which drains the node on a non-zero exit). Run <code>--dcgm-level 1</code> in the job prolog. Run the full version, with DCGM level 2 and nccl-tests, after reboots and repairs, before <code>scontrol update state=resume</code>. See <a href="../orchestration/slurm/README.html">Slurm</a>.</li>
+<li><strong>Kubernetes</strong>: run it as a DaemonSet or as an init container of a &quot;node validator&quot; pod that labels or taints the node on failure. The NVIDIA GPU Operator's own validator does a subset of this (<a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>).</li>
+<li>Log every run, with the node's GPU UUIDs, to persistent storage. When a &quot;new&quot; cloud node fails, that history tells you whether you got <a href="../compute/accelerator/nvidia/debug.html#how-to-detect-if-you-get-the-same-broken-node-again-and-again">the same broken GPUs again</a>.</li>
+</ul>
+<p>Not covered here: multi-node acceptance (bisecting a slow all-reduce across a whole cluster), and burn-in under thermal load (hours of <code>dcgmi diag -r 4</code> or a training job). Both build on this script. <a href="../training/profiling-and-optimization.html">Profiling and optimization</a> covers what to do once the node passes and the job is still slow.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs</a>: Xid errors, DCGM output and row remapping in depth.</li>
+<li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs</a>.</li>
+<li><a href="../network/debug/README.html">Network debug</a> and <a href="../debug/nccl-performance-debug.html">NCCL performance debug</a>: when nccl-tests is slow or hangs.</li>
+<li><a href="../network/benchmarks/README.html">Network benchmarks</a>: <code>torch-dist-bench</code>, nccl-tests, nvbandwidth and what the numbers mean.</li>
+<li><a href="../network/README.html">The network chapter</a>: fabric generations, NVLink/IB/EFA numbers.</li>
+<li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> and <a href="../orchestration/slurm/README.html">Slurm</a>: where the acceptance script plugs in.</li>
+<li><a href="../training/decentralized-training.html">Decentralized training</a>: what changes when the nodes aren't on one fabric.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>NVIDIA, <a href="https://docs.nvidia.com/deploy/cuda-compatibility/">CUDA Compatibility</a>: minor-version and forward compatibility, the source of the rules in section 2.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/index.html">Driver Installation Guide</a>, especially the <a href="https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/ubuntu.html">Ubuntu page</a> and version locking.</li>
+<li>NVIDIA, <a href="https://github.com/NVIDIA/open-gpu-kernel-modules">open-gpu-kernel-modules</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/datacenter/tesla/fabric-manager-user-guide/index.html">Fabric Manager User Guide</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/index.html">DCGM User Guide</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/datacenter/tesla/mig-user-guide/index.html">MIG User Guide</a> and <a href="https://docs.nvidia.com/deploy/mps/index.html">MPS</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/index.html">Container Toolkit</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/cuda/gpudirect-rdma/index.html">GPUDirect RDMA</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/doca/sdk/doca-host-installation-and-upgrade/index.html">DOCA host installation</a> (DOCA-OFED).</li>
+<li><a href="https://github.com/linux-rdma/rdma-core">linux-rdma/rdma-core</a> and <a href="https://github.com/linux-rdma/perftest">linux-rdma/perftest</a>.</li>
+<li>NVIDIA, <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html">NCCL environment variables</a> and <a href="https://github.com/NVIDIA/nccl-tests">nccl-tests</a>.</li>
+<li>AMD, <a href="https://rocm.docs.amd.com/en/latest/">ROCm documentation</a> and <a href="https://github.com/ROCm/rccl-tests">rccl-tests</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../compute/accelerator/writing-kernels.html">&larr; Writing GPU Kernels, Hands-On</a><a class="next" href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

@@ -306,11 +306,11 @@ You need something to point a load generator at that behaves *qualitatively* lik
 - **Per-step token budget** `--max-num-batched-tokens`: each running decode contributes 1 token, and prompts are prefilled in chunks out of whatever budget remains. This is vLLM V1's policy of scheduling decodes first and then chunked prefill.
 - **A step-cost model** standing in for the GPU:
 
-  ```
-  step_time = t0 + c_decode * n_decoding + c_prefill * n_prefill_tokens
-  ```
+  $$
+  t_{\text{step}} = t_0 + c_{\text{decode}} \cdot n_{\text{decoding}} + c_{\text{prefill}} \cdot n_{\text{prefill tokens}}
+  $$
 
-  `t0` (8 ms) plays the role of reading the weights, which is paid once per step regardless of batch size. `c_decode` (0.25 ms per sequence) plays the KV read, and `c_prefill` (0.02 ms per token) plays prefill compute. This is the `TPOT(B) = t_0 + B * c_kv` model from [Internals I](arithmetic.md#the-throughput-latency-pareto), with prefill added.
+  $t_0$ (8 ms) plays the role of reading the weights, which is paid once per step regardless of batch size. $c_{\text{decode}}$ (0.25 ms per sequence) plays the KV read, and $c_{\text{prefill}}$ (0.02 ms per token) plays prefill compute. This is the $\text{TPOT}(B) = t_0 + B \cdot c_{\text{kv}}$ model from [Internals I](arithmetic.md#the-throughput-latency-pareto), with prefill added.
 - **A block-hash prefix cache** with LRU eviction, following the same chained-hash scheme as [vLLM APC](serving-engine-internals.md#hash-based-block-caching-vllm-apc). Cached prompt tokens skip their prefill cost.
 - **Streaming in the OpenAI SSE format**, `--max-model-len` validation returning HTTP 400, a Prometheus-text `/metrics`, and **cancellation**: when the client disconnects, the sequence is removed from the batch.
 
@@ -582,7 +582,7 @@ A production load generator needs both. Use closed loop to find the saturation t
 
 ### The code
 
-Just enough httpx to read the client: `httpx.AsyncClient(base_url=..., limits=..., timeout=...)` is one reusable client that keeps a pool of open TCP connections (`httpx.Limits` caps the pool size) and is closed by its `async with` block. `await client.post(url, json=body)` sends a request and waits for the whole response. `async with client.stream("POST", url, json=body) as r:` instead returns as soon as the status line and headers arrive; `r.status_code` is the status, and `async for line in r.aiter_lines():` yields the body line by line as it streams in, which is what lets us timestamp each SSE event. Network failures raise subclasses of `httpx.HTTPError`. The Poisson gaps come from `rng.expovariate(rate)`, which draws an exponentially distributed number with mean `1/rate`.
+Just enough httpx to read the client: `httpx.AsyncClient(base_url=..., limits=..., timeout=...)` is one reusable client that keeps a pool of open TCP connections (`httpx.Limits` caps the pool size) and is closed by its `async with` block. `await client.post(url, json=body)` sends a request and waits for the whole response. `async with client.stream("POST", url, json=body) as r:` instead returns as soon as the status line and headers arrive; `r.status_code` is the status, and `async for line in r.aiter_lines():` yields the body line by line as it streams in, which is what lets us timestamp each SSE event. Network failures raise subclasses of `httpx.HTTPError`. The Poisson gaps come from `rng.expovariate(rate)`, which draws an exponentially distributed number with mean $1/\text{rate}$.
 
 ```python
 # loadgen.py - streaming load generator for any OpenAI-compatible /v1/chat/completions endpoint.
@@ -714,7 +714,7 @@ All the runs in this section were made on the Mac against the mock (default flag
 for c in 1 8 32 64; do ./venv/bin/python loadgen.py -c $c -n $((c*8>64?c*8:64)); echo; done
 ```
 
-(The trailing `&` runs the server in the background. `$((c*8>64?c*8:64))` is shell arithmetic with a C-style `condition ? a : b`, i.e. `max(8c, 64)` requests per point. Later loops stop the server with `pkill -f mock_server.py`, which kills processes whose command line matches. Both are covered in [Linux and the OS](../foundations/linux-and-os.md#scripting-essentials).)
+(The trailing `&` runs the server in the background. `$((c*8>64?c*8:64))` is shell arithmetic with a C-style `condition ? a : b`, i.e. $\max(8c, 64)$ requests per point. Later loops stop the server with `pkill -f mock_server.py`, which kills processes whose command line matches. Both are covered in [Linux and the OS](../foundations/linux-and-os.md#scripting-essentials).)
 
 ```
 concurrency=1  ok=64 err=0  wall=78.1s  req/s=0.82  out_tok/s=105
@@ -744,10 +744,10 @@ E2E        4697.7   4808.8   4878.8   4924.2
 
 How to read it, line by line:
 
-1. **c=1 gives the latency floor.** The model predicts an ITL of `8 + 0.25 = 8.25 ms`, and we measured a p50 of 9.3 ms. The extra ~1 ms is the cost of an asyncio sleep plus the HTTP and JSON path on macOS. On a real engine this gap is the CPU overhead discussed in [Internals II](serving-engine-internals.md#why-cpu-overhead-matters-at-decode), and comparing measured ITL at c=1 to the [roofline bound](arithmetic.md#decode-latency-lower-bound) is the first number you should compute for any deployment.
-2. **From c=1 to c=8, throughput rises 6.7x (105 to 708 tok/s) while ITL rises 18% (9.3 to 11.0 ms).** This is the memory-bound regime: the weight read (`t0`) is shared across the batch, so throughput is almost free here.
-3. **At c=32 the batch fills `max-num-seqs`.** The model predicts a 16 ms step and a ceiling of `32 / 16 ms = 2000 tok/s`. We measured 17.1 ms and 1719 tok/s. The missing ~14% goes to steps that also carry prefill chunks, plus loop overhead.
-4. **At c=64 throughput is flat (1743 tok/s) and TTFT jumps 47x, from a p50 of 50.6 ms to 2397 ms.** Thirty-two requests sit in `waiting` at all times. Each waits for a full running request to finish (about `128 x 17 ms = 2.2 s`), and TTFT p50 is almost exactly that. *A TTFT that equals one E2E of another request is the signature of admission queueing*, and engine metrics show it as `num_requests_waiting > 0` and a large `request_queue_time_seconds`. More concurrency past the knee buys no throughput at all; it only adds latency.
+1. **c=1 gives the latency floor.** The model predicts an ITL of $8 + 0.25 = 8.25\ \text{ms}$, and we measured a p50 of 9.3 ms. The extra ~1 ms is the cost of an asyncio sleep plus the HTTP and JSON path on macOS. On a real engine this gap is the CPU overhead discussed in [Internals II](serving-engine-internals.md#why-cpu-overhead-matters-at-decode), and comparing measured ITL at c=1 to the [roofline bound](arithmetic.md#decode-latency-lower-bound) is the first number you should compute for any deployment.
+2. **From c=1 to c=8, throughput rises 6.7x (105 to 708 tok/s) while ITL rises 18% (9.3 to 11.0 ms).** This is the memory-bound regime: the weight read ($t_0$) is shared across the batch, so throughput is almost free here.
+3. **At c=32 the batch fills `max-num-seqs`.** The model predicts a 16 ms step and a ceiling of $32 / 16\ \text{ms} = 2000\ \text{tok/s}$. We measured 17.1 ms and 1719 tok/s. The missing ~14% goes to steps that also carry prefill chunks, plus loop overhead.
+4. **At c=64 throughput is flat (1743 tok/s) and TTFT jumps 47x, from a p50 of 50.6 ms to 2397 ms.** Thirty-two requests sit in `waiting` at all times. Each waits for a full running request to finish (about $128 \times 17\ \text{ms} = 2.2\ \text{s}$), and TTFT p50 is almost exactly that. *A TTFT that equals one E2E of another request is the signature of admission queueing*, and engine metrics show it as `num_requests_waiting > 0` and a large `request_queue_time_seconds`. More concurrency past the knee buys no throughput at all; it only adds latency.
 5. **The p99/max columns are noisy.** One spike of 124 ms at c=1 is one event in 8,000 gaps, probably a garbage-collection (GC) pause or a macOS scheduling hiccup. Before you build a theory on a max value, rerun.
 
 ### Open loop: what latency looks like at a given QPS
@@ -805,7 +805,7 @@ At 12 req/s, TTFT p99 ranges from 59 to 752 ms across seeds, a factor of 13. Thr
 
 ### Chunked prefill trades TTFT for ITL tail
 
-The same mock, long prompts (4,000 words, which cost `4000 x 0.02 = 80 ms` to prefill in one step), open loop at 4 req/s, prefix cache off. One variable changes: the per-step token budget.
+The same mock, long prompts (4,000 words, which cost $4000 \times 0.02 = 80\ \text{ms}$ to prefill in one step), open loop at 4 req/s, prefix cache off. One variable changes: the per-step token budget.
 
 ```bash
 for B in 100000 512; do
@@ -831,8 +831,8 @@ E2E        1407.4   1953.9   2512.1   2639.5
 ```
 
 - **No chunking** (budget 100k): whenever a 4,000-token prompt is admitted, every running request's next token waits the full 80 ms prefill. Several prompts admitted together cost 160 ms or more, which shows up as ITL p99 96.5 ms and max 250 ms. The median ITL stays a fast 10.9 ms. This is the [prefill stall](serving-engine-internals.md#the-stall).
-- **Chunks of 512**: ITL p99 falls 3.9x (96.5 to 24.7 ms) and max 5x. In exchange, the median ITL rises (each step carries `512 x 0.02 = 10.2 ms` of prefill) and TTFT p50 triples, because each prompt now needs about 8 steps to prefill and pays `t0` on every one.
-- In the mock, prefill tokens cost the same however you batch them, plus the per-step `t0`. On a real GPU, prefill chunks piggyback on the decode step's weight read, so chunking costs less TTFT than shown here ([Sarathi-Serve](serving-engine-internals.md#sarathi-and-sarathi-serve)). The direction of the trade is the same. **Pick the budget from your SLO**: if your SLO is on ITL p99 (chat UIs, voice), use small chunks; if it is on TTFT (short answers, classification), use large chunks.
+- **Chunks of 512**: ITL p99 falls 3.9x (96.5 to 24.7 ms) and max 5x. In exchange, the median ITL rises (each step carries $512 \times 0.02 = 10.2\ \text{ms}$ of prefill) and TTFT p50 triples, because each prompt now needs about 8 steps to prefill and pays $t_0$ on every one.
+- In the mock, prefill tokens cost the same however you batch them, plus the per-step $t_0$. On a real GPU, prefill chunks piggyback on the decode step's weight read, so chunking costs less TTFT than shown here ([Sarathi-Serve](serving-engine-internals.md#sarathi-and-sarathi-serve)). The direction of the trade is the same. **Pick the budget from your SLO**: if your SLO is on ITL p99 (chat UIs, voice), use small chunks; if it is on TTFT (short answers, classification), use large chunks.
 
 One more lesson from this experiment, which I got wrong on the first try: I first ran it in **closed loop** (16 users, 96 requests). All 16 users started at once, so their prefills were batched together and they finished together, and the whole run marched in lockstep waves. During a wave's prefill nobody was decoding, so the stall was invisible. Unchunked looked *better*: ITL p99 22.8 vs 26.3 ms, TTFT p50 1259 vs 1347 ms, 7.47 vs 5.73 req/s. The stall showed up only as a single 1209 ms max-ITL outlier. Closed-loop clients synchronize with each other, which hides interference effects. Use open loop for anything involving prefill/decode interaction.
 
@@ -1081,8 +1081,8 @@ Prefix-cache hit rate, summed over the three replicas' counters:
 
 Where the hit rates come from (checked with python):
 
-- The best possible hit rate per request is `187 full blocks x 16 / 3064 tokens = 97.7%`. Block 188 mixes prefix and user text, so it never hits.
-- With prefix routing, each prefix misses once on one replica (12 cold misses), giving a ceiling of `348/360 x 97.7% = 94.4%`. We measured 92.5%; the gap is the bounded-load fallback sending some requests off their sticky replica.
+- The best possible hit rate per request is $187\ \text{full blocks} \times 16 / 3064\ \text{tokens} = 97.7\%$. Block 188 mixes prefix and user text, so it never hits.
+- With prefix routing, each prefix misses once on one replica (12 cold misses), giving a ceiling of $348/360 \times 97.7\% = 94.4\%$. We measured 92.5%; the gap is the bounded-load fallback sending some requests off their sticky replica.
 - With rr, each prefix misses once on *each* replica (36 cold misses), giving a ceiling of 87.9%. It reaches only 75.4% because each replica now needs 12 prefixes x 187 = 2,244 blocks plus the churn of unique user blocks, which is more than its 2,048-block capacity. LRU eviction thrashes. **Spraying requests across replicas divides the effective cache size by the number of replicas.**
 - `least` behaves almost like `rr` here because the requests are uniform. Least-load earns its keep when request costs vary, which this workload does not exercise.
 
@@ -1381,7 +1381,7 @@ Reading it:
 
 - `running == max-num-seqs` and `waiting > 0` on every sample means the replica is saturated and admission-bound. The client's 2.4 s TTFT is almost all queue time.
 - The engine-side token rate (~1730 tok/s) matches the client-side 1738 tok/s. If these disagree, tokens are being lost or delayed between the engine and the client (a buffering proxy, or client CPU).
-- The 66.7% hit rate is exactly `512 / (512 + 256)`, the system-prompt share of each prompt. That is a ceiling you can compute *before* deploying from your traffic's prompt structure.
+- The 66.7% hit rate is exactly $512 / (512 + 256)$, the system-prompt share of each prompt. That is a ceiling you can compute *before* deploying from your traffic's prompt structure.
 - The `0.0` row at t=14 is an artifact of rates computed over short windows: closed-loop users finish in waves, and no new request was admitted in that 2 s window, so there were no prefix queries at all. The code prints 0 when the denominator is 0. Prometheus has the same issue: `rate()` over a window shorter than the event spacing is noise.
 
 For a real deployment, Prometheus scrapes each replica and you query **histograms** for percentiles (untested; metric names as in vLLM ~0.10-0.11, which [have been renamed before](serving-engine-internals.md#observability)):
@@ -1416,7 +1416,7 @@ Engine histograms have fixed buckets. If your SLO is 300 ms and the nearest buck
 [Internals I](arithmetic.md#worked-sizing-example) sizes a deployment from roofline bounds. Here the same procedure runs from *measurements* instead, using the mock data above as a stand-in for a real replica:
 
 1. **Fix the workload**: prompt and output length distributions, prefix structure. (Here: 256-word prompts, 128 output tokens, no shared prefix.)
-2. **Fix the SLO as percentiles**: TTFT p99 ≤ 500 ms, ITL p99 ≤ 30 ms.
+2. **Fix the SLO as percentiles**: TTFT p99 $\le 500\ \text{ms}$, ITL p99 $\le 30\ \text{ms}$.
 3. **Run an open-loop sweep on one replica with several seeds.** Find the highest rate where *every* seed meets the SLO. From the tables above, 10 req/s passes on all 3 seeds (worst TTFT p99 321.5 ms, worst ITL p99 27.7 ms), while 12 req/s fails on seed 0 (TTFT p99 752 ms). The per-replica capacity at this SLO is therefore **10 req/s**.
 4. **Sanity-check with Little's law and the saturation point**, then size:
 

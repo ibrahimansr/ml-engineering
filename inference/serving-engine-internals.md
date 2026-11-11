@@ -22,8 +22,8 @@ The running examples use two reference models so that the numbers are reproducib
 
 | Model | Layers | KV heads | Head dim | KV bytes/token (bf16) |
 |-|-|-|-|-|
-| Llama-3-8B-like | 32 | 8 | 128 | `2*32*8*128*2 = 131072` = 128 KiB |
-| Llama-3-70B-like | 80 | 8 | 128 | `2*80*8*128*2 = 327680` = 320 KiB |
+| Llama-3-8B-like | 32 | 8 | 128 | $2 \cdot 32 \cdot 8 \cdot 128 \cdot 2 = 131072$ = 128 KiB |
+| Llama-3-70B-like | 80 | 8 | 128 | $2 \cdot 80 \cdot 8 \cdot 128 \cdot 2 = 327680$ = 320 KiB |
 
 and one reference GPU: H100 SXM, ~989 dense bf16 TFLOPS, ~3.35 TB/s HBM (High Bandwidth Memory: the GPU's main on-package DRAM, where weights and KV cache live). Throughout, a *kernel* means one function launched by the CPU to run on the GPU (a matmul, an attention op), and the *host* means the CPU side. All arithmetic in this chapter was checked with `python3`.
 
@@ -104,7 +104,7 @@ step 4: request 0 finished: 'gdab'
 What the CPU does per step:
 
 1. **Scheduling.** Walk the running and waiting queues, check KV block availability, decide preemptions, allocate new blocks for sequences crossing a block boundary.
-2. **Input preparation.** Build `input_ids`, `positions`, `slot_mapping` (the physical KV slot each new token writes to), the block tables, `seq_lens`, `query_start_loc` for ragged batches, and the attention-backend metadata. For a batch of 256 sequences at 8k context and block size 16 the block table alone is `256 * 512` int32 entries.
+2. **Input preparation.** Build `input_ids`, `positions`, `slot_mapping` (the physical KV slot each new token writes to), the block tables, `seq_lens`, `query_start_loc` for ragged batches, and the attention-backend metadata. For a batch of 256 sequences at 8k context and block size 16 the block table alone is $256 \times 512$ int32 entries.
 3. **Sampling bookkeeping.** Per-request temperature, top-p, penalties, seeds, grammar masks.
 4. **Output processing.** Append sampled token ids, incremental detokenization, stop-string matching, streaming the delta to the client.
 
@@ -112,9 +112,9 @@ What the CPU does per step:
 
 The GPU side of a decode step is short. For the 8B model at bf16 the step is bounded below by reading the weights once:
 
-```
-16e9 bytes / 3.35e12 bytes/s = 4.8 ms
-```
+$$
+16 \times 10^9\ \text{bytes} / (3.35 \times 10^{12}\ \text{bytes/s}) = 4.8\ \text{ms}
+$$
 
 If the CPU stages above take even 1-2 ms and run serially with the GPU, the GPU is idle for 17-30% of wall time. This is not hypothetical: the vLLM team's V1 re-architecture blog (January 2025) was motivated largely by CPU overhead becoming the bottleneck once kernels got fast. The exact fraction depends on batch size, Python version, sampling params in use and tokenizer, so measure it on your setup - `nsys` (NVIDIA's timeline profiler, recording when each CPU call and GPU kernel ran) with NVTX ranges (named markers you insert in code so they appear on that timeline) around schedule/prepare/forward/sample shows the gaps directly as idle stretches on the GPU timeline.
 
@@ -144,7 +144,7 @@ The engines converged on three structural changes.
 
 **Persistent batch.** Rebuilding all input tensors from Python lists every step is O(total tokens in batch). vLLM V1's model runner keeps persistent, pre-allocated GPU/CPU buffers for the batch state (token ids, block tables, sampling params) and applies only diffs: requests added, removed, or that received new blocks. The per-step CPU work becomes O(changes) plus a handful of small host-to-device copies (transfers from CPU RAM to GPU memory over PCIe, the CPU-GPU bus).
 
-**Async / overlapped scheduling.** GPU kernel launches are asynchronous: the CPU enqueues work on a *stream* (an ordered GPU work queue) and returns immediately; it only blocks at a *sync*, e.g. when it reads a GPU tensor's value back. The fundamental serialization is that step `n+1` needs the token sampled at step `n`. But the scheduler does not need the token's *value* to plan step `n+1` - it only needs to know that each running request will have exactly one more token (absent spec decode and stop conditions). So the scheduler can plan step `n+1` while the GPU executes step `n`, and the sampled token ids are fed into step `n+1`'s `input_ids` buffer on the GPU directly. SGLang calls this the overlap scheduler ("zero-overhead batch scheduler", introduced in v0.4, late 2024); vLLM V1 added it as `--async-scheduling`; TensorRT-LLM's PyTorch backend has an overlap scheduler too. The cost is one step of lag in detecting termination: a request that hit EOS at step `n` has already been scheduled for step `n+1`, which wastes one slot and its KV write, and must be discarded on output.
+**Async / overlapped scheduling.** GPU kernel launches are asynchronous: the CPU enqueues work on a *stream* (an ordered GPU work queue) and returns immediately; it only blocks at a *sync*, e.g. when it reads a GPU tensor's value back. The fundamental serialization is that step $n+1$ needs the token sampled at step $n$. But the scheduler does not need the token's *value* to plan step $n+1$ - it only needs to know that each running request will have exactly one more token (absent spec decode and stop conditions). So the scheduler can plan step $n+1$ while the GPU executes step $n$, and the sampled token ids are fed into step $n+1$'s `input_ids` buffer on the GPU directly. SGLang calls this the overlap scheduler ("zero-overhead batch scheduler", introduced in v0.4, late 2024); vLLM V1 added it as `--async-scheduling`; TensorRT-LLM's PyTorch backend has an overlap scheduler too. The cost is one step of lag in detecting termination: a request that hit EOS at step $n$ has already been scheduled for step $n+1$, which wastes one slot and its KV write, and must be discarded on output.
 
 The engine-loop sketch at the end of this subsection is not runnable on its own, but the effect is easy to reproduce. In this simulation a worker thread plays the GPU (kernels are enqueued and run asynchronously, and reading a result blocks), and the CPU spends 2 ms per step on scheduling and output processing:
 
@@ -278,7 +278,7 @@ The problem it solves: a request's final length is unknown when it arrives. The 
 
 ### Block tables
 
-The KV cache is one large pre-allocated pool per layer, carved into fixed-size physical blocks of `block_size` tokens. Each sequence owns a block table: a list of physical block ids, one per `block_size` logical tokens. Token at logical position `t` of sequence `s` lives at:
+The KV cache is one large pre-allocated pool per layer, carved into fixed-size physical blocks of `block_size` tokens. Each sequence owns a block table: a list of physical block ids, one per `block_size` logical tokens. Token at logical position $t$ of sequence $s$ lives at:
 
 ```python
 blk  = block_table[s, t // block_size]      # physical block id
@@ -293,10 +293,13 @@ The vLLM launch post animates how logical KV blocks map to non-contiguous physic
 
 The pool is allocated once at startup: the engine runs a profiling forward pass at max batched tokens, measures peak activation memory, and gives everything left under `gpu_memory_utilization` to KV blocks. For the 8B model on an 80 GB GPU at 0.9 utilization:
 
-```
-(80*0.9 - 16) GB = 56 GB of KV
-56e9 / 131072 bytes/token = ~427k tokens = ~26.7k blocks of 16
-```
+$$
+(80 \cdot 0.9 - 16)\ \text{GB} = 56\ \text{GB of KV}
+$$
+
+$$
+56 \times 10^9 / 131072\ \text{bytes/token} \approx 427\text{k tokens} \approx 26.7\text{k blocks of 16}
+$$
 
 Writing new KV: the model runner passes `slot_mapping` (one slot per new token, shape `(num_new_tokens,)`) and a `reshape_and_cache` kernel scatters the freshly computed K and V into those slots before or inside attention.
 
@@ -327,10 +330,10 @@ Layout matters for the attention kernel's access pattern. The original vLLM CUDA
 
 ### The kernel's memory access pattern
 
-Decode attention for one `(sequence, kv_head)` pair reads `seq_len * head_dim * 2` elements of K and V once and does `O(seq_len * head_dim)` FLOPs per query head - arithmetic intensity of a few FLOPs per byte, so it is purely bandwidth-bound (see [Internals I](arithmetic.md) for why). The paged kernel therefore has one job: stream KV at near-peak bandwidth despite the indirection. It does that by:
+Decode attention for one `(sequence, kv_head)` pair reads $\text{seq len} \cdot \text{head dim} \cdot 2$ elements of K and V once and does $O(\text{seq len} \cdot \text{head dim})$ FLOPs per query head - arithmetic intensity of a few FLOPs per byte, so it is purely bandwidth-bound (see [Internals I](arithmetic.md) for why). The paged kernel therefore has one job: stream KV at near-peak bandwidth despite the indirection. It does that by:
 
 - loading the block table entries for its sequence once (into registers/shared memory - the small, fast on-chip storage private to a thread or shared by a thread block),
-- issuing loads one whole block at a time, so each physical block is a contiguous `block_size * head_dim * 2` byte region (4 KiB per K or V block for `block_size=16, head_dim=128`, bf16),
+- issuing loads one whole block at a time, so each physical block is a contiguous $\text{block size} \cdot \text{head dim} \cdot 2$ byte region (4 KiB per K or V block for `block_size=16, head_dim=128`, bf16),
 - prefetching the next block while computing on the current one (software pipelining via `cp.async` or, on Hopper, TMA - hardware units that copy tiles from HBM to shared memory asynchronously).
 
 Because blocks are big enough to fill a DRAM burst (the minimum contiguous chunk memory delivers efficiently) and a warp's loads, the indirection costs little. The overhead shows up only when blocks get very small (block size 1, as in token-granular radix caches) where every token's address is a separate gather - FlashInfer's page-size-1 path handles this but with lower achieved bandwidth than large pages, by an amount that depends on the GPU and head dim.
@@ -356,9 +359,9 @@ At block size 16 each read is a 4 KiB contiguous run, which is plenty to keep th
 
 ### Block size tradeoffs
 
-Internal fragmentation is only in the last, partially filled block. If sequence lengths are uniformly distributed modulo `block_size`, the expected waste is `(B - 1) / 2` tokens per sequence:
+Internal fragmentation is only in the last, partially filled block. If sequence lengths are uniformly distributed modulo `block_size`, the expected waste is $(B - 1) / 2$ tokens per sequence:
 
-| Block size `B` | Mean waste (tokens/seq) | Waste fraction at `L=500` | at `L=2000` |
+| Block size $B$ | Mean waste (tokens/seq) | Waste fraction at $L=500$ | at $L=2000$ |
 |-|-|-|-|
 | 8 | 3.5 | 0.7% | 0.17% |
 | 16 | 7.5 | 1.5% | 0.37% |
@@ -367,7 +370,7 @@ Internal fragmentation is only in the last, partially filled block. If sequence 
 | 128 | 63.5 | 11.3% | 3.1% |
 | 256 | 127.5 | 20.3% | 6.0% |
 
-Compare with static preallocation to `max_model_len`: a request reserving 8192 slots that ends at 1500 tokens uses `1500/8192 = 18%` of its reservation. That gap - not the few percent above - is what PagedAttention buys you.
+Compare with static preallocation to `max_model_len`: a request reserving 8192 slots that ends at 1500 tokens uses $1500/8192 = 18\%$ of its reservation. That gap - not the few percent above - is what PagedAttention buys you.
 
 Both numbers come from a direct simulation. Draw 10,000 request lengths, round each up to whole blocks, and compare with reserving 8,192 slots per request:
 
@@ -397,11 +400,11 @@ block 128: waste   63.5 tokens/seq (theory   63.5), 2.93% of KV memory
 block 256: waste  128.6 tokens/seq (theory  127.5), 5.76% of KV memory
 ```
 
-The `(B - 1) / 2` rule holds, and even block size 256 wastes less than 6% for these lengths. Static reservation wastes 74%.
+The $(B - 1) / 2$ rule holds, and even block size 256 wastes less than 6% for these lengths. Static reservation wastes 74%.
 
 Why not block size 1? Costs that grow as blocks shrink:
 
-- **Block table size and CPU bookkeeping.** A 128k-token sequence at `B=16` is 8192 block ids; at `B=1` it is 131072. Allocation, freeing and hashing are per block.
+- **Block table size and CPU bookkeeping.** A 128k-token sequence at $B=16$ is 8192 block ids; at $B=1$ it is 131072. Allocation, freeing and hashing are per block.
 - **Kernel efficiency.** Discussed above.
 - **Prefix caching granularity.** Hash-based caching (below) only caches full blocks, so smaller blocks give finer-grained reuse but more hash computations.
 
@@ -411,7 +414,7 @@ Why not block size 256? Fragmentation, and coarser copy-on-write and prefix shar
 
 Blocks carry a reference count. This gives sharing for free:
 
-- **Parallel sampling (`n > 1`).** All `n` children point at the same prompt blocks (`ref_count = n`). Each child's first generated token goes into the last prompt block if it is partially full; on write to a block with `ref_count > 1`, the allocator allocates a fresh block, copies the existing slots, decrements the original's count and updates that child's table. Only the partially filled last block is ever copied; full shared blocks are immutable.
+- **Parallel sampling ($n > 1$).** All $n$ children point at the same prompt blocks (`ref_count = n`). Each child's first generated token goes into the last prompt block if it is partially full; on write to a block with `ref_count > 1`, the allocator allocates a fresh block, copies the existing slots, decrements the original's count and updates that child's table. Only the partially filled last block is ever copied; full shared blocks are immutable.
 - **Beam search.** Forking a beam is copying a block table and incrementing ref counts; pruning a beam decrements them. The copy cost per fork is bounded by one block.
 
 Copy-on-write for parallel sampling, from the same post:
@@ -544,7 +547,7 @@ seq 3 table [0, 1, 2, 7] len 13
 blocks in use: 8 (without sharing: 12)
 ```
 
-What happened: the 10-token prompt filled blocks 0 and 1 and the first 2 slots of block 2. After the fork, all three blocks have `ref = 3`. Child 1's first new token goes into block 2, which is shared, so it gets a private copy (block 3), and child 2 does the same (block 4). Child 3 is now the *only* user of block 2 (`ref` dropped to 1), so it writes in place with no copy. Full blocks 0 and 1 are never copied. Total: 8 blocks instead of 12 for three independent copies, and the saving grows with prompt length and `n`.
+What happened: the 10-token prompt filled blocks 0 and 1 and the first 2 slots of block 2. After the fork, all three blocks have `ref = 3`. Child 1's first new token goes into block 2, which is shared, so it gets a private copy (block 3), and child 2 does the same (block 4). Child 3 is now the *only* user of block 2 (`ref` dropped to 1), so it writes in place with no copy. Full blocks 0 and 1 are never copied. Total: 8 blocks instead of 12 for three independent copies, and the saving grows with prompt length and $n$.
 
 
 
@@ -552,11 +555,11 @@ What happened: the 10-token prompt filled blocks 0 and 1 and the first 2 slots o
 
 The [overview](README.md#continuous-batching-or-in-flight-batching) describes the idea. The original system is Orca (Yu et al., "Orca: A Distributed Serving System for Transformer-Based Generative Models", OSDI 2022 - not on arXiv as far as I know), which introduced iteration-level scheduling and *selective batching*: batch the token-wise ops (linear layers, norms) across requests of different lengths by flattening tokens, and run attention per request. That flattening is still how every engine works: the model sees a single ragged batch of shape `(total_tokens, hidden)` with no padding, and only attention needs per-sequence metadata.
 
-**Static batching**, the thing continuous batching replaced, groups `B` requests, runs them until the *longest* one finishes, and only then admits the next group. Two costs follow. Finished requests leave idle slots that keep being computed (or padded) until the batch ends. And a new request waits for the whole current batch, so its time to first token includes other people's generation time. **Continuous batching** (also called iteration-level scheduling or in-flight batching) re-decides the batch at *every* step: finished requests leave and waiting ones join immediately. The simulation in [A scheduler you can run](#a-scheduler-you-can-run) puts numbers on the difference.
+**Static batching**, the thing continuous batching replaced, groups $B$ requests, runs them until the *longest* one finishes, and only then admits the next group. Two costs follow. Finished requests leave idle slots that keep being computed (or padded) until the batch ends. And a new request waits for the whole current batch, so its time to first token includes other people's generation time. **Continuous batching** (also called iteration-level scheduling or in-flight batching) re-decides the batch at *every* step: finished requests leave and waiting ones join immediately. The simulation in [A scheduler you can run](#a-scheduler-you-can-run) puts numbers on the difference.
 
 ### The unified scheduler
 
-Modern schedulers no longer distinguish "prefill steps" from "decode steps". vLLM V1's scheduler, for example, produces a mapping `{request_id: num_tokens_to_compute_this_step}` under two budgets: `max_num_batched_tokens` (token budget per step) and `max_num_seqs`. A decode contributes 1 token (or `1 + k` with speculation), a prefill chunk contributes up to whatever budget is left. A request is just "computed tokens so far" vs "tokens known so far" - prefill, chunked prefill, decode, spec-decode verification and resumption after preemption are all the same thing: catching `num_computed_tokens` up to `num_tokens`.
+Modern schedulers no longer distinguish "prefill steps" from "decode steps". vLLM V1's scheduler, for example, produces a mapping `{request_id: num_tokens_to_compute_this_step}` under two budgets: `max_num_batched_tokens` (token budget per step) and `max_num_seqs`. A decode contributes 1 token (or $1 + k$ with speculation), a prefill chunk contributes up to whatever budget is left. A request is just "computed tokens so far" vs "tokens known so far" - prefill, chunked prefill, decode, spec-decode verification and resumption after preemption are all the same thing: catching `num_computed_tokens` up to `num_tokens`.
 
 ```python
 def schedule(running, waiting, kv, token_budget, max_seqs):
@@ -776,11 +779,17 @@ recompute at 50% MFU: 65 ms of GPU compute (batched with other work)
 
 In formula form:
 
-```
-KV size         = 2000 * 131072 B = 262 MB
-swap one way    = 262 MB / ~25-50 GB/s (PCIe Gen5 x16, effective) = 5-10 ms, x2 for out+in
-recompute       = 2 * 8e9 * 2000 FLOPs / (989e12 * 0.5) = ~65 ms of GPU compute
-```
+$$
+\text{KV size} = 2000 \cdot 131072\ \text{B} = 262\ \text{MB}
+$$
+
+$$
+\text{swap one way} = 262\ \text{MB} / {\sim}25\text{-}50\ \text{GB/s}\ (\text{PCIe Gen5 x16, effective}) = 5\text{-}10\ \text{ms},\ \times 2\ \text{for out+in}
+$$
+
+$$
+\text{recompute} = 2 \cdot 8 \times 10^9 \cdot 2000\ \text{FLOPs} / (989 \times 10^{12} \cdot 0.5) \approx 65\ \text{ms of GPU compute}
+$$
 
 Swap looks cheaper per sequence, but recompute won in practice for several reasons: the recompute is a prefill that batches with other work at high arithmetic intensity, so it uses otherwise idle compute; swap needs CPU memory, synchronized copies, and a second block allocator; and with prefix caching, the dropped blocks stay in the hash table until actually evicted, so "recompute" is often a cache hit and costs nearly nothing. vLLM V1 dropped swap preemption and uses recompute only (V0 supported both). The case where swap would still win is very long sequences on compute-saturated GPUs - and the modern answer there is a tiered KV cache offload (CPU/SSD, e.g. LMCache or Mooncake's store) rather than per-request swap.
 
@@ -829,7 +838,7 @@ Up to ~64 extra tokens cost nothing: the 8.3 ms step is pure memory time (7.3 ms
 
 Sarathi (Agrawal et al., arXiv 2308.16369) proposed splitting prefills into chunks and piggybacking decodes onto each chunk ("decode-maximal batching"). Sarathi-Serve (Agrawal et al., "Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve", arXiv 2403.02310) made it the scheduling policy: pick a **token budget** per step from the ITL SLO, then fill each step with all running decodes first and use the remainder for prefill chunks. No step exceeds the budget, so no decode stalls - "stall-free batching".
 
-The key observation is the roofline: a decode-only step is memory-bound, so adding a few hundred prefill tokens to it costs little extra time because the weights are already being read. Until the step's total tokens reach roughly the ridge point - the arithmetic intensity at which a kernel stops being limited by memory bandwidth and starts being limited by compute (for bf16 GEMMs on H100, `989/3.35 ≈ 295` tokens - see [Internals I](arithmetic.md)), prefill tokens ride almost free. Beyond that, the step becomes compute-bound and its time grows linearly with token count.
+The key observation is the roofline: a decode-only step is memory-bound, so adding a few hundred prefill tokens to it costs little extra time because the weights are already being read. Until the step's total tokens reach roughly the ridge point - the arithmetic intensity at which a kernel stops being limited by memory bandwidth and starts being limited by compute (for bf16 GEMMs on H100, $989/3.35 \approx 295$ tokens - see [Internals I](arithmetic.md)), prefill tokens ride almost free. Beyond that, the step becomes compute-bound and its time grows linearly with token count.
 
 Choosing the budget is a direct ITL/TTFT trade:
 
@@ -860,7 +869,7 @@ A 25 ms ITL target with 64 running decodes allows ~700 tokens per step. That is 
 
 vLLM V1 enables chunked prefill always; the knob is `max_num_batched_tokens`. SGLang's is `--chunked-prefill-size`. TensorRT-LLM supports chunked context as well.
 
-Chunked attention for the *n*-th chunk attends to all previous chunks' KV, which now lives in the paged cache. So chunk `i` of an `L`-token prompt with chunk size `c` reads `i*c` cached tokens: total KV read over the prompt is `O(L^2 / c)`, versus `O(L)` for a single unchunked pass. With FlashAttention-style kernels this is still far below compute cost for typical `L` and `c`, but it is why very small chunks hurt long prompts.
+Chunked attention for the *n*-th chunk attends to all previous chunks' KV, which now lives in the paged cache. So chunk $i$ of an $L$-token prompt with chunk size $c$ reads $i \cdot c$ cached tokens: total KV read over the prompt is $O(L^2 / c)$, versus $O(L)$ for a single unchunked pass. With FlashAttention-style kernels this is still far below compute cost for typical $L$ and $c$, but it is why very small chunks hurt long prompts.
 
 Kernel-side, mixing prefill and decode in one attention launch is awkward: they want different tilings. Options are (a) one varlen kernel for everything (FlashAttention varlen, FlashInfer with a scheduler that partitions work), (b) launching prefill and decode attention separately within the step, or (c) a fused kernel that co-schedules both on the same SMs (POD-Attention, Kamath et al., arXiv 2410.18038 (id unverified)).
 
@@ -868,7 +877,7 @@ Kernel-side, mixing prefill and decode in one attention launch is awkward: they 
 
 ## Prefix caching
 
-When many requests share a prefix (system prompt, few-shot examples, multi-turn history, agent scaffolds), its KV can be reused. For a 4096-token system prompt and 500-token user messages, prefix caching skips `4096/4596 = 89%` of prefill compute. Two designs dominate.
+When many requests share a prefix (system prompt, few-shot examples, multi-turn history, agent scaffolds), its KV can be reused. For a 4096-token system prompt and 500-token user messages, prefix caching skips $4096/4596 = 89\%$ of prefill compute. Two designs dominate.
 
 ### Hash-based block caching (vLLM APC)
 
@@ -885,7 +894,7 @@ Mooncake's KV pool uses the same idea - each block's key hashes its own tokens a
 
 ([source](https://arxiv.org/abs/2407.00079))
 
-`extra_keys` carry anything that changes KV for identical token ids: LoRA adapter id (LoRA fine-tunes a model by adding a small low-rank update `B @ A` to each weight matrix; an engine can serve many such adapters on one base model, and each adapter produces different K and V for the same tokens), multimodal input hashes (image placeholder tokens are identical across images), and an optional per-tenant cache salt for isolation. A global dict maps `hash -> physical block`. On admission the scheduler walks the request's block hashes until the first miss; the hit blocks get `ref_count += 1` and the request starts with `num_computed_tokens = hits * block_size`.
+`extra_keys` carry anything that changes KV for identical token ids: LoRA adapter id (LoRA fine-tunes a model by adding a small low-rank update $BA$ to each weight matrix; an engine can serve many such adapters on one base model, and each adapter produces different K and V for the same tokens), multimodal input hashes (image placeholder tokens are identical across images), and an optional per-tenant cache salt for isolation. A global dict maps `hash -> physical block`. On admission the scheduler walks the request's block hashes until the first miss; the hit blocks get `ref_count += 1` and the request starts with `num_computed_tokens = hits * block_size`.
 
 Eviction: blocks with `ref_count == 0` are not freed but placed in a free queue *while keeping their hash*. Allocation takes from the queue head; a block taken from the queue that still has a hash is evicted (hash removed). Freed blocks are appended so that the least recently used (LRU) goes first; vLLM V1 also appends a finished request's blocks in reverse order so the tail of a prefix (least likely to be shared) is evicted before its head. Everything is O(1) per block with a doubly linked list, which is why V1 enables prefix caching by default - overhead at 0% hit rate is small.
 
@@ -1092,7 +1101,7 @@ Differences from hash blocks:
 | | Hash blocks (vLLM) | Radix tree (SGLang) |
 |-|-|-|
 | Granularity | full blocks only | token (page size 1) or page |
-| Lookup | `O(L / B)` dict lookups | `O(L)` tree walk |
+| Lookup | $O(L / B)$ dict lookups | $O(L)$ tree walk |
 | Structure | flat; prefix relation implicit in chained hash | explicit tree; easy to compute "what is cached under this node" |
 | Eviction | LRU over free blocks, tail-first | LRU over leaves |
 | Scheduling integration | hit length used for admission | LPM ordering of waiting queue, tree used by router |
@@ -1161,7 +1170,7 @@ Round-robin spreads each conversation across all four replicas, so a replica rar
 
 ### Why training kernels are wrong for decode
 
-FlashAttention (Dao et al., arXiv 2205.14135; FA2 arXiv 2307.08691; FA3 for Hopper arXiv 2407.08608) parallelizes over `(batch, head, query_block)`. In prefill there are many query blocks. In decode there is one query row per `(sequence, head)`, so the grid is `batch * heads` CTAs (a CTA, or thread block, is the unit of work scheduled onto one SM - Streaming Multiprocessor, one of the GPU's ~100+ independent compute cores). With batch 4 and 8 KV heads that is 32 CTAs on a 132-SM H100 - most SMs idle, and each CTA serially walks the whole KV.
+FlashAttention (Dao et al., arXiv 2205.14135; FA2 arXiv 2307.08691; FA3 for Hopper arXiv 2407.08608) parallelizes over `(batch, head, query_block)`. In prefill there are many query blocks. In decode there is one query row per `(sequence, head)`, so the grid is $\text{batch} \times \text{heads}$ CTAs (a CTA, or thread block, is the unit of work scheduled onto one SM - Streaming Multiprocessor, one of the GPU's ~100+ independent compute cores). With batch 4 and 8 KV heads that is 32 CTAs on a 132-SM H100 - most SMs idle, and each CTA serially walks the whole KV.
 
 ```python
 # ctas.py - thread blocks a (batch, kv_head) decode grid launches, vs the SMs available
@@ -1179,7 +1188,7 @@ decode batch 64: 512 CTAs on 132 SMs -> 100% of SMs busy
 
 ### Split-KV (FlashDecoding)
 
-FlashDecoding (Dao, Haziza, Massa, Sizov, "Flash-Decoding for long-context inference", blog, October 2023) adds a parallel dimension over the KV sequence: split KV into `S` chunks, each CTA computes its chunk's partial output (softmax-normalized over that chunk only) and the chunk's log-sum-exp, then a small reduction kernel merges them:
+FlashDecoding (Dao, Haziza, Massa, Sizov, "Flash-Decoding for long-context inference", blog, October 2023) adds a parallel dimension over the KV sequence: split KV into $S$ chunks, each CTA computes its chunk's partial output (softmax-normalized over that chunk only) and the chunk's log-sum-exp, then a small reduction kernel merges them:
 
 ```python
 # partials from S splits for one (seq, head): o_s (S, D), lse_s (S,)
@@ -1247,7 +1256,7 @@ The differences are float64 rounding (~1e-16). Why it works: softmax over the fu
 
 ### GQA packing
 
-With GQA, `group = num_q_heads / num_kv_heads` query heads read the same KV. Decode kernels pack the group into the query tile's M dimension: one CTA loads a KV tile once and computes against `group` query rows (8 for Llama-3), which both cuts KV reads by `group` and makes the QK^T small GEMM tall enough to use tensor cores (the matrix-multiply units that provide nearly all of the GPU's FLOPs, but only on tiles of at least ~16 rows). With speculative decoding the `k+1` verification tokens get packed in the same way, giving `group * (k+1)` rows.
+With GQA, $\text{group} = n_q / n_{kv}$ query heads read the same KV. Decode kernels pack the group into the query tile's M dimension: one CTA loads a KV tile once and computes against $\text{group}$ query rows (8 for Llama-3), which both cuts KV reads by $\text{group}$ and makes the $QK^\top$ small GEMM tall enough to use tensor cores (the matrix-multiply units that provide nearly all of the GPU's FLOPs, but only on tiles of at least ~16 rows). With speculative decoding the $k+1$ verification tokens get packed in the same way, giving $\text{group} \cdot (k+1)$ rows.
 
 The last line of `split_kv.py` above is this packing: 8 query heads against one KV head as one `(8, D) @ (D, T)` matmul instead of 8 matrix-vector products, which gives identical output with one KV read instead of 8.
 
@@ -1360,7 +1369,7 @@ decode row matches plain attention: True
 
 When many sequences in a batch share a long prefix (one system prompt for a whole batch, or `n=64` samples of one prompt), decode attention re-reads that prefix's KV once per sequence. Cascade attention splits each sequence's attention into two parts:
 
-1. **Shared prefix**: all `B` queries attend to the shared KV in *one* multi-query pass. This is prefill-shaped (many query rows, one KV), high arithmetic intensity, and reads the prefix once.
+1. **Shared prefix**: all $B$ queries attend to the shared KV in *one* multi-query pass. This is prefill-shaped (many query rows, one KV), high arithmetic intensity, and reads the prefix once.
 2. **Unique suffix**: each sequence attends to its own KV with a normal decode kernel.
 
 Then merge the two partial results with the same log-sum-exp formula as split-KV:
@@ -1371,19 +1380,19 @@ def merge(o1, lse1, o2, lse2):        # o: (B, H, D), lse: (B, H)
     return o1 * torch.exp(lse1 - lse)[..., None] + o2 * torch.exp(lse2 - lse)[..., None], lse
 ```
 
-KV bytes read drop from `B * (P + U)` to `P + B * U` tokens. For `B=64`, `P=4096`, `U=256`: from 278,528 to 20,480 token-reads, a 13.6x reduction in attention memory traffic (attention, not the whole step - weights still dominate at moderate context). FlashInfer ships cascade kernels; Hydragen (Juravsky et al., arXiv 2402.05099) is the paper-form treatment; vLLM V1 applies cascade attention automatically when a batch's common prefix is long enough to be worth it, using a heuristic on prefix length and batch size.
+KV bytes read drop from $B (P + U)$ to $P + B U$ tokens. For $B=64$, $P=4096$, $U=256$: from 278,528 to 20,480 token-reads, a 13.6x reduction in attention memory traffic (attention, not the whole step - weights still dominate at moderate context). FlashInfer ships cascade kernels; Hydragen (Juravsky et al., arXiv 2402.05099) is the paper-form treatment; vLLM V1 applies cascade attention automatically when a batch's common prefix is long enough to be worth it, using a heuristic on prefix length and batch size.
 
-`split_kv.py` in the [split-KV section](#split-kv-flashdecoding) verifies this exact case (`B=64`, `P=4096`, `U=256`) numerically: the cascade result matches naive per-sequence attention to 4e-16.
+`split_kv.py` in the [split-KV section](#split-kv-flashdecoding) verifies this exact case ($B=64$, $P=4096$, $U=256$) numerically: the cascade result matches naive per-sequence attention to 4e-16.
 
 ### MLA kernels
 
-DeepSeek's Multi-head Latent Attention (DeepSeek-V2, arXiv 2405.04434) caches a compressed latent `c_kv` (dim 512 in V3) plus a decoupled RoPE key (dim 64) per token per layer, shared across all heads:
+DeepSeek's Multi-head Latent Attention (DeepSeek-V2, arXiv 2405.04434) caches a compressed latent $c^{KV}$ (dim 512 in V3) plus a decoupled RoPE key (dim 64) per token per layer, shared across all heads:
 
-```
-DeepSeek-V3: (512 + 64) * 61 layers * 2 bytes = 70,272 B/token = ~68.6 KiB
-```
+$$
+\text{DeepSeek-V3: } (512 + 64) \cdot 61\ \text{layers} \cdot 2\ \text{bytes} = 70{,}272\ \text{B/token} \approx 68.6\ \text{KiB}
+$$
 
-At decode, the up-projection `W_UK` is absorbed into the query (`q' = q W_UK^T`, per head) and `W_UV` into the output projection, so attention runs directly against the latent: effectively MQA with 128 query heads, one "KV head" of dim 576 for keys and 512 for values. That is a very different kernel shape: 128 query rows per sequence against a single KV stream, so decode attention is *much* more compute-dense than GQA decode. FlashMLA (DeepSeek, open-sourced February 2025) is the reference Hopper kernel (paged, block size 64); FlashInfer and TRT-LLM have their own. For prefill, engines typically do the opposite: decompress K/V and run standard MHA, because absorbed form does more FLOPs when there are many queries. The single latent head also breaks TP head-sharding of the KV cache - see [DP-attention](#dp-attention-and-expert-parallelism-for-moe).
+At decode, the up-projection $W_{UK}$ is absorbed into the query ($q' = q W_{UK}^\top$, per head) and $W_{UV}$ into the output projection, so attention runs directly against the latent: effectively MQA with 128 query heads, one "KV head" of dim 576 for keys and 512 for values. That is a very different kernel shape: 128 query rows per sequence against a single KV stream, so decode attention is *much* more compute-dense than GQA decode. FlashMLA (DeepSeek, open-sourced February 2025) is the reference Hopper kernel (paged, block size 64); FlashInfer and TRT-LLM have their own. For prefill, engines typically do the opposite: decompress K/V and run standard MHA, because absorbed form does more FLOPs when there are many queries. The single latent head also breaks TP head-sharding of the KV cache - see [DP-attention](#dp-attention-and-expert-parallelism-for-moe).
 
 Absorption is just associativity of matrix products, which you can check on a toy MLA layer:
 
@@ -1419,7 +1428,7 @@ max |naive - absorbed| = 1.11e-15
 cache per token: naive K+V 128 values vs latent 64 values
 ```
 
-In the absorbed form, all `H` heads attend over the same `d_c`-dimensional latent: one KV stream with `H` query rows. That is why the decode kernel shape is "MQA with 128 heads". The per-head `W_UV` and `W_O` are fused into one precomputed matrix.
+In the absorbed form, all $H$ heads attend over the same $d_c$-dimensional latent: one KV stream with $H$ query rows. That is why the decode kernel shape is "MQA with 128 heads". The per-head $W_{UV}$ and $W_O$ are fused into one precomputed matrix.
 
 
 
@@ -1429,9 +1438,9 @@ In the absorbed form, all `H` heads attend over the same `d_c`-dimensional laten
 
 A decode step launches several kernels per layer (norms, QKV GEMM, RoPE, cache write, attention, output proj, MLP GEMMs, activation, residual adds, plus all-reduces under TP - an all-reduce is a collective where every GPU contributes a tensor and every GPU ends up with the elementwise sum). Assuming ~12 launches per layer and ~5 us per launch from Python/PyTorch (order of magnitude; actual eager overhead varies widely), the 8B model's 32 layers give:
 
-```
-32 * 12 * 5e-6 s = ~1.9 ms of launch overhead vs ~4.8 ms of GPU work
-```
+$$
+32 \cdot 12 \cdot 5 \times 10^{-6}\ \text{s} \approx 1.9\ \text{ms of launch overhead vs} \approx 4.8\ \text{ms of GPU work}
+$$
 
 Worse, at small batch the kernels themselves take a few microseconds, so the GPU drains the launch queue and waits on the CPU. A CUDA graph records the whole step's kernel sequence once (with all kernel arguments, including memory addresses) and replays it with one launch.
 
@@ -1464,11 +1473,11 @@ A few microseconds per op from Python is typical. (CUDA launch overhead on a Lin
 A captured graph replays fixed kernels with fixed arguments on fixed memory addresses. So:
 
 - **Static input buffers.** `input_ids`, `positions`, `slot_mapping`, block tables, `seq_lens` live in persistent buffers sized for the maximum; each step copies the real values in before replay.
-- **Static shapes -> batch-size buckets.** One graph per batch size bucket. vLLM's default capture list is roughly `[1, 2, 4] + list(range(8, max, 8))` up to `max_cudagraph_capture_size` (512 in recent defaults - check yours). A batch of `n` runs in the smallest bucket `>= n`, padded. Padded slots point at a dummy slot / null block so their KV writes go nowhere harmful.
+- **Static shapes -> batch-size buckets.** One graph per batch size bucket. vLLM's default capture list is roughly `[1, 2, 4] + list(range(8, max, 8))` up to `max_cudagraph_capture_size` (512 in recent defaults - check yours). A batch of $n$ runs in the smallest bucket $\ge n$, padded. Padded slots point at a dummy slot / null block so their KV writes go nowhere harmful.
 - **No host syncs, no dynamic control flow**, no allocations inside the region (the graph uses a private memory pool - a reserved region the allocator hands out from - and graphs share a pool so total extra memory is the max, not the sum).
 - **Attention metadata must be graph-friendly**, which is why FlashInfer has the plan/run split and why decode-only batches are much easier to capture than mixed prefill/decode ones.
 
-Padding waste with that bucket list, averaged over batch sizes 1-512: 2.8%; worst case 7/16 = 44% at `n=9` (padded to 16). It is a small-batch effect only.
+Padding waste with that bucket list, averaged over batch sizes 1-512: 2.8%; worst case $7/16 = 44\%$ at $n=9$ (padded to 16). It is a small-batch effect only.
 
 Both numbers, plus the launch-overhead arithmetic from the previous subsection:
 
@@ -1558,7 +1567,7 @@ Run this on your model's forward (with a representative input) whenever you add 
 
 ## Speculative decoding
 
-The idea in one paragraph (the [overview](README.md#speculative-decoding) has a longer version): a cheap *draft* (a small model, or extra heads on the target) proposes the next `k` tokens one at a time. The large *target* model then scores all `k` positions in a single forward pass. That pass is a mini-prefill of `k+1` tokens, so while decode is memory-bound it costs about the same as one ordinary decode step. The longest prefix of drafts the target agrees with is kept, plus one token from the target itself, so each expensive step emits between 1 and `k+1` tokens instead of exactly 1. Here: the math, the variants, and the serving-system consequences.
+The idea in one paragraph (the [overview](README.md#speculative-decoding) has a longer version): a cheap *draft* (a small model, or extra heads on the target) proposes the next $k$ tokens one at a time. The large *target* model then scores all $k$ positions in a single forward pass. That pass is a mini-prefill of $k+1$ tokens, so while decode is memory-bound it costs about the same as one ordinary decode step. The longest prefix of drafts the target agrees with is kept, plus one token from the target itself, so each expensive step emits between 1 and $k+1$ tokens instead of exactly 1. Here: the math, the variants, and the serving-system consequences.
 
 Each line is one iteration: green tokens are draft proposals the target accepted, red the rejected one, blue the target's correction:
 
@@ -1568,20 +1577,22 @@ Each line is one iteration: green tokens are draft proposals the target accepted
 
 ### Correctness: rejection sampling
 
-Target distribution `p(.)`, draft distribution `q(.)` at a position. Sample `x ~ q`. Accept with probability `min(1, p(x)/q(x))`. If rejected, sample from the residual `r(x) = max(0, p(x) - q(x)) / Z` where `Z = sum_x max(0, p(x) - q(x))`.
+Target distribution $p(\cdot)$, draft distribution $q(\cdot)$ at a position. Sample $x \sim q$. Accept with probability $\min(1, p(x)/q(x))$. If rejected, sample from the residual $r(x) = \max(0, p(x) - q(x)) / Z$ where $Z = \sum_x \max(0, p(x) - q(x))$.
 
-Proof sketch that the output is exactly `p`. Let `beta = sum_x min(p(x), q(x))` be the total acceptance probability. Then
+Proof sketch that the output is exactly $p$. Let $\beta = \sum_x \min(p(x), q(x))$ be the total acceptance probability. Then
 
-```
-P(output = x) = q(x) * min(1, p(x)/q(x))         + (1 - beta) * r(x)
-              = min(p(x), q(x))                  + (1 - beta) * max(0, p(x) - q(x)) / Z
-```
+$$
+\begin{aligned}
+P(\text{output} = x) &= q(x) \cdot \min\left(1, \frac{p(x)}{q(x)}\right) + (1 - \beta) \cdot r(x) \\
+&= \min(p(x), q(x)) + (1 - \beta) \cdot \frac{\max(0, p(x) - q(x))}{Z}
+\end{aligned}
+$$
 
-and `Z = sum_x (p(x) - min(p(x), q(x))) = 1 - beta`, so the second term is `max(0, p(x) - q(x))` and the sum is `min(p, q) + max(0, p - q) = p(x)`. Applied position by position on the draft's tokens - each conditioned on the accepted prefix - this gives exact samples from the target. The first rejection terminates the step; if all `k` drafts are accepted, one more "bonus" token is sampled from the target's distribution at position `k+1`, which the verify pass computed anyway. References: Leviathan, Kalman, Matias, "Fast Inference from Transformers via Speculative Decoding" (arXiv 2211.17192); Chen et al., "Accelerating Large Language Model Decoding with Speculative Sampling" (arXiv 2302.01318).
+and $Z = \sum_x \left(p(x) - \min(p(x), q(x))\right) = 1 - \beta$, so the second term is $\max(0, p(x) - q(x))$ and the sum is $\min(p, q) + \max(0, p - q) = p(x)$. Applied position by position on the draft's tokens - each conditioned on the accepted prefix - this gives exact samples from the target. The first rejection terminates the step; if all $k$ drafts are accepted, one more "bonus" token is sampled from the target's distribution at position $k+1$, which the verify pass computed anyway. References: Leviathan, Kalman, Matias, "Fast Inference from Transformers via Speculative Decoding" (arXiv 2211.17192); Chen et al., "Accelerating Large Language Model Decoding with Speculative Sampling" (arXiv 2302.01318).
 
-For greedy decoding this degenerates to "accept while `argmax p == draft token`".
+For greedy decoding this degenerates to "accept while $\arg\max p = \text{draft token}$".
 
-The claim "exact samples from the target" is worth checking empirically, because a subtle bug in the residual still gives plausible-looking text. The script below uses two toy "language models": bigram tables over 6 tokens, a target `P` and a noisy copy `Q` as the draft. It runs full speculative decoding with `k=3` drafts (draft autoregressively, score all positions in one target pass, verify) on 400,000 parallel sequences. Then it compares the empirical joint distribution of the first 3 generated tokens against the exact target distribution, `6^3 = 216` cells:
+The claim "exact samples from the target" is worth checking empirically, because a subtle bug in the residual still gives plausible-looking text. The script below uses two toy "language models": bigram tables over 6 tokens, a target $P$ and a noisy copy $Q$ as the draft. It runs full speculative decoding with $k=3$ drafts (draft autoregressively, score all positions in one target pass, verify) on 400,000 parallel sequences. Then it compares the empirical joint distribution of the first 3 generated tokens against the exact target distribution, $6^3 = 216$ cells:
 
 ```python
 # specdec.py - speculative sampling with rejection, checked against the target distribution
@@ -1675,7 +1686,7 @@ correct residual         TV(first token, target) = 0.0011
 broken: resample from p  TV(first token, target) = 0.0711
 ```
 
-How to read it: the total variation (TV) distance between speculative outputs and the exact target (0.0055) is at the sampling-noise floor, because plain autoregressive sampling from the target with the same sample count is just as far off (0.0059). The draft alone is far off (0.255), so the verification really is correcting it. The last two lines show the test has teeth. A verifier that resamples rejections from `p` instead of the residual `max(0, p - q)` drifts to TV 0.071 on the very first token, 65x the noise. Use this kind of check whenever you change a verifier, a draft model or the order of logit processors.
+How to read it: the total variation (TV) distance between speculative outputs and the exact target (0.0055) is at the sampling-noise floor, because plain autoregressive sampling from the target with the same sample count is just as far off (0.0059). The draft alone is far off (0.255), so the verification really is correcting it. The last two lines show the test has teeth. A verifier that resamples rejections from $p$ instead of the residual $\max(0, p - q)$ drifts to TV 0.071 on the very first token, 65x the noise. Use this kind of check whenever you change a verifier, a draft model or the order of logit processors.
 
 ```python
 def verify(draft_tok, q, p, gen):
@@ -1698,13 +1709,13 @@ def verify(draft_tok, q, p, gen):
 
 ### Expected tokens per step
 
-Model acceptance at each draft position as i.i.d. with probability `alpha` (a simplification: real acceptance decays with position and depends on content). The number of accepted drafts `N` satisfies `P(N >= i) = alpha^i` for `i <= k`. Tokens emitted per verification step = `N + 1`:
+Model acceptance at each draft position as i.i.d. with probability $\alpha$ (a simplification: real acceptance decays with position and depends on content). The number of accepted drafts $N$ satisfies $P(N \ge i) = \alpha^i$ for $i \le k$. Tokens emitted per verification step $= N + 1$:
 
-```
-E[N + 1] = sum_{i=0}^{k} alpha^i = (1 - alpha^(k+1)) / (1 - alpha)
-```
+$$
+E[N + 1] = \sum_{i=0}^{k} \alpha^i = \frac{1 - \alpha^{k+1}}{1 - \alpha}
+$$
 
-| alpha \ k | 1 | 2 | 3 | 4 | 6 | 8 |
+| $\alpha$ \ $k$ | 1 | 2 | 3 | 4 | 6 | 8 |
 |-|-|-|-|-|-|-|
 | 0.5 | 1.50 | 1.75 | 1.88 | 1.94 | 1.98 | 2.00 |
 | 0.6 | 1.60 | 1.96 | 2.18 | 2.31 | 2.43 | 2.47 |
@@ -1712,7 +1723,7 @@ E[N + 1] = sum_{i=0}^{k} alpha^i = (1 - alpha^(k+1)) / (1 - alpha)
 | 0.8 | 1.80 | 2.44 | 2.95 | 3.36 | 3.95 | 4.33 |
 | 0.9 | 1.90 | 2.71 | 3.44 | 4.10 | 5.22 | 6.13 |
 
-The asymptote is `1/(1 - alpha)`; returns diminish fast beyond `k ≈ 1/(1-alpha)`.
+The asymptote is $1/(1 - \alpha)$; returns diminish fast beyond $k \approx 1/(1-\alpha)$.
 
 Closed form, simulation, and the speedup table below, from one script:
 
@@ -1770,15 +1781,15 @@ speedup at alpha=0.8   c=0.05  c=0.1  c=0.2
 compute-bound verify (costs k+1 steps), alpha=0.8 k=4 c=0.05: 0.65x
 ```
 
-Wall-clock speedup (Leviathan et al.) with draft step cost `c` relative to a target step, assuming the verify pass costs the same as one target decode step:
+Wall-clock speedup (Leviathan et al.) with draft step cost $c$ relative to a target step, assuming the verify pass costs the same as one target decode step:
 
-```
-speedup = (1 - alpha^(k+1)) / ((1 - alpha) * (k*c + 1))
-```
+$$
+\text{speedup} = \frac{1 - \alpha^{k+1}}{(1 - \alpha)(k c + 1)}
+$$
 
-At `alpha = 0.8`:
+At $\alpha = 0.8$:
 
-| k | c = 0.05 | c = 0.1 | c = 0.2 |
+| $k$ | $c = 0.05$ | $c = 0.1$ | $c = 0.2$ |
 |-|-|-|-|
 | 1 | 1.71 | 1.64 | 1.50 |
 | 2 | 2.22 | 2.03 | 1.74 |
@@ -1786,23 +1797,23 @@ At `alpha = 0.8`:
 | 6 | 3.04 | 2.47 | 1.80 |
 | 8 | 3.09 | 2.40 | 1.66 |
 
-So the optimal `k` shrinks as the draft gets more expensive.
+So the optimal $k$ shrinks as the draft gets more expensive.
 
 ### When speculation hurts at high batch
 
-The "verify costs one decode step" assumption holds only while the step is memory-bound. A verify step processes `B * (k+1)` tokens. Once `B * (k+1)` crosses the GEMM ridge point (~295 tokens for bf16 on H100), the step becomes compute-bound and its time grows roughly linearly with tokens. In the fully compute-bound limit the verify costs `~(k+1)` decode steps:
+The "verify costs one decode step" assumption holds only while the step is memory-bound. A verify step processes $B (k+1)$ tokens. Once $B (k+1)$ crosses the GEMM ridge point (~295 tokens for bf16 on H100), the step becomes compute-bound and its time grows roughly linearly with tokens. In the fully compute-bound limit the verify costs ${\sim}(k+1)$ decode steps. With $\alpha=0.8$, $k=4$, $c=0.05$ and a verify cost of 5 steps, that is a slowdown:
 
-```
-alpha=0.8, k=4, c=0.05, verify cost=5:  3.36 / (5 + 4*0.05) = 0.65x   -> a slowdown
-```
+$$
+\frac{3.36}{5 + 4 \cdot 0.05} = 0.65\times
+$$
 
-Equivalently, the token efficiency is `E[N+1]/(k+1) = 3.36/5 = 67%`: a third of verified tokens are wasted compute, which only matters when compute is the bottleneck. So at `B=64, k=4` you are already at `320` tokens per step - near the ridge. Rules of thumb that follow from the arithmetic:
+Equivalently, the token efficiency is $E[N+1]/(k+1) = 3.36/5 = 67\%$: a third of verified tokens are wasted compute, which only matters when compute is the bottleneck. So at $B=64$, $k=4$ you are already at 320 tokens per step - near the ridge. Rules of thumb that follow from the arithmetic:
 
 - Speculation helps latency at low/medium batch; at high batch it can reduce throughput.
-- Engines should adapt `k` (or disable speculation) with batch size and observed acceptance. Several papers study this ("Optimizing Speculative Decoding for Serving Large Language Models Using Goodput", Liu et al., arXiv 2406.14066 (id unverified)). For *long-context* high-batch decode, the KV read dominates and the step stays memory-bound longer, which is the regime where MagicDec (Chen et al., arXiv 2408.11049 (id unverified)) argues speculation helps even at large batch.
+- Engines should adapt $k$ (or disable speculation) with batch size and observed acceptance. Several papers study this ("Optimizing Speculative Decoding for Serving Large Language Models Using Goodput", Liu et al., arXiv 2406.14066 (id unverified)). For *long-context* high-batch decode, the KV read dominates and the step stays memory-bound longer, which is the regime where MagicDec (Chen et al., arXiv 2408.11049 (id unverified)) argues speculation helps even at large batch.
 - MoE targets complicate this: verifying more tokens activates more distinct experts, increasing weight reads, so the "free" verify assumption breaks earlier.
 
-The same conclusion from a cost model rather than a single number. Use the 8B-on-H100 roofline step model from the [scheduler simulation](#a-scheduler-you-can-run), with `alpha = 0.8`, `k = 4` and draft cost 5% of a target step. The verify pass processes `B * (k + 1)` tokens, and its cost is whatever the roofline says:
+The same conclusion from a cost model rather than a single number. Use the 8B-on-H100 roofline step model from the [scheduler simulation](#a-scheduler-you-can-run), with $\alpha = 0.8$, $k = 4$ and draft cost 5% of a target step. The verify pass processes $B (k + 1)$ tokens, and its cost is whatever the roofline says:
 
 ```python
 # spec_batch.py - speculation speedup vs batch size when verify cost follows the roofline
@@ -1836,15 +1847,15 @@ context 2000 tokens per sequence
   B=256: verify/plain step = 1.64x   speedup = 1.82x
 ```
 
-With short contexts, speculation stops paying at `B ≈ 128` and is a 30% slowdown at `B = 256`. With 2k-token contexts it still gives 1.8x at `B = 256`: the KV reads keep the step memory-bound, so the extra verify tokens are nearly free. That is MagicDec's argument in miniature.
+With short contexts, speculation stops paying at $B \approx 128$ and is a 30% slowdown at $B = 256$. With 2k-token contexts it still gives 1.8x at $B = 256$: the KV reads keep the step memory-bound, so the extra verify tokens are nearly free. That is MagicDec's argument in miniature.
 
 ### Draft variants
 
-| Method | Draft source | Cost `c` | Notes |
+| Method | Draft source | Cost $c$ | Notes |
 |-|-|-|-|
 | Separate draft model | small LM, same tokenizer | 0.05-0.2 | needs its own KV cache and scheduling; drafts autoregressively |
 | n-gram / prompt lookup | match last n tokens in the context, copy what followed | ~0 (CPU) | great for code editing, RAG (retrieval-augmented generation: retrieved documents are pasted into the prompt), summarization; useless for open-ended generation. ([prompt-lookup-decoding](https://github.com/apoorvumang/prompt-lookup-decoding); suffix-tree variants such as SuffixDecoding, arXiv 2411.04975 (id unverified)) |
-| Medusa | extra decoding heads on the last hidden state, each predicting position `t+i` | small | heads predict independently, so tree candidates + tree attention are used to recover joint plausibility. Cai et al., arXiv 2401.10774 |
+| Medusa | extra decoding heads on the last hidden state, each predicting position $t+i$ | small | heads predict independently, so tree candidates + tree attention are used to recover joint plausibility. Cai et al., arXiv 2401.10774 |
 | EAGLE | a one-layer autoregressive head over the target's top-layer *features* plus shifted token embeddings | small | features are more predictable than tokens; EAGLE (Li et al., arXiv 2401.15077), EAGLE-2 dynamic draft trees using draft confidence (arXiv 2406.16858), EAGLE-3 fuses low/mid/high-layer features and trains with on-policy "training-time test" (arXiv 2503.01840) |
 | MTP heads | multi-token-prediction modules trained with the model | small | Gloeckle et al., arXiv 2404.19737; DeepSeek-V3 (arXiv 2412.19437) trains one sequential MTP module and reports 85-90% acceptance for the second token, ~1.8x TPS when used for speculation (numbers as reported in the paper) |
 | Lookahead decoding | Jacobi iteration n-grams generated by the target itself | none | Fu et al., arXiv 2402.02057 |
@@ -1880,10 +1891,10 @@ Tree speculation (SpecInfer, Miao et al., arXiv 2305.09781; Medusa; EAGLE-2) ver
 
 ### Engine mechanics
 
-- **KV for rejected tokens.** Verification writes KV for all `k+1` positions. Rejected positions are rolled back by not advancing `num_computed_tokens`; their slots get overwritten next step. Blocks allocated only for rejected tokens are freed. For hash-based prefix caching, only blocks consisting entirely of accepted tokens may be hashed.
-- **Variable query lengths.** Verify is a mini-prefill of `k+1` tokens per sequence - the attention kernel needs multi-token decode support (and tree masks for tree methods). For CUDA graphs, `k` must be fixed per captured graph.
+- **KV for rejected tokens.** Verification writes KV for all $k+1$ positions. Rejected positions are rolled back by not advancing `num_computed_tokens`; their slots get overwritten next step. Blocks allocated only for rejected tokens are freed. For hash-based prefix caching, only blocks consisting entirely of accepted tokens may be hashed.
+- **Variable query lengths.** Verify is a mini-prefill of $k+1$ tokens per sequence - the attention kernel needs multi-token decode support (and tree masks for tree methods). For CUDA graphs, $k$ must be fixed per captured graph.
 - **Draft KV.** Draft models and EAGLE heads have their own (small) KV cache that also needs paging and must stay in sync on rejection.
-- **Sampling parameters** must match: temperature, top-p etc. are applied to both `p` and `q` before acceptance, or the guarantee holds for the wrong distribution. Structured-output masks must be applied to the draft too, or acceptance collapses.
+- **Sampling parameters** must match: temperature, top-p etc. are applied to both $p$ and $q$ before acceptance, or the guarantee holds for the wrong distribution. Structured-output masks must be applied to the draft too, or acceptance collapses.
 
 Rollback in the paged cache is bookkeeping, not data movement:
 
@@ -1904,7 +1915,7 @@ print(rollback(table, num_computed_before=30, k=4, n_accepted=1, free_list=free)
 32 [3, 9] [14]
 ```
 
-The step started with KV for positions 0-29 and verified `k + 1 = 5` tokens at positions 30-34, which spilled into a new block (14) from position 32. One draft was accepted, so the KV for 30-31 is valid and the corrected token (position 32) will be computed next step. The length becomes 32, and block 14, which held only rejected tokens, goes back to the free list. When rejected tokens share a block with kept ones, their stale slots are simply overwritten by the next step's writes.
+The step started with KV for positions 0-29 and verified $k + 1 = 5$ tokens at positions 30-34, which spilled into a new block (14) from position 32. One draft was accepted, so the KV for 30-31 is valid and the corrected token (position 32) will be computed next step. The length becomes 32, and block 14, which held only rejected tokens, goes back to the free list. When rejected tokens share a block with kept ones, their stale slots are simply overwritten by the next step's writes.
 
 
 
@@ -1914,7 +1925,7 @@ Training-side background is in [Parallelism From First Principles](../training/m
 
 ### Tensor parallelism
 
-Megatron-style TP (Shoeybi et al., arXiv 1909.08053) needs two all-reduces per layer (after attention output projection and after the MLP down-projection). At decode the messages are small: `B * hidden * 2` bytes, e.g. `64 * 8192 * 2 = 1 MiB` per all-reduce, 160 of them per step for 80 layers. Small all-reduces are latency-bound (dominated by fixed per-message startup and synchronization cost), not bandwidth-bound, so NCCL's (NVIDIA's collective-communication library) ring algorithm, which passes data around all GPUs in `2*(N-1)` sequential hops, is the wrong choice. Engines use custom one-shot / two-shot all-reduce kernels over NVLink P2P (NVLink is the direct GPU-to-GPU interconnect inside a server, ~900 GB/s total per H100; P2P means one GPU's kernel reads or writes another GPU's memory directly) (vLLM's custom all-reduce, TRT-LLM's, FlashInfer's comm kernels), and fuse all-reduce with the following residual add + RMSNorm (+ quantization) to save a kernel launch and a pass over memory. Across nodes, TP is generally a bad idea for decode for the same latency reason.
+Megatron-style TP (Shoeybi et al., arXiv 1909.08053) needs two all-reduces per layer (after attention output projection and after the MLP down-projection). At decode the messages are small: $B \cdot \text{hidden} \cdot 2$ bytes, e.g. $64 \cdot 8192 \cdot 2 = 1\ \text{MiB}$ per all-reduce, 160 of them per step for 80 layers. Small all-reduces are latency-bound (dominated by fixed per-message startup and synchronization cost), not bandwidth-bound, so NCCL's (NVIDIA's collective-communication library) ring algorithm, which passes data around all GPUs in $2(N-1)$ sequential hops, is the wrong choice. Engines use custom one-shot / two-shot all-reduce kernels over NVLink P2P (NVLink is the direct GPU-to-GPU interconnect inside a server, ~900 GB/s total per H100; P2P means one GPU's kernel reads or writes another GPU's memory directly) (vLLM's custom all-reduce, TRT-LLM's, FlashInfer's comm kernels), and fuse all-reduce with the following residual add + RMSNorm (+ quantization) to save a kernel launch and a pass over memory. Across nodes, TP is generally a bad idea for decode for the same latency reason.
 
 Why exactly one all-reduce per MLP: split the first matrix by columns and the second by rows. Each GPU can then compute its slice of the hidden activation and its partial output with no communication, and the full output is the sum of the partials:
 
@@ -1943,7 +1954,7 @@ Output of `python tp_sim.py`:
 TP=4 MLP == single GPU: True; each GPU holds 8,192 of 32,768 weights; all-reduce message (B, h) = 192 values
 ```
 
-The message is `B x h`, tiny at decode, while each GPU reads only `1/P` of the weights. Here is how small the messages are for Llama-3-70B, against the fixed per-call latency:
+The message is $B \times h$, tiny at decode, while each GPU reads only $1/P$ of the weights. Here is how small the messages are for Llama-3-70B, against the fixed per-call latency:
 
 ```python
 # tp_decode.py - decode all-reduce size and count under Megatron TP
@@ -1967,7 +1978,7 @@ TP shards KV heads too: TP=8 on a model with 8 KV heads puts one KV head per GPU
 
 ### Pipeline parallelism
 
-PP at inference has no backward pass, so the bubble is only a fill/drain effect - but only if the engine keeps `pp_size` micro-batches in flight. A synchronous scheduler that waits for the last stage before scheduling the next step leaves `(pp-1)/pp` of the pipeline idle. vLLM runs multiple batches concurrently in PP mode (virtual engines in V0; batch queue in V1). PP's per-stage traffic is just one activation tensor per micro-batch, making it the sane way to span nodes for dense models. Cost: per-token latency is the sum of stage latencies plus hops; it improves throughput, not ITL.
+PP at inference has no backward pass, so the bubble is only a fill/drain effect - but only if the engine keeps `pp_size` micro-batches in flight. A synchronous scheduler that waits for the last stage before scheduling the next step leaves $(\text{pp}-1)/\text{pp}$ of the pipeline idle. vLLM runs multiple batches concurrently in PP mode (virtual engines in V0; batch queue in V1). PP's per-stage traffic is just one activation tensor per micro-batch, making it the sane way to span nodes for dense models. Cost: per-token latency is the sum of stage latencies plus hops; it improves throughput, not ITL.
 
 The idle fraction, simulated: each decode step of a batch must pass through all stages in order, and the next step of the same batch cannot start until its token comes out of the last stage:
 
@@ -2010,12 +2021,21 @@ DeepSeek's published inference-system overview (open-infra-index, February 2025)
 
 Across nodes, GPUs talk via RDMA (Remote Direct Memory Access: a network card reads/writes another machine's memory, including GPU memory, without involving either CPU) over InfiniBand or RoCE NICs (network interface cards), typically one 400 Gb/s NIC per GPU, i.e. ~50 GB/s - roughly 18x less than NVLink. Communication arithmetic for decode dispatch/combine, upper bound assuming every expert lands on a remote GPU, fp8 dispatch and bf16 combine:
 
-```
-dispatch per token = 7168 * 1 B * 8 experts  = 57,344 B
-combine  per token = 7168 * 2 B * 8 experts  = 114,688 B
-128 tokens/GPU, 58 MoE layers: (57344 + 114688) * 128 * 58 = 1.28 GB per step per GPU
-at ~50 GB/s RDMA per GPU (one 400 Gb/s NIC): ~25.5 ms per step
-```
+$$
+\text{dispatch per token} = 7168 \cdot 1\ \text{B} \cdot 8\ \text{experts} = 57{,}344\ \text{B}
+$$
+
+$$
+\text{combine per token} = 7168 \cdot 2\ \text{B} \cdot 8\ \text{experts} = 114{,}688\ \text{B}
+$$
+
+With 128 tokens/GPU and 58 MoE layers:
+
+$$
+(57344 + 114688) \cdot 128 \cdot 58 = 1.28\ \text{GB per step per GPU}
+$$
+
+At ~50 GB/s RDMA per GPU (one 400 Gb/s NIC) that is ~25.5 ms per step.
 
 The same calculation as a script:
 
@@ -2112,7 +2132,7 @@ Implementations: vLLM (KV connector API with NIXL, LMCache, Mooncake connectors;
 
 ### KV transfer cost
 
-The transfer must cost much less than the prefill it replaces, and should be overlapped with it (layer-by-layer streaming: send layer `l`'s KV while computing layer `l+1`).
+The transfer must cost much less than the prefill it replaces, and should be overlapped with it (layer-by-layer streaming: send layer $l$'s KV while computing layer $l+1$).
 
 All the numbers in this subsection, from one script (MFU 40%, as below):
 
@@ -2143,19 +2163,25 @@ Output of `python disagg.py`:
 
 Per token, 70B model:
 
-```
-KV bytes/token      = 327,680 B
-transfer @ 50 GB/s  = 6.6 us/token      (one 400 Gb/s NIC)
-prefill compute     = 2 * 70e9 FLOPs / (8 GPUs * 989e12 * 0.4) = 44 us/token   (TP=8, 40% MFU)
-```
+$$
+\text{KV bytes/token} = 327{,}680\ \text{B}
+$$
 
-So with a single NIC the transfer is ~15% of prefill time and fully hideable behind it with layer-wise streaming. For an 8k prompt: `2.5 GiB` of KV, `54 ms` on one 400 Gb/s NIC vs `~360 ms` of prefill; with all 8 NICs (one per GPU, each GPU sending its TP shard) it is `~7 ms`. For the 8B model at TP=1: `2.6 us/token` transfer vs `40 us/token` prefill. MLA models are ~5x cheaper per token again. The ratio that matters is
+$$
+\text{transfer @ 50 GB/s} = 6.6\ \mu\text{s/token} \qquad \text{(one 400 Gb/s NIC)}
+$$
 
-```
-transfer/prefill = (KV bytes per token / link bandwidth) / (2 * N_params / (achieved FLOPs))
-```
+$$
+\text{prefill compute} = \frac{2 \cdot 70 \times 10^9\ \text{FLOPs}}{8\ \text{GPUs} \cdot 989 \times 10^{12} \cdot 0.4} = 44\ \mu\text{s/token} \qquad \text{(TP=8, 40}\%\text{ MFU)}
+$$
 
-and it is independent of prompt length (ignoring attention FLOPs, which only make prefill longer). Dense GQA models at bf16 over RDMA are comfortably below 1. Where it breaks: slow interconnects (plain TCP - the ordinary kernel-mediated network stack - over 25 Gb/s Ethernet is `~3 GB/s`, making transfer ~2.5x the prefill for the 70B example: `327680/3e9 = 109 us` vs 44 us), or very small, very fast prefill pools.
+So with a single NIC the transfer is ~15% of prefill time and fully hideable behind it with layer-wise streaming. For an 8k prompt: 2.5 GiB of KV, 54 ms on one 400 Gb/s NIC vs ~360 ms of prefill; with all 8 NICs (one per GPU, each GPU sending its TP shard) it is ~7 ms. For the 8B model at TP=1: 2.6 us/token transfer vs 40 us/token prefill. MLA models are ~5x cheaper per token again. The ratio that matters is
+
+$$
+\frac{\text{transfer}}{\text{prefill}} = \frac{\text{KV bytes per token} / \text{link bandwidth}}{2 N_\text{params} / \text{achieved FLOPs}}
+$$
+
+and it is independent of prompt length (ignoring attention FLOPs, which only make prefill longer). Dense GQA models at bf16 over RDMA are comfortably below 1. Where it breaks: slow interconnects (plain TCP - the ordinary kernel-mediated network stack - over 25 Gb/s Ethernet is ~3 GB/s, making transfer ~2.5x the prefill for the 70B example: $327680 / (3 \times 10^9) = 109\ \mu\text{s}$ vs 44 us), or very small, very fast prefill pools.
 
 ### When it wins and when it does not
 
@@ -2207,10 +2233,10 @@ Structured (constrained) decoding forces the output to match a format, such as a
 
 ### Grammar to automaton
 
-- **Regex** compiles to a DFA over characters. Outlines (Willard & Louf, "Efficient Guided Generation for Large Language Models", arXiv 2307.09702) lifts the DFA to the token level: for each DFA state, precompute the set of vocabulary tokens whose full character sequence is a valid walk from that state, giving an index `state -> allowed tokens` and `(state, token) -> next state`. Per-step cost is a lookup.
+- **Regex** compiles to a DFA over characters. Outlines (Willard & Louf, "Efficient Guided Generation for Large Language Models", arXiv 2307.09702) lifts the DFA to the token level: for each DFA state, precompute the set of vocabulary tokens whose full character sequence is a valid walk from that state, giving an index $\text{state} \to \text{allowed tokens}$ and $(\text{state}, \text{token}) \to \text{next state}$. Per-step cost is a lookup.
 - **JSON Schema** (a JSON document that describes the allowed shape of other JSON documents: which keys, which value types, which are required, e.g. `{"type": "object", "properties": {"age": {"type": "integer"}}}`) is converted to a grammar; for schemas with bounded nesting this can be a regex/DFA, but general JSON (and any recursive structure) needs a **context-free grammar**, i.e. a pushdown automaton (PDA). The token mask now depends on the stack, not just the state, so it cannot be fully precomputed.
 
-A **DFA** (deterministic finite automaton) is a set of states plus a transition table `(state, character) -> next state`, so it remembers only "which state am I in". That is enough for a fixed JSON shape, but not for arbitrary nesting, where what may come next depends on how many brackets are open. A **PDA** (pushdown automaton) adds a stack to remember that:
+A **DFA** (deterministic finite automaton) is a set of states plus a transition table $(\text{state}, \text{character}) \to \text{next state}$, so it remembers only "which state am I in". That is enough for a fixed JSON shape, but not for arbitrary nesting, where what may come next depends on how many brackets are open. A **PDA** (pushdown automaton) adds a stack to remember that:
 
 ```python
 # pda.py - why JSON needs a stack: the legal next characters depend on how deeply we are nested
@@ -2378,7 +2404,7 @@ Things worth noticing:
 
 ### Token mask computation
 
-At each step the engine needs a `(B, V)` boolean mask, stored as a bitmask: `V/32` int32 words per row - `4008` words, ~16 KB per request for a 128,256-token vocabulary. It is applied on GPU before sampling (`logits.masked_fill_(~mask, -inf)`, fused into a small kernel). The mask computation is on the CPU and must finish within the GPU step (~5-30 ms) for the whole batch, overlapped with the forward pass.
+At each step the engine needs a $(B, V)$ boolean mask, stored as a bitmask: $V/32$ int32 words per row - 4008 words, ~16 KB per request for a 128,256-token vocabulary. It is applied on GPU before sampling (`logits.masked_fill_(~mask, -inf)`, fused into a small kernel). The mask computation is on the CPU and must finish within the GPU step (~5-30 ms) for the whole batch, overlapped with the forward pass.
 
 Packing, unpacking and applying a mask at Llama-3's vocabulary size:
 
@@ -2465,12 +2491,12 @@ if the target accepts only 2, roll back to state 'num'
 
 ### Avoiding the full sort and the sync
 
-Naive top-p: softmax, sort the `V`-wide row (`V = 128,256` for Llama-3), cumsum, threshold, renormalize, `torch.multinomial`. Sorting `B * V` floats every step is costly at large batch, and `torch.multinomial` plus any `.item()` adds host syncs.
+Naive top-p: softmax, sort the $V$-wide row ($V = 128{,}256$ for Llama-3), cumsum, threshold, renormalize, `torch.multinomial`. Sorting $B \cdot V$ floats every step is costly at large batch, and `torch.multinomial` plus any `.item()` adds host syncs.
 
 Techniques in use:
 
-- **Exponential-race sampling instead of multinomial.** `argmax(probs / E)` with `E ~ Exp(1)` i.i.d. is an exact sample from `probs` (equivalent to the Gumbel-max trick on logits). It is a single elementwise op plus an argmax with no cumsum and no sync. vLLM's sampler uses this form.
-- **Top-k via partial selection** (`torch.topk` / radix select, which finds the k-th largest value by bucketing on its bits, a few bits per pass, without sorting) rather than full sort; for small `k` this is far cheaper.
+- **Exponential-race sampling instead of multinomial.** $\arg\max(\text{probs} / E)$ with $E \sim \operatorname{Exp}(1)$ i.i.d. is an exact sample from `probs` (equivalent to the Gumbel-max trick on logits). It is a single elementwise op plus an argmax with no cumsum and no sync. vLLM's sampler uses this form.
+- **Top-k via partial selection** (`torch.topk` / radix select, which finds the k-th largest value by bucketing on its bits, a few bits per pass, without sorting) rather than full sort; for small $k$ this is far cheaper.
 - **Sorting-free top-p/top-k via rejection sampling.** FlashInfer's sampling kernels sample a candidate, compute the probability mass of tokens with probability greater than the candidate's in one pass, and if the candidate is outside the nucleus raise a pivot and resample - an iterative, sort-free procedure that converges in a few rounds (FlashInfer blog, "Sorting-Free GPU Kernels for LLM Sampling", 2025; details from memory). vLLM and SGLang can use these kernels.
 - **Min-p** is cheap: one max reduction and a threshold.
 
@@ -2556,7 +2582,7 @@ sort-free top-p vs sorted top-p: max |diff| = 0.0019, support identical: True
 counts row0 [3], [7]: 2.0 1.0  logit drop: 1.0
 ```
 
-The rejection loop needs no sort and no cumulative sum over the vocabulary, only elementwise compares and reductions, which map well onto GPU kernels. Its output distribution matches the sorted nucleus to within sampling noise, with exactly the same support. Top-p keeps a different number of tokens in each row (5 to 22 here) because the nucleus size depends on how peaked the distribution is. That is also why fixed-`k` truncation and top-p behave so differently on confident and uncertain steps.
+The rejection loop needs no sort and no cumulative sum over the vocabulary, only elementwise compares and reductions, which map well onto GPU kernels. Its output distribution matches the sorted nucleus to within sampling noise, with exactly the same support. Top-p keeps a different number of tokens in each row (5 to 22 here) because the nucleus size depends on how peaked the distribution is. That is also why fixed-$k$ truncation and top-p behave so differently on confident and uncertain steps.
 
 ### Logit processors
 
@@ -2626,15 +2652,13 @@ Fixes are **batch-invariant kernels**: fixed split sizes and reduction orders in
 
 ## Multi-LoRA serving
 
-Serving many fine-tunes of one base model: keep one copy of base weights, batch requests that use different adapters into the same step. Each linear layer computes `y = x W + (x A_i) B_i` where `i` is the request's adapter.
+Serving many fine-tunes of one base model: keep one copy of base weights, batch requests that use different adapters into the same step. Each linear layer computes $y = x W + (x A_i) B_i$ where $i$ is the request's adapter.
 
-Size of a rank-16 adapter on all linear layers of the 8B model:
+Size of a rank-16 adapter on all linear layers of the 8B model. Per layer the adapted matrices are q (4096->4096), k,v (4096->1024 each), o (4096->4096), gate, up (4096->14336) and down (14336->4096):
 
-```
-per layer: q (4096->4096), k,v (4096->1024 each), o (4096->4096),
-           gate, up (4096->14336), down (14336->4096)
-params = 32 * 16 * [(4096+4096)*2 + (4096+1024)*2 + (4096+14336)*3] = 41.9M  -> 84 MB bf16
-```
+$$
+\text{params} = 32 \cdot 16 \cdot \left[(4096+4096) \cdot 2 + (4096+1024) \cdot 2 + (4096+14336) \cdot 3\right] = 41.9\text{M} \;\to\; 84\ \text{MB bf16}
+$$
 
 So 100 adapters are ~8.4 GB - they compete with the KV cache and cannot all sit on the GPU at higher ranks or larger models.
 
@@ -2678,7 +2702,7 @@ batched multi-LoRA == per-token loop: True
 
 Engine knobs (vLLM): `max_loras` (adapters resident per step - a hard cap on adapter diversity within a batch, and a fixed dimension for CUDA graphs), `max_lora_rank` (kernels and buffers are sized for it, so a single rank-256 adapter makes every graph bigger), `max_cpu_loras` (host-side cache). Two interactions that are easy to miss: the adapter id must be in the prefix-cache hash (identical tokens, different KV), and the scheduler must not admit a request whose adapter cannot be loaded without exceeding `max_loras` for the step.
 
-The LoRA FLOPs are small (`~2 * 41.9M` per token vs `~2 * 8e9`, i.e. ~0.5%) but the kernels are memory-bound gathers with poor arithmetic intensity, so multi-LoRA overhead is visibly larger than the FLOP ratio suggests, growing with the number of distinct adapters per batch. Measure it at your expected adapter diversity.
+The LoRA FLOPs are small (${\sim}2 \cdot 41.9\text{M}$ per token vs ${\sim}2 \cdot 8 \times 10^9$, i.e. ~0.5%) but the kernels are memory-bound gathers with poor arithmetic intensity, so multi-LoRA overhead is visibly larger than the FLOP ratio suggests, growing with the number of distinct adapters per batch. Measure it at your expected adapter diversity.
 
 
 

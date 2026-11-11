@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consistency Checks (maintainer runbook) - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details open><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html" class="current">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="consistency-checks-maintainer-runbook">Consistency Checks (maintainer runbook)</h1>
+<p>This is a runbook <strong>for a code agent</strong> (or a human maintainer). It is not part of the published book and is not listed in <code>chapters-md.txt</code>.</p>
+<p>Goal: periodically re-run a set of editorial/QA consistency checks over the book and fix any regressions. Read this file, then perform each check below in order, applying the decision rules and reporting/fixing findings.</p>
+<p>All commands assume the repo root as the working directory. Use <code>rg</code> (ripgrep) for searching. Paths in this doc are relative to the <code>ml-engineering</code> repo root unless noted; the companion book <strong>The Art of Debugging</strong> (AoD) is assumed to live at <code>../the-art-of-debugging</code>.</p>
+<p>Agent instructions:</p>
+<ul>
+<li>Work check by check. For each match, <strong>classify before editing</strong> using the rules given — do not blind-replace.</li>
+<li>Prefer targeted string edits. Never rewrite whole files.</li>
+<li>Leave literal command/API/env values, product-SKU names, and verbatim third-party tool output untouched (see rules).</li>
+<li>When a judgment call is genuinely ambiguous (e.g. a memory <em>footprint</em> vs <em>capacity</em>), flag it rather than guessing.</li>
+<li>At the end, report a concise summary of what was changed and what was intentionally left.</li>
+</ul>
+<hr />
+<h2 id="check-1--byte-unit-consistency-gb-vs-gib-mb-vs-mib-">Check 1 — Byte-unit consistency (GB vs GiB, MB vs MiB, ...)</h2>
+<p>Find every numeric byte-unit token:</p>
+<pre><code class="language-bash">rg -n '[0-9]\s?[KMGTPkmgtp]i?[Bb]\b' --glob '*.md' --glob '*.py'
+</code></pre>
+<p>Classify each hit and normalize per this table:</p>
+<table>
+<thead>
+<tr>
+<th>Context</th>
+<th>Unit</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>On-device memory <strong>capacity</strong> (VRAM, CPU RAM, SRAM, on-chip cache)</td>
+<td>binary <code>KiB/MiB/GiB/TiB</code></td>
+<td>&quot;H100 has 80GiB&quot;, &quot;640GiB of GPU memory&quot;, &quot;256MiB cache&quot;, &quot;1-2TiB of CPU memory&quot;</td>
+</tr>
+<tr>
+<td>Any quantity <strong>computed via <code>2**n</code></strong> (or reported by a tool that divides by <code>2**n</code>/<code>1024**n</code>)</td>
+<td>binary</td>
+<td>activation memory <code>.../2**30</code>, <code>torch.cuda.mem_get_info</code>, <code>see_mem_usage</code> output, RSS <code>/2**20</code></td>
+</tr>
+<tr>
+<td>Benchmark <strong>payloads that are <code>2**x</code></strong></td>
+<td>binary</td>
+<td><code>torch-dist-bench.py</code> sizes (<code>32KiB..16GiB</code>); it appends <code>iB</code> via <code>fmt_bytes</code></td>
+</tr>
+<tr>
+<td><strong>Bandwidth / throughput</strong></td>
+<td>decimal <code>GB/s</code>, <code>GBps</code>, <code>Gbps</code>, <code>TBps</code></td>
+<td>NVLink/IB/EFA rates, busbw/algbw columns</td>
+</tr>
+<tr>
+<td><strong>Network transmission volumes / payloads matched to decimal bandwidth</strong></td>
+<td>decimal <code>GB</code></td>
+<td>&quot;send 320GB over the wire (<code>80*4</code>)&quot;, ZeRO/DDP &quot;60GB of data&quot;, <code>all_reduce_latency_comp.py</code> (<code>/1e9</code>)</td>
+</tr>
+<tr>
+<td>Model memory <strong>footprints</strong> written as <code>params × bytes</code> with clean decimal arithmetic</td>
+<td>decimal <code>GB/MB</code> (<strong>leave</strong>)</td>
+<td>inference &quot;<code>8B × 2 = 16GB</code>&quot;, &quot;<code>2B × 18 = 36GB</code>&quot;, KV-cache &quot;<code>/10**6 = 0.131MB</code>&quot;</td>
+</tr>
+<tr>
+<td><strong>Disk / storage</strong> capacity &amp; usage, on-disk <strong>file sizes</strong></td>
+<td>decimal <code>GB/TB</code></td>
+<td>&quot;2.3TB checkpoint&quot;, &quot;100TB tier&quot;, &quot;2TB SSD&quot;, &quot;1.2GB model file&quot;, core file &quot;5GB&quot;</td>
+</tr>
+<tr>
+<td><strong>I/O block/file sizes</strong> in an inherently binary context (fio)</td>
+<td>binary</td>
+<td>&quot;block size of 4KiB&quot;, &quot;16KiB Python files&quot;</td>
+</tr>
+<tr>
+<td>Item <strong>counts</strong> (see Check 2)</td>
+<td>bare <code>K/M/B</code></td>
+<td>&quot;10K samples&quot;, &quot;8B params&quot;, &quot;50k vocab&quot;</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Never touch</strong> (leave exactly as written):</p>
+<ul>
+<li>Product-SKU names: <code>A100 80GB</code>, <code>A100-SXM4-80GB</code>, <code>H100 80GB HBM3</code>, <code>MI300X 192GB</code>, <code>v100-32g</code> partition, etc.</li>
+<li>Literal CLI/API/env values: <code>dd bs=1G</code>, <code>mount -o size=1G</code>, <code>systemd-run -p MemoryMax=5G</code>, <code>MEMLIMIT=5GB</code>, <code>max_shard_size=&quot;2GB&quot;</code>, <code>nccl-tests -b 32k -e 16G</code>, <code>--shm-size=1g</code>, <code>3&lt;&lt;10</code>.</li>
+<li>Verbatim third-party tool output: <code>ls -lh</code> sizes (<code>304K</code>, <code>5.8M</code>), <code>df -h</code>, <code>ifconfig</code> (<code>138.4 GB</code>), <code>nvidia-smi</code>, <code>rocminfo</code> (<code>4KB Alloc Granule</code>), PyTorch OOM messages (already emit <code>GiB</code>/<code>MiB</code>).</li>
+</ul>
+<p><strong>Author's own scripts:</strong> when a script the author maintains prints a mislabeled unit (e.g. divides by <code>2**30</code> but prints <code>GB</code>), fix the label in the script too (e.g. <code>see-mem-usage.py</code>, <code>torch-dist-mem-usage.py</code>, <code>torch-dist-bench.py</code>). After editing any <code>*.py</code>, <code>python3 -m py_compile</code> it.</p>
+<p>Quick spot-check that the <code>see_mem_usage</code> (<code>[0] mp:</code>) output has no stale <code>GB</code>:</p>
+<pre><code class="language-bash">rg -n 'mp:.* GB\b' --glob '*.md'
+</code></pre>
+<p>To sanity-review what non-binary byte tokens remain (each should be an intentional decimal/SKU/verbatim case):</p>
+<pre><code class="language-bash">rg -n '[0-9]\s?[KMGT]B\b' --glob '*.md'
+</code></pre>
+<hr />
+<h2 id="check-2--bare-k--m-qualifiers">Check 2 — Bare <code>k</code> / <code>M</code> qualifiers</h2>
+<pre><code class="language-bash">rg -n '[0-9][kKmMgG]\b' --glob '*.md' --glob '*.py'
+</code></pre>
+<p>Rule: a bare <code>K</code>/<code>M</code>/<code>B</code> is allowed <strong>only when it counts items</strong> (tokens, parameters, samples, vocab entries, ports, lines, GPUs, dollars). If the number denotes <strong>bytes</strong>, give it a real unit per Check 1 (e.g. prose &quot;64M file&quot; → &quot;64MB file&quot;).</p>
+<p>Leave bare: parameter/token counts (<code>175B</code>, <code>125M</code>, <code>10K</code> params, <code>250k</code> vocab, <code>3k</code> tokens), dataset names (<code>openwebtext-10k</code>, <code>ADE20k</code>), literal command sizes (<code>bs=1G</code>, <code>-e 16G</code>), verbatim <code>ls</code>/<code>df</code> output, and raw numeric values (<code>fp16</code> max <code>64K</code>, <code>64k</code> ports, <code>20k</code> scrollback lines).</p>
+<hr />
+<h2 id="check-3--cross-book-sync-with-the-art-of-debugging-aod">Check 3 — Cross-book sync with The Art of Debugging (AoD)</h2>
+<p>Some chapters are shared/overlapping between this book and <code>../the-art-of-debugging</code>. Keep their <strong>content</strong> in sync while preserving each book's <strong>conventions</strong>.</p>
+<p>Known shared content:</p>
+<ul>
+<li><code>debug/pytorch.md</code>  ↔  <code>../the-art-of-debugging/pytorch/README.md</code> (near-identical)</li>
+<li>The &quot;emulating out of resources&quot; memory one-liners in <code>debug/*</code> overlap with AoD <code>methodology/README.md</code>.</li>
+</ul>
+<p>Diff the shared PyTorch chapter:</p>
+<pre><code class="language-bash">diff ml-engineering/debug/pytorch.md ../the-art-of-debugging/pytorch/README.md
+</code></pre>
+<p>When reviewing the diff, <strong>sync genuine content</strong> (prose wording, numbers, typos, unit fixes) but <strong>do NOT &quot;fix&quot;</strong> these intentional per-book differences:</p>
+<ul>
+<li><strong>Links</strong> — this book uses relative paths internally and absolute <code>github.com/stas00/the-art-of-debugging/...</code> URLs for cross-book links; AoD does the mirror.</li>
+<li><strong>Heading/label case</strong> — AoD uses sentence-case headings and lowercase labels (<code>note:</code>, <code>important:</code>, <code>tldr:</code>); this book uses Title Case / <code>Note:</code> / <code>Important:</code>.</li>
+<li><strong>Code-fence language tags</strong> — AoD tags fences (<code>```python</code>/<code>```bash</code>); this book often leaves them bare.</li>
+</ul>
+<p>A filtered diff to confirm no <em>unit/content</em> drift remains:</p>
+<pre><code class="language-bash">diff &lt;(grep -n . ml-engineering/debug/pytorch.md) \
+     &lt;(grep -n . ../the-art-of-debugging/pytorch/README.md) \
+  | rg -i 'GB|GiB|MiB|see_mem|mp:'
+</code></pre>
+<p>Also apply Check 1 + Check 2 to the AoD book itself (<code>../the-art-of-debugging/**/*.md</code>); the same rules apply. Note AoD's memory-testing one-liners in <code>methodology/README.md</code> allocate via <code>x 2**30</code> and display via <code>/2**20</code> → those are <code>GiB</code>; its <code>dd</code>/<code>tmpfs</code>/<code>systemd</code>/<code>MEMLIMIT</code> values are literal and stay as-is.</p>
+<hr />
+<h2 id="check-4--internal-links--anchors">Check 4 — Internal links &amp; anchors</h2>
+<p>Every in-repo link target and <code>#anchor</code> should resolve. GitHub anchor slugs are produced by: lowercase; strip punctuation except <code>-</code> and spaces; spaces → <code>-</code>; de-duplicate collisions with <code>-1</code>, <code>-2</code>, ...</p>
+<p>Fast build-based check (renders HTML then validates local links):</p>
+<pre><code class="language-bash">make check-links-local   # builds html-local, runs linkchecker on local links
+</code></pre>
+<p>If a build isn't desired, scan manually: collect all <code>](...)</code> targets and <code>[...](#anchor)</code> fragments per file, compute the slug set from that file's headings, and report any target file/anchor that doesn't exist. Fix by correcting the path/anchor (never by deleting the link silently).</p>
+<hr />
+<h2 id="check-5--external-link-liveness">Check 5 — External link liveness</h2>
+<pre><code class="language-bash">make check-links-all     # includes --check-extern; output in linkchecker-all.txt
+</code></pre>
+<p>Review <code>linkchecker-all.txt</code>. Beware <strong>false positives</strong> — these are almost always fine even when reported as errors:</p>
+<ul>
+<li>GitHub returning <code>404</code>/<code>429</code> to bots (rate-limiting / anti-scraping) for <code>tree/</code>/<code>blob/</code>/<code>issues/</code> URLs.</li>
+<li><code>418 I'm a teapot</code> from freedesktop.org, timeouts from gnu.org, and similar anti-bot responses.</li>
+</ul>
+<p>Only fix a link if it is <strong>genuinely dead</strong> (domain gone, page permanently moved). Verify by fetching in a browser/<code>WebFetch</code> before changing. Prefer an authoritative replacement (vendor/wiki/official docs, or the source in a GitHub repo if the docs site is decommissioned).</p>
+<hr />
+<h2 id="check-6--numeric-fact-check">Check 6 — Numeric fact-check</h2>
+<p>Spot-check technical claims — accelerator specs (TFLOPS, HBM capacity/bandwidth, pin rates), interconnect rates (NVLink/PCIe/InfiniBand/EFA), memory formulas (weights/optimizer/gradients/activations/KV-cache), and collective-comm math (all-reduce <code>2(n-1)/n</code>, etc.).</p>
+<p>Method:</p>
+<ul>
+<li>Verify each number against a <strong>high-accuracy source</strong> (vendor datasheet, JEDEC, Wikipedia) — not random blogs.</li>
+<li>Check <strong>internal consistency</strong>: e.g. per-port vs per-node vs cluster aggregate should multiply out; <code>GiB × count</code> totals should add up; a value converted to <code>Gb</code>/<code>Gbps</code> (<code>×8</code>) must match.</li>
+<li>Watch unit correctness (Check 1) and distinguish physical vs usable capacity (e.g. B200 192GiB physical vs 180GiB usable).</li>
+<li><strong>Flag before fixing</strong>: for fact changes, present the finding (file:line, current value, proposed value, source) and let the maintainer confirm, since some values are deliberately approximate.</li>
+</ul>
+<p>Files historically densest in checkable numbers: <code>compute/accelerator/README.md</code>, <code>network/README.md</code>, <code>network/comms.md</code>, <code>storage/README.md</code>, <code>training/performance/README.md</code>, <code>training/model-parallelism/README.md</code>, <code>inference/README.md</code>.</p>
+<hr />
+<h2 id="reference-unit-conventions-in-one-line">Reference: unit conventions in one line</h2>
+<p>Capacity &amp; <code>2**n</code>-computed quantities → binary (<code>GiB</code>); bandwidth, transmission volumes, disk, on-disk file sizes, and clean <code>params×bytes</code> footprints → decimal (<code>GB</code>); SKU names / literal command args / verbatim tool output → leave; bare <code>K/M/B</code> only for item counts.</p>
+
+</article>
+<footer><a class="prev" href="../build/SESSION.html">&larr; Session Preferences</a><a class="next" href="../build/cover/README.html">build/cover/README.md &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

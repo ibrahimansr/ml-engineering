@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resources - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details open><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html" class="current">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="resources">Resources</h1>
+<h2 id="similar-online-guides">Similar online guides</h2>
+<ul>
+<li>
+<p>Boris Dayma wrote <a href="https://wandb.ai/craiyon/report/reports/Recipe-Training-Large-Models--VmlldzozNjc4MzQz">A Recipe for Training Large Models</a></p>
+</li>
+<li>
+<p>The HuggingFace team published <a href="https://huggingface.co/spaces/nanotron/ultrascale-playbook">The Ultra-Scale Playbook: Training LLMs on GPU Clusters</a>.</p>
+</li>
+<li>
+<p>Jacob Austin maintains <a href="https://jax-ml.github.io/scaling-book/">How to Scale Your Model: A Systems View of LLMs on TPUs</a></p>
+</li>
+<li>
+<p>The Harvard Edge group publishes <a href="https://github.com/harvard-edge/cs249r_book">Machine Learning Systems</a> (CS249r textbook; site: <a href="http://mlsysbook.ai/">mlsysbook.ai</a>).</p>
+</li>
+</ul>
+<h2 id="useful-compilations">Useful compilations</h2>
+<ul>
+<li>
+<p><a href="https://github.com/StellaAthena">@StellaAthena</a> created the <a href="https://docs.google.com/spreadsheets/d/14vbBbuRMEHoqeuMHkTfw3uiZVmyXNuoSp8s-aHvfvZk/edit#gid=0">Common LLM Settings spreadsheet</a> which can be a super-useful resource when you're about to embark on a new LLM training - as it tells you how many known LLM trainings were created.</p>
+</li>
+<li>
+<p>A few years back I started compiling information on <a href="https://discuss.huggingface.co/t/model-pre-training-precision-database-fp16-fp32-bf16/5671">which dtype the models were trained in</a> - it only contains a handful of models but if you're doing a research on dtypes it can still be useful. I was using this information to try and write <a href="https://github.com/stas00/ml-ways/blob/master/numbers/detect-model-pretrained-in-bf16-fp16-fp32.ipynb">a model pretraining dtype auto-detection</a> and here is a related <a href="https://github.com/stas00/ml-ways/blob/master/numbers/bfloat16-vs-float16-study.ipynb">float16 vs bfloat16 numerical properties comparison</a>.</p>
+</li>
+</ul>
+<h2 id="publicly-available-training-llmvlm-logbooks">Publicly available training LLM/VLM logbooks</h2>
+<p>Logbooks, chronicles, and technical reports of training LLMs/VLMs are among the best sources to learn from about dealing with training instabilities, infrastructure and scaling challenges, and choosing good hyper parameters. The earlier entries here are logbooks/chronicles kept during a training run; increasingly the same hard-won lessons appear as dedicated sections of technical reports - typically titled something like <em>Infrastructure, Scaling, and Efficiency</em> or <em>Engineering Challenges and Solutions</em>, and often covering reliability and operational challenges that rarely make it into a model card.</p>
+<p>If you know of a public LLM/VLM training logbook, or a technical report with such a section, that is not on this list please kindly let me know via <a href="https://github.com/stas00/ml-engineering/issues">an Issue</a> or add it via a PR. Thank you!</p>
+<p>The listing is in no particular order other than being grouped by the year.</p>
+<h3 id="2021">2021</h3>
+<ul>
+<li>BigScience pre-BLOOM 108B training experiments (2021):
+<a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md">chronicles</a> |
+<a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide">the full spec and discussions</a>
+(backup:
+<a href="https://github.com/stas00/bigscience-backup/blob/master/train/tr8-104B-wide/chronicles.md">1</a> |
+<a href="https://github.com/stas00/bigscience-backup/tree/master/train/tr8-104B-wide">2</a>)</li>
+</ul>
+<h3 id="2022">2022</h3>
+<ul>
+<li>
+<p>BigScience BLOOM-176B (2022):
+<a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr11-176B-ml/chronicles-prequel.md">chronicles-prequel</a> |
+<a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr11-176B-ml/chronicles.md">chronicles</a> |
+<a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml">the full spec and discussions</a>
+(backup:
+<a href="https://github.com/stas00/bigscience-backup/blob/master/train/tr11-176B-ml/chronicles-prequel.md">1</a> |
+<a href="https://github.com/stas00/bigscience-backup/blob/master/train/tr11-176B-ml/chronicles.md">2</a> |
+<a href="https://github.com/stas00/bigscience-backup/tree/master/train/tr11-176B-ml">3</a>)</p>
+</li>
+<li>
+<p>Meta OPT-175B (2022):
+<a href="https://github.com/facebookresearch/metaseq/tree/main/projects/OPT/chronicles">logbook</a> | <a href="https://www.youtube.com/watch?v=p9IxoSkvZ-M">Video</a> (backup: <a href="https://github.com/stas00/metaseq-backup/tree/main/projects/OPT/chronicles">1</a>)</p>
+</li>
+<li>
+<p>THUDM GLM-130B (2022): <a href="https://github.com/zai-org/GLM-130B/blob/main/logs/main-log-en.md">en logbook</a> | <a href="https://github.com/zai-org/GLM-130B/blob/main/logs/main-log.md">Mandarin version</a> (backup:  <a href="https://github.com/stas00/GLM-130B-backup/blob/main/logs/main-log-en.md">1</a> | <a href="https://github.com/stas00/GLM-130B-backup/blob/main/logs/main-log.md">2</a>)</p>
+</li>
+</ul>
+<h3 id="2023">2023</h3>
+<ul>
+<li>
+<p>HuggingFace IDEFICS-80B multimodal (Flamingo repro) (2023): <a href="https://github.com/huggingface/m4-logs/blob/master/memos/README.md">Learning log</a> | <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">Training Chronicles</a> (backup: <a href="https://github.com/stas00/m4-logs-backup/blob/master/memos/README.md">1</a> | <a href="https://github.com/stas00/m4-logs-backup/blob/master/tr-190-80b/chronicles.md">2</a>)</p>
+</li>
+<li>
+<p>BloombergGPT 50B LLM - section C in <a href="https://arxiv.org/abs/2303.17564">BloombergGPT: A Large Language Model for Finance</a></p>
+</li>
+</ul>
+<h3 id="2024">2024</h3>
+<ul>
+<li>
+<p><a href="https://arxiv.org/abs/2402.15627">MegaScale: Scaling Large Language Model Training to More Than 10,000 GPUs</a> - the paper covers various training issues and their resolution - albeit on models that are proprietary yet just as instructional/useful.</p>
+</li>
+<li>
+<p>Imbue's <a href="https://imbue.com/blog/70b-infrastructure">From bare metal to a 70B model: infrastructure set-up and scripts</a> very detailed technical post covers many training-related issues that they had to overcome while training a proprietary 70B-param model.</p>
+</li>
+<li>
+<p>Meta's <a href="https://arxiv.org/abs/2407.21783">The Llama 3 Herd of Models</a> devotes <a href="https://arxiv.org/pdf/2407.21783#page=12">§3.3 Infrastructure, Scaling, and Efficiency</a> to the training stack, including §3.3.4 Reliability and Operational Challenges - notably how environmental factors (diurnal temperature swings, and the effect of tens of thousands of GPUs' fluctuating power draw on the datacenter grid) perturbed training throughput, a dimension I haven't seen documented in other reports.</p>
+</li>
+</ul>
+<h3 id="2025">2025</h3>
+<ul>
+<li>Project Apertus (ETH Zürich, EPFL, CSCS) - <a href="https://arxiv.org/abs/2509.14233">Apertus v1 Technical Report: Democratizing Open and Compliant LLMs for Global Language Environments</a> - a fully open 8B/70B suite trained on 15T tokens across 1800+ languages using up to 4096 GPUs on CSCS's Alps. Its <em>Infrastructure, Scaling, and Efficiency</em> and <em>Engineering Challenges and Solutions</em> sections (~5 pages) read like a logbook of the run.</li>
+</ul>
+<h3 id="2026">2026</h3>
+<ul>
+<li><a href="https://allenai.org/papers/olmocore3">Supercharging Olmo-core for Efficient and Scalable MoE Training</a> - practical recommendations for training large scale MoE models in 2026!</li>
+<li><a href="https://mtracker.oa.dev/hero-run-535b">Marin 535B-A23B MoE live</a> - each short entry goes to a details GitHub Issue where you can read the details. Finished trainings retrospectives: <a href="https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/">8B</a>, <a href="https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/">32B</a></li>
+<li>Project Apertus - <a href="https://arxiv.org/abs/2610.15542">Apertus v1.5 Technical Report: From Open Text Models to Open Multimodal Reasoners</a> - continued multimodal pretraining of the Apertus 8B/70B models; like v1 it includes <em>Infrastructure, Scaling, and Efficiency</em> and <em>Engineering Challenges and Solutions</em> sections (~5 pages).</li>
+</ul>
+<h2 id="hardware-setup-logbooks">Hardware setup logbooks</h2>
+<ul>
+<li>
+<p>Imbue published a detailed log of how they have set up a 512-node IB-fat-tree cluster and made it to work: <a href="https://imbue.com/blog/70b-infrastructure">From bare metal to a 70B model: infrastructure set-up and scripts</a>, they also open-sourced the <a href="https://github.com/imbue-ai/cluster-health">cluster tooling</a> they created in the process.</p>
+</li>
+<li>
+<p>SemiAnalysis published a great detailed writeup about <a href="https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy">what it takes to set up a Neocloud cluster</a>.</p>
+</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../testing/README.html">&larr; Writing and Running Tests</a><a class="next" href="../contributors.html">Contributors &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

@@ -8,7 +8,7 @@ This chapter assumes you know transformer math and PyTorch, and nothing about th
 - [Networking](../foundations/networking.md) - links, latency vs bandwidth, what an interconnect is. Needed for the tensor-parallel and expert-parallel communication sections.
 - [Distributed systems](../foundations/distributed-systems.md) - collectives (all-reduce, all-to-all), sharding, load balancing. Needed for the TP and MoE sections.
 - [Model architectures](../models/architectures.md) - MHA, GQA, MQA, MLA, sliding-window attention and MoE, whose KV cache and FLOPs we size here.
-- Helpful: [GPU execution model](../compute/accelerator/execution-model.md) - tensor cores and the [per-op roofline](../compute/accelerator/execution-model.md#roofline-per-op), which this chapter re-derives briefly; [Collective communication internals](../network/collectives-internals.md) - the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model) and [busbw](../network/collectives-internals.md#algbw-vs-busbw) used in the TP communication section; [Training arithmetic](../training/arithmetic.md) - the `2N` FLOPs-per-token forward-pass count.
+- Helpful: [GPU execution model](../compute/accelerator/execution-model.md) - tensor cores and the [per-op roofline](../compute/accelerator/execution-model.md#roofline-per-op), which this chapter re-derives briefly; [Collective communication internals](../network/collectives-internals.md) - the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model) and [busbw](../network/collectives-internals.md#algbw-vs-busbw) used in the TP communication section; [Training arithmetic](../training/arithmetic.md) - the $2N$ FLOPs-per-token forward-pass count.
 
 You do not need the Linux, concurrency or beyond-transformers chapters for this one.
 
@@ -34,7 +34,7 @@ Save each script under the file name in its first comment line (`pareto.py` impo
 If you are new to the systems side, these three ideas are everything you need to follow the rest:
 
 1. **A GPU has two separate speed limits.** One is how fast it can do arithmetic, measured in FLOP/s (floating-point operations per second; one multiply-add counts as 2 FLOPs). The other is how fast it can move bytes from its memory into the compute units, measured in bytes/s (**memory bandwidth**). An H100 does about 989 trillion BF16 FLOP/s but reads only 3.35 trillion bytes/s. That is about 295 FLOPs for every byte it reads.
-2. **Generating one token reads every weight once.** To produce the next token, the model multiplies that token's activations by every weight matrix in the network. A 70B model in BF16 is 141 GB of weights, so one token needs at least `141 GB / 3.35 TB/s = 42 ms` on one H100, however little math is involved. That one multiply-add per weight is far below the 295 the GPU could have done, so the arithmetic units mostly sit idle. We call this **memory-bound**.
+2. **Generating one token reads every weight once.** To produce the next token, the model multiplies that token's activations by every weight matrix in the network. A 70B model in BF16 is 141 GB of weights, so one token needs at least $141\ \text{GB} / 3.35\ \text{TB/s} = 42\ \text{ms}$ on one H100, however little math is involved. That one multiply-add per weight is far below the 295 the GPU could have done, so the arithmetic units mostly sit idle. We call this **memory-bound**.
 3. **Batching shares that read.** If 64 users each want their next token, you can read each weight once and use it 64 times. That costs 64 times the math but only slightly more bytes. Every serving trick in this chapter and its sibling comes down to doing more useful math per byte read, or reading fewer bytes.
 
 ```python
@@ -62,17 +62,17 @@ B=256: math  36.5 ms vs weight read 42 ms
 
 | Symbol | Meaning |
 | :----- | :------ |
-| `N` | parameter count (total) |
-| `N_act` | parameters touched per token (MoE) |
-| `L` | number of layers |
-| `h` | hidden size (`d_model`) |
-| `n_q`, `n_kv` | query heads, key/value heads |
-| `d` | head dim |
-| `g = n_q / n_kv` | queries per KV head (GQA group size) |
-| `B` | number of sequences decoded in one step (batch) |
-| `T` | KV length per sequence (tokens already in context) |
-| `b_w`, `b_a`, `b_kv` | bytes per weight, per activation, per KV element |
-| `P` | tensor-parallel degree |
+| $N$ | parameter count (total) |
+| $N_\text{act}$ | parameters touched per token (MoE) |
+| $L$ | number of layers |
+| $h$ | hidden size ($d_\text{model}$) |
+| $n_q$, $n_{kv}$ | query heads, key/value heads |
+| $d$ | head dim |
+| $g = n_q / n_{kv}$ | queries per KV head (GQA group size) |
+| $B$ | number of sequences decoded in one step (batch) |
+| $T$ | KV length per sequence (tokens already in context) |
+| $b_w$, $b_a$, $b_{kv}$ | bytes per weight, per activation, per KV element |
+| $P$ | tensor-parallel degree |
 
 Some hardware terms used throughout:
 
@@ -96,22 +96,22 @@ Achievable is lower. The repo's [measured matmul ceilings](../compute/accelerato
 
 ## Arithmetic intensity and the roofline
 
-**Arithmetic intensity** (AI) is FLOPs performed per byte moved between HBM and the chip. The **roofline model** (Williams, Waterman, Patterson, CACM 2009) says a kernel's runtime is at least `max(FLOPs / peak_FLOPS, bytes / peak_BW)`. The crossover - the **ridge point** - is at `AI* = peak_FLOPS / peak_BW`. Below it the kernel is memory-bound: tensor cores sit idle waiting for bytes. Above it, compute-bound.
+**Arithmetic intensity** (AI) is FLOPs performed per byte moved between HBM and the chip. The **roofline model** (Williams, Waterman, Patterson, CACM 2009) says a kernel's runtime is at least $\max(\text{FLOPs} / \text{FLOPS}_\text{peak},\ \text{bytes} / \text{BW}_\text{peak})$. The crossover - the **ridge point** - is at $\text{AI}^* = \text{FLOPS}_\text{peak} / \text{BW}_\text{peak}$. Below it the kernel is memory-bound: tensor cores sit idle waiting for bytes. Above it, compute-bound.
 
 Ridge points from the table above:
 
 | Accelerator | BF16 ridge (FLOP/B) | FP8 ridge (FLOP/B) |
 | :---------- | ------------------: | -----------------: |
-| H100 SXM | `989/3.35 = 295` | `1979/3.35 = 591` |
-| H200 SXM | `989/4.8 = 206` | `1979/4.8 = 412` |
-| B200 SXM | `2250/8.0 = 281` | `4500/8.0 = 562` |
-| MI300X | `1300/5.3 = 245` | `2610/5.3 = 492` |
+| H100 SXM | $989/3.35 = 295$ | $1979/3.35 = 591$ |
+| H200 SXM | $989/4.8 = 206$ | $1979/4.8 = 412$ |
+| B200 SXM | $2250/8.0 = 281$ | $4500/8.0 = 562$ |
+| MI300X | $1300/5.3 = 245$ | $2610/5.3 = 492$ |
 
 Note H200 has the *lowest* ridge: same compute as H100, 43% more bandwidth. It is the most "decode-friendly" of the four per FLOP, which is the whole point of that SKU.
 
-Notation used from here on: **W*x*A*y*** means *x*-bit weights and *y*-bit activations (W16A16 is plain BF16, W8A8 is FP8 or INT8 for both, W4A16 is 4-bit weights with BF16 activations); **bpw** is bits per weight *including* the per-group scale metadata (INT4 with one 16-bit scale and one 16-bit zero point per 128 weights is `4 + 32/128 = 4.25` bpw); **TC** is tensor core; **NVFP4** is NVIDIA's 4-bit floating-point format on Blackwell (4.5 bpw). All of these are built from scratch in [Quantization internals](#quantization-internals); for now only the byte counts matter.
+Notation used from here on: **W*x*A*y*** means *x*-bit weights and *y*-bit activations (W16A16 is plain BF16, W8A8 is FP8 or INT8 for both, W4A16 is 4-bit weights with BF16 activations); **bpw** is bits per weight *including* the per-group scale metadata (INT4 with one 16-bit scale and one 16-bit zero point per 128 weights is $4 + 32/128 = 4.25$ bpw); **TC** is tensor core; **NVFP4** is NVIDIA's 4-bit floating-point format on Blackwell (4.5 bpw). All of these are built from scratch in [Quantization internals](#quantization-internals); for now only the byte counts matter.
 
-The roofline is just "whichever of the two speed limits you hit first". Plot attainable FLOP/s against arithmetic intensity on log-log axes and you get a sloped line, `AI * bandwidth` (memory-bound), meeting a flat roof, `peak_FLOPS` (compute-bound), at the ridge point. A kernel sits somewhere on that curve. If it sits on the slope, faster math units won't help it: only fewer bytes or more reuse per byte will. The calculator below reproduces this section's tables and the crossover table in the next subsection:
+The roofline is just "whichever of the two speed limits you hit first". Plot attainable FLOP/s against arithmetic intensity on log-log axes and you get a sloped line, $\text{AI} \cdot \text{bandwidth}$ (memory-bound), meeting a flat roof, $\text{FLOPS}_\text{peak}$ (compute-bound), at the ridge point. A kernel sits somewhere on that curve. If it sits on the slope, faster math units won't help it: only fewer bytes or more reuse per byte will. The calculator below reproduces this section's tables and the crossover table in the next subsection:
 
 ```python
 # roofline.py - ridge points, decode-matmul arithmetic intensity, crossover batch
@@ -190,11 +190,11 @@ H100: time of one 8192x8192 bf16 decode matmul vs batch
   B= 1024   139.0 us  (compute-bound)
 ```
 
-The last block is the roofline in action: a single `8192 x 8192` BF16 matmul takes the same ~40 µs whether it serves 1 sequence or 295, because the 134 MB weight read dominates. Only past the ridge does extra batch cost extra time.
+The last block is the roofline in action: a single $8192 \times 8192$ BF16 matmul takes the same ~40 µs whether it serves 1 sequence or 295, because the 134 MB weight read dominates. Only past the ridge does extra batch cost extra time.
 
 ### Measuring the roofline on your own machine
 
-You can see the same shape on a laptop. The script below multiplies a fixed `4096 x 4096` FP16 weight by `B` rows and reports time per call. While memory-bound, time barely moves as `B` grows, so time per row falls. Once compute-bound, time grows linearly with `B` and time per row flattens:
+You can see the same shape on a laptop. The script below multiplies a fixed $4096 \times 4096$ FP16 weight by $B$ rows and reports time per call. While memory-bound, time barely moves as $B$ grows, so time per row falls. Once compute-bound, time grows linearly with $B$ and time per row flattens:
 
 ```python
 # measure_roofline.py - see the memory-bound plateau on your own machine
@@ -240,11 +240,11 @@ device=mps  W=4096x4096 fp16 (32 MiB)
  2048   19390.9     9.47            1.7    3.54
 ```
 
-Read it like the H100 table. Up to `B ≈ 32` the call takes ~450-500 µs regardless of `B`: it reads 32 MiB of weights at 65-75 GB/s. That is the memory-bound plateau (the noise at tiny `B` is per-call dispatch overhead). From `B ≈ 128` the time doubles every time `B` doubles, at ~3.7 TFLOPS, the compute roof of this GPU. The measured ridge is about `3.7e12 / 75e9 ≈ 50` FLOP/byte, a crossover batch of ~50 rows for FP16, so this laptop's ridge sits much lower than an H100's 295. The crossover is set by hardware ratios, not by the model.
+Read it like the H100 table. Up to $B \approx 32$ the call takes ~450-500 µs regardless of $B$: it reads 32 MiB of weights at 65-75 GB/s. That is the memory-bound plateau (the noise at tiny $B$ is per-call dispatch overhead). From $B \approx 128$ the time doubles every time $B$ doubles, at ~3.7 TFLOPS, the compute roof of this GPU. The measured ridge is about $3.7 \times 10^{12} / (75 \times 10^{9}) \approx 50$ FLOP/byte, a crossover batch of ~50 rows for FP16, so this laptop's ridge sits much lower than an H100's 295. The crossover is set by hardware ratios, not by the model.
 
 ### Linear layers
 
-A decode step multiplies the current token's activations for `B` sequences by every weight matrix:
+A decode step multiplies the current token's activations for $B$ sequences by every weight matrix:
 
 ```python
 # X: (B, K)  activations, one new token per sequence
@@ -255,21 +255,21 @@ bytes = b_w * K * N + b_a * B * K + b_a * B * N    # read W, read X, write Y
 AI    = 2 * B * K * N / (b_w * K * N + b_a * B * (K + N))
 ```
 
-For `B << K, N` the weight term dominates the denominator and
+For $B \ll K, N$ the weight term dominates the denominator and
 
-```
-AI ≈ 2 * B / b_w
-```
+$$
+\text{AI} \approx \frac{2B}{b_w}
+$$
 
-So in BF16 (`b_w = 2`) the arithmetic intensity of a decode matmul is simply `B`: one FLOP pair per weight byte per sequence. Exact values for a `K = N = 8192` layer in BF16: `B=1 -> 1.0`, `B=64 -> 63.0`, `B=256 -> 240.9`, `B=1024 -> 819.2`. The approximation is good until `B` is within ~10x of `K`.
+So in BF16 ($b_w = 2$) the arithmetic intensity of a decode matmul is simply $B$: one FLOP pair per weight byte per sequence. Exact values for a $K = N = 8192$ layer in BF16: $B=1 \to 1.0$, $B=64 \to 63.0$, $B=256 \to 240.9$, $B=1024 \to 819.2$. The approximation is good until $B$ is within ~10x of $K$.
 
-Setting `2B / b_w = AI*` gives the **crossover batch** at which linear layers stop being memory-bound:
+Setting $2B / b_w = \text{AI}^*$ gives the **crossover batch** at which linear layers stop being memory-bound:
 
-```
-B* = AI* * b_w / 2 = (peak_FLOPS / peak_BW) * (bits_per_weight / 16)
-```
+$$
+B^* = \frac{\text{AI}^* \cdot b_w}{2} = \frac{\text{FLOPS}_\text{peak}}{\text{BW}_\text{peak}} \cdot \frac{\text{bits per weight}}{16}
+$$
 
-with `peak_FLOPS` taken at the precision the tensor cores actually run in. This one formula explains most of the quantization trade-offs later in the chapter:
+with $\text{FLOPS}_\text{peak}$ taken at the precision the tensor cores actually run in. This one formula explains most of the quantization trade-offs later in the chapter:
 
 | Accelerator | W16A16 (BF16 TC) | W8A8 (FP8 TC) | W4A16 at 4.25 bpw (BF16 TC) | W4A8 at 4.25 bpw (FP8 TC) |
 | :---------- | ---------------: | ------------: | --------------------------: | ------------------------: |
@@ -278,14 +278,14 @@ with `peak_FLOPS` taken at the precision the tensor cores actually run in. This 
 | B200 SXM | 281 | 281 | 75 | 149 |
 | MI300X | 245 | 246 | 65 | 131 |
 
-On B200 with NVFP4 weights and activations on FP4 tensor cores: `B* = 1125 * 4.5 / 16 = 316`.
+On B200 with NVFP4 weights and activations on FP4 tensor cores: $B^* = 1125 \cdot 4.5 / 16 = 316$.
 
 Two non-obvious consequences:
 
 1. **W8A8 FP8 does not move the crossover batch.** Halving the bytes and doubling the FLOPS cancel. FP8 makes every regime ~2x faster; it does not change which regime you are in.
-2. **Weight-only INT4 moves the crossover down by ~4x.** Above `B ≈ 78` on H100, a W4A16 model is compute-bound at *BF16* tensor-core rate, which is half the FP8 rate. At large batch, W4A16 is strictly slower than W8A8 FP8 on Hopper even before counting dequantization. The [Marlin paper (arXiv:2408.11743)](https://arxiv.org/abs/2408.11743) measures exactly this shape: close to the ideal 4x speedup over FP16 up to batch 16-32, then gradually decreasing gains up to batch 64-128.
+2. **Weight-only INT4 moves the crossover down by ~4x.** Above $B \approx 78$ on H100, a W4A16 model is compute-bound at *BF16* tensor-core rate, which is half the FP8 rate. At large batch, W4A16 is strictly slower than W8A8 FP8 on Hopper even before counting dequantization. The [Marlin paper (arXiv:2408.11743)](https://arxiv.org/abs/2408.11743) measures exactly this shape: close to the ideal 4x speedup over FP16 up to batch 16-32, then gradually decreasing gains up to batch 64-128.
 
-The batch `B` here is tokens per step through the matmul, not requests. During prefill, or with chunked prefill mixing prompt tokens into decode steps, `B` is the total token count of the step, which is why prefill is compute-bound: a single 512-token prompt already gives `AI ≈ 455 > 295` (exact value from the formula; the `2B/b_w` shortcut says 512 because `B` is no longer much smaller than `K`).
+The batch $B$ here is tokens per step through the matmul, not requests. During prefill, or with chunked prefill mixing prompt tokens into decode steps, $B$ is the total token count of the step, which is why prefill is compute-bound: a single 512-token prompt already gives $\text{AI} \approx 455 > 295$ (exact value from the formula; the $2B/b_w$ shortcut says 512 because $B$ is no longer much smaller than $K$).
 
 ### Attention in decode
 
@@ -304,26 +304,32 @@ AI    = 2 * g / b_kv
 
 Decode attention AI is **independent of both batch size and context length**: batching adds more sequences, each bringing its own KV bytes. It depends only on the GQA group size and the KV dtype:
 
-| Attention | `g` | AI with BF16 KV | AI with FP8 KV |
+| Attention | $g$ | AI with BF16 KV | AI with FP8 KV |
 | :-------- | --: | --------------: | -------------: |
 | MHA (e.g. Llama-2-7B) | 1 | 1 | 2 |
 | GQA, Llama-3-70B (64 q / 8 kv) | 8 | 8 | 16 |
 | MQA, 64 q heads | 64 | 64 | 128 |
 | MLA, DeepSeek-V3, absorbed (all 128 heads) | 128 | 242 | 484 |
 
-Everything except MLA is deeply memory-bound on every GPU in the table: decode attention runs at HBM bandwidth, full stop. The only levers are fewer KV bytes (GQA/MQA/MLA, KV quantization, sliding window) or more queries per KV read (larger `g`, or several speculative tokens per sequence - see the [sibling chapter](serving-engine-internals.md)).
+Everything except MLA is deeply memory-bound on every GPU in the table: decode attention runs at HBM bandwidth, full stop. The only levers are fewer KV bytes (GQA/MQA/MLA, KV quantization, sliding window) or more queries per KV read (larger $g$, or several speculative tokens per sequence - see the [sibling chapter](serving-engine-internals.md)).
 
-The MLA row comes from the "absorbed" formulation in the [DeepSeek-V2 paper (arXiv:2405.04434)](https://arxiv.org/abs/2405.04434): the per-head up-projections `W_UK` and `W_UV` are folded into the query and output projections, so all 128 heads attend directly over one shared latent of `kv_lora_rank + qk_rope_head_dim = 512 + 64 = 576` dims per token:
+The MLA row comes from the "absorbed" formulation in the [DeepSeek-V2 paper (arXiv:2405.04434)](https://arxiv.org/abs/2405.04434): the per-head up-projections $W_{UK}$ and $W_{UV}$ are folded into the query and output projections, so all 128 heads attend directly over one shared latent of `kv_lora_rank + qk_rope_head_dim` $= 512 + 64 = 576$ dims per token:
 
-```
-flops per token per layer = 2*128*576 (scores) + 2*128*512 (values) = 278,528
-bytes per token per layer = 576 * 2 (BF16)                          = 1,152
-AI = 278,528 / 1,152 = 242
-```
+$$
+\text{FLOPs per token per layer} = \underbrace{2 \cdot 128 \cdot 576}_{\text{scores}} + \underbrace{2 \cdot 128 \cdot 512}_{\text{values}} = 278{,}528
+$$
 
-That is 82% of the H100 BF16 ridge: MLA decode attention is close to compute-bound, which is why DeepSeek's [FlashMLA](https://github.com/deepseek-ai/FlashMLA) kernel is a compute-optimized kernel and not a bandwidth-optimized one. The catch: this only holds if one GPU sees all 128 heads of a sequence. Under tensor parallelism `P=8` each GPU holds 16 heads but must still read the *full* 576-dim latent, so per-GPU `AI = 2*16*1088/1152 = 30` and the latent cache is duplicated 8 times. This is why DeepSeek serves MLA with data-parallel attention (each GPU owns whole sequences) rather than TP - see the [MoE section](#moe-inference-arithmetic).
+$$
+\text{bytes per token per layer} = 576 \cdot 2\ (\text{BF16}) = 1{,}152
+$$
 
-Why can't batching rescue attention the way it rescues linear layers? A linear layer has one weight matrix that every sequence in the batch multiplies against, so one read serves the whole batch. In attention, the "weights" are each sequence's own keys and values. Sequence 7's KV is useless to sequence 8, so adding sequences adds bytes in proportion. The only reuse is *within* a sequence: the `g` query heads that share a KV head (GQA), or several query tokens at once (prefill, speculative verification). The script below computes every number in this subsection and the next:
+$$
+\text{AI} = 278{,}528 / 1{,}152 = 242
+$$
+
+That is 82% of the H100 BF16 ridge: MLA decode attention is close to compute-bound, which is why DeepSeek's [FlashMLA](https://github.com/deepseek-ai/FlashMLA) kernel is a compute-optimized kernel and not a bandwidth-optimized one. The catch: this only holds if one GPU sees all 128 heads of a sequence. Under tensor parallelism $P=8$ each GPU holds 16 heads but must still read the *full* 576-dim latent, so per-GPU $\text{AI} = 2 \cdot 16 \cdot 1088/1152 = 30$ and the latent cache is duplicated 8 times. This is why DeepSeek serves MLA with data-parallel attention (each GPU owns whole sequences) rather than TP - see the [MoE section](#moe-inference-arithmetic).
+
+Why can't batching rescue attention the way it rescues linear layers? A linear layer has one weight matrix that every sequence in the batch multiplies against, so one read serves the whole batch. In attention, the "weights" are each sequence's own keys and values. Sequence 7's KV is useless to sequence 8, so adding sequences adds bytes in proportion. The only reuse is *within* a sequence: the $g$ query heads that share a KV head (GQA), or several query tokens at once (prefill, speculative verification). The script below computes every number in this subsection and the next:
 
 ```python
 # attn_ai.py - decode attention arithmetic intensity, and attention vs weight FLOPs
@@ -364,9 +370,9 @@ break-even context: 53,825 tokens
 
 ### Attention in prefill
 
-For a prompt of `T` tokens, causal attention does `2 * n_q * d * T^2` FLOPs per layer (`QK^T` plus `PV`, halved for causality) while reading `O(T * d)` bytes, so `AI ∝ T`. With [FlashAttention (arXiv:2205.14135)](https://arxiv.org/abs/2205.14135) the `T x T` score matrix never touches HBM, and prefill attention is compute-bound for any non-trivial prompt.
+For a prompt of $T$ tokens, causal attention does $2 \cdot n_q \cdot d \cdot T^2$ FLOPs per layer ($QK^\top$ plus $PV$, halved for causality) while reading $O(T \cdot d)$ bytes, so $\text{AI} \propto T$. With [FlashAttention (arXiv:2205.14135)](https://arxiv.org/abs/2205.14135) the $T \times T$ score matrix never touches HBM, and prefill attention is compute-bound for any non-trivial prompt.
 
-How big is attention compared to the linear layers? Per token, attention FLOPs are `4 * L * n_q * d * T` against `2 * N` for the matmuls. For Llama-3-70B: `4*80*64*128*T / (2*70.55e9)`, which is `0.076` at `T=4096` and `0.61` at `T=32768` (the last block of `attn_ai.py` above). Above ~54k tokens of context, attention FLOPs exceed weight FLOPs per token. The common "`2N` FLOPs per token" rule ([Kaplan et al., arXiv:2001.08361](https://arxiv.org/abs/2001.08361)) is a short-context approximation.
+How big is attention compared to the linear layers? Per token, attention FLOPs are $4 \cdot L \cdot n_q \cdot d \cdot T$ against $2N$ for the matmuls. For Llama-3-70B: $4 \cdot 80 \cdot 64 \cdot 128 \cdot T / (2 \cdot 70.55 \times 10^9)$, which is $0.076$ at $T=4096$ and $0.61$ at $T=32768$ (the last block of `attn_ai.py` above). Above ~54k tokens of context, attention FLOPs exceed weight FLOPs per token. The common "$2N$ FLOPs per token" rule ([Kaplan et al., arXiv:2001.08361](https://arxiv.org/abs/2001.08361)) is a short-context approximation.
 
 ```python
 # prefill_vs_decode.py - one 512-token prompt vs one decode token through the same 8192x8192 layer
@@ -384,8 +390,8 @@ decode, 1 token            AI =    1.0  -> memory-bound on H100
 
 ### What this means for prefill vs decode
 
-- **Prefill**: `B_tokens` in the thousands, linear AI in the thousands, attention AI ∝ `T`. Compute-bound. Time ≈ `2 * N * T_prompt / achieved_FLOPS`.
-- **Decode**: linear AI ≈ `2B/b_w`, attention AI ≈ `2g/b_kv`. Memory-bound until `B` reaches a few hundred, and attention stays memory-bound forever (except MLA). Time ≈ `bytes_per_step / achieved_BW`.
+- **Prefill**: $B_\text{tokens}$ in the thousands, linear AI in the thousands, attention $\text{AI} \propto T$. Compute-bound. Time $\approx 2 N T_\text{prompt} / \text{FLOPS}_\text{achieved}$.
+- **Decode**: linear $\text{AI} \approx 2B/b_w$, attention $\text{AI} \approx 2g/b_{kv}$. Memory-bound until $B$ reaches a few hundred, and attention stays memory-bound forever (except MLA). Time $\approx \text{bytes per step} / \text{BW}_\text{achieved}$.
 
 Put a request through both formulas and the asymmetry is stark: a token of prompt costs microseconds, a token of output costs milliseconds.
 
@@ -405,7 +411,7 @@ prefill 2048 tokens: 23.5 ms total, 11.5 us/token (compute-bound)
 decode  256 tokens: 674 ms total, 2.63 ms/token (memory-bound, B=1)
 ```
 
-Output tokens are ~230x more expensive in wall-clock time than prompt tokens at `B=1`, which is why API prices charge more for output and why every decode optimization is about raising `B` or cutting bytes. (This ignores TP communication and attention FLOPs, both added in later sections.)
+Output tokens are ~230x more expensive in wall-clock time than prompt tokens at $B=1$, which is why API prices charge more for output and why every decode optimization is about raising $B$ or cutting bytes. (This ignores TP communication and attention FLOPs, both added in later sections.)
 
 The two phases want different hardware, different parallelism and different batch sizes, which is the motivation for prefill/decode disaggregation, running the two phases on separate pools of GPUs and shipping the KV cache between them ([Splitwise, arXiv:2311.18677](https://arxiv.org/abs/2311.18677); [DistServe, arXiv:2401.09670](https://arxiv.org/abs/2401.09670); [Mooncake, arXiv:2407.00079](https://arxiv.org/abs/2407.00079)).
 
@@ -415,7 +421,7 @@ The two phases want different hardware, different parallelism and different batc
 
 The KV cache (introduced in the [overview](README.md#kv-caching)) stores every past token's keys and values so they need not be recomputed.
 
-Why it exists: attention at position `t` needs the keys and values of every position `0..t`. Without a cache, generating token `t` would recompute K and V for the whole prefix, which makes generation quadratic. With a cache, each step computes K and V only for the new token and appends them. The price is memory. The cache grows by one entry per token per layer, it lives in HBM next to the weights, and it is the thing that limits how many users a GPU can serve at once.
+Why it exists: attention at position $t$ needs the keys and values of every position $0..t$. Without a cache, generating token $t$ would recompute K and V for the whole prefix, which makes generation quadratic. With a cache, each step computes K and V only for the new token and appends them. The price is memory. The cache grows by one entry per token per layer, it lives in HBM next to the weights, and it is the thing that limits how many users a GPU can serve at once.
 
 ### Formulas
 
@@ -439,15 +445,29 @@ Output of `python kv_tensor.py`:
 measured 524,288,000 B   formula 524,288,000 B   per token 131,072 B
 ```
 
-```python
-# bytes per token, across all layers
-mha_gqa = 2 * L * n_kv * d * b_kv               # 2 = K and V; MHA: n_kv = n_q, MQA: n_kv = 1
-mla     = L * (kv_lora_rank + qk_rope_head_dim) * b_kv   # one latent, no separate K/V
-# bytes for a batch
-kv_bytes = per_token * sum(T_i for each sequence i)
-# sliding window W on a subset of layers (hybrid local/global)
-per_seq  = 2 * n_kv * d * b_kv * (L_global * T + L_local * min(T, W))
-```
+Bytes per token, across all layers (the 2 is K and V; MHA has $n_{kv} = n_q$, MQA has $n_{kv} = 1$):
+
+$$
+\text{bytes}_\text{MHA/GQA} = 2 \cdot L \cdot n_{kv} \cdot d \cdot b_{kv}
+$$
+
+MLA caches one latent per layer of width `kv_lora_rank` $= d_c$ plus `qk_rope_head_dim` $= d_R$, no separate K/V:
+
+$$
+\text{bytes}_\text{MLA} = L \cdot (d_c + d_R) \cdot b_{kv}
+$$
+
+Bytes for a batch:
+
+$$
+\text{KV bytes} = \text{bytes per token} \cdot \sum_i T_i
+$$
+
+Sliding window $W$ on a subset of layers (hybrid local/global), per sequence:
+
+$$
+\text{bytes per seq} = 2 \cdot n_{kv} \cdot d \cdot b_{kv} \cdot \left(L_\text{global} \cdot T + L_\text{local} \cdot \min(T, W)\right)
+$$
 
 What each variant caches per token:
 
@@ -455,7 +475,7 @@ What each variant caches per token:
 
 ([source](https://arxiv.org/abs/2405.04434))
 
-Under tensor parallelism `P`, GQA KV heads are split across GPUs, so per-GPU KV is `per_token / P` as long as `P <= n_kv`. If `P > n_kv` the KV heads are replicated and per-GPU KV stops shrinking. MLA's latent is shared by all heads, so under TP it is fully replicated on every GPU.
+Under tensor parallelism $P$, GQA KV heads are split across GPUs, so per-GPU KV is $\text{bytes per token} / P$ as long as $P \le n_{kv}$. If $P > n_{kv}$ the KV heads are replicated and per-GPU KV stops shrinking. MLA's latent is shared by all heads, so under TP it is fully replicated on every GPU.
 
 ### Real configs
 
@@ -480,20 +500,20 @@ Output of `python config_kv.py`:
 head_dim 128, KV 131,072 B/token = 128 KiB
 ```
 
-DeepSeek-V2's block, where only the compressed latent `c_KV` (plus the decoupled RoPE key) is cached:
+DeepSeek-V2's block, where only the compressed latent $c^{KV}$ (plus the decoupled RoPE key) is cached:
 
 ![DeepSeek-V2 architecture with MLA](images/deepseek-v2-mla-moe-architecture.png)
 
 ([source](https://arxiv.org/abs/2405.04434))
 
-| Model | L | n_q | n_kv | d | Attention | KV/token (BF16) |
+| Model | $L$ | $n_q$ | $n_{kv}$ | $d$ | Attention | KV/token (BF16) |
 | :---- | -: | --: | ---: | --: | :-- | --------------: |
-| Llama-3-8B | 32 | 32 | 8 | 128 | GQA g=4 | `2*32*8*128*2 = 131,072 B = 128 KiB` |
-| Llama-3-70B | 80 | 64 | 8 | 128 | GQA g=8 | `2*80*8*128*2 = 327,680 B = 320 KiB` |
-| Mixtral-8x7B | 32 | 32 | 8 | 128 | GQA g=4 | `128 KiB` (same attention as Llama-3-8B) |
-| DeepSeek-V3 | 61 | 128 | - | 576 latent | MLA | `61*576*2 = 70,272 B = 68.6 KiB` |
+| Llama-3-8B | 32 | 32 | 8 | 128 | GQA $g=4$ | $2 \cdot 32 \cdot 8 \cdot 128 \cdot 2 = 131{,}072\ \text{B} = 128\ \text{KiB}$ |
+| Llama-3-70B | 80 | 64 | 8 | 128 | GQA $g=8$ | $2 \cdot 80 \cdot 8 \cdot 128 \cdot 2 = 327{,}680\ \text{B} = 320\ \text{KiB}$ |
+| Mixtral-8x7B | 32 | 32 | 8 | 128 | GQA $g=4$ | 128 KiB (same attention as Llama-3-8B) |
+| DeepSeek-V3 | 61 | 128 | - | 576 latent | MLA | $61 \cdot 576 \cdot 2 = 70{,}272\ \text{B} = 68.6\ \text{KiB}$ |
 
-For comparison, Llama-3-70B as MHA would be `2*80*64*128*2 = 2,560 KiB/token` (8x more); as MQA `40 KiB/token`. DeepSeek-V3 with plain MHA over its 128 heads (K dim 192 = 128 nope + 64 rope, V dim 128) would be `61*128*(192+128)*2 = 4.77 MiB/token`, 71x the MLA figure. DeepSeek-V3 is a 671B-parameter model with a smaller per-token KV than Llama-3-8B.
+For comparison, Llama-3-70B as MHA would be $2 \cdot 80 \cdot 64 \cdot 128 \cdot 2 = 2{,}560\ \text{KiB/token}$ (8x more); as MQA 40 KiB/token. DeepSeek-V3 with plain MHA over its 128 heads (K dim 192 = 128 nope + 64 rope, V dim 128) would be $61 \cdot 128 \cdot (192+128) \cdot 2 = 4.77\ \text{MiB/token}$, 71x the MLA figure. DeepSeek-V3 is a 671B-parameter model with a smaller per-token KV than Llama-3-8B.
 
 Per sequence:
 
@@ -507,7 +527,7 @@ At 128k context, one Llama-3-70B sequence's KV cache (43 GB) is 30% of the model
 
 ### Sliding window
 
-[Mistral-7B-v0.1 (arXiv:2310.06825)](https://arxiv.org/abs/2310.06825) uses `sliding_window: 4096` on every layer, so its KV is capped at `128 KiB * 4096 = 512 MiB` per sequence regardless of context. Note that the [Mixtral-8x7B](https://arxiv.org/abs/2401.04088) `config.json` has `sliding_window: null` - it uses full attention - despite inheriting the Mistral architecture; numbers above treat it as full attention.
+[Mistral-7B-v0.1 (arXiv:2310.06825)](https://arxiv.org/abs/2310.06825) uses `sliding_window: 4096` on every layer, so its KV is capped at $128\ \text{KiB} \times 4096 = 512\ \text{MiB}$ per sequence regardless of context. Note that the [Mixtral-8x7B](https://arxiv.org/abs/2401.04088) `config.json` has `sliding_window: null` - it uses full attention - despite inheriting the Mistral architecture; numbers above treat it as full attention.
 
 ```python
 # mistral_window.py - a sliding window caps KV per sequence regardless of context length
@@ -527,17 +547,23 @@ T=131072: full    16384 MiB   window   512 MiB
 
 (The Gemma-3 numbers in the next paragraph are the `kv_hybrid` lines of `kvcalc.py` [below](#a-kv-cache-calculator).)
 
-Modern models mix local and global layers. Gemma-3-27B ([arXiv:2503.19786](https://arxiv.org/abs/2503.19786); config: 62 layers, 16 KV heads, `d=128`, `sliding_window=1024`, `sliding_window_pattern=6`, i.e. 5 local layers per global one) has 10 global and 52 local layers. Per sequence at BF16: `8 KiB * (10*T + 52*min(T,1024))` where `8 KiB = 2*16*128*2`. At 32k that is 3.12 GB vs 16.6 GB if all layers were global (5.3x); at 128k 11.2 GB vs 66.6 GB (6.0x). The ratio approaches `62/10 = 6.2` as `T -> ∞`. Sliding window shrinks KV memory *and* KV bandwidth per step by the same factor - it is one of the few changes that helps decode attention directly.
+Modern models mix local and global layers. Gemma-3-27B ([arXiv:2503.19786](https://arxiv.org/abs/2503.19786); config: 62 layers, 16 KV heads, $d=128$, `sliding_window=1024`, `sliding_window_pattern=6`, i.e. 5 local layers per global one) has 10 global and 52 local layers. Per sequence at BF16: $8\ \text{KiB} \cdot (10 T + 52 \min(T, 1024))$ where $8\ \text{KiB} = 2 \cdot 16 \cdot 128 \cdot 2$. At 32k that is 3.12 GB vs 16.6 GB if all layers were global (5.3x); at 128k 11.2 GB vs 66.6 GB (6.0x). The ratio approaches $62/10 = 6.2$ as $T \to \infty$. Sliding window shrinks KV memory *and* KV bandwidth per step by the same factor - it is one of the few changes that helps decode attention directly.
 
 ### Max concurrent sequences
 
-```
-kv_budget_per_gpu = HBM * util - weights / P - reserve
-max_tokens        = kv_budget_per_gpu / kv_bytes_per_token_per_gpu
-max_seqs          = max_tokens / T_avg
-```
+$$
+\text{KV budget per GPU} = \text{HBM} \cdot \text{util} - \frac{\text{weights}}{P} - \text{reserve}
+$$
 
-`util = 0.9` below mirrors the default `gpu_memory_utilization` of vLLM; the remaining 10% covers activations, CUDA graphs and communication buffers. Real engines allocate KV in fixed-size **pages** (blocks of e.g. 16 tokens, the same idea as OS virtual-memory pages), so expect a few percent of fragmentation on top - see [PagedAttention](serving-engine-internals.md).
+$$
+\text{max tokens} = \frac{\text{KV budget per GPU}}{\text{KV bytes per token per GPU}}
+$$
+
+$$
+\text{max seqs} = \frac{\text{max tokens}}{T_\text{avg}}
+$$
+
+$\text{util} = 0.9$ below mirrors the default `gpu_memory_utilization` of vLLM; the remaining 10% covers activations, CUDA graphs and communication buffers. Real engines allocate KV in fixed-size **pages** (blocks of e.g. 16 tokens, the same idea as OS virtual-memory pages), so expect a few percent of fragmentation on top - see [PagedAttention](serving-engine-internals.md).
 
 | Deployment | Weights/GPU | KV budget/GPU | KV/token/GPU | Max tokens | @4k | @32k | @128k |
 | :--------- | ----------: | ------------: | -----------: | ---------: | --: | ---: | ----: |
@@ -642,26 +668,41 @@ The DP8-attention row of the table is the TP8 row times 8, since each GPU stores
 
 In a memory-bound decode step every weight is read once from HBM (shared across the batch) and every sequence's KV cache is read once:
 
-```
-bytes_step = N * b_w + B * T * kv_bytes_per_token
-t_mem      = bytes_step / (P * HBM_BW)
-t_compute  = (2 * N * B + 4 * L * n_q * d * T * B) / (P * peak_FLOPS)
-t_step    >= max(t_mem, t_compute) + t_comm
-TPOT       = t_step            # per user: one token per sequence per step
-throughput = B / t_step        # tokens/s for the whole replica
-```
+$$
+\text{bytes}_\text{step} = N \cdot b_w + B \cdot T \cdot \text{KV bytes per token}
+$$
 
-`t_comm` is the tensor-parallel all-reduce cost, derived in the next section. `max(...)` assumes perfect overlap of memory and compute within a kernel, which is optimistic; `sum(...)` is a pessimistic alternative.
+$$
+t_\text{mem} = \frac{\text{bytes}_\text{step}}{P \cdot \text{BW}_\text{HBM}}
+$$
+
+$$
+t_\text{compute} = \frac{2 N B + 4 L n_q d T B}{P \cdot \text{FLOPS}_\text{peak}}
+$$
+
+$$
+t_\text{step} \ge \max(t_\text{mem}, t_\text{compute}) + t_\text{comm}
+$$
+
+$$
+\text{TPOT} = t_\text{step} \qquad \text{(per user: one token per sequence per step)}
+$$
+
+$$
+\text{throughput} = B / t_\text{step} \qquad \text{(tokens/s for the whole replica)}
+$$
+
+$t_\text{comm}$ is the tensor-parallel all-reduce cost, derived in the next section. $\max(\ldots)$ assumes perfect overlap of memory and compute within a kernel, which is optimistic; $\text{sum}(\ldots)$ is a pessimistic alternative.
 
 ### Worked example: Llama-3-70B on 8x H100 SXM, TP=8
 
 Assumptions, all stated:
 
-- H100 SXM spec: 3.35 TB/s, 989 BF16 / 1979 FP8 TFLOPS. Bound uses 100% of spec bandwidth; real kernels typically reach less, so scale `t_mem` by `1 / achieved_fraction` once you have measured it.
-- `T` is the KV length of every sequence in the batch at this step (steady state).
-- `t_comm = 160 * t_allreduce(B * 8192 * 2 bytes)`, with `t_allreduce` from the repo's [measured 8x H200 latencies](../network/benchmarks/README.md#latency): 20 µs at 16 KiB (`B=1`), 27.7 µs at 1 MiB (`B=64`), and ~53 µs at 4 MiB (`B=256`, linearly extrapolated from the 256 KiB-1 MiB slope, not measured). H200 and H100 use the same NVLink 4 / NVSwitch fabric, so the H200 measurement is used as a proxy.
-- Cost at **$2.00 per GPU-hour** (the rate DeepSeek used in its own cost statement, cited below). `$/1M = $2 * 8 / 3600 / throughput * 1e6`.
-- "fits" means `weights + KV <= 8 * 80 GB * 0.9 = 576 GB`.
+- H100 SXM spec: 3.35 TB/s, 989 BF16 / 1979 FP8 TFLOPS. Bound uses 100% of spec bandwidth; real kernels typically reach less, so scale $t_\text{mem}$ by $1 / \text{achieved fraction}$ once you have measured it.
+- $T$ is the KV length of every sequence in the batch at this step (steady state).
+- $t_\text{comm} = 160 \cdot t_\text{allreduce}(B \cdot 8192 \cdot 2\ \text{bytes})$, with $t_\text{allreduce}$ from the repo's [measured 8x H200 latencies](../network/benchmarks/README.md#latency): 20 µs at 16 KiB ($B=1$), 27.7 µs at 1 MiB ($B=64$), and ~53 µs at 4 MiB ($B=256$, linearly extrapolated from the 256 KiB-1 MiB slope, not measured). H200 and H100 use the same NVLink 4 / NVSwitch fabric, so the H200 measurement is used as a proxy.
+- Cost at **\$2.00 per GPU-hour** (the rate DeepSeek used in its own cost statement, cited below). $\$\text{/1M} = \$2 \cdot 8 / 3600 / \text{throughput} \cdot 10^6$.
+- "fits" means $\text{weights} + \text{KV} \le 8 \cdot 80\ \text{GB} \cdot 0.9 = 576\ \text{GB}$.
 
 The communication term and the cost formula as code, so you can swap in your own measured latencies and price:
 
@@ -680,7 +721,7 @@ B=256: t_comm = 160 x 52.9 us = 8.46 ms
 $/1M output tokens = 2.00 * 8 / 3600 / 4960 * 1e6 = 0.90
 ```
 
-| Weights / KV | ctx | B | KV GB | fits? | t_mem ms | t_compute ms | t_comm ms | step ms | tok/s/user | tok/s/node | tok/s/GPU | $/1M out |
+| Weights / KV | ctx | B | KV GB | fits? | t_mem ms | t_compute ms | t_comm ms | step ms | tok/s/user | tok/s/node | tok/s/GPU | \$/1M out |
 | :----------- | --: | --: | ----: | :---: | -------: | -----------: | --------: | ------: | ---------: | ---------: | --------: | -------: |
 | BF16 / BF16 | 4k | 1 | 1.3 | yes | 5.32 | 0.02 | 3.20 | 8.52 | 117 | 117 | 15 | 37.84 |
 | BF16 / BF16 | 4k | 64 | 85.9 | yes | 8.47 | 1.23 | 4.43 | 12.90 | 78 | 4960 | 620 | 0.90 |
@@ -705,17 +746,17 @@ Rows marked **no** don't fit on one node; they show what the bound would be if t
 
 What to read off it:
 
-1. **At `B=1` the bound is set by weights and communication, not context.** `141.1 GB / 8 / 3.35 TB/s = 5.26 ms` of weight reads, plus 3.2 ms of all-reduce latency. Communication is 38% of the BF16 step and 54% of the FP8 step. FP8 weights halve `t_mem` but leave `t_comm` alone, so the end-to-end gain is only `8.52 / 5.88 = 1.45x`, not 2x.
-2. **Batching is nearly free until KV dominates.** From `B=1` to `B=64` at 4k, throughput rises 42x (117 -> 4960 tok/s) while per-user speed drops only 34% (117 -> 78 tok/s). Cost per token drops from $37.84 to $0.90 per 1M.
-3. **KV reads overtake weight reads at `B*T = N*b_w / kv_bytes_per_token`**: `141.1e9 / 327,680 = 430k` tokens for BF16, i.e. `B ≈ 105` sequences at 4k. Past that point, the "memory-bound on weights" mental model is wrong; you are memory-bound on KV, and FP8 KV (row group 3) helps more than FP8 weights. At `B=256, 4k`, FP8 KV takes the step from 23.9 to 17.5 ms.
-4. **Long context kills batching.** At 32k, even the FP8/FP8 configuration tops out around `B=64` (`70.5 + 343.6 = 414 GB` of the 576 GB budget) and delivers 402 tok/s/GPU vs 1828 at 4k with `B=256`. Cost per token at 32k is 4.6x the 4k cost.
-5. **Compute is never the bottleneck in this table.** The largest `t_compute` is 7.3 ms against a 116 ms step. Even `B=256` at 32k is memory-bound, because attention AI is 8 regardless of batch.
+1. **At $B=1$ the bound is set by weights and communication, not context.** $141.1\ \text{GB} / 8 / 3.35\ \text{TB/s} = 5.26\ \text{ms}$ of weight reads, plus 3.2 ms of all-reduce latency. Communication is 38% of the BF16 step and 54% of the FP8 step. FP8 weights halve $t_\text{mem}$ but leave $t_\text{comm}$ alone, so the end-to-end gain is only $8.52 / 5.88 = 1.45\times$, not 2x.
+2. **Batching is nearly free until KV dominates.** From $B=1$ to $B=64$ at 4k, throughput rises 42x (117 -> 4960 tok/s) while per-user speed drops only 34% (117 -> 78 tok/s). Cost per token drops from \$37.84 to \$0.90 per 1M.
+3. **KV reads overtake weight reads at $B T = N b_w / \text{KV bytes per token}$**: $141.1 \times 10^9 / 327{,}680 = 430\text{k}$ tokens for BF16, i.e. $B \approx 105$ sequences at 4k. Past that point, the "memory-bound on weights" mental model is wrong; you are memory-bound on KV, and FP8 KV (row group 3) helps more than FP8 weights. At $B=256$, 4k, FP8 KV takes the step from 23.9 to 17.5 ms.
+4. **Long context kills batching.** At 32k, even the FP8/FP8 configuration tops out around $B=64$ ($70.5 + 343.6 = 414\ \text{GB}$ of the 576 GB budget) and delivers 402 tok/s/GPU vs 1828 at 4k with $B=256$. Cost per token at 32k is 4.6x the 4k cost.
+5. **Compute is never the bottleneck in this table.** The largest $t_\text{compute}$ is 7.3 ms against a 116 ms step. Even $B=256$ at 32k is memory-bound, because attention AI is 8 regardless of batch.
 
 All of these are lower bounds on latency and upper bounds on throughput. They exclude: kernel-launch gaps (largely removed by CUDA graphs - a recorded sequence of kernels replayed with one launch), sampling, scheduler overhead in Python, the HBM efficiency gap, and prefill interference. Measure against them; don't quote them as achieved numbers.
 
 ### The decode-latency estimator
 
-The whole table above comes from this script. It is a plain function of `(B, T, weight bytes, KV bytes)`. Change the constants at the top for another model, GPU or TP degree. To model a real deployment, divide `BW` by your measured achieved fraction (next subsection) and replace `ALLREDUCE_US` with your own `nccl-tests` numbers:
+The whole table above comes from this script. It is a plain function of $(B, T, \text{weight bytes}, \text{KV bytes})$. Change the constants at the top for another model, GPU or TP degree. To model a real deployment, divide `BW` by your measured achieved fraction (next subsection) and replace `ALLREDUCE_US` with your own `nccl-tests` numbers:
 
 ```python
 # decode_bound.py - roofline lower bound on one decode step, Llama-3-70B on 8x H100 TP=8
@@ -777,11 +818,11 @@ FP8 /FP8   32k  256  1374.4 NO    53.92  3.67   8.46  62.38       16        4104
 KV bytes = weight bytes at B*T = 430,603 tokens (BF16/BF16)
 ```
 
-(The `B=256` all-reduce latency is extrapolated, not measured, as noted above.)
+(The $B=256$ all-reduce latency is extrapolated, not measured, as noted above.)
 
 ### Checking a bound against a real machine
 
-A bound is only useful if you know how close real code gets to it. The script below first measures this laptop's achievable memory bandwidth with a large copy. It then times a transformer-shaped stack of weight matrices (24 layers, 403M parameters, attention left out, so the only "KV" is zero) and compares each step with `weight_bytes / measured_bandwidth`:
+A bound is only useful if you know how close real code gets to it. The script below first measures this laptop's achievable memory bandwidth with a large copy. It then times a transformer-shaped stack of weight matrices (24 layers, 403M parameters, attention left out, so the only "KV" is zero) and compares each step with $\text{weight bytes} / \text{measured bandwidth}$:
 
 ```python
 # measure_decode.py - compare a real decode step on this machine to the bandwidth bound
@@ -841,33 +882,38 @@ B= 128  step  31.57 ms  ( 30% of bandwidth bound)      4055 tok/s
 B= 512  step 122.30 ms  (  8% of bandwidth bound)      4187 tok/s
 ```
 
-At `B=1` the real step is within ~5% of the bandwidth bound: decode really is "read the weights once". As `B` grows the step stays nearly flat while throughput climbs 7x by `B=8`, until the laptop's small compute roof takes over (by `B=128` it is compute-bound, the same crossover seen in `measure_roofline.py`). On an H100 the plateau extends to a few hundred, but the shape is identical. Do the same on the real target: if your measured `B=1` step is 2x the bound, the gap is overhead (launches, Python, small kernels), not hardware.
+At $B=1$ the real step is within ~5% of the bandwidth bound: decode really is "read the weights once". As $B$ grows the step stays nearly flat while throughput climbs 7x by $B=8$, until the laptop's small compute roof takes over (by $B=128$ it is compute-bound, the same crossover seen in `measure_roofline.py`). On an H100 the plateau extends to a few hundred, but the shape is identical. Do the same on the real target: if your measured $B=1$ step is 2x the bound, the gap is overhead (launches, Python, small kernels), not hardware.
 
 
 
 ## Tensor-parallel communication in decode
 
-**Tensor parallelism** (TP) splits every weight matrix across `P` GPUs so each GPU reads `1/P` of the weights per step. In the Megatron layout each transformer layer has two points where the partial outputs on the `P` GPUs must be summed: after the attention output projection and after the MLP down projection. That sum is an **all-reduce** - a collective operation in which every GPU contributes a tensor and every GPU receives the elementwise sum. A **collective** is any communication operation that all participating GPUs call together; on NVIDIA hardware they are implemented by **NCCL** (NVIDIA's collective communication library). Inside an 8-GPU node the traffic travels over **NVLink** (NVIDIA's direct GPU-to-GPU link, 450 GB/s per direction per GPU on H100/H200, 900 GB/s on B200 - see the [network chapter](../network/README.md#intra-node-networking)) through an **NVSwitch** (a switch chip that gives every GPU full NVLink bandwidth to every other GPU).
+**Tensor parallelism** (TP) splits every weight matrix across $P$ GPUs so each GPU reads $1/P$ of the weights per step. In the Megatron layout each transformer layer has two points where the partial outputs on the $P$ GPUs must be summed: after the attention output projection and after the MLP down projection. That sum is an **all-reduce** - a collective operation in which every GPU contributes a tensor and every GPU receives the elementwise sum. A **collective** is any communication operation that all participating GPUs call together; on NVIDIA hardware they are implemented by **NCCL** (NVIDIA's collective communication library). Inside an 8-GPU node the traffic travels over **NVLink** (NVIDIA's direct GPU-to-GPU link, 450 GB/s per direction per GPU on H100/H200, 900 GB/s on B200 - see the [network chapter](../network/README.md#intra-node-networking)) through an **NVSwitch** (a switch chip that gives every GPU full NVLink bandwidth to every other GPU).
 
-Per decode step:
+Per decode step, there are $n_\text{allreduce} = 2L$ all-reduces (160 for Llama-3-70B), each of a $(B, h)$ activation tensor ($16\ \text{KiB}$ at $B=1$, $1\ \text{MiB}$ at $B=64$, BF16, $h=8192$):
 
-```
-n_allreduce = 2 * L                     # 160 for Llama-3-70B
-msg_bytes   = B * h * b_a               # (B, h) activations; 16 KiB at B=1, 1 MiB at B=64 (BF16, h=8192)
-t_comm      = n_allreduce * t_allreduce(msg_bytes)
-t_allreduce(m) ≈ alpha + m * 2*(P-1)/P / busbw
-```
+$$
+m = B \cdot h \cdot b_a
+$$
 
-`alpha` is the fixed per-call latency; `busbw` is the bus bandwidth NCCL reports (defined and derived in [algbw vs busbw](../network/collectives-internals.md#algbw-vs-busbw); the alpha-beta model itself is [the alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). For decode-sized messages `alpha` dominates completely: the repo measures an 8-byte all-reduce on 8x H200 at 15.2 µs, and everything up to 256 KiB at 15-22 µs ([source](../network/benchmarks/README.md#latency)). Pure bandwidth time for 16 KiB at 450 GB/s is `16384 * 1.75 / 450e9 = 0.06 µs` - the link is idle 99.7% of the call. A faster link does nothing for decode TP; fewer or cheaper calls do.
+$$
+t_\text{comm} = n_\text{allreduce} \cdot t_\text{allreduce}(m)
+$$
+
+$$
+t_\text{allreduce}(m) \approx \alpha + \frac{m \cdot 2(P-1)/P}{\text{busbw}}
+$$
+
+$\alpha$ is the fixed per-call latency; $\text{busbw}$ is the bus bandwidth NCCL reports (defined and derived in [algbw vs busbw](../network/collectives-internals.md#algbw-vs-busbw); the alpha-beta model itself is [the alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). For decode-sized messages $\alpha$ dominates completely: the repo measures an 8-byte all-reduce on 8x H200 at 15.2 µs, and everything up to 256 KiB at 15-22 µs ([source](../network/benchmarks/README.md#latency)). Pure bandwidth time for 16 KiB at 450 GB/s is $16384 \cdot 1.75 / (450 \times 10^9) = 0.06\ \mu\text{s}$ - the link is idle 99.7% of the call. A faster link does nothing for decode TP; fewer or cheaper calls do.
 
 Consequences:
 
-- **The 160-call floor.** `160 * 15 µs = 2.4 ms` per token is a floor for Llama-3-70B on TP=8 regardless of model precision or GPU generation. At FP8 weights the floor is comparable to the entire HBM time (2.63 ms). On B200 (8 TB/s) FP8 weight reads would take `70.5e9 / 8 / 8e12 = 1.10 ms`, and the repo's measured 23.5 µs small all-reduce on 8x B200 would make communication `160 * 23.5 = 3.8 ms`, more than three times the HBM time. Faster HBM makes TP communication relatively worse.
-- **The diminishing returns of larger P.** Raising `P` divides `t_mem` by `P` but leaves `t_comm` (per call) roughly constant or growing. Llama-3-70B FP8 at `B=1`: TP4 gives `70.5e9/4/3.35e12 + 160*alpha = 5.26 + 2.4..3.2 ms`, TP8 gives `2.63 + 2.4..3.2 ms`. Doubling GPUs buys ~30% latency. Past the node boundary the all-reduce latency roughly quadruples (82 µs on 4x B200 nodes vs 23 µs intra-node, from the same repo measurement), so cross-node TP for decode is almost always wrong.
+- **The 160-call floor.** $160 \cdot 15\ \mu\text{s} = 2.4\ \text{ms}$ per token is a floor for Llama-3-70B on TP=8 regardless of model precision or GPU generation. At FP8 weights the floor is comparable to the entire HBM time (2.63 ms). On B200 (8 TB/s) FP8 weight reads would take $70.5 \times 10^9 / 8 / (8 \times 10^{12}) = 1.10\ \text{ms}$, and the repo's measured 23.5 µs small all-reduce on 8x B200 would make communication $160 \cdot 23.5\ \mu\text{s} = 3.8\ \text{ms}$, more than three times the HBM time. Faster HBM makes TP communication relatively worse.
+- **The diminishing returns of larger P.** Raising $P$ divides $t_\text{mem}$ by $P$ but leaves $t_\text{comm}$ (per call) roughly constant or growing. Llama-3-70B FP8 at $B=1$: TP4 gives $70.5 \times 10^9/4/(3.35 \times 10^{12}) + 160\alpha = 5.26 + (2.4 \ldots 3.2)\ \text{ms}$, TP8 gives $2.63 + (2.4 \ldots 3.2)\ \text{ms}$. Doubling GPUs buys ~30% latency. Past the node boundary the all-reduce latency roughly quadruples (82 µs on 4x B200 nodes vs 23 µs intra-node, from the same repo measurement), so cross-node TP for decode is almost always wrong.
 - **Mitigations**, in order of how often they matter: symmetric-memory / one-shot all-reduce kernels, which the repo measures at roughly half the latency for small messages (8.1 µs vs 15.2 µs at 8 B on H200); fusing the all-reduce with the following RMSNorm and residual add; overlapping the all-reduce of one micro-batch with compute of another (splitting the batch in two, as DeepSeek does for MoE below); or using fewer TP ranks with data parallelism across replicas.
-- **The host matters.** If the CPU issues each all-reduce through PyTorch without CUDA graphs, add ~20-30 µs of host overhead per call (repo measurement), which would double `t_comm`. Decode servers therefore capture the whole decode step into a CUDA graph.
+- **The host matters.** If the CPU issues each all-reduce through PyTorch without CUDA graphs, add ~20-30 µs of host overhead per call (repo measurement), which would double $t_\text{comm}$. Decode servers therefore capture the whole decode step into a CUDA graph.
 
-The **alpha-beta model** used here is the standard first-order model of any message: `time = alpha + bytes / bandwidth`, where `alpha` is the fixed cost of starting a message (kernel launch, synchronization between GPUs, protocol handshakes) and the second term is the time the bytes spend on the wire. Small messages live entirely in `alpha`. The script below shows why decode TP is a latency problem and prefill TP a bandwidth problem:
+The **alpha-beta model** used here is the standard first-order model of any message: $\text{time} = \alpha + \text{bytes} / \text{bandwidth}$, where $\alpha$ is the fixed cost of starting a message (kernel launch, synchronization between GPUs, protocol handshakes) and the second term is the time the bytes spend on the wire. Small messages live entirely in $\alpha$. The script below shows why decode TP is a latency problem and prefill TP a bandwidth problem:
 
 ```python
 # tp_comm.py - alpha-beta model of decode and prefill all-reduce under tensor parallelism
@@ -909,22 +955,21 @@ prefill comm/compute at busbw 480 GB/s: 0.86
 
 ### Prefill is the opposite regime
 
-In prefill, `msg_bytes = T_prompt * h * 2` is large (32 MiB for a 2048-token chunk of Llama-3-70B), so `t_comm` is bandwidth-bound. Its ratio to compute is independent of `T`:
+In prefill, $m = T_\text{prompt} \cdot h \cdot 2$ is large (32 MiB for a 2048-token chunk of Llama-3-70B), so $t_\text{comm}$ is bandwidth-bound. Its ratio to compute is independent of $T$ (with $b_a = 2$):
 
-```
-t_comm / t_compute = [2 * T*h*b_a * 2(P-1)/P / busbw] / [2 * N_layer * T / (P * F)]
-                   = h * b_a * (2(P-1)/P) * P * F / (busbw * N_layer)      # with b_a = 2
-```
+$$
+\frac{t_\text{comm}}{t_\text{compute}} = \frac{2 \cdot T h b_a \cdot 2(P-1)/P \,/\, \text{busbw}}{2 \cdot N_\text{layer} \cdot T / (P \cdot F)} = \frac{h \cdot b_a \cdot \frac{2(P-1)}{P} \cdot P \cdot F}{\text{busbw} \cdot N_\text{layer}}
+$$
 
-For Llama-3-70B (`N_layer = 855.6M`), `P=8`, `F = 1535` TFLOPS (H100 FP8 MAMF): the ratio is 1.71 at `busbw = 240 GB/s`, 1.14 at 360 GB/s, 0.86 at 480 GB/s. The `busbw` values are **assumptions** (the repo reports 32 MiB as roughly the half-peak point on 8x H200, and NVLS (NVLink SHARP: the NVSwitch chips perform the reduction themselves, so the data crosses each link fewer times) all-reduce peaking near 480 GB/s on NVLink 4); measure yours. Either way, TP=8 FP8 prefill on H100 spends about as long communicating as computing unless the all-reduce is overlapped with compute. The ratio scales with `F / busbw`, so it gets *worse* as tensor cores get faster relative to NVLink.
+For Llama-3-70B ($N_\text{layer} = 855.6\text{M}$), $P=8$, $F = 1535$ TFLOPS (H100 FP8 MAMF): the ratio is 1.71 at $\text{busbw} = 240\ \text{GB/s}$, 1.14 at 360 GB/s, 0.86 at 480 GB/s. The $\text{busbw}$ values are **assumptions** (the repo reports 32 MiB as roughly the half-peak point on 8x H200, and NVLS (NVLink SHARP: the NVSwitch chips perform the reduction themselves, so the data crosses each link fewer times) all-reduce peaking near 480 GB/s on NVLink 4); measure yours. Either way, TP=8 FP8 prefill on H100 spends about as long communicating as computing unless the all-reduce is overlapped with compute. The ratio scales with $F / \text{busbw}$, so it gets *worse* as tensor cores get faster relative to NVLink.
 
 
 
 ## MoE inference arithmetic
 
-A mixture-of-experts layer replaces the dense MLP with `E` expert MLPs and a router that sends each token to `k` of them. Per token, FLOPs scale with active parameters; per step, bytes scale with the number of *distinct* experts the batch touches.
+A mixture-of-experts layer replaces the dense MLP with $E$ expert MLPs and a router that sends each token to $k$ of them. Per token, FLOPs scale with active parameters; per step, bytes scale with the number of *distinct* experts the batch touches.
 
-The **router** is a small linear layer that scores every expert for every token. The token goes to the top-`k` scorers and their outputs are summed, weighted by the scores. For inference arithmetic, the important fact is that different tokens in the same batch go to different experts. So "how many weights does this step read" depends on how the batch's tokens happen to spread across experts, which is the question the next subsection answers.
+The **router** is a small linear layer that scores every expert for every token. The token goes to the top-$k$ scorers and their outputs are summed, weighted by the scores. For inference arithmetic, the important fact is that different tokens in the same batch go to different experts. So "how many weights does this step read" depends on how the batch's tokens happen to spread across experts, which is the question the next subsection answers.
 
 ### Active vs total parameters
 
@@ -932,8 +977,8 @@ Recomputed from the configs:
 
 | Model | Total | Active/token | Expert size | Experts/layer | top-k |
 | :---- | ----: | -----------: | ----------: | ------------: | ----: |
-| Mixtral-8x7B | 46.70B | 12.88B | 176.2M (`3*4096*14336`) | 8 | 2 |
-| DeepSeek-V3 | 671.0B | 37.6B | 44.0M (`3*7168*2048`) | 256 routed + 1 shared | 8 |
+| Mixtral-8x7B | 46.70B | 12.88B | 176.2M ($3 \cdot 4096 \cdot 14336$) | 8 | 2 |
+| DeepSeek-V3 | 671.0B | 37.6B | 44.0M ($3 \cdot 7168 \cdot 2048$) | 256 routed + 1 shared | 8 |
 
 DeepSeek-V3: 3 dense layers, 58 MoE layers; routed experts are 653.9B of the 671B. The remaining 17.1B (MLA, shared experts, dense layers, embeddings) is what every token always touches.
 
@@ -970,11 +1015,11 @@ DeepSeek-V3   total 671.03B  active/token 37.55B  (5.6%)
 
 ### Distinct experts touched per step
 
-If `B` tokens each choose `k` of `E` experts uniformly at random, the expected number of distinct experts per layer is
+If $B$ tokens each choose $k$ of $E$ experts uniformly at random, the expected number of distinct experts per layer is
 
-```
-E_touched(B) = E * (1 - (1 - k/E)^B)
-```
+$$
+E_\text{touched}(B) = E \cdot \left(1 - \left(1 - \frac{k}{E}\right)^B\right)
+$$
 
 | B | Mixtral (8, top-2) | DeepSeek-V3 (256, top-8) |
 | --: | --: | --: |
@@ -986,42 +1031,57 @@ E_touched(B) = E * (1 - (1 - k/E)^B)
 | 128 | 8.0 | 252 |
 | 512 | 8.0 | 256 |
 
-Real routing is not uniform, which pushes these numbers down somewhat; treat them as an upper estimate. The table, the bytes per step below and the load-imbalance numbers further down all come from `moe.py` at the end of the [load imbalance](#load-imbalance) subsection, which checks the closed form against a Monte Carlo simulation of top-`k` routing.
+Real routing is not uniform, which pushes these numbers down somewhat; treat them as an upper estimate. The table, the bytes per step below and the load-imbalance numbers further down all come from `moe.py` at the end of the [load imbalance](#load-imbalance) subsection, which checks the closed form against a Monte Carlo simulation of top-$k$ routing.
 
-Mixtral bytes per step in BF16: 25.8 GB at `B=1` (like a 13B dense model), 64.9 GB at `B=4`, 92.5 GB at `B=16`, 93.4 GB at `B=64`. DeepSeek-V3 weight bytes per step in FP8: 37 GB at `B=1`, 164 GB at `B=8`, 434 GB at `B=32`, 660 GB at `B=128`.
+Mixtral bytes per step in BF16: 25.8 GB at $B=1$ (like a 13B dense model), 64.9 GB at $B=4$, 92.5 GB at $B=16$, 93.4 GB at $B=64$. DeepSeek-V3 weight bytes per step in FP8: 37 GB at $B=1$, 164 GB at $B=8$, 434 GB at $B=32$, 660 GB at $B=128$.
 
 So MoE decode is memory-bound *differently* from dense:
 
-- At `B=1` it is as fast as a dense model of `N_act` parameters. This is the latency win.
-- Bytes per step grow with `B` until every expert is touched (`B ≈ 16` for Mixtral, `B ≈ 128-256` for DeepSeek-V3); in that region adding a sequence costs bandwidth, unlike dense, where weights are read once regardless.
-- After saturation, you read all `N` parameters per step but each expert only sees `B * k / E` tokens. Expert-GEMM AI is `2 * (B*k/E) / b_w`, i.e. the dense formula with `B` replaced by tokens per expert.
+- At $B=1$ it is as fast as a dense model of $N_\text{act}$ parameters. This is the latency win.
+- Bytes per step grow with $B$ until every expert is touched ($B \approx 16$ for Mixtral, $B \approx 128\text{-}256$ for DeepSeek-V3); in that region adding a sequence costs bandwidth, unlike dense, where weights are read once regardless.
+- After saturation, you read all $N$ parameters per step but each expert only sees $B k / E$ tokens. Expert-GEMM AI is $2 (B k/E) / b_w$, i.e. the dense formula with $B$ replaced by tokens per expert.
 
 ### Batch needed for expert GEMMs to be compute-bound
 
 Set tokens per expert equal to the crossover batch from the [roofline section](#linear-layers):
 
-```
-B_global* = B* * E / k
-```
+$$
+B_\text{global}^* = B^* \cdot \frac{E}{k}
+$$
 
-On H100 (`B* = 295` for both BF16 and W8A8 FP8): Mixtral needs `295 * 8/2 = 1,180` tokens per step; DeepSeek-V3 needs `295 * 256/8 = 9,440`. An MoE with sparsity `E/k` needs `E/k` times the batch of a dense model to reach the same arithmetic intensity on its experts: 4x for Mixtral, 32x for DeepSeek-V3.
+On H100 ($B^* = 295$ for both BF16 and W8A8 FP8): Mixtral needs $295 \cdot 8/2 = 1{,}180$ tokens per step; DeepSeek-V3 needs $295 \cdot 256/8 = 9{,}440$. An MoE with sparsity $E/k$ needs $E/k$ times the batch of a dense model to reach the same arithmetic intensity on its experts: 4x for Mixtral, 32x for DeepSeek-V3.
 
-9,440 tokens per step does not fit on one node's KV budget at realistic contexts, and that is the arithmetic case for **expert parallelism** (EP): put different experts on different GPUs across many nodes, so the aggregate batch (and aggregate KV memory) grows with the number of GPUs while each GPU reads only its own few experts. Each token's hidden state is sent to the GPUs holding its `k` experts (**dispatch**) and the results are sent back and summed (**combine**); both are **all-to-all** collectives, in which every GPU sends a different chunk to every other GPU.
+9,440 tokens per step does not fit on one node's KV budget at realistic contexts, and that is the arithmetic case for **expert parallelism** (EP): put different experts on different GPUs across many nodes, so the aggregate batch (and aggregate KV memory) grows with the number of GPUs while each GPU reads only its own few experts. Each token's hidden state is sent to the GPUs holding its $k$ experts (**dispatch**) and the results are sent back and summed (**combine**); both are **all-to-all** collectives, in which every GPU sends a different chunk to every other GPU.
 
 ### Cross-check against DeepSeek's published production numbers
 
-DeepSeek's [inference system overview](https://github.com/deepseek-ai/open-infra-index/blob/main/202502OpenSourceWeek/day_6_one_more_thing_deepseekV3R1_inference_system_overview.md) (Feb 2025) states: decode runs with routed experts at EP144 over 18 nodes of H800, MLA and shared expert data-parallel (DP144), 2 routed experts plus 1 shared per GPU, 32 redundant experts (`256 + 32 = 288 = 144 * 2`); average output 20-22 tok/s per user; ~14.8k output tok/s per node in decode; average KV length 4,989 tokens; $2/GPU-hour assumed.
+DeepSeek's [inference system overview](https://github.com/deepseek-ai/open-infra-index/blob/main/202502OpenSourceWeek/day_6_one_more_thing_deepseekV3R1_inference_system_overview.md) (Feb 2025) states: decode runs with routed experts at EP144 over 18 nodes of H800, MLA and shared expert data-parallel (DP144), 2 routed experts plus 1 shared per GPU, 32 redundant experts ($256 + 32 = 288 = 144 \cdot 2$); average output 20-22 tok/s per user; ~14.8k output tok/s per node in decode; average KV length 4,989 tokens; \$2/GPU-hour assumed.
 
 Back-of-envelope from those numbers (my derivation, not DeepSeek's):
 
-```
-tok/s/GPU         = 14,800 / 8 = 1,850
-seqs/GPU          ≈ 1,850 / 21 ≈ 88                (throughput / per-user speed)
-global seqs       ≈ 88 * 144 ≈ 12,700
-tokens/expert/step≈ 12,700 * 8 / 256 ≈ 396         (> 295 crossover: expert GEMMs compute-bound)
-latent KV/GPU     ≈ 88 * 4,989 * 70,272 B ≈ 30.9 GB
-expert weights/GPU= 2 * 44.0M * 58 layers * 1 B ≈ 5.1 GB
-```
+$$
+\text{tok/s/GPU} = 14{,}800 / 8 = 1{,}850
+$$
+
+$$
+\text{seqs/GPU} \approx 1{,}850 / 21 \approx 88 \qquad \text{(throughput / per-user speed)}
+$$
+
+$$
+\text{global seqs} \approx 88 \cdot 144 \approx 12{,}700
+$$
+
+$$
+\text{tokens/expert/step} \approx 12{,}700 \cdot 8 / 256 \approx 396 \qquad (> 295\ \text{crossover: expert GEMMs compute-bound})
+$$
+
+$$
+\text{latent KV/GPU} \approx 88 \cdot 4{,}989 \cdot 70{,}272\ \text{B} \approx 30.9\ \text{GB}
+$$
+
+$$
+\text{expert weights/GPU} = 2 \cdot 44.0\text{M} \cdot 58\ \text{layers} \cdot 1\ \text{B} \approx 5.1\ \text{GB}
+$$
 
 The same derivation as a script, including the EP traffic estimate used in the next-but-one subsection:
 
@@ -1057,13 +1117,13 @@ That is self-consistent: ~396 tokens per expert per step puts the FP8 expert GEM
 
 ### Load imbalance
 
-The step time of an EP layer is set by the most-loaded GPU. Even with perfectly uniform routing, multinomial noise gives `max/mean` load of (simulated, 20-500 trials each):
+The step time of an EP layer is set by the most-loaded GPU. Even with perfectly uniform routing, multinomial noise gives $\max/\text{mean}$ load of (simulated, 20-500 trials each):
 
 - 256 experts on 128 ranks of 2, 12,672 tokens: 1.09
 - 256 experts, one per rank, 1,024 tokens: 1.52
 - Mixtral EP8, 64 tokens: 1.32-1.34 (depending on the random seed)
 
-i.e. the imbalance factor is roughly `1 + sqrt(2 ln(ranks) / tokens_per_rank)` - small batches per rank are expensive. Real routers are skewed toward hot experts, which is worse; DeepSeek's answer is redundant replicas of hot experts placed by a load balancer (EPLB). Independently, [Towards MoE Deployment (arXiv:2303.06182)](https://arxiv.org/abs/2303.06182) measures skewed expert popularity at inference and proposes expert buffering and load balancing.
+i.e. the imbalance factor is roughly $1 + \sqrt{2 \ln(\text{ranks}) / \text{tokens per rank}}$ - small batches per rank are expensive. Real routers are skewed toward hot experts, which is worse; DeepSeek's answer is redundant replicas of hot experts placed by a load balancer (EPLB). Independently, [Towards MoE Deployment (arXiv:2303.06182)](https://arxiv.org/abs/2303.06182) measures skewed expert popularity at inference and proposes expert buffering and load balancing.
 
 Why the maximum matters: an all-to-all step is a barrier. Every GPU waits for the slowest one before the next layer can start, so a 1.5x hot spot makes the whole layer 1.5x slower, even though the average GPU is idle a third of the time. The script that produced every number in this MoE section:
 
@@ -1140,7 +1200,7 @@ rule of thumb 1+sqrt(2 ln R / tokens_per_rank) for EP128: 1.11
 
 ### EP communication volume
 
-These numbers are the last line of `deepseek_check.py` above. Per token per MoE layer, DeepSeek-V3 dispatches `k * h` FP8 values and combines `k * h` BF16 values: `8 * 7168 * (1 + 2) = 172 KB`, i.e. 10.0 MB per token per step over 58 layers. At 88 sequences/GPU that is 0.88 GB per GPU per step; over a 400 Gb/s (50 GB/s) InfiniBand NIC - the inter-node network, which uses **RDMA** (remote direct memory access: one GPU's NIC writes straight into another machine's GPU memory without involving either CPU) - that is ~17.6 ms per step if not overlapped. This is the same order as the step itself, which is why DeepSeek splits each batch into two micro-batches and runs one's all-to-all during the other's compute. If you cannot overlap, EP across nodes pays off only when the bandwidth saved by reading fewer experts per GPU exceeds this communication time.
+These numbers are the last line of `deepseek_check.py` above. Per token per MoE layer, DeepSeek-V3 dispatches $k \cdot h$ FP8 values and combines $k \cdot h$ BF16 values: $8 \cdot 7168 \cdot (1 + 2) = 172\ \text{KB}$, i.e. 10.0 MB per token per step over 58 layers. At 88 sequences/GPU that is 0.88 GB per GPU per step; over a 400 Gb/s (50 GB/s) InfiniBand NIC - the inter-node network, which uses **RDMA** (remote direct memory access: one GPU's NIC writes straight into another machine's GPU memory without involving either CPU) - that is ~17.6 ms per step if not overlapped. This is the same order as the step itself, which is why DeepSeek splits each batch into two micro-batches and runs one's all-to-all during the other's compute. If you cannot overlap, EP across nodes pays off only when the bandwidth saved by reading fewer experts per GPU exceeds this communication time.
 
 ```python
 # ep_volume.py - DeepSeek-V3 all-to-all bytes per decode step per GPU
@@ -1165,14 +1225,21 @@ Every scheme below is judged by three questions: how many bytes per weight (and 
 
 **Quantization** stores a tensor in fewer bits by mapping each real value to one of a small set of levels and keeping enough metadata to map back. For integer formats the mapping is affine:
 
-```
-q     = clamp(round(x / s) + z, q_min, q_max)     # store q (int8: -127..127, uint4: 0..15)
-x_hat = (q - z) * s                               # dequantize
-```
+Store $q$ (int8: $-127..127$, uint4: $0..15$):
 
-- The **scale** `s` sets the step between adjacent levels. Choosing it from the largest magnitude, `s = amax / q_max`, guarantees nothing clips. But one huge value then makes the steps coarse for everything else.
-- The **zero point** `z` shifts the grid so an asymmetric range like `[-0.01, 0.05]` uses all levels. **Symmetric** quantization fixes `z = 0`.
-- **Granularity** is how many values share one `(s, z)`. One pair for the whole tensor is *per-tensor*. One per output channel (row or column) is *per-channel*, and one per `G` consecutive values is *per-group* or *block-wise*. Finer granularity means smaller error and more metadata bytes.
+$$
+q = \operatorname{clamp}\left(\operatorname{round}(x / s) + z,\ q_\text{min},\ q_\text{max}\right)
+$$
+
+Dequantize:
+
+$$
+\hat{x} = (q - z) \cdot s
+$$
+
+- The **scale** $s$ sets the step between adjacent levels. Choosing it from the largest magnitude, $s = \text{amax} / q_\text{max}$, guarantees nothing clips. But one huge value then makes the steps coarse for everything else.
+- The **zero point** $z$ shifts the grid so an asymmetric range like $[-0.01, 0.05]$ uses all levels. **Symmetric** quantization fixes $z = 0$.
+- **Granularity** is how many values share one $(s, z)$. One pair for the whole tensor is *per-tensor*. One per output channel (row or column) is *per-channel*, and one per $G$ consecutive values is *per-group* or *block-wise*. Finer granularity means smaller error and more metadata bytes.
 
 Rounding error is at most half a step per element, so the whole game is keeping the step small for the values that matter. The first demo shows why per-channel scales exist: 8 output channels with 30x larger weights ruin a per-tensor INT8 scale for the other 4,088.
 
@@ -1212,9 +1279,9 @@ per-tensor   scales=    1  weight err 0.1762  output err 0.1850  err on normal c
 per-channel  scales= 4096  weight err 0.0085  output err 0.0094  err on normal channels 0.0087
 ```
 
-The dequantization multiply happens once per output element, not once per weight. Because `s` is constant along the reduction dimension `K`, `X @ (q * s) = (X @ q) * s`, so an INT8 GEMM accumulates integers and applies the scale in its **epilogue** (the last stage of a matmul kernel, which writes the output tile). That property decides which granularities are cheap at runtime ([FP8 section](#fp8-e4m3-and-its-scaling-granularities)).
+The dequantization multiply happens once per output element, not once per weight. Because $s$ is constant along the reduction dimension $K$, $X (q \cdot s) = (X q) \cdot s$, so an INT8 GEMM accumulates integers and applies the scale in its **epilogue** (the last stage of a matmul kernel, which writes the output tile). That property decides which granularities are cheap at runtime ([FP8 section](#fp8-e4m3-and-its-scaling-granularities)).
 
-Weight-only INT4 goes further: 16 levels, so a per-channel scale is too coarse and the scales vary *along* `K` in groups of `G` (typically 128). Two 4-bit values are packed per byte. This is the layout GPTQ/AWQ checkpoints (the two most common INT4 methods, [covered below](#weight-only-int4-gptq-vs-awq)) use, up to the exact bit order, which is kernel-specific:
+Weight-only INT4 goes further: 16 levels, so a per-channel scale is too coarse and the scales vary *along* $K$ in groups of $G$ (typically 128). Two 4-bit values are packed per byte. This is the layout GPTQ/AWQ checkpoints (the two most common INT4 methods, [covered below](#weight-only-int4-gptq-vs-awq)) use, up to the exact bit order, which is kernel-specific:
 
 ```python
 # quant_int4.py - asymmetric INT4 group quantization, nibble packing, error vs group size
@@ -1278,7 +1345,7 @@ The error column is the "quality price" of each group size, and the bpw column i
 
 ### Bits per weight including metadata
 
-Every row of the table below is `bits_elem + metadata_bits / G`. The script that produced it:
+Every row of the table below is $\text{bits}_\text{elem} + \text{bits}_\text{metadata} / G$. The script that produced it:
 
 ```python
 # quant_bpw.py - bits per weight including scale/zero metadata, and what it means for bytes
@@ -1320,11 +1387,11 @@ NVFP4 (E4M3 / 16)            4.500 bpw    39.7 GB    8.3 ms per full weight read
 lm_head+embed kept in BF16 adds 3.1 GB to an INT4 G128 model
 ```
 
-Group quantization stores one scale (and optionally a zero point) per `G` elements:
+Group quantization stores one scale (and optionally a zero point) per $G$ elements:
 
-```
-bits_per_weight = bits_elem + (bits_scale + bits_zero) / G
-```
+$$
+\text{bits per weight} = \text{bits}_\text{elem} + \frac{\text{bits}_\text{scale} + \text{bits}_\text{zero}}{G}
+$$
 
 | Format | bits/weight | Llama-3-70B weights | Weight read, 1x H200 @ 4.8 TB/s |
 | :----- | ----------: | ------------------: | ------------------------------: |
@@ -1340,18 +1407,18 @@ bits_per_weight = bits_elem + (bits_scale + bits_zero) / G
 | MXFP4 (E2M1, E8M0 scale / 32) | 4.250 | 37.5 GB | 7.8 ms |
 | NVFP4 (E2M1, E4M3 scale / 16, + FP32 per tensor) | 4.500 | 39.7 GB | 8.3 ms |
 
-(The 70B model doesn't fit one H200 in BF16; the column is a bandwidth comparison, not a deployment.) Group-size overhead is not small: going from G=128 to G=32 costs 18% more bytes for INT4. In practice the embedding and `lm_head` (2.1B params for Llama-3-70B) are often left in BF16, which adds `2.1e9 * (16 - 4.25) / 8 = 3.1 GB` to the INT4 rows.
+(The 70B model doesn't fit one H200 in BF16; the column is a bandwidth comparison, not a deployment.) Group-size overhead is not small: going from G=128 to G=32 costs 18% more bytes for INT4. In practice the embedding and `lm_head` (2.1B params for Llama-3-70B) are often left in BF16, which adds $2.1 \times 10^9 \cdot (16 - 4.25) / 8 = 3.1\ \text{GB}$ to the INT4 rows.
 
 ### Weight-only INT4: GPTQ vs AWQ
 
 Both produce W4A16 checkpoints (4-bit weights, 16-bit activations); they differ in what they optimize.
 
-- **[GPTQ (arXiv:2210.17323)](https://arxiv.org/abs/2210.17323)** minimizes the layer-output reconstruction error `||W X - Ŵ X||_F^2` on calibration activations `X`. It is Optimal Brain Surgeon applied column by column: quantize one input column of `W`, then update the not-yet-quantized columns to compensate, using the inverse of the Hessian `H = 2 X X^T` (computed once via Cholesky). The weights that come out are *not* rounded originals - they have been adjusted to absorb error. The "act-order" option quantizes columns in order of decreasing `diag(H)`, i.e. largest activation energy first.
-- **[AWQ (arXiv:2306.00978)](https://arxiv.org/abs/2306.00978)** does no error feedback. It observes that ~1% of input channels (those with large activation magnitude) dominate the error, and protects them by a per-input-channel scale `s`: quantize `W * diag(s)` and fold `diag(s)^-1` into the previous op. `s = s_X^alpha` with `s_X` the mean activation magnitude per channel and `alpha` chosen by grid search on `[0, 1]` to minimize output error of the quantized layer. The output is plain round-to-nearest of rescaled weights, which tends to overfit the calibration set less.
+- **[GPTQ (arXiv:2210.17323)](https://arxiv.org/abs/2210.17323)** minimizes the layer-output reconstruction error $\lVert W X - \hat{W} X \rVert_F^2$ on calibration activations $X$. It is Optimal Brain Surgeon applied column by column: quantize one input column of $W$, then update the not-yet-quantized columns to compensate, using the inverse of the Hessian $H = 2 X X^\top$ (computed once via Cholesky). The weights that come out are *not* rounded originals - they have been adjusted to absorb error. The "act-order" option quantizes columns in order of decreasing $\operatorname{diag}(H)$, i.e. largest activation energy first.
+- **[AWQ (arXiv:2306.00978)](https://arxiv.org/abs/2306.00978)** does no error feedback. It observes that ~1% of input channels (those with large activation magnitude) dominate the error, and protects them by a per-input-channel scale $s$: quantize $W \operatorname{diag}(s)$ and fold $\operatorname{diag}(s)^{-1}$ into the previous op. $s = s_X^\alpha$ with $s_X$ the mean activation magnitude per channel and $\alpha$ chosen by grid search on $[0, 1]$ to minimize output error of the quantized layer. The output is plain round-to-nearest of rescaled weights, which tends to overfit the calibration set less.
 
 Neither changes the runtime format: both are a packed INT4 tensor with per-group scales (and zeros), executed by the same kernels (Marlin, Machete, ExLlama, etc.). The runtime arithmetic is identical; only accuracy differs.
 
-Both algorithms fit in a few lines. The script below quantizes one `1024 x 1024` linear layer to INT4 G=128 three ways and measures output error on *held-out* activations. The synthetic activations have the two properties real LLM activations have: about 1% of input channels are 20x larger, and channels are correlated, because activations live near a low-dimensional subspace. The GPTQ loop is the paper's algorithm without its blocking/lazy-batch optimization; AWQ is the scale search without its clipping search:
+Both algorithms fit in a few lines. The script below quantizes one $1024 \times 1024$ linear layer to INT4 G=128 three ways and measures output error on *held-out* activations. The synthetic activations have the two properties real LLM activations have: about 1% of input channels are 20x larger, and channels are correlated, because activations live near a low-dimensional subspace. The GPTQ loop is the paper's algorithm without its blocking/lazy-batch optimization; AWQ is the scale search without its clipping search:
 
 ```python
 # gptq_awq.py - RTN vs AWQ vs GPTQ, INT4 G=128, on one linear layer with outlier activations
@@ -1419,35 +1486,41 @@ Three things to read off it:
 
 1. **Weight error is the wrong metric.** GPTQ has the *largest* weight error and by far the smallest output error, because it deliberately moves weights away from their originals to cancel error in directions the activations actually use. Always evaluate quantization by output (or downstream task) error.
 2. **AWQ wins by protecting the outlier channels.** RTN (round-to-nearest) treats all channels the same. AWQ scales the 1% hot input channels up before rounding, so their weights get finer effective steps, and folds the scale back afterwards.
-3. **GPTQ needs correlation and data.** While writing this we first ran GPTQ with *independent* Gaussian activations and 2,048 calibration rows for `K = 1024` inputs. It came out *worse* than RTN on held-out data. With no correlation there is nothing for the error feedback to exploit, and with `n` only 2x `K` the Hessian estimate is noisy enough to overfit. That is why the script uses 16,384 calibration rows, and why real GPTQ runs use a damping term (`damp` above) and a few hundred full-length sequences, which is hundreds of thousands of token rows.
+3. **GPTQ needs correlation and data.** While writing this we first ran GPTQ with *independent* Gaussian activations and 2,048 calibration rows for $K = 1024$ inputs. It came out *worse* than RTN on held-out data. With no correlation there is nothing for the error feedback to exploit, and with $n$ only 2x $K$ the Hessian estimate is noisy enough to overfit. That is why the script uses 16,384 calibration rows, and why real GPTQ runs use a damping term (`damp` above) and a few hundred full-length sequences, which is hundreds of thousands of token rows.
 
 ### When the kernel becomes dequant-bound
 
 A W4A16 kernel loads 4-bit weights, converts them to BF16 on the CUDA cores, then runs BF16 tensor-core MMAs. Three times compete per step:
 
-```
-t_mem   = N * bpw/8 / HBM_BW
-t_tc    = 2 * N * B / TC_FLOPS                # BF16 rate
-t_deq   = N * c / ALU_rate                    # c = CUDA-core instructions per weight element
-```
+$$
+t_\text{mem} = \frac{N \cdot \text{bpw}/8}{\text{BW}_\text{HBM}}
+$$
 
-Each weight is dequantized once per step when the whole batch fits in one tile (true for decode), so `t_deq` does not grow with `B`. The kernel is dequant-bound even at `B=1` if `t_deq > t_mem`, i.e. if
+$$
+t_\text{tc} = \frac{2 N B}{\text{FLOPS}_\text{TC}} \qquad \text{(BF16 rate)}
+$$
 
-```
-c > ALU_rate * (bpw/8) / HBM_BW
-```
+$$
+t_\text{deq} = \frac{N \cdot c}{\text{ALU rate}} \qquad (c = \text{CUDA-core instructions per weight element})
+$$
 
-Taking `ALU_rate` as FP32 TFLOPS / 2 (one instruction per lane per clock; FMA counts as 2 FLOPs) and `bpw = 4.25`:
+Each weight is dequantized once per step when the whole batch fits in one tile (true for decode), so $t_\text{deq}$ does not grow with $B$. The kernel is dequant-bound even at $B=1$ if $t_\text{deq} > t_\text{mem}$, i.e. if
 
-| GPU | ALU instr/s | Budget `c` (instr/weight) |
+$$
+c > \frac{\text{ALU rate} \cdot \text{bpw}/8}{\text{BW}_\text{HBM}}
+$$
+
+Taking ALU rate as FP32 TFLOPS / 2 (one instruction per lane per clock; FMA counts as 2 FLOPs) and $\text{bpw} = 4.25$:
+
+| GPU | ALU instr/s | Budget $c$ (instr/weight) |
 | :-- | ----------: | ------------------------: |
-| H100 SXM | `67/2 = 33.5T` | `33.5e12 * 0.531 / 3.35e12 = 5.3` |
+| H100 SXM | $67/2 = 33.5\text{T}$ | $33.5 \times 10^{12} \cdot 0.531 / (3.35 \times 10^{12}) = 5.3$ |
 | H200 SXM | 33.5T | 3.7 |
-| B200 SXM | `80/2 = 40T` | 2.7 |
+| B200 SXM | $80/2 = 40\text{T}$ | 2.7 |
 
-This is a rough model (it ignores instruction issue limits, conversion instructions that run below full rate, and scale application), but the trend is the point: every generation adds HBM bandwidth faster than CUDA-core throughput, so the dequantization budget shrinks. A naive unpack (shift, mask, int-to-float, subtract zero, multiply scale) is 4-5 instructions per element and already dequant-bound on H200. Production kernels use bit tricks (e.g. `lop3`, a PTX instruction that computes any bitwise function of three registers in one go, plus magic-number float construction, two elements per instruction) to get `c` near 1. [QServe (arXiv:2405.04532)](https://arxiv.org/abs/2405.04532) measures 20-90% runtime overhead from dequantization in existing INT4 kernels and is built around keeping CUDA-core work off the critical path. Native low-precision tensor cores (FP8 on Hopper, FP4 on Blackwell) remove `t_deq` entirely, which is the real reason NVFP4/MXFP4 matter on B200: block scales are applied inside the tensor core.
+This is a rough model (it ignores instruction issue limits, conversion instructions that run below full rate, and scale application), but the trend is the point: every generation adds HBM bandwidth faster than CUDA-core throughput, so the dequantization budget shrinks. A naive unpack (shift, mask, int-to-float, subtract zero, multiply scale) is 4-5 instructions per element and already dequant-bound on H200. Production kernels use bit tricks (e.g. `lop3`, a PTX instruction that computes any bitwise function of three registers in one go, plus magic-number float construction, two elements per instruction) to get $c$ near 1. [QServe (arXiv:2405.04532)](https://arxiv.org/abs/2405.04532) measures 20-90% runtime overhead from dequantization in existing INT4 kernels and is built around keeping CUDA-core work off the critical path. Native low-precision tensor cores (FP8 on Hopper, FP4 on Blackwell) remove $t_\text{deq}$ entirely, which is the real reason NVFP4/MXFP4 matter on B200: block scales are applied inside the tensor core.
 
-The budget table, as code. Plug in other GPUs, or `bpw = 4.5` for G=64:
+The budget table, as code. Plug in other GPUs, or $\text{bpw} = 4.5$ for G=64:
 
 ```python
 # dequant_budget.py - CUDA-core instructions per weight a W4A16 kernel can spend before
@@ -1468,7 +1541,7 @@ H200 SXM: 33.5T instr/s -> budget 3.7 instructions per weight
 B200 SXM: 40.0T instr/s -> budget 2.7 instructions per weight
 ```
 
-How do production kernels get `c` near 1? The trick behind the "magic number" conversion: a float with a fixed exponent has evenly spaced mantissa steps, so writing the integer straight into the mantissa bits produces a float that is `constant + q`. One subtract turns it into `q`, and it can be fused with the zero point and scale. No integer-to-float conversion instruction is needed, and on the GPU `lop3` does the mask-and-OR for two packed values at once:
+How do production kernels get $c$ near 1? The trick behind the "magic number" conversion: a float with a fixed exponent has evenly spaced mantissa steps, so writing the integer straight into the mantissa bits produces a float that is $\text{constant} + q$. One subtract turns it into $q$, and it can be fused with the zero point and scale. No integer-to-float conversion instruction is needed, and on the GPU `lop3` does the mask-and-OR for two packed values at once:
 
 ```python
 # magic_dequant.py - the bit trick fast INT4->FP16 kernels use: no int-to-float instruction needed
@@ -1491,17 +1564,17 @@ Output of `python magic_dequant.py`:
 dequantized: [-0.08, -0.07, -0.06, -0.05, -0.04, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07]
 ```
 
-Combining with the crossover table: on H100, W4A16 wins over FP8 only in the regime `B < ~78` *and* only if `c` is small; above that, W8A8 FP8 is faster per step. For a latency-optimized single-user deployment, W4A16; for throughput serving on Hopper, FP8.
+Combining with the crossover table: on H100, W4A16 wins over FP8 only in the regime $B \lesssim 78$ *and* only if $c$ is small; above that, W8A8 FP8 is faster per step. For a latency-optimized single-user deployment, W4A16; for throughput serving on Hopper, FP8.
 
 ### FP8 E4M3 and its scaling granularities
 
-E4M3: max magnitude 448, smallest normal `2^-6`, smallest subnormal `2^-9`, 3 mantissa bits, i.e. ~2 significant decimal digits ([FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)). E5M2 (max 57344) is used for gradients in training and rarely in inference. Quantization is `x_q = round_to_fp8(x / s)`, and the choice is where `s` lives:
+E4M3: max magnitude 448, smallest normal $2^{-6}$, smallest subnormal $2^{-9}$, 3 mantissa bits, i.e. ~2 significant decimal digits ([FP8 Formats for Deep Learning, arXiv:2209.05433](https://arxiv.org/abs/2209.05433)). E5M2 (max 57344) is used for gradients in training and rarely in inference. Quantization is $x_q = \operatorname{round}_\text{fp8}(x / s)$, and the choice is where $s$ lives:
 
-- **Per-tensor** (`s = amax / 448` for the whole tensor): one FP32 scalar, applied in the GEMM epilogue. Cheapest; one outlier channel sets the scale for everything.
-- **Per-channel (weights) / per-token (activations)**: a vector of scales on the output dim of `W` and the token dim of `X`. Still applied in the epilogue, since `(s_x[i] * s_w[j])` factors out of the dot product along `K`. Dynamic per-token activation scales cost one reduction over `h` per token.
-- **Block-wise**: DeepSeek-V3 ([arXiv:2412.19437](https://arxiv.org/abs/2412.19437), Sec. 3.3) uses `1x128` tiles for activations and `128x128` blocks for weights. Scales now vary *along* `K`, so they can't go in the epilogue; partial sums must be rescaled every 128 elements of `K`. The paper also reports that Hopper's FP8 tensor-core accumulation keeps only ~14 bits of precision and promotes partial sums to FP32 on the CUDA cores every 128 elements to compensate. Byte overhead is negligible (`32/16384` bits per weight); the cost is extra CUDA-core work in the main loop.
+- **Per-tensor** ($s = \text{amax} / 448$ for the whole tensor): one FP32 scalar, applied in the GEMM epilogue. Cheapest; one outlier channel sets the scale for everything.
+- **Per-channel (weights) / per-token (activations)**: a vector of scales on the output dim of $W$ and the token dim of $X$. Still applied in the epilogue, since $s_x[i] \cdot s_w[j]$ factors out of the dot product along $K$. Dynamic per-token activation scales cost one reduction over $h$ per token.
+- **Block-wise**: DeepSeek-V3 ([arXiv:2412.19437](https://arxiv.org/abs/2412.19437), Sec. 3.3) uses $1 \times 128$ tiles for activations and $128 \times 128$ blocks for weights. Scales now vary *along* $K$, so they can't go in the epilogue; partial sums must be rescaled every 128 elements of $K$. The paper also reports that Hopper's FP8 tensor-core accumulation keeps only ~14 bits of precision and promotes partial sums to FP32 on the CUDA cores every 128 elements to compensate. Byte overhead is negligible ($32/16384$ bits per weight); the cost is extra CUDA-core work in the main loop.
 
-**What E4M3 means**: the 8 bits are 1 sign bit, 4 exponent bits and 3 mantissa bits. The exponent gives a wide *range* (about 2^-9 to 448), and the 3 mantissa bits give only 8 levels between consecutive powers of two. So the relative error is roughly constant (up to ~6% per value) whatever the magnitude. That is the opposite of INT8, whose levels are evenly spaced, so small values get large relative error. This difference is why FP8 shrugs off outliers that destroy per-tensor INT8. The demo checks the format's limits, then compares INT8 and three FP8 scale granularities on a weight matrix with 4 outlier rows of increasing size:
+**What E4M3 means**: the 8 bits are 1 sign bit, 4 exponent bits and 3 mantissa bits. The exponent gives a wide *range* (about $2^{-9}$ to 448), and the 3 mantissa bits give only 8 levels between consecutive powers of two. So the relative error is roughly constant (up to ~6% per value) whatever the magnitude. That is the opposite of INT8, whose levels are evenly spaced, so small values get large relative error. This difference is why FP8 shrugs off outliers that destroy per-tensor INT8. The demo checks the format's limits, then compares INT8 and three FP8 scale granularities on a weight matrix with 4 outlier rows of increasing size:
 
 ```python
 # fp8_scaling.py - FP8 E4M3: range, rounding, and per-tensor vs per-row vs 128-block scales
@@ -1569,7 +1642,7 @@ outlier rows x20000: error on the normal rows
    per-tensor FP8 maps a typical 0.02 weight to 0.0053 (E4M3 smallest normal 0.015625)
 ```
 
-Reading it: at 200x outliers, per-tensor INT8 has lost the normal rows entirely (error ~1.0: they all round to zero), while per-tensor FP8 is unaffected, because the exponent absorbs the range. Only at 20,000x does per-tensor FP8 degrade, when the normal weights are pushed into E4M3's subnormal range (values below the smallest normal, 2^-6, where precision drops). Per-row scales fix it completely. The 128x128 block result is slightly worse than per-row, because the 124 normal rows that share a block with the 4 outliers inherit their scale. That is the trade DeepSeek-V3 makes to keep scales coarse enough for the GEMM main loop.
+Reading it: at 200x outliers, per-tensor INT8 has lost the normal rows entirely (error ~1.0: they all round to zero), while per-tensor FP8 is unaffected, because the exponent absorbs the range. Only at 20,000x does per-tensor FP8 degrade, when the normal weights are pushed into E4M3's subnormal range (values below the smallest normal, $2^{-6}$, where precision drops). Per-row scales fix it completely. The 128x128 block result is slightly worse than per-row, because the 124 normal rows that share a block with the 4 outliers inherit their scale. That is the trade DeepSeek-V3 makes to keep scales coarse enough for the GEMM main loop.
 
 Tensor-wise vs row-wise scaling as used for Llama 3 405B FP8 inference:
 
@@ -1581,17 +1654,17 @@ Tensor-wise vs row-wise scaling as used for Llama 3 405B FP8 inference:
 
 INT8 weights and activations run on INT8 tensor cores at the same rate as FP8 on Hopper (1979 TOPS, tera integer operations per second) and on Ampere at 2x BF16. The problem is activations: a few channels have magnitudes ~100x the rest ([LLM.int8(), arXiv:2208.07339](https://arxiv.org/abs/2208.07339)), which wrecks per-tensor INT8. [SmoothQuant (arXiv:2211.10438)](https://arxiv.org/abs/2211.10438) migrates that difficulty into the weights with an exact rescaling:
 
-```
-Y = (X diag(s)^-1) (diag(s) W),    s_j = max|X_j|^alpha / max|W_j|^(1 - alpha)
-```
+$$
+Y = \left(X \operatorname{diag}(s)^{-1}\right) \left(\operatorname{diag}(s) W\right), \qquad s_j = \frac{\max \lvert X_j \rvert^\alpha}{\max \lvert W_j \rvert^{1 - \alpha}}
+$$
 
-SmoothQuant's intuition - divide activation channels by `s` and multiply the weights by `s`, so neither has extreme outliers:
+SmoothQuant's intuition - divide activation channels by $s$ and multiply the weights by $s$, so neither has extreme outliers:
 
 ![SmoothQuant migrates outliers from activations to weights](images/smoothquant-intuition.png)
 
 ([source](https://arxiv.org/abs/2211.10438))
 
-with `alpha = 0.5` by default (the paper uses larger values for some models). `diag(s)^-1` is folded into the preceding LayerNorm, so there is zero runtime cost. Bytes and FLOP rate are the same as FP8 W8A8; the difference is that E4M3's exponent already tolerates outliers better than INT8, so on Hopper and later FP8 usually replaces SmoothQuant-INT8. Rotation methods such as [QuaRot (arXiv:2404.00456)](https://arxiv.org/abs/2404.00456) go further, applying Hadamard rotations that spread outliers across channels to enable 4-bit activations.
+with $\alpha = 0.5$ by default (the paper uses larger values for some models). $\operatorname{diag}(s)^{-1}$ is folded into the preceding LayerNorm, so there is zero runtime cost. Bytes and FLOP rate are the same as FP8 W8A8; the difference is that E4M3's exponent already tolerates outliers better than INT8, so on Hopper and later FP8 usually replaces SmoothQuant-INT8. Rotation methods such as [QuaRot (arXiv:2404.00456)](https://arxiv.org/abs/2404.00456) go further, applying Hadamard rotations that spread outliers across channels to enable 4-bit activations.
 
 The migration in code. `Xs @ Ws == X @ W` exactly, but the quantizer sees much tamer activations:
 
@@ -1632,15 +1705,15 @@ smoothing alpha=0.50  err 0.0114   max|X| 219 -> 4.1
 smoothing alpha=0.75  err 0.0192   max|X| 219 -> 2.0
 ```
 
-`alpha` controls how much difficulty moves to the weights. At 0.75 the activations are flattest but the weights now carry the outliers, and the error rises again. The default 0.5 sits near the optimum for this synthetic layer, which is not a guarantee for a real model.
+$\alpha$ controls how much difficulty moves to the weights. At 0.75 the activations are flattest but the weights now carry the outliers, and the error rises again. The default 0.5 sits near the optimum for this synthetic layer, which is not a guarantee for a real model.
 
 ### KV cache quantization
 
-KV bytes dominate decode once `B*T` exceeds `N*b_w / kv_bytes_per_token` (430k tokens for Llama-3-70B BF16, computed above). In that regime KV quantization is the highest-leverage change, and it helps capacity and bandwidth by the same factor.
+KV bytes dominate decode once $B T$ exceeds $N b_w / \text{KV bytes per token}$ (430k tokens for Llama-3-70B BF16, computed above). In that regime KV quantization is the highest-leverage change, and it helps capacity and bandwidth by the same factor.
 
-- **FP8 KV** (per-tensor or per-head scale): halves bytes; the attention kernel converts to BF16 in registers or runs FP8 MMAs directly (FlashAttention-3, [arXiv:2407.08608](https://arxiv.org/abs/2407.08608), supports FP8). In the table above, FP8 KV takes Llama-3-70B at `B=256, 4k` from 23.9 to 17.5 ms per step and makes `B=64, 32k` fit on one node.
+- **FP8 KV** (per-tensor or per-head scale): halves bytes; the attention kernel converts to BF16 in registers or runs FP8 MMAs directly (FlashAttention-3, [arXiv:2407.08608](https://arxiv.org/abs/2407.08608), supports FP8). In the table above, FP8 KV takes Llama-3-70B at $B=256$, 4k from 23.9 to 17.5 ms per step and makes $B=64$, 32k fit on one node.
 - **INT4/INT2 KV**: [KIVI (arXiv:2402.02750)](https://arxiv.org/abs/2402.02750) quantizes keys per-channel (keys have outlier channels) and values per-token, keeping a small recent window in full precision. [KVQuant (arXiv:2401.18079)](https://arxiv.org/abs/2401.18079) adds pre-RoPE key quantization and non-uniform datatypes. QServe uses 4-bit KV with "SmoothAttention".
-- Dequant budget for KV is tighter than for weights: attention AI is only `2g/b_kv` (16 for Llama-3-70B with FP8 KV), so each KV element gets ~`g` tensor-core FLOP pairs to hide unpacking behind. Low-bit KV kernels are where dequant-bound behaviour shows up first.
+- Dequant budget for KV is tighter than for weights: attention AI is only $2g/b_{kv}$ (16 for Llama-3-70B with FP8 KV), so each KV element gets ~$g$ tensor-core FLOP pairs to hide unpacking behind. Low-bit KV kernels are where dequant-bound behaviour shows up first.
 
 KIVI's per-channel/per-token rule is easy to check. Keys get a few outlier channels (an effect of RoPE and learned biases in real models; synthetic here), and the error that matters is in the attention output, not in K itself:
 
@@ -1683,7 +1756,7 @@ Quantizing keys per-token lets each token's outlier channels set its scale, whic
 
 ### NVFP4 and MXFP4
 
-Both use an E2M1 element (values ±{0, 0.5, 1, 1.5, 2, 3, 4, 6}) with a block scale; see [fp4 formats](../training/dtype.md#fp4-formats).
+Both use an E2M1 element (values $\pm\lbrace 0, 0.5, 1, 1.5, 2, 3, 4, 6 \rbrace$) with a block scale; see [fp4 formats](../training/dtype.md#fp4-formats).
 
 - **MXFP4** ([OCP microscaling, arXiv:2310.10537](https://arxiv.org/abs/2310.10537)): block 32, E8M0 (power-of-two) scale -> 4.25 bits/weight. Power-of-two scales waste up to one binade (the span between two consecutive powers of two) of the E2M1 range per block.
 - **NVFP4**: block 16, E4M3 scale, plus an FP32 per-tensor scale -> 4.5 bits/weight. Finer blocks and a fractional scale give lower quantization error at +6% bytes. NVIDIA reports pretraining in NVFP4 in [arXiv:2509.25149](https://arxiv.org/abs/2509.25149).
@@ -1734,9 +1807,9 @@ INT4 G32 sym fp16 scale (4.50 bpw) rel err 0.0971
 INT4 G16 sym fp16 scale (5.00 bpw) rel err 0.0852
 ```
 
-NVFP4 beats MXFP4 by ~18% in error for 6% more bytes. Its block is half the size and its scale is not restricted to powers of two. At equal bits (4.5 bpw), NVFP4 and INT4 G32 are about the same. The advantage of the FP4 formats on Blackwell is not accuracy but that the tensor core consumes them natively (`t_deq = 0`).
+NVFP4 beats MXFP4 by ~18% in error for 6% more bytes. Its block is half the size and its scale is not restricted to powers of two. At equal bits (4.5 bpw), NVFP4 and INT4 G32 are about the same. The advantage of the FP4 formats on Blackwell is not accuracy but that the tensor core consumes them natively ($t_\text{deq} = 0$).
 
-On B200 both run on FP4 tensor cores at 9000 dense TFLOPS with scaling inside the MMA, so `t_deq = 0` and the crossover batch is `316` (NVFP4 W4A4). Compared with FP8 W8A8 on the same B200, NVFP4 W4A4 halves decode weight bytes (minus 6% metadata) *and* doubles compute, so unlike W4A16 on Hopper it is faster in both regimes. Whether accuracy holds at W4A4 is model-dependent and must be measured; NVFP4 weights with FP8 activations is the conservative middle point.
+On B200 both run on FP4 tensor cores at 9000 dense TFLOPS with scaling inside the MMA, so $t_\text{deq} = 0$ and the crossover batch is 316 (NVFP4 W4A4). Compared with FP8 W8A8 on the same B200, NVFP4 W4A4 halves decode weight bytes (minus 6% metadata) *and* doubles compute, so unlike W4A16 on Hopper it is faster in both regimes. Whether accuracy holds at W4A4 is model-dependent and must be measured; NVFP4 weights with FP8 activations is the conservative middle point.
 
 
 
@@ -1745,8 +1818,8 @@ On B200 both run on FP4 tensor cores at 9000 dense TFLOPS with scaling inside th
 ### Definitions
 
 - **TTFT** (time to first token) = queueing + prefill (+ first decode step and network).
-- **TPOT** (time per output token) = `(t_last - t_first) / (n_out - 1)`, a per-request average. **ITL** (inter-token latency) is the distribution of individual gaps; they differ when a request's decode steps are interrupted by other requests' prefill, which shows up as ITL spikes with the same mean.
-- **E2E latency** = `TTFT + (n_out - 1) * TPOT`.
+- **TPOT** (time per output token) $= (t_\text{last} - t_\text{first}) / (n_\text{out} - 1)$, a per-request average. **ITL** (inter-token latency) is the distribution of individual gaps; they differ when a request's decode steps are interrupted by other requests' prefill, which shows up as ITL spikes with the same mean.
+- **E2E latency** $= \text{TTFT} + (n_\text{out} - 1) \cdot \text{TPOT}$.
 - **Goodput** = requests per second completed *within* SLO (term from DistServe).
 
 User-experience framing of these metrics is in the [overview](README.md#key-inference-performance-metrics).
@@ -1785,7 +1858,7 @@ Report ITL percentiles (p50, p99) and the maximum gap alongside TPOT. A p99 of 8
 
 ### The throughput-latency Pareto
 
-From the decode bound, `TPOT(B) = t_0 + B * c_kv` where `t_0 = N*b_w/(P*BW) + t_comm` and `c_kv = T*kv_bytes/(P*BW)`, while throughput is `B / TPOT(B)`. Throughput approaches `1/c_kv` asymptotically while TPOT grows linearly. Each `B` is one point on the Pareto curve; quantization and smaller KV shift the whole curve outward, while parallelism choices trade `t_0` against `t_comm`. For Llama-3-70B FP8/FP8 at 4k on 8x H100: `B=1` gives (5.9 ms, 171 tok/s), `B=64` (8.7 ms, 7,384 tok/s), `B=256` (17.5 ms, 14,623 tok/s) - 85x throughput for 3x TPOT. Pick the `B` where TPOT meets SLO.
+From the decode bound, $\text{TPOT}(B) = t_0 + B \cdot c_{kv}$ where $t_0 = N b_w/(P \cdot \text{BW}) + t_\text{comm}$ and $c_{kv} = T \cdot \text{KV bytes}/(P \cdot \text{BW})$, while throughput is $B / \text{TPOT}(B)$. Throughput approaches $1/c_{kv}$ asymptotically while TPOT grows linearly. Each $B$ is one point on the Pareto curve; quantization and smaller KV shift the whole curve outward, while parallelism choices trade $t_0$ against $t_\text{comm}$. For Llama-3-70B FP8/FP8 at 4k on 8x H100: $B=1$ gives (5.9 ms, 171 tok/s), $B=64$ (8.7 ms, 7,384 tok/s), $B=256$ (17.5 ms, 14,623 tok/s) - 85x throughput for 3x TPOT. Pick the $B$ where TPOT meets SLO.
 
 ```python
 # pareto.py - sweep batch size: each B is one (TPOT, throughput) point
@@ -1811,17 +1884,25 @@ A measured version of this curve - Llama 3 405B decode, FP8 vs BF16, sweeping ba
 
 ### Little's law
 
-For any stable system, `L = λ * W`: mean number of items in the system equals arrival rate times mean time in the system. No distributional assumptions. For serving, with QPS (queries, i.e. requests, per second) as the arrival rate:
+For any stable system, $L = \lambda W$: mean number of items in the system equals arrival rate times mean time in the system. No distributional assumptions. For serving, with QPS (queries, i.e. requests, per second) as the arrival rate:
 
-```
-concurrent_requests = QPS * E2E_latency
-decode_batch        ≈ QPS * n_out * TPOT        # requests currently in their decode phase
-kv_tokens_resident  ≈ decode_batch * (T_in + n_out/2)
-```
+$$
+\text{concurrent requests} = \text{QPS} \cdot \text{E2E latency}
+$$
+
+Requests currently in their decode phase:
+
+$$
+\text{decode batch} \approx \text{QPS} \cdot n_\text{out} \cdot \text{TPOT}
+$$
+
+$$
+\text{KV tokens resident} \approx \text{decode batch} \cdot (T_\text{in} + n_\text{out}/2)
+$$
 
 Given a QPS and a TPOT you can therefore compute the batch the hardware must sustain, then check it against the KV budget and the TPOT bound, and iterate (TPOT depends on batch).
 
-"No distributional assumptions" sounds too good to be true, so check it. The simulation below uses a heavy-tailed (lognormal) latency distribution and compares the time-averaged number of requests in flight with `λ * mean(W)`:
+"No distributional assumptions" sounds too good to be true, so check it. The simulation below uses a heavy-tailed (lognormal) latency distribution and compares the time-averaged number of requests in flight with $\lambda \cdot \operatorname{mean}(W)$:
 
 ```python
 # littles_law.py - check L = lambda * W on a simulated server, then use it for a decode batch
@@ -1855,30 +1936,49 @@ decode batch = 13.1 * 256 * 0.025 = 84 sequences
 
 ### Worked sizing example
 
-**Requirement**: Llama-3-70B, 100 QPS Poisson arrivals (requests arrive independently at random, so the gaps between them are exponentially distributed with mean 1/QPS; this is what `random.expovariate(lam)` generated above), 2,048 prompt tokens, 256 output tokens, SLO mean TPOT <= 25 ms and mean TTFT <= 500 ms. Hardware 8x H100 SXM nodes, TP=8, FP8 weights and FP8 KV, prefill and decode colocated on the same replica. $2.00/GPU-hour.
+**Requirement**: Llama-3-70B, 100 QPS Poisson arrivals (requests arrive independently at random, so the gaps between them are exponentially distributed with mean 1/QPS; this is what `random.expovariate(lam)` generated above), 2,048 prompt tokens, 256 output tokens, SLO mean TPOT <= 25 ms and mean TTFT <= 500 ms. Hardware 8x H100 SXM nodes, TP=8, FP8 weights and FP8 KV, prefill and decode colocated on the same replica. \$2.00/GPU-hour.
 
 **Per-request prefill time** (on one TP=8 replica):
 
-```
-flops   = 2 * 70.55e9 * 2048 + 2 * 80 * 64 * 128 * 2048^2  = 294.5 TFLOP
-compute = 294.5e12 / (8 * 1535e12)                        = 24.0 ms   # MAMF, not spec
-comm    = 160 * (2048*8192*2 B) * 1.75 / 360e9            = 26.1 ms   # busbw 360 GB/s ASSUMED
-t_p     = 50.1 ms
-```
+$$
+\text{FLOPs} = 2 \cdot 70.55 \times 10^9 \cdot 2048 + 2 \cdot 80 \cdot 64 \cdot 128 \cdot 2048^2 = 294.5\ \text{TFLOP}
+$$
 
-**Decode step** `t_d(B)`: the bound from the latency section with `T = 2048 + 256/2 = 2176` (average context during decode), FP8 KV at 160 KiB/token, `t_compute` at MAMF, `t_comm` as measured above.
+$$
+\text{compute} = \frac{294.5 \times 10^{12}}{8 \cdot 1535 \times 10^{12}} = 24.0\ \text{ms} \qquad \text{(MAMF, not spec)}
+$$
 
-**Colocation model** (conservative): prefill and decode time-share the GPUs. The fraction of time spent in prefill is `ρ_p = λ * t_p`; decode only progresses in the rest, so
+$$
+\text{comm} = \frac{160 \cdot (2048 \cdot 8192 \cdot 2\ \text{B}) \cdot 1.75}{360 \times 10^9} = 26.1\ \text{ms} \qquad (\text{busbw } 360\ \text{GB/s ASSUMED})
+$$
 
-```
-TPOT  = t_d(B) / (1 - ρ_p)
-B     = λ * n_out * TPOT                        # Little's law, solved by fixed-point iteration
-TTFT  ≈ t_p + ρ_p * t_p / (2 (1 - ρ_p)) + t_d(B)   # prefill + M/D/1 queue wait + current step
-```
+$$
+t_p = 50.1\ \text{ms}
+$$
 
-The M/D/1 term is a mean. M/D/1 is queueing-theory shorthand for a single server (`1`) with Poisson, "memoryless" arrivals (`M`) and a fixed, deterministic service time (`D`, here `t_p`); its textbook mean wait is `ρ t_p / (2(1 - ρ))`, which is the middle term above. It is a mean; it says nothing about p99. Real chunked-prefill engines piggyback prompt tokens onto decode steps and share the weight read, so they do better than strict time-sharing; that makes this an upper bound on TPOT given the roofline.
+**Decode step** $t_d(B)$: the bound from the latency section with $T = 2048 + 256/2 = 2176$ (average context during decode), FP8 KV at 160 KiB/token, $t_\text{compute}$ at MAMF, $t_\text{comm}$ as measured above.
 
-Solving per replica (the KV column is `B * 2176 tokens * 160 KiB`, the mean resident context from Little's law):
+**Colocation model** (conservative): prefill and decode time-share the GPUs. The fraction of time spent in prefill is $\rho_p = \lambda t_p$; decode only progresses in the rest, so
+
+$$
+\text{TPOT} = \frac{t_d(B)}{1 - \rho_p}
+$$
+
+Little's law, solved by fixed-point iteration:
+
+$$
+B = \lambda \cdot n_\text{out} \cdot \text{TPOT}
+$$
+
+Prefill, plus M/D/1 queue wait, plus the current step:
+
+$$
+\text{TTFT} \approx t_p + \frac{\rho_p t_p}{2 (1 - \rho_p)} + t_d(B)
+$$
+
+The M/D/1 term is a mean. M/D/1 is queueing-theory shorthand for a single server (`1`) with Poisson, "memoryless" arrivals (`M`) and a fixed, deterministic service time (`D`, here $t_p$); its textbook mean wait is $\rho t_p / (2(1 - \rho))$, which is the middle term above. It is a mean; it says nothing about p99. Real chunked-prefill engines piggyback prompt tokens onto decode steps and share the weight read, so they do better than strict time-sharing; that makes this an upper bound on TPOT given the roofline.
+
+Solving per replica (the KV column is $B \cdot 2176\ \text{tokens} \cdot 160\ \text{KiB}$, the mean resident context from Little's law):
 
 ```python
 # sizing.py - Little's law + roofline decode bound + colocated prefill: how many replicas?
@@ -1940,7 +2040,7 @@ max QPS/replica at TPOT<=25 ms: 13.1 -> 8 replicas = 64 GPUs
 $/1M output tokens: 1.39
 ```
 
-| λ per replica (QPS) | ρ_p | decode batch B | TPOT | TTFT | KV resident |
+| $\lambda$ per replica (QPS) | $\rho_p$ | decode batch $B$ | TPOT | TTFT | KV resident |
 | ------------------: | --: | -------------: | ---: | ---: | ----------: |
 | 4 | 0.20 | 8 | 7.6 ms | 62 ms | 3 GB |
 | 8 | 0.40 | 22 | 10.9 ms | 73 ms | 8 GB |
@@ -1949,19 +2049,31 @@ $/1M output tokens: 1.39
 
 The TPOT SLO binds first at 13.1 QPS per replica, with plenty of KV room (30 GB of the 505 GB free) and TTFT far under budget. TPOT degrades because prefill consumes 66% of the GPU time and stretches every decode gap, not because the decode batch is large. So:
 
-```
-replicas = ceil(100 / 13.1) = 8 nodes = 64 H100
-cost     = 64 * $2.00 = $128/hour
-output   = 100 * 256 * 3600 = 92.2M tokens/hour  -> $1.39 per 1M output tokens
-all      = 100 * (2048 + 256) * 3600 = 829M tokens/hour -> $0.154 per 1M (input+output)
-per GPU  = 100 * 256 / 64 = 400 output tok/s/GPU
-```
+$$
+\text{replicas} = \lceil 100 / 13.1 \rceil = 8\ \text{nodes} = 64\ \text{H100}
+$$
+
+$$
+\text{cost} = 64 \cdot \$2.00 = \$128/\text{hour}
+$$
+
+$$
+\text{output} = 100 \cdot 256 \cdot 3600 = 92.2\text{M tokens/hour} \;\to\; \$1.39\ \text{per 1M output tokens}
+$$
+
+$$
+\text{all} = 100 \cdot (2048 + 256) \cdot 3600 = 829\text{M tokens/hour} \;\to\; \$0.154\ \text{per 1M (input+output)}
+$$
+
+$$
+\text{per GPU} = 100 \cdot 256 / 64 = 400\ \text{output tok/s/GPU}
+$$
 
 What the arithmetic says to do next:
 
-- Prefill, not decode, is the binding constraint at this prompt:output ratio (8:1). Halving `t_p` (TP=4 replicas to cut TP communication, overlap the prefill all-reduce, or prefix caching if prompts share a system prompt) moves the capacity more than any decode optimization.
-- Disaggregating prefill onto separate GPUs removes the `1/(1-ρ_p)` stretch from TPOT entirely: decode replicas could then run at `B` in the hundreds within 25 ms. This is the DistServe/Splitwise argument, and with these numbers it is worth computing your actual split - see the [sibling chapter](serving-engine-internals.md).
-- Everything above is a bound under stated assumptions. Before buying 64 GPUs, measure `t_p` and `t_d(B)` on one replica and substitute; the model structure stays the same.
+- Prefill, not decode, is the binding constraint at this prompt:output ratio (8:1). Halving $t_p$ (TP=4 replicas to cut TP communication, overlap the prefill all-reduce, or prefix caching if prompts share a system prompt) moves the capacity more than any decode optimization.
+- Disaggregating prefill onto separate GPUs removes the $1/(1-\rho_p)$ stretch from TPOT entirely: decode replicas could then run at $B$ in the hundreds within 25 ms. This is the DistServe/Splitwise argument, and with these numbers it is worth computing your actual split - see the [sibling chapter](serving-engine-internals.md).
+- Everything above is a bound under stated assumptions. Before buying 64 GPUs, measure $t_p$ and $t_d(B)$ on one replica and substitute; the model structure stays the same.
 
 
 

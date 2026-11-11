@@ -9,13 +9,13 @@ This chapter is one person's opinionated overview of the ML/AI Engineering reali
 Training:
 
 1. How fast one can train a better model (first to market advantage)
-2. How much $$ was spent (do we still have money left to pay salaries to talent after training?)
+2. How much \$\$ was spent (do we still have money left to pay salaries to talent after training?)
 
 Inference:
 
 1. Fast latency (users are used to msec response times and will leave if the response takes seconds)
 2. Fast throughput (how many concurrent queries can be processed)
-3. How much $$ is being spent per user (can we rent more GPUs to acquire more users and/or improve (1) and (2)?)
+3. How much \$\$ is being spent per user (can we rent more GPUs to acquire more users and/or improve (1) and (2)?)
 
 
 ### What are the needs of LLM training?
@@ -23,7 +23,7 @@ Inference:
 1. Fast compute massively dominated by matrix multiplications
 2. Fast enough memory, IO, network and CPU to feed the compute
 
-Corollary: If when you buy or rent hardware you invest in the fastest accelerators, but cheap out on any of the other components you wasted $$ and you might not win the race as it'll take longer to train.
+Corollary: If when you buy or rent hardware you invest in the fastest accelerators, but cheap out on any of the other components you wasted \$\$ and you might not win the race as it'll take longer to train.
 
 
 
@@ -141,7 +141,7 @@ There aren't that many HPCs out there and so the amount of available resources i
 
 Pros:
 - Managed for you - all you need is your software to do the training and a bit of [SLURM](../orchestration/slurm) know-how to launch jobs
-- Often sponsored by the local government/university - probably could get the job done for less $$ or even free (e.g. we trained [BLOOM-176B](https://huggingface.co/bigscience/bloom) for free on [JeanZay HPC](http://www.idris.fr/en/)!)
+- Often sponsored by the local government/university - probably could get the job done for less \$\$ or even free (e.g. we trained [BLOOM-176B](https://huggingface.co/bigscience/bloom) for free on [JeanZay HPC](http://www.idris.fr/en/)!)
 
 Cons:
 - needing to time share compute with other teams == short job times with possible long wait times in between - could be difficult to finish training quickly
@@ -208,7 +208,7 @@ a crazy idea: the older GPUs might do fine if you can actually feed them as fast
      `total_tflops_required / tflops_of_this_compute_unit = time_in_seconds`
      Let's say it came to be 604800 secs or 7 days.
 
-  2. Look at the cost of using this compute solution for 7 days and now you know the total $$ to train this model.
+  2. Look at the cost of using this compute solution for 7 days and now you know the total \$\$ to train this model.
 
   3. Look at other proposals and calculate the same - chose the best option.
 
@@ -466,7 +466,7 @@ As you navigate this very complex AI industry here are some thing to be aware of
 
 ### Don't buy what you don't really need
 
-- The cloud providers have mostly the same generic hardware, which leads to a very slim $$ margin and so in order to make big $$ they invent products and then try to convince you that you need to buy them. Sometimes you actually need those products, but very often not. See also the previous section on lock-in, since proprietary products usually mean a partial lock-in.
+- The cloud providers have mostly the same generic hardware, which leads to a very slim \$\$ margin and so in order to make big \$\$ they invent products and then try to convince you that you need to buy them. Sometimes you actually need those products, but very often not. See also the previous section on lock-in, since proprietary products usually mean a partial lock-in.
 
 - Often it's easy to observe the 3 step marketing technique for solutions that seek a problem to solve:
 

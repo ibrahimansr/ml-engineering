@@ -1,0 +1,1629 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foundations: The Working Toolkit - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details open><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html" class="current">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="foundations-the-working-toolkit">Foundations: The Working Toolkit</h1>
+<p>Every other chapter in this book quietly assumes a pile of small skills: typing a command into a terminal, making a Python environment that has <code>torch</code> in it, cloning a repository with git, reading a YAML file without being bitten by it, grepping a log with a regular expression, typing <code>make</code>, and reading a short C program with pointers in it. None of these is deep. All of them are things nobody teaches you if you came to ML through Python notebooks, and each one can cost an afternoon the first time.</p>
+<p>This chapter teaches exactly that pile, from zero, and nothing more. It is deliberately shallow where a later chapter goes deep: the shell gets a proper treatment in <a href="../foundations/linux-and-os.html#2-the-shell">Linux and the OS</a>, C++ for GPUs in <a href="../compute/accelerator/writing-kernels.html#just-enough-c-to-read-cuda">Writing kernels</a>, and Kubernetes-flavoured YAML in <a href="../orchestration/kubernetes-from-zero.html#yaml-for-kubernetes">Kubernetes from zero</a>.</p>
+<p>Conventions:</p>
+<ul>
+<li>Every program and every command shown with output was run while writing, on an Apple M4 MacBook (macOS 15, arm64, i.e. an ARM-family CPU) with Python 3.12-3.14, PyTorch 2.15, Apple clang 17, GNU Make 3.81, jq 1.7 and git 2.52; the output blocks are pasted from those runs. Paths, timestamps, hashes and memory addresses will differ on your machine. A few commands shown <em>without</em> output are syntax illustrations that were not run (installers like <code>brew</code>/<code>apt</code>/<code>conda</code>, <code>git config</code>, <code>git switch --detach</code>, <code>CUDA_LAUNCH_BLOCKING=1</code>); they're standard usage, but untested here.</li>
+<li>Nothing here needs a GPU.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Python (well), PyTorch (tensors, autograd, <code>nn.Module</code>, training loops) and deep-learning math. That's all. This is the first chapter; it assumes no shell, no git, no C.</li>
+</ul>
+<p>Forward links: the shell in depth (pipes, quoting, exit codes, scripts, ssh, tmux) is <a href="../foundations/linux-and-os.html#2-the-shell">Linux and the OS, section 2</a>; what a process, a file and memory actually are is the rest of that chapter; the C programs here get used for real in <a href="../foundations/computer-architecture.html">Computer architecture</a>.</p>
+<h2 id="the-terminal-just-enough">The terminal, just enough</h2>
+<h3 id="what-a-terminal-is">What a terminal is</h3>
+<p>A <strong>terminal</strong> is a window where you type commands as text and read their output as text. The program inside it that reads your command, runs it and prints the result is the <strong>shell</strong>. On macOS the app is called Terminal (in Applications → Utilities; many people use iTerm2 or the terminal built into VS Code instead), and the default shell is <code>zsh</code>. On Linux it's usually called Terminal too, and the default shell is usually <code>bash</code>. Every remote GPU machine you will ever log into gives you a shell, and nothing else, so this is not optional.</p>
+<p>When the shell is ready for input it prints a <strong>prompt</strong>, something like:</p>
+<pre><code>you@laptop project %
+</code></pre>
+<p>That is your user name, the machine name, the current directory and a <code>%</code> (zsh) or <code>$</code> (bash). Prompts are configurable and differ between machines, so this book doesn't print them. Instead it uses one convention:</p>
+<pre><code class="language-console">$ python3 --version
+Python 3.14.5
+</code></pre>
+<p><strong>A line starting with <code>$ </code> is a command you type</strong> (without the <code>$ </code>). Lines that don't start with <code>$ </code> are what the command printed. Sometimes a code block has no <code>$ </code> lines at all; then every line in it is a command (or a file's contents, if a comment like <code># train.py</code> names a file at the top). A <code>#</code> in a command line starts a comment that the shell ignores, so <code>$ ls -l   # long listing</code> runs <code>ls -l</code>. A word in angle brackets, like <code>&lt;file&gt;</code> or <code>&lt;hash&gt;</code>, is a placeholder: type your own value instead, without the brackets.</p>
+<p>A command finishes when the prompt comes back. If it doesn't come back, the command is still running (or waiting for you to type input). <strong>Ctrl-C</strong> interrupts it. <strong>Ctrl-D</strong> on an empty line means &quot;end of input&quot;, which also exits a Python REPL or a shell. Up-arrow recalls the previous command; Tab completes file names (type <code>cd Desk</code> then Tab).</p>
+<h3 id="anatomy-of-a-command">Anatomy of a command</h3>
+<pre><code class="language-console">$ ls -l data
+</code></pre>
+<p>The first word (<code>ls</code>) is the program to run. The rest are <strong>arguments</strong>, separated by spaces. Arguments starting with <code>-</code> are <strong>options</strong> (also called flags) that change behaviour: <code>-l</code> means &quot;long format&quot;. Single-letter options can be combined (<code>ls -la</code> = <code>ls -l -a</code>); long options use two dashes (<code>--version</code>). Some options take a value: <code>head -n 5 file</code> or <code>--epochs=3</code>. Every program defines its own options; <code>program --help</code> or <code>man program</code> (manual page; <code>q</code> to quit) lists them.</p>
+<p>Arguments containing spaces must be quoted: <code>ls &quot;My Documents&quot;</code>. Without quotes, the shell splits it into two arguments, <code>My</code> and <code>Documents</code>. Quoting has more rules than this, and they cause real bugs; <a href="../foundations/linux-and-os.html#quoting-the-source-of-many-bugs">Quoting</a> has them.</p>
+<h3 id="moving-around-paths-pwd-cd-ls-cat">Moving around: paths, <code>pwd</code>, <code>cd</code>, <code>ls</code>, <code>cat</code></h3>
+<p>Files live in a tree of directories (folders). A <strong>path</strong> names a place in the tree:</p>
+<ul>
+<li>An <strong>absolute path</strong> starts at the root <code>/</code>: <code>/tmp/tkdemo/project/notes.txt</code>.</li>
+<li>A <strong>relative path</strong> starts at the <strong>current working directory</strong>, the directory the shell is &quot;in&quot; right now: if you are in <code>/tmp/tkdemo</code>, then <code>project/notes.txt</code> means <code>/tmp/tkdemo/project/notes.txt</code>.</li>
+<li><code>.</code> is the current directory, <code>..</code> is its parent, <code>~</code> is your home directory (<code>/Users/you</code> on macOS, <code>/home/you</code> on Linux).</li>
+</ul>
+<p>The handful of commands you need on day one, run in an empty directory:</p>
+<pre><code class="language-console">$ pwd                                  # print working directory
+/tmp/tkdemo
+$ mkdir -p project/data                # make directories (-p: parents too, no error if they exist)
+$ cd project                           # change directory
+$ echo &quot;hello from a file&quot; &gt; notes.txt # write a line into a file (&gt; redirects output to a file)
+$ ls                                   # list
+data
+notes.txt
+$ ls -la                               # long format, including hidden files (names starting with .)
+total 8
+drwxr-xr-x  4 you            wheel  128 Nov  6 19:03 .
+drwxr-xr-x  3 you            wheel   96 Nov  6 19:03 ..
+drwxr-xr-x  2 you            wheel   64 Nov  6 19:03 data
+-rw-r--r--  1 you            wheel   18 Nov  6 19:03 notes.txt
+$ cat notes.txt                        # print a file
+hello from a file
+$ cd data; pwd                         # ; separates two commands on one line
+/tmp/tkdemo/project/data
+$ cd ..; pwd
+/tmp/tkdemo/project
+$ cd ~; pwd
+/Users/you
+</code></pre>
+<p>In <code>ls -la</code> output, the first character is <code>d</code> for a directory and <code>-</code> for a file; the <code>rwx</code> letters are permissions (explained in <a href="../foundations/linux-and-os.html#permissions-ownership-umask">Permissions</a>); then the owner, group, size in bytes, modification time and name. The hidden entries <code>.</code> and <code>..</code> are the directory itself and its parent.</p>
+<p>Other commands you will meet in the first few chapters, each worth trying once:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>less file</code></td>
+<td>page through a long file (Space/b to move, <code>/word</code> to search, <code>q</code> to quit)</td>
+</tr>
+<tr>
+<td><code>head -n 20 file</code>, <code>tail -n 20 file</code></td>
+<td>first/last 20 lines; <code>tail -f file</code> keeps printing as the file grows (watching a training log)</td>
+</tr>
+<tr>
+<td><code>cp a b</code>, <code>mv a b</code>, <code>rm a</code></td>
+<td>copy, move/rename, delete. <code>rm</code> has no undo and no trash can; <code>rm -r dir</code> deletes a directory tree</td>
+</tr>
+<tr>
+<td><code>wc -l file</code></td>
+<td>count lines</td>
+</tr>
+<tr>
+<td><code>grep pattern file</code></td>
+<td>print lines containing <code>pattern</code> (much more in <a href="#regular-expressions">Regular expressions</a>)</td>
+</tr>
+<tr>
+<td><code>which python3</code></td>
+<td>which program a command name runs (the full path)</td>
+</tr>
+<tr>
+<td><code>echo $HOME</code></td>
+<td>print a variable's value</td>
+</tr>
+<tr>
+<td><code>nano file</code></td>
+<td>a simple terminal text editor (Ctrl-O to save, Ctrl-X to exit). Or open files in your normal editor</td>
+</tr>
+</tbody>
+</table>
+<h3 id="exit-codes-pipes-redirection-variables-a-first-look">Exit codes, pipes, redirection, variables: a first look</h3>
+<p>Four more ideas appear in nearly every shell snippet in the book. <a href="../foundations/linux-and-os.html#2-the-shell">Linux and the OS</a> teaches each properly; here is enough to read them.</p>
+<p>Every command ends with an <strong>exit code</strong>: 0 means success, anything else means failure. The shell keeps the last one in <code>$?</code>:</p>
+<pre><code class="language-console">$ ls nosuchfile
+ls: nosuchfile: No such file or directory
+$ echo &quot;exit code: $?&quot;
+exit code: 1
+</code></pre>
+<p><code>a | b</code> (a <strong>pipe</strong>) feeds the output of <code>a</code> into <code>b</code> as input. <code>&gt; file</code> writes output to a file (replacing it), <code>&gt;&gt; file</code> appends, <code>&lt; file</code> feeds a file to the command as its input, <code>2&gt;&amp;1</code> sends error messages to the same place as normal output. <code>a &amp;&amp; b</code> runs <code>b</code> only if <code>a</code> succeeded. A trailing <code>&amp;</code> runs a command in the background so you get the prompt back:</p>
+<pre><code class="language-console">$ ls -l /usr/bin | wc -l                       # how many lines does the listing of /usr/bin have
+     916
+</code></pre>
+<p>and the pattern you will use for every long-running job (here <code>train.py</code> stands for any script):</p>
+<pre><code class="language-console">$ python3 train.py &gt; train.log 2&gt;&amp;1 &amp;          # run in background, all output to a file
+$ tail -f train.log                            # watch it; Ctrl-C stops watching, not the job
+</code></pre>
+<p><strong>Environment variables</strong> are named strings that every program inherits from the shell that started it. <code>export NAME=value</code> sets one for this shell and everything it starts; <code>NAME=value command</code> sets it for one command only. ML tooling is configured this way all the time (<code>CUDA_VISIBLE_DEVICES=0</code>, <code>OMP_NUM_THREADS=1</code>, <code>HF_HOME=...</code>), and Python reads them with <code>os.environ</code> (<code>python3 -c '...'</code> runs the quoted text as a one-line program; <a href="#running-a-script">Running a script</a> shows it again):</p>
+<pre><code class="language-console">$ export SEED=42
+$ python3 -c 'import os; print(os.environ[&quot;SEED&quot;])'
+42
+$ SEED=7 python3 -c 'import os; print(os.environ[&quot;SEED&quot;])'
+7
+</code></pre>
+<p><code>PATH</code> is the variable that lists the directories the shell searches for programs; that is how <code>python3</code> becomes <code>/opt/homebrew/bin/python3</code>. When &quot;command not found&quot; happens, the program is not installed or its directory is not on <code>PATH</code> (<a href="../foundations/linux-and-os.html#environment-variables-and-path">Environment variables and PATH</a>).</p>
+<h3 id="how-to-read-this-books-labels">How to read this book's labels</h3>
+<p>The chapters are written to be run, and they're honest about which parts were. You will see:</p>
+<ul>
+<li><strong>Pasted output.</strong> An output block after a <code>$ </code> command is what the command printed when the author ran it, on the machine named at the top of that chapter. Your numbers (timings, addresses, hashes) will differ; the shape should not.</li>
+<li><strong>[torch]</strong>: needs a Python environment with PyTorch (the <a href="#one-setup-block-for-the-whole-book">setup block</a> below). Runs on a CPU-only laptop.</li>
+<li><strong>[GPU]</strong>: needs an NVIDIA GPU. Most of these were not run while writing; they say so.</li>
+<li><strong>Untested</strong>: the command or code was <em>not executed</em> while writing, usually because it needs Linux, a GPU, a cluster or root (administrator rights on the machine; <code>sudo cmd</code> runs one command as root). It follows the tool's documentation, but treat it as a strong hint, not a recipe. Check flags against <code>--help</code> on your system.</li>
+<li><strong>Sketched output</strong>: the output block shows the <em>format</em> of what you will see (real column names, real structure), but the values were written by hand, not captured. Don't draw conclusions from the numbers in a sketched block.</li>
+</ul>
+<p>When a chapter says &quot;one run on one laptop&quot;, it means exactly that: one data point, an anecdote, not a benchmark.</p>
+<h2 id="running-the-books-code">Running the book's code</h2>
+<h3 id="getting-python">Getting Python</h3>
+<p>You already write Python, but it's worth knowing which Python a terminal runs, because a machine usually has several:</p>
+<pre><code class="language-console">$ which python3
+/opt/homebrew/bin/python3
+$ python3 --version
+Python 3.14.5
+</code></pre>
+<p>Ways to get one:</p>
+<ul>
+<li><strong>macOS:</strong> Apple ships an old <code>/usr/bin/python3</code> (3.9 on this machine) with the developer tools; don't use it for real work. Install a current one with <a href="https://brew.sh">Homebrew</a> (the usual macOS package manager: <code>brew install X</code> downloads and installs program X; <code>brew install python</code>), from <a href="https://www.python.org/downloads/">python.org</a>, or let <code>uv</code> manage it (next sections).</li>
+<li><strong>Linux:</strong> the distribution's <code>python3</code> (Ubuntu 24.04 ships 3.12) plus <code>sudo apt install python3-venv</code> is fine (<code>apt</code> is Ubuntu's package manager, and installing system packages needs <code>sudo</code>, i.e. root). Or <code>uv</code>.</li>
+<li><strong>Any OS:</strong> <code>uv python install 3.12</code> downloads a standalone Python into your home directory without touching the system.</li>
+</ul>
+<p>Use a version that PyTorch publishes <strong>wheels</strong> (prebuilt packages) for; the install page on pytorch.org lists them. 3.12 is a safe choice (this chapter also installed <code>torch</code> 2.15 on 3.14). A brand-new Python release often has no PyTorch build for its first few months.</p>
+<h3 id="why-virtual-environments">Why virtual environments</h3>
+<p><code>pip install</code> puts packages into a <code>site-packages</code> directory belonging to one Python installation. If that is the system Python, you are modifying something the OS or Homebrew manages, and two projects needing different <code>torch</code> versions cannot coexist. Recent Pythons from Homebrew and Debian/Ubuntu therefore refuse:</p>
+<pre><code class="language-console">$ python3 -m pip install numpy
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─&gt; To install Python packages system-wide, try brew install
+    xyz, where xyz is the package you are trying to
+    install.
+
+    If you wish to install a Python library that isn't in Homebrew,
+    use a virtual environment:
+
+    python3 -m venv path/to/venv
+    source path/to/venv/bin/activate
+</code></pre>
+<p>Don't fight it (the <code>--break-system-packages</code> flag exists and is a bad idea). A <strong>virtual environment</strong> (&quot;venv&quot;) is a directory containing a link to a Python interpreter plus its own private, empty <code>site-packages</code>. You make one per project, install into it, and delete the directory when you're done. Nothing else on the machine changes.</p>
+<h3 id="venv-the-built-in-way">venv: the built-in way</h3>
+<pre><code class="language-console">$ cd /tmp/tkdemo/project
+$ python3 -m venv .venv                 # create the environment in the directory .venv
+$ source .venv/bin/activate             # activate it in this shell
+(.venv) $ which python
+/private/tmp/tkdemo/project/.venv/bin/python
+(.venv) $ pip install numpy
+...
+(.venv) $ python -c &quot;import numpy; print(numpy.__version__, numpy.__file__)&quot;
+2.5.4 /private/tmp/tkdemo/project/.venv/lib/python3.14/site-packages/numpy/__init__.py
+(.venv) $ pip list
+Package Version
+------- -------
+numpy   2.5.4
+pip     26.1.1
+(.venv) $ deactivate
+</code></pre>
+<p>(<code>/tmp</code> on macOS is a link to <code>/private/tmp</code>, hence the path.)</p>
+<p>What <code>activate</code> does is small: it puts <code>.venv/bin</code> at the front of <code>PATH</code>, so <code>python</code> and <code>pip</code> now mean the venv's copies, and it adds <code>(.venv)</code> to the prompt. It only affects the current terminal window; a new window starts un-activated. You can skip activation entirely by naming the interpreter: <code>.venv/bin/python train.py</code> always uses the venv. That's the most robust form for scripts and for anything you put in a job file, and it's what most of this book's setup blocks do.</p>
+<p>Two habits that prevent most environment confusion:</p>
+<ul>
+<li><code>python -m pip install ...</code> instead of <code>pip install ...</code>. It guarantees the <code>pip</code> belongs to the <code>python</code> you think it does.</li>
+<li>When an import fails or picks up the wrong version, print <code>import sys; print(sys.executable)</code> and <code>module.__file__</code>. That tells you which interpreter and which copy of the package are actually in use.</li>
+</ul>
+<h3 id="uv-the-fast-way">uv: the fast way</h3>
+<p><a href="https://docs.astral.sh/uv/">uv</a> is a single-binary replacement for <code>pip</code>, <code>venv</code> and Python installers. It does the same things much faster (its own benchmarks claim 10-100x over pip), which matters when <code>torch</code> is a multi-gigabyte install. Install it once (<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>, or <code>brew install uv</code>; <code>curl URL</code> downloads a URL and prints it, and piping that into <code>sh</code> runs the downloaded install script), then either use it as a drop-in for the commands above:</p>
+<pre><code class="language-console">$ uv venv .venv                          # like python -m venv, but fast; --python 3.12 picks a version
+$ uv pip install numpy                   # installs into ./.venv without activating
+$ .venv/bin/python -c &quot;import numpy&quot;
+</code></pre>
+<p>or let it manage a whole project:</p>
+<pre><code class="language-console">$ uv init uvdemo
+Initialized project `uvdemo` at `/private/tmp/tkdemo/uvdemo`
+$ cd uvdemo; ls -a
+.
+..
+.git
+.gitignore
+.python-version
+README.md
+main.py
+pyproject.toml
+$ uv add numpy pyyaml
+Using CPython 3.13.12
+Creating virtual environment at: .venv
+Resolved 3 packages in 2.45s
+Installed 2 packages in 89ms
+ + numpy==2.5.4
+ + pyyaml==6.0.3
+$ cat pyproject.toml
+[project]
+name = &quot;uvdemo&quot;
+version = &quot;0.1.0&quot;
+description = &quot;Add your description here&quot;
+readme = &quot;README.md&quot;
+requires-python = &quot;&gt;=3.13&quot;
+dependencies = [
+    &quot;numpy&gt;=2.5.4&quot;,
+    &quot;pyyaml&gt;=6.0.3&quot;,
+]
+$ uv run main.py
+Hello from uvdemo!
+$ uv run python -c &quot;import numpy, yaml; print(numpy.__version__, yaml.__version__)&quot;
+2.5.4 6.0.3
+</code></pre>
+<p><code>uv add</code> records the dependency in <code>pyproject.toml</code> (a <a href="#toml">TOML</a> file), pins exact versions in a <code>uv.lock</code> file, and installs into <code>.venv</code>. <code>uv run X</code> makes sure <code>.venv</code> matches the lock file and then runs <code>X</code> inside it, no activation needed. Many recent ML repositories (including some RL frameworks in <a href="../platform/rl-infrastructure.html">RL infrastructure</a>) are launched as <code>uv run ...</code> for this reason.</p>
+<p><strong>conda</strong> is the third option you'll see, especially on clusters and in older repos: <code>conda create -n myenv python=3.12</code>, <code>conda activate myenv</code>. It manages non-Python libraries too (CUDA runtime, compilers), which was its big advantage before PyTorch wheels bundled their own CUDA libraries. If a repo's README says <code>conda env create -f environment.yml</code>, that's a YAML list of packages. Mixing <code>conda install</code> and <code>pip install</code> in one environment works but is a common source of confusion; prefer one.</p>
+<h3 id="requirements-files-and-version-pins">requirements files and version pins</h3>
+<p>A <code>requirements.txt</code> is a plain list of packages, one per line, optionally pinned:</p>
+<pre><code>torch==2.5.1
+numpy&gt;=2.0
+pyyaml
+</code></pre>
+<p><code>pip install -r requirements.txt</code> (or <code>uv pip install -r requirements.txt</code>) installs all of them. <code>==</code> pins an exact version, <code>&gt;=</code> a minimum. <code>pip freeze &gt; requirements.txt</code> writes out exactly what's installed now, which is how you make an environment reproducible (the book's <a href="../training/reproducibility/README.html">Reproducibility</a> chapter covers why).</p>
+<h3 id="one-setup-block-for-the-whole-book">One setup block for the whole book</h3>
+<p>Almost every runnable example in the book needs some subset of <code>torch</code>, <code>numpy</code>, <code>pyyaml</code> (the <code>yaml</code> module) and <code>safetensors</code>. A few chapters need extras (FastAPI and friends in the serving and platform chapters, <code>triton</code> and <code>ninja</code> in the kernel chapter); each of those lists its own <code>pip install</code> line. Make one environment for the book and keep it:</p>
+<pre><code class="language-console">$ mkdir -p ~/mle &amp;&amp; cd ~/mle
+$ uv venv .venv --python 3.12
+$ uv pip install torch numpy pyyaml safetensors
+$ .venv/bin/python check_env.py
+</code></pre>
+<p>(Without uv: <code>python3 -m venv .venv &amp;&amp; .venv/bin/python -m pip install torch numpy pyyaml safetensors</code>.)</p>
+<p>where <code>check_env.py</code> is:</p>
+<pre><code class="language-python"># check_env.py - prints what this book's examples will find
+import sys, platform
+print(&quot;python  &quot;, sys.version.split()[0], &quot;at&quot;, sys.executable)
+print(&quot;machine &quot;, platform.system(), platform.machine())
+import numpy, yaml, safetensors, torch
+print(&quot;numpy   &quot;, numpy.__version__)
+print(&quot;pyyaml  &quot;, yaml.__version__)
+print(&quot;safetens&quot;, safetensors.__version__)
+print(&quot;torch   &quot;, torch.__version__)
+print(&quot;cuda?   &quot;, torch.cuda.is_available())
+print(&quot;mps?    &quot;, torch.backends.mps.is_available())
+x = torch.randn(1024, 1024)
+print(&quot;matmul ok, trace(x x^T)/1024 ≈ 1024:&quot;, round((x @ x.T).trace().item() / 1024))
+</code></pre>
+<p>On this Mac (the environment was in <code>/tmp/tk</code>):</p>
+<pre><code>python   3.12.13 at /private/tmp/tk/.venv/bin/python
+machine  Darwin arm64
+numpy    2.5.4
+pyyaml   6.0.3
+safetens 0.8.0
+torch    2.15.0
+cuda?    False
+mps?     True
+matmul ok, trace(x x^T)/1024 ≈ 1024: 1025
+</code></pre>
+<p><code>cuda? False</code> is expected on a Mac: Apple GPUs don't run CUDA. <code>mps? True</code> means PyTorch can use the Apple GPU through its MPS backend, which a few chapters use when available. On a Linux machine with an NVIDIA GPU you want <code>cuda? True</code>. If it says <code>False</code> there, you probably installed a CPU-only build of <code>torch</code> or the NVIDIA driver (the low-level software, installed system-wide, that lets programs use the GPU) is missing; <a href="../compute/gpu-software-stack.html">The GPU software stack</a> explains the layers and how to check each one.</p>
+<p>The plain <code>pip install torch</code> picks a sensible default build for your platform. When a chapter needs a specific CUDA build it shows the command, which looks like <code>uv pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124</code>: the <code>--index-url</code> points pip at PyTorch's own package server, and <code>cu124</code> means &quot;built against CUDA 12.4&quot;.</p>
+<h3 id="running-a-script">Running a script</h3>
+<p>You know how to run Python, but there are a few forms you'll see in the book:</p>
+<pre><code class="language-console">$ python train.py --lr 3e-4 --steps 100     # a script with arguments (read with argparse / sys.argv)
+$ python -c 'print(1 + 1)'                  # a one-line program
+$ python -m http.server 8000                # run a module as a script (this one serves the current directory at http://localhost:8000)
+$ python                                    # the interactive REPL; Ctrl-D to leave
+</code></pre>
+<p>Many chapters give a program as a code block whose first line is a comment with a file name, like <code># race.py</code>. Save the block into that file (in your editor, or with the shell's <strong>heredoc</strong>, which feeds the lines up to <code>EOF</code> into a file) and run it:</p>
+<pre><code class="language-console">$ cat &gt; hello.py &lt;&lt;'EOF'
+import sys
+print(&quot;argv:&quot;, sys.argv)
+EOF
+$ python hello.py a b
+argv: ['hello.py', 'a', 'b']
+</code></pre>
+<p>The quotes around <code>'EOF'</code> stop the shell from interpreting <code>$</code> and backticks inside the block, which you want when the block is code.</p>
+<h3 id="macos-vs-linux">macOS vs Linux</h3>
+<p>The book is written on a Mac and deployed on Linux. The differences that bite:</p>
+<ul>
+<li><strong>The command-line tools differ slightly.</strong> The classic Unix tools exist in two families, BSD and GNU, with the same names and mostly the same flags. macOS ships BSD versions of <code>sed</code> (a stream editor; <a href="../foundations/linux-and-os.html#just-enough-awk-and-sed">Linux and the OS</a> shows its few useful forms), <code>grep</code>, <code>date</code>, <code>stat</code>, <code>find</code>; Linux has the GNU versions. Most flags are the same; some aren't (<code>sed -i</code> needs <code>sed -i ''</code> on macOS; <code>grep -P</code> doesn't exist in macOS grep). When a chapter's command fails on a Mac with &quot;illegal option&quot;, this is usually why. <code>brew install coreutils gnu-sed grep</code> gets GNU versions as <code>gsed</code>, <code>ggrep</code> and so on.</li>
+<li><strong>Linux-only interfaces.</strong> <code>/proc</code>, <code>/sys</code>, cgroups, <code>numactl</code>, <code>perf</code>, <code>systemd</code>, namespaces: these exist only on Linux, which is why parts of <a href="../foundations/linux-and-os.html">Linux and the OS</a> and <a href="../foundations/containers-and-virtualization.html">Containers</a> are marked untested or run in a Linux VM (virtual machine: a whole Linux computer emulated inside your Mac). A free option on a Mac is a small Linux VM (UTM, Lima, OrbStack) or a cheap cloud CPU instance.</li>
+<li><strong>CUDA is NVIDIA-on-Linux (or Windows).</strong> A Mac can't run CUDA code at all. Anything marked <strong>[GPU]</strong> needs a rented machine.</li>
+<li><strong>Paths:</strong> home is <code>/Users/you</code> on macOS and <code>/home/you</code> on Linux; <code>/tmp</code> on macOS is <code>/private/tmp</code>.</li>
+</ul>
+<h3 id="which-parts-need-a-gpu-and-renting-one-briefly">Which parts need a GPU, and renting one briefly</h3>
+<p>You can read the whole book, and run most of its examples, on a laptop. The ones that need an NVIDIA GPU are concentrated in a few places: the CUDA kernels in <a href="../compute/accelerator/writing-kernels.html">Writing kernels</a>, the driver and NCCL (NVIDIA's library for moving data between GPUs) checks in <a href="../compute/gpu-software-stack.html">The GPU software stack</a> and <a href="../network/collectives-internals.html">Collectives internals</a>, and the vLLM/SGLang (open-source LLM serving engines) runs in <a href="../inference/serving-hands-on.html">Serving hands-on</a>. Multi-node examples (Slurm and Kubernetes, which schedule work across many machines, and InfiniBand, a fast network between them) need a cluster and are mostly labelled untested.</p>
+<p>For the single-GPU material, rent a cloud GPU by the hour. The pattern is the same everywhere: create an account, add a payment method and an SSH public key (<a href="../foundations/linux-and-os.html#working-remotely-ssh-scp-rsync">ssh</a> explains keys), pick a GPU type and a machine image with a recent NVIDIA driver and PyTorch preinstalled, start it, <code>ssh</code> in (<code>ssh user@host</code> gives you a shell on the remote machine), work, and <strong>stop or delete it when you're done</strong>. A forgotten instance bills all night. Hyperscalers (AWS, Google Cloud, Azure) and smaller GPU clouds both offer this; the smaller ones are usually simpler and cheaper for an hour of tinkering. This book doesn't recommend a provider.</p>
+<p>Rough on-demand prices at the time of writing (late 2026), for orientation only - they vary by provider and region, spot/preemptible capacity is cheaper, and prices fall over time:</p>
+<table>
+<thead>
+<tr>
+<th>GPU</th>
+<th>Good for in this book</th>
+<th>Approx. $/GPU-hour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a consumer-class or L4/A10-class card (16-24 GB)</td>
+<td>kernels, profiling, small serving runs</td>
+<td>$0.3-1</td>
+</tr>
+<tr>
+<td>A100 40/80 GB</td>
+<td>everything single-GPU, larger serving runs</td>
+<td>$1-2</td>
+</tr>
+<tr>
+<td>H100 80 GB</td>
+<td>Hopper-specific kernels (TMA, FP8: features new in this &quot;Hopper&quot; GPU generation), realistic serving numbers</td>
+<td>$2-4</td>
+</tr>
+</tbody>
+</table>
+<p>A focused afternoon on the [GPU]-labelled examples of one chapter is a few dollars. Multi-GPU nodes (8x H100) cost 8x as much per hour, and you need them only for the collective-communication and multi-GPU serving parts.</p>
+<h2 id="git-from-zero">git from zero</h2>
+<p><strong>git</strong> is a version-control system: it records snapshots of a directory of files over time, so you can see what changed, when, by whom and why, go back to any earlier state, and work on several variations in parallel. Nearly all code you'll touch in ML (PyTorch, vLLM, Megatron, NCCL, every paper's reference implementation) lives in git repositories, usually hosted on GitHub. For experiments, git is also the cheapest reproducibility tool there is: a run that logs the <strong>commit hash</strong> of the code it ran can be reconstructed exactly.</p>
+<p>The vocabulary, in one go:</p>
+<ul>
+<li>A <strong>repository</strong> (&quot;repo&quot;) is a directory whose history git tracks. The history lives in a hidden <code>.git/</code> subdirectory; delete that and it's just a folder again.</li>
+<li>A <strong>commit</strong> is one saved snapshot of the whole tree, plus a message, an author, a time, and a pointer to its parent commit(s). Each commit is named by a 40-hex-digit <strong>hash</strong> such as <code>fbf9f0ce74b0...</code>; the first 7 characters are usually enough to refer to it.</li>
+<li>The <strong>working tree</strong> is the files you see and edit. The <strong>staging area</strong> (or &quot;index&quot;) is what will go into the next commit; <code>git add</code> puts changes there.</li>
+<li>A <strong>branch</strong> is a movable name pointing at a commit (<code>main</code>, <code>try-cosine</code>). Committing on a branch moves it forward. <strong><code>HEAD</code></strong> means &quot;the commit you currently have checked out&quot;.</li>
+<li>A <strong>remote</strong> is another copy of the repo, usually on GitHub, conventionally named <code>origin</code>. <code>clone</code>, <code>pull</code> and <code>push</code> move commits between your copy and a remote.</li>
+</ul>
+<h3 id="a-first-repository">A first repository</h3>
+<p>Set your name and email once per machine (they're stamped on every commit): <code>git config --global user.name &quot;Your Name&quot;</code> and <code>git config --global user.email you@example.com</code>. Then, in an empty directory, create two small files (with your editor, or the heredoc form from <a href="#running-a-script">Running a script</a>):</p>
+<pre><code class="language-python"># config.py
+lr = 3e-4
+steps = 100
+</code></pre>
+<pre><code class="language-python"># train.py
+from config import lr, steps
+print(f&quot;training for {steps} steps at lr={lr}&quot;)
+</code></pre>
+<pre><code class="language-console">$ git init -b main                       # make this directory a repo, first branch called main
+Initialized empty Git repository in /private/tmp/tkdemo/gitdemo/.git/
+$ git status
+On branch main
+
+No commits yet
+
+Untracked files:
+  (use &quot;git add &lt;file&gt;...&quot; to include in what will be committed)
+	config.py
+	train.py
+
+nothing added to commit but untracked files present (use &quot;git add&quot; to track)
+$ git add config.py train.py             # stage both files
+$ git commit -m &quot;First version of the training script&quot;
+[main (root-commit) 10c873f] First version of the training script
+ 2 files changed, 4 insertions(+)
+ create mode 100644 config.py
+ create mode 100644 train.py
+</code></pre>
+<p><code>git status</code> is the command to run whenever you're unsure what state things are in; it also tells you what to type next. (In the commit output, <code>10c873f</code> is the new commit's short hash, and <code>create mode 100644</code> just records each new file's permission bits, here &quot;an ordinary, non-executable file&quot;; <a href="../foundations/linux-and-os.html#permissions-ownership-umask">Permissions</a> explains the numbers.) Now edit <code>config.py</code> (change <code>steps = 100</code> to <code>steps = 500</code>) and look:</p>
+<pre><code class="language-console">$ git status
+On branch main
+Changes not staged for commit:
+  (use &quot;git add &lt;file&gt;...&quot; to update what will be committed)
+  (use &quot;git restore &lt;file&gt;...&quot; to discard changes in working directory)
+	modified:   config.py
+
+no changes added to commit (use &quot;git add&quot; and/or &quot;git commit -a&quot;)
+$ git diff
+diff --git a/config.py b/config.py
+index db30fbc..ea030a2 100644
+--- a/config.py
++++ b/config.py
+@@ -1,2 +1,2 @@
+ lr = 3e-4
+-steps = 100
++steps = 500
+</code></pre>
+<p>That is a <strong>diff</strong> (also called a patch), and you'll read thousands of them in code review. <code>---</code> and <code>+++</code> name the old and new file; <code>@@ -1,2 +1,2 @@</code> says &quot;this hunk covers 2 lines starting at line 1 in both versions&quot;; lines starting with <code>-</code> were removed, <code>+</code> were added, a space means unchanged context. Commit it and look at history:</p>
+<pre><code class="language-console">$ git add config.py
+$ git commit -m &quot;Train for 500 steps&quot;
+$ git log
+commit fbf9f0ce74b05e716a9459affde7210dc26739d3
+Author: Ada Lovelace &lt;ada@example.com&gt;
+Date:   Fri Nov 6 10:00:00 2026 -0500
+
+    Train for 500 steps
+
+commit 10c873f2285113df9a0b800fe41c7ac1dc523224
+Author: Ada Lovelace &lt;ada@example.com&gt;
+Date:   Fri Nov 6 10:00:00 2026 -0500
+
+    First version of the training script
+$ git log --oneline
+fbf9f0c Train for 500 steps
+10c873f First version of the training script
+</code></pre>
+<p>(Your hashes will differ: they depend on content, author and time.) <code>git commit -am &quot;msg&quot;</code> stages every modified tracked file and commits in one step; it does not pick up new files. <code>git show &lt;hash&gt;</code> prints one commit with its diff. <code>git restore file</code> throws away uncommitted edits to <code>file</code> (there's no undo for that).</p>
+<h3 id="branches">Branches</h3>
+<p>A branch lets you try something without disturbing the working version:</p>
+<pre><code class="language-console">$ git switch -c try-cosine               # create a branch and switch to it
+Switched to a new branch 'try-cosine'
+$ echo 'schedule = &quot;cosine&quot;' &gt;&gt; config.py
+$ git commit -am &quot;Add cosine schedule&quot;
+[try-cosine 57aea93] Add cosine schedule
+ 1 file changed, 1 insertion(+)
+$ git switch main                        # back to main: config.py has no schedule line
+$ cat config.py
+lr = 3e-4
+steps = 500
+$ git merge try-cosine                   # bring the branch's commits into main
+Updating fbf9f0c..57aea93
+Fast-forward
+ config.py | 1 +
+ 1 file changed, 1 insertion(+)
+$ git log --oneline
+57aea93 Add cosine schedule
+fbf9f0c Train for 500 steps
+10c873f First version of the training script
+$ git branch                             # list branches; * marks the current one
+* main
+  try-cosine
+</code></pre>
+<p>&quot;Fast-forward&quot; means main had no new commits of its own, so git just moved the <code>main</code> label forward. If both branches had changed the same lines, <code>git merge</code> would stop with a <strong>merge conflict</strong> and mark the file with <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> sections; you edit the file to the version you want, <code>git add</code> it, and <code>git commit</code>. (Older docs use <code>git checkout -b name</code> and <code>git checkout name</code> for what <code>git switch</code> does.)</p>
+<h3 id="files-git-should-ignore">Files git should ignore</h3>
+<p>A file called <code>.gitignore</code> lists patterns git should never track: virtual environments, logs, checkpoints, data.</p>
+<pre><code>.venv/
+__pycache__/
+*.log
+checkpoints/
+*.safetensors
+</code></pre>
+<p>Never commit model weights, datasets or secrets (API keys, tokens) to git. Big binary files make every clone slow forever, and a committed secret stays in history even after you delete the file.</p>
+<h3 id="working-with-other-peoples-repositories">Working with other people's repositories</h3>
+<pre><code class="language-console">$ git clone https://github.com/karpathy/micrograd.git
+Cloning into 'micrograd'...
+$ cd micrograd
+$ git remote -v                          # where it came from
+origin	https://github.com/karpathy/micrograd.git (fetch)
+origin	https://github.com/karpathy/micrograd.git (push)
+$ git pull                               # fetch new commits from origin and merge them in
+Already up to date.
+$ git log --oneline -3
+7bc720e link to microgpt
+c911406 add setup.py to allow registering micrograd as package under pypi
+c34adac license should not be markdown, fixing
+</code></pre>
+<p><code>git clone URL</code> copies the whole repository including history. <code>git pull</code> updates it later. <code>git push</code> sends your commits to the remote; you need write access, which on someone else's project you don't have, so contributions go through a <strong>fork</strong> (your own copy on GitHub) and a <strong>pull request</strong> (a request that they merge your branch). <code>git clone --depth 1 URL</code> fetches only the latest snapshot, which is much faster for huge repos like PyTorch when you only want to read the code.</p>
+<p>To get the exact version of a project that matches what you have installed, check out a <strong>tag</strong> (a permanent name for a release commit): <code>git tag</code> lists them, <code>git switch --detach v2.5.1</code> checks one out. Reading the <code>main</code> branch of a library while running last year's release is a classic way to be confused by code that doesn't match your behaviour.</p>
+<h3 id="git-grep-log----path-blame">git grep, log -- path, blame</h3>
+<p>Three commands answer most &quot;where is this / why is this&quot; questions in a codebase:</p>
+<pre><code class="language-console">$ git grep -n &quot;def backward&quot;             # search tracked files; -n prints line numbers
+micrograd/engine.py:54:    def backward(self):
+$ git log --format='%h %ad %s' --date=short -- micrograd/engine.py | head -3   # history of one file
+5bb6392 2020-04-18 small tweaks and bug fixes to docs
+315a2cb 2020-04-17 add a number of more ops including -,/,**, and supporting unit tests
+9d268f5 2020-04-14 add graphviz gracing utility which I think is cute
+$ git blame -L 54,58 micrograd/engine.py # which commit last touched each line
+9fd9cc02 (Andrej Karpathy 2020-04-14 00:25:30 -0700 54)     def backward(self):
+9fd9cc02 (Andrej Karpathy 2020-04-14 00:25:30 -0700 55)
+9fd9cc02 (Andrej Karpathy 2020-04-14 00:25:30 -0700 56)         # topological order all of the children in the graph
+9fd9cc02 (Andrej Karpathy 2020-04-14 00:25:30 -0700 57)         topo = []
+575bc173 (Andrej Karpathy 2020-04-14 01:21:57 -0700 58)         visited = set()
+</code></pre>
+<p>In the <code>git log</code> line, <code>--format='%h %ad %s'</code> prints the short hash, author date and subject (first line of the message) of each commit, <code>--date=short</code> shortens the date, and <code>--</code> separates options from the file path whose history you want. <code>git blame -L 54,58</code> limits the output to lines 54-58.</p>
+<p><code>git grep</code> is faster than plain <code>grep -r</code> on big repos and skips <code>.git/</code>, build outputs and anything ignored. <code>git blame</code> plus <code>git show &lt;hash&gt;</code> is how you find <em>why</em> a strange line exists: the commit message and the rest of that commit's diff usually explain it.</p>
+<h3 id="reading-an-open-source-codebase">Reading an open-source codebase</h3>
+<p>A method that works on a 200-line project and on PyTorch alike:</p>
+<ol>
+<li>
+<p><strong>README first.</strong> It says what the project is, how to install it, the main entry points and how to run the tests. micrograd's README shows an example (<code>from micrograd.engine import Value</code>) and a &quot;Running tests&quot; section saying <code>python -m pytest</code>.</p>
+</li>
+<li>
+<p><strong>Get the size and the layout.</strong> <code>ls</code>, then count lines per file, to know what you're up against:</p>
+<pre><code class="language-console">$ find . -name &quot;*.py&quot; -not -path &quot;./.git/*&quot; | xargs wc -l
+      22 ./setup.py
+      67 ./test/test_engine.py
+      60 ./micrograd/nn.py
+       0 ./micrograd/__init__.py
+      94 ./micrograd/engine.py
+     243 total
+</code></pre>
+<p>(<code>find</code> lists files matching a name, where <code>*</code> is a wildcard for &quot;any characters&quot;, so <code>&quot;*.py&quot;</code> is every name ending in <code>.py</code>; <code>-not -path &quot;./.git/*&quot;</code> skips git's own directory; <code>xargs</code> passes the found names as arguments to <code>wc -l</code>.) In a big repo, look for the directory that matches the README's import path, and for packaging metadata (<code>pyproject.toml</code>, <code>setup.py</code>) which lists the command-line entry points.</p>
+</li>
+<li>
+<p><strong>Find the entry point.</strong> For a library, it's the class or function the README example uses (<code>Value</code> in <code>engine.py</code>). For a training repo, it's the script the README tells you to run (<code>train.py</code>, or a <code>[project.scripts]</code> entry in <code>pyproject.toml</code>). Read it top to bottom, following calls into other files with <code>git grep -n &quot;def name&quot;</code>.</p>
+</li>
+<li>
+<p><strong>Read the tests.</strong> Tests are executable documentation: small, concrete examples of every behaviour the authors cared about, with the expected answer. micrograd's <code>test/test_engine.py</code> builds the same expression in micrograd and in PyTorch and asserts the gradients match, which tells you exactly what &quot;correct&quot; means for the engine.</p>
+</li>
+<li>
+<p><strong>Run something small and change something.</strong> Run the tests (<code>python -m pytest</code>, in a venv with the project's dependencies; not run here), then put a <code>print</code> or a breakpoint (<code>breakpoint()</code> drops into the Python debugger) in the code path you care about and run the README example. Ten minutes of watching real values flow beats an hour of reading.</p>
+</li>
+<li>
+<p><strong>Use history for &quot;why&quot;.</strong> <code>git log -- path</code> and <code>git blame</code> on the confusing part.</p>
+</li>
+</ol>
+<p>For C/C++/CUDA projects (NCCL, nccl-tests), step 2 also means finding the build file, usually a <code>Makefile</code> or <code>CMakeLists.txt</code>; <a href="#make-and-makefiles">Make</a> below covers enough to read one.</p>
+<h2 id="json-and-jq">JSON and jq</h2>
+<p>Configuration, logs, API requests and responses, profiler traces, Kubernetes objects and model metadata are all passed around as text in a handful of formats. Each maps onto Python's built-in types, and each has a few ways to surprise you. JSON first, because the others are defined relative to it.</p>
+<h3 id="json">JSON</h3>
+<p><strong>JSON</strong> (JavaScript Object Notation) is the lingua franca of APIs and logs. It has exactly six kinds of value:</p>
+<table>
+<thead>
+<tr>
+<th>JSON</th>
+<th>Python</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>object</td>
+<td><code>dict</code></td>
+<td><code>{&quot;lr&quot;: 0.0003, &quot;name&quot;: &quot;adamw&quot;}</code></td>
+</tr>
+<tr>
+<td>array</td>
+<td><code>list</code></td>
+<td><code>[0.9, 0.95]</code></td>
+</tr>
+<tr>
+<td>string</td>
+<td><code>str</code></td>
+<td><code>&quot;tiny-gpt&quot;</code> (double quotes only)</td>
+</tr>
+<tr>
+<td>number</td>
+<td><code>int</code> / <code>float</code></td>
+<td><code>384</code>, <code>3e-4</code></td>
+</tr>
+<tr>
+<td><code>true</code> / <code>false</code></td>
+<td><code>True</code> / <code>False</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>null</code></td>
+<td><code>None</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Rules worth memorizing because they're what break hand-edited JSON: keys must be strings in double quotes; no trailing commas; no comments; no single quotes. A config file:</p>
+<pre><code class="language-json">{
+  &quot;model&quot;: {&quot;name&quot;: &quot;tiny-gpt&quot;, &quot;n_layer&quot;: 6, &quot;d_model&quot;: 384, &quot;tied_embeddings&quot;: true},
+  &quot;optimizer&quot;: {&quot;name&quot;: &quot;adamw&quot;, &quot;lr&quot;: 3e-4, &quot;betas&quot;: [0.9, 0.95], &quot;weight_decay&quot;: 0.1},
+  &quot;data&quot;: [&quot;shard-000.bin&quot;, &quot;shard-001.bin&quot;],
+  &quot;resume_from&quot;: null
+}
+</code></pre>
+<p>From Python, <code>json.load(f)</code>/<code>json.loads(s)</code> parse a file/string, and <code>json.dump(obj, f)</code>/<code>json.dumps(obj)</code> write one. The surprises:</p>
+<pre><code class="language-python"># json_demo.py
+import json, math
+cfg = json.load(open(&quot;config.json&quot;))           # file -&gt; dict
+print(type(cfg[&quot;optimizer&quot;][&quot;betas&quot;]), cfg[&quot;optimizer&quot;][&quot;betas&quot;], cfg[&quot;resume_from&quot;])
+s = json.dumps({&quot;loss&quot;: float(&quot;nan&quot;), &quot;step&quot;: 400, &quot;ok&quot;: True, &quot;ids&quot;: (1, 2)})
+print(s)                                        # Python happily writes NaN ...
+try:
+    json.dumps({&quot;loss&quot;: float(&quot;nan&quot;)}, allow_nan=False)
+except ValueError as e:
+    print(&quot;strict:&quot;, e)                          # ... which is not valid JSON
+print(json.loads('{&quot;1&quot;: &quot;a&quot;}'), json.dumps({1: &quot;a&quot;}))   # keys are always strings
+rows = [json.loads(line) for line in open(&quot;metrics.jsonl&quot;)]
+print(len(rows), rows[-1][&quot;loss&quot;], math.isnan(rows[-1][&quot;loss&quot;]))
+</code></pre>
+<pre><code class="language-console">$ python3 json_demo.py
+&lt;class 'list'&gt; [0.9, 0.95] None
+{&quot;loss&quot;: NaN, &quot;step&quot;: 400, &quot;ok&quot;: true, &quot;ids&quot;: [1, 2]}
+strict: Out of range float values are not JSON compliant: nan
+{'1': 'a'} {&quot;1&quot;: &quot;a&quot;}
+5 nan True
+</code></pre>
+<ul>
+<li><strong>NaN and Infinity are not JSON.</strong> Python writes them anyway (<code>allow_nan=True</code> is the default), and Python reads them back, but a strict parser in another language (or a dashboard) will reject the line. A diverged training run logging <code>NaN</code> is exactly when you need the logs to parse.</li>
+<li><strong>Tuples become lists</strong>, and <strong>integer keys become strings</strong>: <code>{1: &quot;a&quot;}</code> round-trips to <code>{&quot;1&quot;: &quot;a&quot;}</code>. A dict keyed by layer index comes back keyed by <code>&quot;0&quot;</code>, <code>&quot;1&quot;</code>, ...</li>
+<li><code>json.dumps(obj, indent=2)</code> pretty-prints; <code>python3 -m json.tool file.json</code> does the same from the shell and doubles as a validator:</li>
+</ul>
+<pre><code class="language-console">$ echo '{&quot;a&quot;: 1,}' | python3 -m json.tool
+Illegal trailing comma before end of object: line 1 column 8 (char 7)
+</code></pre>
+<h3 id="jq-json-on-the-command-line">jq: JSON on the command line</h3>
+<p><a href="https://jqlang.org">jq</a> is a small program for slicing JSON in the shell. It ships with recent macOS (<code>/usr/bin/jq</code>) and is <code>apt install jq</code> on Ubuntu. Its argument is a <strong>filter</strong>, a little expression describing what to pull out:</p>
+<pre><code class="language-console">$ jq '.optimizer.lr' config.json                  # .key walks into objects
+0.0003
+$ jq '.optimizer.betas[1]' config.json            # [i] indexes arrays
+0.95
+$ jq -r '.data[]' config.json                     # [] iterates; -r prints raw strings, no quotes
+shard-000.bin
+shard-001.bin
+$ jq '.model | keys' config.json                   # | feeds one filter's output into the next
+[
+  &quot;d_model&quot;,
+  &quot;n_layer&quot;,
+  &quot;name&quot;,
+  &quot;tied_embeddings&quot;
+]
+$ jq -c '.optimizer | {lr, wd: .weight_decay}' config.json   # build a new object; -c = compact
+{&quot;lr&quot;:0.0003,&quot;wd&quot;:0.1}
+</code></pre>
+<p><code>jq . file</code> just pretty-prints, which is the first thing to do with any unreadable one-line JSON blob (<code>curl -s URL | jq .</code> is a very common idiom). jq really shines on logs with one JSON object per line (<a href="#csv-and-jsonl">JSONL</a>, below), because it applies the filter to each line separately:</p>
+<pre><code class="language-console">$ cat metrics.jsonl
+{&quot;step&quot;: 100, &quot;loss&quot;: 4.21, &quot;lr&quot;: 0.0003, &quot;event&quot;: &quot;train&quot;}
+{&quot;step&quot;: 200, &quot;loss&quot;: 3.87, &quot;lr&quot;: 0.0003, &quot;event&quot;: &quot;train&quot;}
+{&quot;step&quot;: 200, &quot;val_loss&quot;: 3.95, &quot;event&quot;: &quot;eval&quot;}
+{&quot;step&quot;: 300, &quot;loss&quot;: 3.62, &quot;lr&quot;: 0.00029, &quot;event&quot;: &quot;train&quot;}
+{&quot;step&quot;: 400, &quot;loss&quot;: NaN, &quot;lr&quot;: 0.00028, &quot;event&quot;: &quot;train&quot;}
+$ jq -c 'select(.event == &quot;eval&quot;)' metrics.jsonl                     # keep matching lines
+{&quot;step&quot;:200,&quot;val_loss&quot;:3.95,&quot;event&quot;:&quot;eval&quot;}
+$ jq -r 'select(.event==&quot;train&quot;) | &quot;\(.step) \(.loss)&quot;' metrics.jsonl # string interpolation \( )
+100 4.21
+200 3.87
+300 3.62
+400 null
+$ jq -s 'map(select(.event==&quot;train&quot;)) | length' metrics.jsonl       # -s: slurp all lines into one array
+4
+</code></pre>
+<p>Note the last training line: jq 1.7 accepted Python's non-standard <code>NaN</code> and printed it as <code>null</code>, silently. Other tools reject the line outright. Either way, a NaN loss is the thing you were looking for, and jq hid it. Know your tools' edge cases before trusting them on the edge case.</p>
+<p>The <code>select(...)</code>, <code>-c</code>, <code>-r</code> and <code>\( )</code> forms above cover most uses of jq in this book, for example filtering a structured log in <a href="../platform/control-planes.html">Control planes</a>. The <a href="https://jqlang.org/manual/">jq manual</a> has the rest.</p>
+<h2 id="yaml">YAML</h2>
+<p><strong>YAML</strong> is the format of almost every hand-written config in ML infrastructure: Kubernetes manifests (config files for a system that runs programs across a cluster), Helm charts, GitHub Actions and other CI pipelines (continuous integration: servers that run your tests on every commit), Docker Compose files, conda environments, Hydra/OmegaConf training configs, DeepSpeed and Axolotl configs. It's JSON's data model (dicts, lists, strings, numbers, booleans, null) written with indentation instead of braces, plus comments and multi-line strings. That makes it pleasant to read and write, and the &quot;guess the type of an unquoted value&quot; rule makes it easy to get wrong. The examples below use PyYAML (<code>import yaml</code>, installed by the <a href="#one-setup-block-for-the-whole-book">setup block</a>), which is what most Python ML code uses.</p>
+<h3 id="mappings-lists-and-scalars">Mappings, lists and scalars</h3>
+<pre><code class="language-python"># yaml_basics.py
+import yaml
+doc = &quot;&quot;&quot;
+# a training config
+run_name: baseline-lr3e-4
+model:
+  n_layer: 6
+  d_model: 384
+  dropout: 0.0
+  tied_embeddings: true
+optimizer: {name: adamw, betas: [0.9, 0.95]}   # inline (flow) style
+datasets:
+  - name: web
+    weight: 0.8
+  - name: code
+    weight: 0.2
+resume_from: null
+&quot;&quot;&quot;
+cfg = yaml.safe_load(doc)
+print(cfg)
+print(cfg[&quot;datasets&quot;][1][&quot;name&quot;], type(cfg[&quot;model&quot;][&quot;dropout&quot;]).__name__)
+</code></pre>
+<pre><code class="language-console">$ python3 yaml_basics.py
+{'run_name': 'baseline-lr3e-4', 'model': {'n_layer': 6, 'd_model': 384, 'dropout': 0.0, 'tied_embeddings': True}, 'optimizer': {'name': 'adamw', 'betas': [0.9, 0.95]}, 'datasets': [{'name': 'web', 'weight': 0.8}, {'name': 'code', 'weight': 0.2}], 'resume_from': None}
+code float
+</code></pre>
+<p>Reading it line by line:</p>
+<ul>
+<li><strong><code>key: value</code></strong> is one entry of a <strong>mapping</strong> (a dict). The space after the colon is required.</li>
+<li><strong>Indentation is nesting.</strong> <code>n_layer</code> and <code>d_model</code> are indented under <code>model:</code>, so they're keys of the dict <code>cfg[&quot;model&quot;]</code>. Any consistent number of spaces works (2 is conventional); siblings must line up exactly.</li>
+<li><strong><code>- item</code></strong> is one element of a <strong>list</strong>. <code>datasets:</code> is a list of two dicts; <code>- name: web</code> starts a new dict, and <code>weight: 0.8</code> indented to line up with <code>name</code> belongs to the same dict.</li>
+<li><strong>Flow style</strong>: <code>{a: 1, b: 2}</code> and <code>[x, y]</code> are JSON-like inline forms of a mapping and a list. In fact every JSON document is valid YAML.</li>
+<li><strong>Scalars</strong> (single values) are unquoted unless they need to be: <code>adamw</code> is a string, <code>6</code> an int, <code>0.0</code> a float, <code>true</code> a bool, <code>null</code> (or <code>~</code>, or nothing at all) is <code>None</code>.</li>
+<li><code>#</code> starts a comment, when preceded by a space or at the start of a line.</li>
+</ul>
+<p>Always load with <strong><code>yaml.safe_load</code></strong>, never plain <code>yaml.load</code> with the full loader: the full loader can construct arbitrary Python objects named in the file, so loading an untrusted YAML file could execute code.</p>
+<h3 id="strings-quoting-and-multi-line-text">Strings, quoting and multi-line text</h3>
+<pre><code class="language-python"># yaml_strings.py
+import yaml
+doc = &quot;&quot;&quot;
+literal: |
+  #!/bin/bash
+  echo step 1
+  echo step 2
+folded: &gt;
+  This long description
+  is folded into
+  one line.
+stripped: |-
+  no trailing newline
+plain: a string with spaces, no quotes needed
+quoted: &quot;tab\\there, and a # that is not a comment&quot;
+single: 'it''s literal: \\t stays as backslash-t'
+&quot;&quot;&quot;
+for k, v in yaml.safe_load(doc).items():
+    print(f&quot;{k:9s}{v!r}&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 yaml_strings.py
+literal  '#!/bin/bash\necho step 1\necho step 2\n'
+folded   'This long description is folded into one line.\n'
+stripped 'no trailing newline'
+plain    'a string with spaces, no quotes needed'
+quoted   'tab\there, and a # that is not a comment'
+single   &quot;it's literal: \\t stays as backslash-t&quot;
+</code></pre>
+<p>(The doubled backslashes <code>\\t</code> are because the YAML is inside a Python string; in a <code>.yaml</code> file you'd write <code>\t</code>.)</p>
+<ul>
+<li><strong><code>|</code> (literal block)</strong> keeps the following indented lines exactly, newlines included. This is how a whole shell script or a Python program is embedded in a Kubernetes manifest or a CI file.</li>
+<li><strong><code>&gt;</code> (folded block)</strong> joins the lines with spaces into one paragraph. Good for long descriptions.</li>
+<li>A <strong><code>-</code></strong> after either (<code>|-</code>, <code>&gt;-</code>) strips the final newline. Without it you get one trailing <code>\n</code>, which occasionally matters (a token or a password read from a YAML file with a stray newline).</li>
+<li><strong>Double quotes</strong> allow escapes (<code>\t</code>, <code>\n</code>, <code>\&quot;</code>) and protect characters that would otherwise mean something (<code>#</code>, <code>: </code>, a leading <code>-</code>, <code>{</code>, <code>*</code>, <code>&amp;</code>, <code>!</code>, <code>%</code>, <code>@</code>).</li>
+<li><strong>Single quotes</strong> are fully literal; the only escape is <code>''</code> for a single quote.</li>
+</ul>
+<h3 id="several-documents-in-one-file----">Several documents in one file: <code>---</code></h3>
+<p>A line containing only <code>---</code> separates <strong>documents</strong>. Kubernetes manifests use this constantly to put several objects in one file:</p>
+<pre><code class="language-yaml"># two.yaml - two documents in one file, as in a Kubernetes manifest
+kind: Service
+name: web
+---
+kind: Deployment
+name: web
+replicas: 2
+</code></pre>
+<p><code>safe_load</code> refuses a multi-document file; <code>safe_load_all</code> returns one object per document (in error output, a line <code>...</code> marks where the top of a long Python traceback was cut; the last lines are the error itself):</p>
+<pre><code class="language-console">$ python3 -c 'import yaml; [print(d) for d in yaml.safe_load_all(open(&quot;two.yaml&quot;))]'
+{'kind': 'Service', 'name': 'web'}
+{'kind': 'Deployment', 'name': 'web', 'replicas': 2}
+$ python3 -c 'import yaml; yaml.safe_load(open(&quot;two.yaml&quot;))'
+...
+yaml.composer.ComposerError: expected a single document in the stream
+  in &quot;two.yaml&quot;, line 2, column 1
+but found another document
+  in &quot;two.yaml&quot;, line 4, column 1
+</code></pre>
+<h3 id="anchors-and-merge-keys">Anchors and merge keys</h3>
+<p>Configs with repeated blocks sometimes use <strong>anchors</strong>: <code>&amp;name</code> labels a node, <code>*name</code> refers back to it, and <code>&lt;&lt;: *name</code> merges a mapping into another (a YAML 1.1 feature that PyYAML and most tools support):</p>
+<pre><code class="language-python"># anchors.py
+import yaml
+doc = &quot;&quot;&quot;
+defaults: &amp;defaults
+  lr: 3.0e-4
+  warmup: 100
+small:
+  &lt;&lt;: *defaults
+  d_model: 384
+large:
+  &lt;&lt;: *defaults
+  lr: 1.5e-4
+  d_model: 1024
+&quot;&quot;&quot;
+cfg = yaml.safe_load(doc)
+print(cfg[&quot;small&quot;]); print(cfg[&quot;large&quot;])
+</code></pre>
+<pre><code class="language-console">$ python3 anchors.py
+{'lr': 0.0003, 'warmup': 100, 'd_model': 384}
+{'lr': 0.00015, 'warmup': 100, 'd_model': 1024}
+</code></pre>
+<p>Keys written after the merge override the merged ones (<code>large</code> gets its own <code>lr</code>).</p>
+<h3 id="the-traps-unquoted-values-that-are-not-what-you-meant">The traps: unquoted values that are not what you meant</h3>
+<p>YAML guesses the type of every unquoted scalar from its spelling. PyYAML implements YAML 1.1, whose guessing rules are generous. This is the most important part of this section:</p>
+<pre><code class="language-python"># yaml_traps.py
+import yaml
+doc = &quot;&quot;&quot;
+country: NO
+answer: yes
+switch: off
+version: 1.10
+python: 3.10
+lr: 3e-4
+lr_ok: 3.0e-4
+time: 1:30
+mode: 0755
+date: 2026-11-06
+sha: 012345
+empty:
+tilde: ~
+&quot;&quot;&quot;
+for k, v in yaml.safe_load(doc).items():
+    print(f&quot;{k:8s}{v!r:28s}{type(v).__name__}&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 yaml_traps.py
+country False                       bool
+answer  True                        bool
+switch  False                       bool
+version 1.1                         float
+python  3.1                         float
+lr      '3e-4'                      str
+lr_ok   0.0003                      float
+time    90                          int
+mode    493                         int
+date    datetime.date(2026, 11, 6)  date
+sha     5349                        int
+empty   None                        NoneType
+tilde   None                        NoneType
+</code></pre>
+<p>Every one of these has caused a real bug somewhere:</p>
+<ul>
+<li><strong>The Norway problem.</strong> <code>NO</code> (Norway's country code) is the boolean <code>False</code>. So are <code>no</code>, <code>n</code>, <code>off</code>, <code>false</code>; <code>yes</code>, <code>y</code>, <code>on</code>, <code>true</code> are <code>True</code>, in any capitalization. A list of country codes or a <code>debug: off</code> that you meant as a string isn't one.</li>
+<li><strong>Versions become floats.</strong> <code>1.10</code> is the float <code>1.1</code>; <code>python: 3.10</code> is <code>3.1</code>. Every version number, image tag and commit-like ID must be quoted: <code>&quot;1.10&quot;</code>, <code>&quot;3.10&quot;</code>.</li>
+<li><strong>Scientific notation without a dot is a string in PyYAML.</strong> YAML 1.1 requires a <code>.</code> in a float, so <code>lr: 3e-4</code> loads as the <em>string</em> <code>'3e-4'</code>, and your optimizer gets <code>lr='3e-4'</code> (<code>torch.optim.AdamW(..., lr='3e-4')</code> raises <code>TypeError: '&lt;=' not supported between instances of 'float' and 'str'</code>, which doesn't mention YAML at all; other code silently does string math). Write <code>3.0e-4</code>, or <code>0.0003</code>. This one is ML-specific and very common.</li>
+<li><strong>Sexagesimal (base 60).</strong> <code>1:30</code> is the integer 90 (1*60 + 30). A time, or a port mapping like <code>22:22</code> in an older Docker Compose file, turns into a number.</li>
+<li><strong>Octal.</strong> A leading zero means base 8: <code>0755</code> is 493, and a numeric ID like <code>012345</code> becomes 5349. File modes (Unix permission bits, see <a href="../foundations/linux-and-os.html#permissions-ownership-umask">Permissions</a>) in YAML should be written <code>0o755</code> or quoted, and IDs quoted.</li>
+<li><strong>Dates</strong> like <code>2026-11-06</code> become <code>datetime.date</code> objects, which then fail <code>json.dumps</code>.</li>
+<li>An <strong>empty value</strong> (<code>empty:</code>) is <code>None</code>, not <code>&quot;&quot;</code>.</li>
+</ul>
+<p>YAML 1.2 (2009) fixed the boolean, octal and sexagesimal rules, and some parsers (for example <code>ruamel.yaml</code> in Python) follow it, while others, PyYAML included, still implement 1.1, and some mix the two. The same file can therefore mean different things to different tools, which is the strongest argument for the one rule that avoids all of it: <strong>quote every string that isn't obviously a word, and every version, ID, tag and time.</strong> <code>yaml.safe_dump</code> quotes for you when writing:</p>
+<pre><code class="language-console">$ python3 -c 'import yaml; print(yaml.safe_dump({&quot;country&quot;: &quot;NO&quot;, &quot;version&quot;: &quot;1.10&quot;, &quot;lr&quot;: 3e-4, &quot;steps&quot;: 100}))'
+country: 'NO'
+lr: 0.0003
+steps: 100
+version: '1.10'
+</code></pre>
+<h3 id="tabs-indentation-and-other-parse-errors">Tabs, indentation and other parse errors</h3>
+<p>YAML forbids tab characters for indentation. A tab anywhere in the indentation is an error:</p>
+<pre><code class="language-console">$ printf 'model:\n\tn_layer: 6\n' &gt; tabs.yaml        # printf is echo that understands \n (newline) and \t (tab)
+$ python3 -c 'import yaml; yaml.safe_load(open(&quot;tabs.yaml&quot;))'
+...
+yaml.scanner.ScannerError: while scanning for the next token
+found character '\t' that cannot start any token
+  in &quot;tabs.yaml&quot;, line 2, column 1
+</code></pre>
+<p>Configure your editor to insert spaces in YAML files. Other mistakes and what they produce:</p>
+<p><code>indent.yaml</code>, with <code>d_model</code> indented one space more than its sibling:</p>
+<pre><code class="language-yaml">model:
+  n_layer: 6
+   d_model: 384
+</code></pre>
+<p>gives <code>mapping values are not allowed here  in &quot;indent.yaml&quot;, line 3, column 11</code>. That error message is YAML's way of saying &quot;I found a <code>:</code> where I didn't expect a key&quot;, and it almost always means bad indentation on that line or the one above. And <code>-b</code> instead of <code>- b</code> (no space after the dash) gives <code>could not find expected ':'</code>, because <code>-b</code> is read as a plain string, not a list item.</p>
+<p>Worse than errors are the mistakes that parse fine:</p>
+<pre><code class="language-console">$ cat dedent.yaml
+model:
+  n_layer: 6
+d_model: 384
+$ python3 -c 'import yaml; print(yaml.safe_load(open(&quot;dedent.yaml&quot;)))'
+{'model': {'n_layer': 6}, 'd_model': 384}
+$ cat dup.yaml
+lr: 3.0e-4
+steps: 100
+lr: 1.0e-3
+$ python3 -c 'import yaml; print(yaml.safe_load(open(&quot;dup.yaml&quot;)))'
+{'lr': 0.001, 'steps': 100}
+</code></pre>
+<p><code>d_model</code> slid out of <code>model</code> and became a top-level key; the code reading <code>cfg[&quot;model&quot;][&quot;d_model&quot;]</code> gets a <code>KeyError</code> or, worse, a default. And a <strong>duplicate key</strong> is silently resolved to the last value by PyYAML (the YAML spec says duplicates are an error; Kubernetes' parser rejects them). In a 300-line config, the second <code>lr:</code> is invisible.</p>
+<h3 id="a-parse-check-you-can-run-on-anything">A parse check you can run on anything</h3>
+<p>Before you submit a manifest or launch a run from a config, parse it. This one-liner checks every file you give it, handles multi-document files, and reports each failure without stopping:</p>
+<pre><code class="language-console">$ python3 -c '
+import sys, yaml
+for f in sys.argv[1:]:
+    try:
+        docs = list(yaml.safe_load_all(open(f)))
+        print(f&quot;ok    {f}: {len(docs)} document(s)&quot;)
+    except yaml.YAMLError as e:
+        print(f&quot;FAIL  {f}: {e}&quot;.replace(&quot;\n&quot;, &quot; &quot;))
+' *.yaml
+FAIL  dash.yaml: while scanning a simple key   in &quot;dash.yaml&quot;, line 3, column 1 could not find expected ':'   in &quot;dash.yaml&quot;, line 4, column 1
+ok    dedent.yaml: 1 document(s)
+ok    dup.yaml: 1 document(s)
+FAIL  indent.yaml: mapping values are not allowed here   in &quot;indent.yaml&quot;, line 3, column 11
+FAIL  tabs.yaml: while scanning for the next token found character '\t' that cannot start any token   in &quot;tabs.yaml&quot;, line 2, column 1
+ok    two.yaml: 2 document(s)
+</code></pre>
+<p>(<code>*.yaml</code> is expanded by the shell into every file name ending in <code>.yaml</code>.) Note what it can't tell you: <code>dedent.yaml</code> and <code>dup.yaml</code> are &quot;ok&quot;. Parsing proves the file is YAML, not that it says what you meant. For that, print the loaded object (<code>python3 -c 'import yaml,sys,pprint; pprint.pprint(yaml.safe_load(open(sys.argv[1])))' config.yaml</code>) and look at it. Kubernetes-specific checks (<code>kubectl apply --dry-run</code>) are in <a href="../orchestration/kubernetes-from-zero.html#yaml-for-kubernetes">YAML for Kubernetes</a>.</p>
+<h2 id="toml">TOML</h2>
+<p><strong>TOML</strong> is the config format of the Python packaging world (<code>pyproject.toml</code>, which every modern Python project has, and which <code>uv add</code> edited <a href="#uv-the-fast-way">above</a>), Rust's <code>Cargo.toml</code>, and a growing number of training frameworks (some RL trainers take a <code>.toml</code> config, see <a href="../platform/rl-infrastructure.html">RL infrastructure</a>). It has the same data model as JSON, looks like an old-style <code>.ini</code> file, and was designed to avoid YAML's guessing: <strong>strings are always quoted</strong>, so a bare <code>NO</code> is a syntax error rather than <code>False</code>.</p>
+<pre><code class="language-toml"># train.toml
+run_name = &quot;baseline&quot;
+seed = 1234
+version = &quot;1.10&quot;          # strings are always quoted, so no guessing
+country = &quot;NO&quot;
+
+[model]                   # a table = a dict
+n_layer = 6
+d_model = 384
+dropout = 0.0
+
+[optimizer]
+name = &quot;adamw&quot;
+lr = 3e-4                 # a float in TOML
+betas = [0.9, 0.95]
+
+[[datasets]]              # [[...]] = one element of a list of tables
+name = &quot;web&quot;
+weight = 0.8
+
+[[datasets]]
+name = &quot;code&quot;
+weight = 0.2
+</code></pre>
+<pre><code class="language-python"># toml_demo.py
+import tomllib, pprint                      # stdlib since Python 3.11; read-only
+with open(&quot;train.toml&quot;, &quot;rb&quot;) as f:         # tomllib wants binary mode
+    cfg = tomllib.load(f)
+pprint.pprint(cfg, sort_dicts=False)
+print(type(cfg[&quot;optimizer&quot;][&quot;lr&quot;]).__name__, cfg[&quot;datasets&quot;][1][&quot;name&quot;])
+</code></pre>
+<pre><code class="language-console">$ python3 toml_demo.py
+{'run_name': 'baseline',
+ 'seed': 1234,
+ 'version': '1.10',
+ 'country': 'NO',
+ 'model': {'n_layer': 6, 'd_model': 384, 'dropout': 0.0},
+ 'optimizer': {'name': 'adamw', 'lr': 0.0003, 'betas': [0.9, 0.95]},
+ 'datasets': [{'name': 'web', 'weight': 0.8}, {'name': 'code', 'weight': 0.2}]}
+float code
+$ printf 'country = NO\n' &gt; bad.toml
+$ python3 -c 'import tomllib; tomllib.load(open(&quot;bad.toml&quot;,&quot;rb&quot;))'
+...
+tomllib.TOMLDecodeError: Invalid value (at line 1, column 11)
+</code></pre>
+<p>The rules: <code>key = value</code> at the top level; <code>[name]</code> starts a <strong>table</strong> (all following keys belong to it until the next header); <code>[a.b]</code> is a nested table; <code>[[name]]</code> appends one table to a <strong>list of tables</strong>, the TOML way to write a list of dicts. <code>3e-4</code> is a float here, unlike in PyYAML. Python's standard library can read TOML but not write it; <code>pip install tomli-w</code> if you need to.</p>
+<p>In a <code>pyproject.toml</code> you'll mostly read three tables: <code>[project]</code> (name, version, <code>dependencies = [...]</code>), <code>[project.scripts]</code> (command-line entry points, e.g. <code>train = &quot;mypkg.train:main&quot;</code> means the <code>train</code> command calls <code>main()</code> in <code>mypkg/train.py</code>, which is how you find a repo's entry point) and <code>[tool.something]</code> (settings for tools like <code>pytest</code>, <code>ruff</code> or <code>uv</code>).</p>
+<h2 id="csv-and-jsonl">CSV and JSONL</h2>
+<p>Two formats for many records rather than one config.</p>
+<h3 id="csv">CSV</h3>
+<p><strong>CSV</strong> (comma-separated values) is a table as text: a header line of column names, then one row per line. Spreadsheets, <code>nvidia-smi --format=csv</code> (<code>nvidia-smi</code> is NVIDIA's GPU status tool), profiler exports and many benchmark scripts produce it. Its one rule that matters: a field containing a comma, a quote or a newline is wrapped in double quotes. That rule is why you must parse CSV with a real parser and not <code>line.split(&quot;,&quot;)</code>:</p>
+<pre><code class="language-console">$ cat results.csv
+run,lr,val_loss,notes
+baseline,3e-4,3.95,first try
+warmup-1k,3e-4,3.81,&quot;warmup 1000 steps, cosine&quot;
+lr-1e-3,1e-3,,diverged at step 400
+</code></pre>
+<pre><code class="language-python"># csv_demo.py
+import csv
+with open(&quot;results.csv&quot;, newline=&quot;&quot;) as f:
+    rows = list(csv.DictReader(f))
+for r in rows:
+    print(r)
+print(sorted(rows, key=lambda r: float(r[&quot;val_loss&quot;] or &quot;inf&quot;))[0][&quot;run&quot;])
+print(open(&quot;results.csv&quot;).read().splitlines()[2].split(&quot;,&quot;))   # naive split: wrong
+</code></pre>
+<pre><code class="language-console">$ python3 csv_demo.py
+{'run': 'baseline', 'lr': '3e-4', 'val_loss': '3.95', 'notes': 'first try'}
+{'run': 'warmup-1k', 'lr': '3e-4', 'val_loss': '3.81', 'notes': 'warmup 1000 steps, cosine'}
+{'run': 'lr-1e-3', 'lr': '1e-3', 'val_loss': '', 'notes': 'diverged at step 400'}
+warmup-1k
+['warmup-1k', '3e-4', '3.81', '&quot;warmup 1000 steps', ' cosine&quot;']
+</code></pre>
+<p>Everything comes back as a string (<code>'3.95'</code>, and <code>''</code> for a missing value), so convert explicitly and decide what an empty field means. For real analysis, <code>pandas.read_csv</code> does the type conversion for you. Quick looks from the shell are fine with <code>cut -d, -f1,3 results.csv</code> (columns 1 and 3) or <code>column -s, -t &lt; results.csv</code> (align into a table) as long as no field contains a comma; on this file <code>column</code> splits the quoted note in two and shifts the empty <code>val_loss</code>, which is the same bug as the naive split.</p>
+<h3 id="jsonl">JSONL</h3>
+<p><strong>JSONL</strong> (JSON Lines, also <code>.ndjson</code>) is one complete JSON object per line, nothing else. It's the standard format for training metrics logs, structured application logs, and most LLM datasets (one example per line, e.g. <code>{&quot;prompt&quot;: ..., &quot;completion&quot;: ...}</code>). Three properties make it the right default for anything you write incrementally:</p>
+<ul>
+<li><strong>Appending is trivial and cheap</strong>: open in append mode, write one line. No closing bracket to maintain, unlike a JSON array.</li>
+<li><strong>Line-oriented tools work</strong>: <code>wc -l</code> counts records, <code>head</code>/<code>tail</code> sample them, <code>grep</code> finds them, <code>jq</code> filters them, <code>split -l</code> shards them.</li>
+<li><strong>Damage is local.</strong> If the process crashes mid-write, you lose one line, not the file:</li>
+</ul>
+<pre><code class="language-python"># jsonl_demo.py
+import json
+with open(&quot;log.jsonl&quot;, &quot;a&quot;) as f:                  # append: one object per line
+    for step in (1, 2, 3):
+        f.write(json.dumps({&quot;step&quot;: step, &quot;loss&quot;: 1.0 / step}) + &quot;\n&quot;)
+with open(&quot;log.jsonl&quot;, &quot;a&quot;) as f:                  # simulate a crash mid-write
+    f.write('{&quot;step&quot;: 4, &quot;lo')
+good = []
+for i, line in enumerate(open(&quot;log.jsonl&quot;), 1):
+    try:
+        good.append(json.loads(line))
+    except json.JSONDecodeError as e:
+        print(f&quot;line {i} unreadable: {e}&quot;)
+print(len(good), &quot;records, last:&quot;, good[-1])
+</code></pre>
+<pre><code class="language-console">$ python3 jsonl_demo.py
+line 4 unreadable: Unterminated string starting at: line 1 column 13 (char 12)
+3 records, last: {'step': 3, 'loss': 0.3333333333333333}
+$ wc -l log.jsonl
+       3 log.jsonl
+</code></pre>
+<p><code>wc -l</code> counts newline characters, so it says 3 even though there are 4 lines' worth of text: the torn last line has no newline. Readers of JSONL should skip (and count) unparseable lines rather than crash, exactly as above. Whether the three good lines are actually on disk after a power loss is a different question, answered in <a href="../foundations/linux-and-os.html#fsync-and-durability-why-checkpoints-get-lost">fsync and durability</a>.</p>
+<p>For large numeric data (tensors, token arrays) none of these text formats are appropriate; <a href="../foundations/storage-and-data.html">Storage and data</a> covers the binary formats (safetensors, Parquet, memory-mapped arrays).</p>
+<h2 id="regular-expressions">Regular expressions</h2>
+<p>A <strong>regular expression</strong> (regex) is a small pattern language for matching text. You need it for two things constantly: searching code and logs with <code>grep</code>, and pulling numbers out of log lines in Python. Here is a training log to work on (<code>rank0</code>, <code>rank3</code> and so on name which process wrote the line, in a training job that runs one process per GPU; the processes are numbered from 0 and each number is called a <strong>rank</strong>):</p>
+<pre><code class="language-console">$ cat train.log
+2026-11-06 10:00:01 INFO  rank0 step=100 loss=4.2100 lr=3.00e-04 tok/s=51234
+2026-11-06 10:00:09 INFO  rank0 step=200 loss=3.8731 lr=3.00e-04 tok/s=50981
+2026-11-06 10:00:12 WARN  rank3 grad norm 12.5 exceeds clip 1.0
+2026-11-06 10:00:17 INFO  rank0 step=300 loss=3.6202 lr=2.90e-04 tok/s=51102
+2026-11-06 10:00:25 INFO  rank0 step=400 loss=nan lr=2.80e-04 tok/s=50877
+2026-11-06 10:00:31 ERROR rank5 CUDA error: an illegal memory access was encountered
+</code></pre>
+<h3 id="the-syntax-you-actually-need">The syntax you actually need</h3>
+<p>Most characters match themselves: the pattern <code>loss</code> matches the text <code>loss</code>. A few characters are special:</p>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Matches</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.</code></td>
+<td>any one character</td>
+</tr>
+<tr>
+<td><code>[abc]</code>, <code>[0-9]</code>, <code>[A-Z]</code></td>
+<td>one character from the set or range; <code>[^ ]</code> is any character <em>except</em> a space</td>
+</tr>
+<tr>
+<td><code>\d</code>, <code>\s</code>, <code>\w</code></td>
+<td>a digit, a whitespace character, a &quot;word&quot; character (letter, digit, <code>_</code>); capitals <code>\D \S \W</code> are the opposites</td>
+</tr>
+<tr>
+<td><code>*</code>, <code>+</code>, <code>?</code></td>
+<td>the previous item 0 or more times, 1 or more, 0 or 1</td>
+</tr>
+<tr>
+<td><code>{3}</code>, <code>{2,5}</code></td>
+<td>exactly 3 times, 2 to 5 times</td>
+</tr>
+<tr>
+<td><code>^</code>, <code>$</code></td>
+<td>start, end of the line</td>
+</tr>
+<tr>
+<td><code>\b</code></td>
+<td>a word boundary (between a <code>\w</code> and a non-<code>\w</code> character)</td>
+</tr>
+<tr>
+<td><code>a|b</code></td>
+<td><code>a</code> or <code>b</code></td>
+</tr>
+<tr>
+<td><code>( )</code></td>
+<td>group (and, in Python, capture what matched)</td>
+</tr>
+<tr>
+<td><code>\.</code>, <code>\(</code>, <code>\\</code></td>
+<td>a literal <code>.</code>, <code>(</code>, <code>\</code>: backslash removes the special meaning</td>
+</tr>
+</tbody>
+</table>
+<p>So <code>loss=[0-9]+\.[0-9]+</code> is &quot;<code>loss=</code>, one or more digits, a literal dot, one or more digits&quot;, and <code>rank[1-9]</code> is &quot;<code>rank</code> followed by a digit 1-9&quot;.</p>
+<h3 id="grep">grep</h3>
+<p><code>grep PATTERN FILE</code> prints matching lines. Use <code>grep -E</code> (&quot;extended&quot; regex) so that <code>+ ? | ( ) {}</code> work as in the table; plain <code>grep</code> needs them backslashed. Useful flags: <code>-i</code> ignore case, <code>-v</code> invert (non-matching lines), <code>-c</code> count, <code>-n</code> line numbers, <code>-o</code> print only the matched part, <code>-r</code> recurse into directories, <code>-A 3</code>/<code>-B 3</code> include 3 lines after/before each match (context around an error).</p>
+<pre><code class="language-console">$ grep -E 'WARN|ERROR' train.log
+2026-11-06 10:00:12 WARN  rank3 grad norm 12.5 exceeds clip 1.0
+2026-11-06 10:00:31 ERROR rank5 CUDA error: an illegal memory access was encountered
+$ grep -c INFO train.log
+4
+$ grep -E 'loss=[0-9]+\.[0-9]+' train.log | wc -l     # lines with a finite-looking loss
+       3
+$ grep -oE 'loss=[^ ]+' train.log
+loss=4.2100
+loss=3.8731
+loss=3.6202
+loss=nan
+$ grep -nE '\bnan\b|\binf\b' train.log                # whole word nan or inf
+5:2026-11-06 10:00:25 INFO  rank0 step=400 loss=nan lr=2.80e-04 tok/s=50877
+$ grep -oE 'loss=[0-9.]+' train.log | cut -d= -f2 | sort -n | head -1   # best loss (cut: field 2 after &quot;=&quot;; sort -n: numeric sort)
+3.6202
+$ grep -rn --include='*.py' 'import re' .              # search a source tree, Python files only
+./parse_log.py:1:import re, math
+</code></pre>
+<p>Always put the pattern in <strong>single quotes</strong>, so the shell passes <code>|</code>, <code>*</code>, <code>$</code> and <code>\</code> through to grep untouched. In a git repository, <code>git grep -nE</code> takes the same patterns and is faster. (<code>rg</code>, ripgrep, is a popular faster grep with the same idea and saner defaults, if you want to install one more tool.)</p>
+<h3 id="python-re">Python <code>re</code></h3>
+<pre><code class="language-python"># parse_log.py
+import re, math
+pat = re.compile(r&quot;step=(\d+) loss=(\S+) lr=(\S+)&quot;)     # \d digit, \S non-space, ( ) capture
+steps, losses = [], []
+for line in open(&quot;train.log&quot;):
+    m = pat.search(line)                                 # search: anywhere in the line
+    if m:
+        step, loss, lr = int(m.group(1)), float(m.group(2)), float(m.group(3))
+        steps.append(step); losses.append(loss)
+print(list(zip(steps, losses)))
+print(&quot;first non-finite at step&quot;, next(s for s, l in zip(steps, losses) if not math.isfinite(l)))
+
+errors = [l for l in open(&quot;train.log&quot;) if re.search(r&quot;\b(ERROR|WARN)\b&quot;, l)]
+ranks = sorted({int(r) for r in re.findall(r&quot;rank(\d+)&quot;, &quot;&quot;.join(errors))})
+print(&quot;ranks with problems:&quot;, ranks)
+
+m = re.match(r&quot;(?P&lt;date&gt;\S+) (?P&lt;time&gt;\S+) (?P&lt;level&gt;[A-Z]+)\s+(?P&lt;rank&gt;rank\d+) (?P&lt;msg&gt;.*)&quot;,
+             open(&quot;train.log&quot;).readlines()[-1])
+print(m.groupdict())
+print(re.sub(r&quot;\d+\.\d+e-\d+&quot;, &quot;&lt;LR&gt;&quot;, &quot;lr=3.00e-04 lr=2.90e-04&quot;))
+print(re.findall(r&quot;loss=.*&quot;, &quot;loss=4.21 lr=3e-4&quot;), re.findall(r&quot;loss=.*?(?= |$)&quot;, &quot;loss=4.21 lr=3e-4&quot;))
+</code></pre>
+<pre><code class="language-console">$ python3 parse_log.py
+[(100, 4.21), (200, 3.8731), (300, 3.6202), (400, nan)]
+first non-finite at step 400
+ranks with problems: [3, 5]
+{'date': '2026-11-06', 'time': '10:00:31', 'level': 'ERROR', 'rank': 'rank5', 'msg': 'CUDA error: an illegal memory access was encountered'}
+lr=&lt;LR&gt; lr=&lt;LR&gt;
+['loss=4.21 lr=3e-4'] ['loss=4.21']
+</code></pre>
+<p>What each piece shows:</p>
+<ul>
+<li><strong>Raw strings <code>r&quot;...&quot;</code>.</strong> Always write patterns as raw strings so Python doesn't interpret the backslashes first (<code>&quot;\b&quot;</code> in a normal string is a backspace character, not a word boundary).</li>
+<li><strong><code>re.search</code></strong> finds a match anywhere in the string; <strong><code>re.match</code></strong> only at the start; <strong><code>re.fullmatch</code></strong> the whole string. All return a match object or <code>None</code>, so test before using it.</li>
+<li><strong>Groups.</strong> <code>m.group(1)</code> is the text matched by the first <code>( )</code>. Named groups <code>(?P&lt;name&gt;...)</code> and <code>m.groupdict()</code> turn a log line into a dict, which is the start of every log parser.</li>
+<li><strong><code>re.findall</code></strong> returns all matches (just the group if there is one); <strong><code>re.sub</code></strong> replaces them, handy for normalizing lines before comparing or counting them (&quot;which error messages occur, ignoring the numbers in them?&quot;).</li>
+<li><strong>Greedy vs lazy.</strong> <code>.*</code> grabs as much as possible, so <code>loss=.*</code> ran to the end of the line. <code>.*?</code> grabs as little as possible; with the lookahead <code>(?= |$)</code> (&quot;followed by a space or the end, without consuming it&quot;) it stops at the value. Usually <code>\S+</code> (non-spaces) is the simpler fix.</li>
+<li><code>float(&quot;nan&quot;)</code> parses, so the regex happily extracted a NaN. Regexes match text; deciding whether a value is sane is still your job.</li>
+</ul>
+<p>If the log is JSONL, skip regexes and use <code>json.loads</code> or <code>jq</code>. Regexes are for logs written as text for humans, which is still most of them (NCCL, Slurm, the Linux kernel, CUDA).</p>
+<h2 id="reading-c">Reading C</h2>
+<p>PyTorch, NCCL, CUDA kernels, the Linux kernel, Python itself and every driver are written in C or C++. You don't need to write C to be an ML engineer, but you need to <em>read</em> it: a CUDA kernel (a function that runs on an NVIDIA GPU, written in C++), a short benchmark in <a href="../foundations/computer-architecture.html">Computer architecture</a>, the <code>nccl-tests</code> source, a stack trace that ends in <code>libc10.so</code>. C is a small language, and the part you need is smaller. The key idea that Python hides from you: <strong>data lives at numbered addresses in memory, and C lets you hold and do arithmetic on those addresses.</strong> A tensor is exactly that: a pointer to the first byte of a buffer, plus shape and strides.</p>
+<h3 id="compiling-and-running">Compiling and running</h3>
+<p>Python runs your source file directly. C must first be <strong>compiled</strong>: a compiler translates the source to a machine-code executable, which you then run. On a Mac, <code>xcode-select --install</code> installs Apple's <code>clang</code>; on Linux, <code>sudo apt install build-essential</code> gets <code>gcc</code> (and <code>clang</code> is a package away). The two accept the same flags for everything here.</p>
+<pre><code class="language-console">$ clang -Wall -O2 -o types types.c     # compile types.c into an executable called types
+$ ./types                              # run it (./ = &quot;in this directory&quot;)
+</code></pre>
+<p><code>-o types</code> names the output; <code>-O2</code> turns on optimizations (what you want for timing anything); <code>-Wall</code> turns on warnings, which in C are often real bugs. <code>-g</code> adds debug information so debuggers and sanitizers can print file and line numbers. <code>gcc</code> and <code>clang++</code>/<code>g++</code> (for C++) take the same flags.</p>
+<h3 id="types-sizes-and-functions">Types, sizes and functions</h3>
+<pre><code class="language-c">// types.c - C's basic types and their sizes on this machine
+#include &lt;stdio.h&gt;     // printf
+#include &lt;stdint.h&gt;    // fixed-width integers: int32_t, int64_t, uint8_t, ...
+
+int square(int x) {    // return type, name, typed parameters
+    return x * x;
+}
+
+int main(void) {
+    int i = 7;                  // 32-bit signed integer
+    long n = 1L &lt;&lt; 40;          // 64-bit on Linux and macOS (but 32-bit on Windows)
+    float f = 0.1f;             // 32-bit float (fp32); the f suffix makes the literal a float
+    double d = 0.1;             // 64-bit float (fp64), Python's float
+    char c = 'A';               // one byte; a character is just a small integer
+    uint8_t byte = 255;
+    byte = byte + 1;            // unsigned arithmetic wraps around: 255 + 1 == 0
+    int q = 7 / 2;              // integer division truncates
+    printf(&quot;sizeof: int=%zu long=%zu float=%zu double=%zu char=%zu int64_t=%zu\n&quot;,
+           sizeof(int), sizeof(long), sizeof(float), sizeof(double), sizeof(char), sizeof(int64_t));
+    printf(&quot;i=%d square=%d n=%ld f=%.10f d=%.10f c=%c (%d) byte=%u q=%d\n&quot;,
+           i, square(i), n, f, d, c, c, byte, q);
+    return 0;                   // exit code 0 = success
+}
+</code></pre>
+<pre><code class="language-console">$ clang -Wall -O2 -o types types.c &amp;&amp; ./types; echo &quot;exit code $?&quot;
+sizeof: int=4 long=8 float=4 double=8 char=1 int64_t=8
+i=7 square=49 n=1099511627776 f=0.1000000015 d=0.1000000000 c=A (65) byte=0 q=3
+exit code 0
+</code></pre>
+<p>The differences from Python that matter for reading:</p>
+<ul>
+<li><strong>Every variable has a fixed type and size.</strong> <code>sizeof(T)</code> is its size in bytes. <code>float</code> is fp32 (so <code>0.1f</code> is stored as 0.1000000015), <code>double</code> is fp64. Integers don't grow: <code>uint8_t</code> wraps from 255 to 0, and a signed <code>int</code> overflowing past about 2.1 billion is <strong>undefined behaviour</strong> (C's term for &quot;the language makes no promise&quot;: the compiler may assume it never happens, so the result can be a silently wrong value or a crash; a real bug class when indexing tensors with more than 2^31 elements, which is why CUDA code often uses <code>int64_t</code> indices). When the exact width matters, code uses <code>&lt;stdint.h&gt;</code> names: <code>int32_t</code>, <code>int64_t</code>, <code>uint8_t</code>.</li>
+<li><strong>Integer division truncates</strong>: <code>7 / 2</code> is 3, like Python's <code>//</code> for positive numbers.</li>
+<li><strong>Functions declare their types</strong>: <code>int square(int x)</code> takes an <code>int</code> and returns an <code>int</code>. <code>void</code> means &quot;returns nothing&quot; (or, as <code>(void)</code>, &quot;takes nothing&quot;).</li>
+<li><strong>Statements end with <code>;</code>, blocks are <code>{ }</code>.</strong> Indentation is for humans only. <code>for (int i = 0; i &lt; n; i++)</code> is <code>for i in range(n)</code>: initialize, condition, step.</li>
+<li><strong><code>main</code> is where the program starts</strong>, and its return value is the process's <a href="#exit-codes-pipes-redirection-variables-a-first-look">exit code</a>.</li>
+<li><strong><code>#include &lt;stdio.h&gt;</code></strong> pastes in a <em>header</em> that declares library functions (more <a href="#headers-and-multiple-files">below</a>). <code>printf</code> is formatted printing: <code>%d</code> int, <code>%ld</code> long, <code>%zu</code> a size (<code>sizeof</code> result), <code>%f</code>/<code>%.10f</code> a float or double, <code>%c</code> a char, <code>%u</code> unsigned, <code>%p</code> a pointer (an address), <code>\n</code> a newline.</li>
+</ul>
+<h3 id="pointers-and-addresses">Pointers and addresses</h3>
+<p>Every variable occupies some bytes at some <strong>address</strong> in memory. A <strong>pointer</strong> is a variable whose value is an address.</p>
+<pre><code class="language-c">// pointers.c - addresses, pointers, arrays and pointer arithmetic
+#include &lt;stdio.h&gt;
+
+void scale(float *x, int n, float a) {   // receives the address of the first element
+    for (int i = 0; i &lt; n; i++)
+        x[i] *= a;                        // writes go to the caller's memory
+}
+
+int main(void) {
+    float v = 2.5f;
+    float *p = &amp;v;                        // &amp; = &quot;address of&quot;; p holds v's address
+    printf(&quot;v=%.1f  &amp;v=%p  p=%p  *p=%.1f\n&quot;, v, (void *)&amp;v, (void *)p, *p);
+    *p = 4.0f;                            // * = &quot;the thing p points at&quot;: this changes v
+    printf(&quot;after *p = 4: v=%.1f\n&quot;, v);
+
+    float x[4] = {1, 2, 3, 4};            // 4 floats, contiguous, 16 bytes
+    for (int i = 0; i &lt; 4; i++)
+        printf(&quot;x[%d]=%.0f at %p\n&quot;, i, x[i], (void *)&amp;x[i]);   // addresses 4 bytes apart
+
+    float *q = x;                         // an array name is the address of its first element
+    printf(&quot;q+2 = %p, *(q+2) = %.0f, q[2] = %.0f\n&quot;, (void *)(q + 2), *(q + 2), q[2]);
+    printf(&quot;(char*)(q+2) - (char*)q = %ld bytes\n&quot;, (char *)(q + 2) - (char *)q);
+
+    scale(x, 4, 10.0f);                   // pass the address; scale edits x in place
+    printf(&quot;after scale: %.0f %.0f %.0f %.0f\n&quot;, x[0], x[1], x[2], x[3]);
+    scale(x + 2, 2, 0.5f);                // a pointer into the middle = a view of the last 2
+    printf(&quot;after scale(x+2, 2): %.0f %.0f %.0f %.0f\n&quot;, x[0], x[1], x[2], x[3]);
+    return 0;
+}
+</code></pre>
+<pre><code class="language-console">$ clang -Wall -O2 -o pointers pointers.c &amp;&amp; ./pointers
+v=2.5  &amp;v=0x16b2fecfc  p=0x16b2fecfc  *p=2.5
+after *p = 4: v=4.0
+x[0]=1 at 0x16b2fed00
+x[1]=2 at 0x16b2fed04
+x[2]=3 at 0x16b2fed08
+x[3]=4 at 0x16b2fed0c
+q+2 = 0x16b2fed08, *(q+2) = 3, q[2] = 3
+(char*)(q+2) - (char*)q = 8 bytes
+after scale: 10 20 30 40
+after scale(x+2, 2): 10 20 15 20
+</code></pre>
+<p>(Addresses are hexadecimal and differ on every run.) One piece of syntax first: a type in parentheses before a value, like <code>(void *)&amp;v</code> or <code>(char *)q</code>, is a <strong>cast</strong>, which converts the value to that type. <code>void *</code> means &quot;an address of anything&quot;; <code>printf</code>'s <code>%p</code> expects one, hence the casts in the <code>printf</code> calls. Read the rest like this:</p>
+<ul>
+<li><strong><code>float *p</code></strong> declares <code>p</code> as &quot;pointer to float&quot;. <strong><code>&amp;v</code></strong> is the address of <code>v</code>. <strong><code>*p</code></strong> is the float stored at that address (&quot;dereferencing&quot;); assigning to <code>*p</code> changes <code>v</code>. The two uses of <code>*</code> (in a declaration, and in an expression) are the most confusing bit of C syntax; a declaration's <code>*</code> says what the variable <em>is</em>, an expression's <code>*</code> follows the pointer.</li>
+<li><strong>Arrays are contiguous.</strong> <code>float x[4]</code> is 16 bytes in a row; the addresses go up by <code>sizeof(float)</code> = 4. This is the property every tensor, every GPU kernel and every &quot;memory bandwidth&quot; argument in the book rests on.</li>
+<li><strong>Pointer arithmetic counts elements, not bytes.</strong> <code>q + 2</code> is the address 2 <em>floats</em> past <code>q</code>, which is 8 bytes. <code>q[2]</code> is defined as <code>*(q + 2)</code>. Casting to <code>char *</code> (1-byte elements) shows the byte distance.</li>
+<li><strong>Passing a pointer lets a function modify the caller's data.</strong> C passes arguments by copying them; <code>scale</code> gets a copy of the <em>address</em>, so its writes land in <code>x</code>. Passing <code>x + 2</code> hands it a view of the last two elements, just as <code>x[2:]</code> gives a view of a tensor that shares storage.</li>
+<li><strong>Nothing checks bounds.</strong> <code>x[10]</code> compiles and reads whatever happens to be there (<a href="#when-c-goes-wrong">below</a>).</li>
+<li><code>const float *a</code> (in kernel signatures everywhere) means &quot;pointer to floats this function promises not to modify&quot;. <code>NULL</code> is the null pointer, address 0, used to mean &quot;no object&quot;.</li>
+</ul>
+<h3 id="structs-the-heap-and-2-d-arrays">Structs, the heap and 2-D arrays</h3>
+<p>A <strong>struct</strong> groups named fields into one block of memory, like a dataclass without methods. And memory comes from two places:</p>
+<ul>
+<li>The <strong>stack</strong>: local variables like <code>float v</code> and <code>float x[4]</code> above. Allocation is free, and the memory is released automatically when the function returns. It's small (8 MB by default for the main thread on Linux and macOS; a thread is one flow of execution in a program, see <a href="../foundations/concurrency.html#programs-processes-and-threads">Concurrency</a>), so big arrays don't go here.</li>
+<li>The <strong>heap</strong>: memory you request with <code>malloc(nbytes)</code> and must release with <code>free(ptr)</code>. It lives until you free it, can be gigabytes, and is where every real buffer comes from. Forgetting <code>free</code> leaks memory; using memory after <code>free</code> (or freeing twice) corrupts it.</li>
+</ul>
+<pre><code class="language-c">// matrix.c - a struct, heap memory, and a 2-D array stored as 1-D (row-major)
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;    // malloc, free
+
+typedef struct {       // a struct groups named fields; typedef lets us write just &quot;Matrix&quot;
+    int rows, cols;
+    float *data;       // pointer to rows*cols floats, allocated separately
+} Matrix;
+
+Matrix *matrix_new(int rows, int cols) {
+    Matrix *m = malloc(sizeof(Matrix));                     // heap: lives until free()
+    m-&gt;rows = rows;                                         // m-&gt;rows is (*m).rows
+    m-&gt;cols = cols;
+    m-&gt;data = malloc((size_t)rows * cols * sizeof(float));  // uninitialized memory
+    if (m-&gt;data == NULL) { fprintf(stderr, &quot;out of memory\n&quot;); exit(1); }
+    return m;
+}
+
+void matrix_free(Matrix *m) {
+    free(m-&gt;data);     // free what was malloc'd, inner first
+    free(m);
+}
+
+float *at(Matrix *m, int r, int c) {           // element (r, c) of a row-major matrix
+    return &amp;m-&gt;data[r * m-&gt;cols + c];          // row r starts r*cols elements in
+}
+
+int main(void) {
+    Matrix *m = matrix_new(2, 3);
+    for (int r = 0; r &lt; 2; r++)
+        for (int c = 0; c &lt; 3; c++)
+            *at(m, r, c) = 10 * r + c;
+    printf(&quot;sizeof(Matrix)=%zu  rows=%d cols=%d\n&quot;, sizeof(Matrix), m-&gt;rows, m-&gt;cols);
+    printf(&quot;flat memory:&quot;);
+    for (int i = 0; i &lt; 6; i++) printf(&quot; %.0f&quot;, m-&gt;data[i]);
+    printf(&quot;\nelement (1,2) = %.0f at offset %ld floats\n&quot;,
+           *at(m, 1, 2), at(m, 1, 2) - m-&gt;data);
+    int on_stack[3] = {1, 2, 3};   // stack: freed automatically when main returns
+    printf(&quot;stack array at %p, heap Matrix at %p\n&quot;, (void *)on_stack, (void *)m);
+    matrix_free(m);                // after this, m must not be used
+    return 0;
+}
+</code></pre>
+<pre><code class="language-console">$ clang -Wall -O2 -o matrix matrix.c &amp;&amp; ./matrix
+sizeof(Matrix)=16  rows=2 cols=3
+flat memory: 0 1 2 10 11 12
+element (1,2) = 12 at offset 5 floats
+stack array at 0x16af16d08, heap Matrix at 0x6000013ac020
+</code></pre>
+<ul>
+<li><strong><code>m-&gt;rows</code></strong> is shorthand for <code>(*m).rows</code>: a field through a pointer. With a struct value (not a pointer) you write <code>m.rows</code>.</li>
+<li><strong><code>sizeof(Matrix)</code> is 16</strong>: two 4-byte ints and an 8-byte pointer. The struct holds the <em>pointer</em> to the data, not the data, exactly like a tensor's metadata pointing at its storage.</li>
+<li><strong>A 2-D array is a 1-D array with an indexing rule.</strong> Element <code>(r, c)</code> of a row-major <code>rows x cols</code> matrix is at offset <code>r * cols + c</code>. That is what PyTorch's <strong>strides</strong> describe. The same matrix in PyTorch:</li>
+</ul>
+<pre><code class="language-python">&gt;&gt;&gt; import torch
+&gt;&gt;&gt; t = torch.tensor([[0., 1, 2], [10, 11, 12]])
+&gt;&gt;&gt; t.stride(), t.element_size(), t.flatten().tolist()
+((3, 1), 4, [0.0, 1.0, 2.0, 10.0, 11.0, 12.0])
+&gt;&gt;&gt; t.T.stride(), t.T.is_contiguous()
+((1, 3), False)
+</code></pre>
+<p>Stride <code>(3, 1)</code> means &quot;step 3 elements per row, 1 per column&quot;, so <code>t[r, c]</code> is at <code>r*3 + c</code>, the <code>at()</code> function above. <code>t.T</code> is the same memory with the strides swapped, which is why a transpose is free and why it's &quot;not contiguous&quot;. When a CUDA kernel computes <code>A[row * K + k]</code>, this is all it's doing.</p>
+<p>The rest of the program:</p>
+<ul>
+<li><strong><code>typedef struct {...} Matrix;</code></strong> names the type so you can write <code>Matrix</code> instead of <code>struct Matrix</code>. <code>(size_t)rows * cols</code> converts to a 64-bit size before multiplying, so a large matrix doesn't overflow <code>int</code>.</li>
+<li><strong><code>malloc</code> returns uninitialized memory</strong> (whatever bytes were there), like <code>torch.empty</code>, and returns <code>NULL</code> on failure. <code>calloc</code> returns zeroed memory, like <code>torch.zeros</code>.</li>
+<li><strong><code>fprintf(stderr, ...)</code></strong> prints to the error stream instead of normal output; <code>exit(1)</code> ends the program with exit code 1.</li>
+</ul>
+<h3 id="headers-and-multiple-files">Headers and multiple files</h3>
+<p>Real programs span many files. A <strong>header</strong> (<code>.h</code>) contains <strong>declarations</strong>: the names and types of functions and structs, without their bodies, so other files can call them. The matching <code>.c</code> file has the <strong>definitions</strong>. <code>#include &quot;vec.h&quot;</code> (quotes: look in this directory first) pastes the header's text in before compiling; <code>#include &lt;stdio.h&gt;</code> (angle brackets) looks in the system include directories.</p>
+<pre><code class="language-c">// vec.h - declarations: what exists, not how it works
+#pragma once
+float dot(const float *a, const float *b, int n);
+</code></pre>
+<pre><code class="language-c">// vec.c - the definition
+#include &quot;vec.h&quot;
+float dot(const float *a, const float *b, int n) {
+    float s = 0.0f;
+    for (int i = 0; i &lt; n; i++) s += a[i] * b[i];
+    return s;
+}
+</code></pre>
+<pre><code class="language-c">// main.c - uses dot() knowing only its declaration from vec.h
+#include &lt;stdio.h&gt;
+#include &quot;vec.h&quot;
+int main(void) {
+    float a[3] = {1, 2, 3}, b[3] = {4, 5, 6};
+    printf(&quot;dot = %.1f\n&quot;, dot(a, b, 3));
+    return 0;
+}
+</code></pre>
+<pre><code class="language-console">$ clang -Wall -O2 -o dotprog main.c vec.c          # compile both and link them together
+$ ./dotprog
+dot = 32.0
+$ clang -Wall -O2 -o dotprog main.c                # forget vec.c
+Undefined symbols for architecture arm64:
+  &quot;_dot&quot;, referenced from:
+      _main in main-b47c74.o
+ld: symbol(s) not found for architecture arm64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+</code></pre>
+<p>Building is two stages. <strong>Compiling</strong> turns each <code>.c</code> file separately into an <strong>object file</strong> (<code>.o</code>) of machine code (<code>clang -c vec.c</code> produces <code>vec.o</code>); <code>main.c</code> compiles fine on its own because the header promised <code>dot</code> exists. <strong>Linking</strong> (the program <code>ld</code>, the <em>linker</em>) combines the object files and libraries into one executable and connects each call to its definition. The error above is a <em>link</em> error: the promise was never kept. (A <strong>symbol</strong> is the name of a function or global variable in compiled code; macOS prefixes C names with <code>_</code>, hence <code>_dot</code>.) You'll see the same &quot;undefined symbol&quot; message when a PyTorch C++ extension is built against a different PyTorch version than the one importing it. Libraries such as <code>libnccl.so</code> are precompiled object code you link against with <code>-lnccl</code>; how the system finds them at run time is in <a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path">Shared libraries</a>.</p>
+<p><code>#pragma once</code> stops a header being pasted twice into one file. Lines starting with <code>#</code> (<code>#include</code>, <code>#define N 1024</code>, <code>#if</code>) are handled by the <strong>preprocessor</strong>, a text-substitution pass before compilation; <code>#define</code> constants and macros are just text replacement.</p>
+<h3 id="when-c-goes-wrong">When C goes wrong</h3>
+<p>C trusts you. This writes one element past the end of a 4-element heap array:</p>
+<pre><code class="language-c">// oob.c - reading one element past the end of an array
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+int main(void) {
+    float *x = malloc(4 * sizeof(float));
+    for (int i = 0; i &lt;= 4; i++)      // bug: &lt;= should be &lt;
+        x[i] = i;
+    printf(&quot;x[4] = %.0f\n&quot;, x[4]);
+    free(x);
+    return 0;
+}
+</code></pre>
+<pre><code class="language-console">$ clang -O0 -o oob oob.c &amp;&amp; ./oob
+x[4] = 4
+$ clang -O0 -g -fsanitize=address -o oob_asan oob.c &amp;&amp; ./oob_asan
+=================================================================
+==30035==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x6020000000c0 at pc 0x000100ffc88c bp 0x00016ee02cd0 sp 0x00016ee02cc8
+WRITE of size 4 at 0x6020000000c0 thread T0
+    #0 0x000100ffc888 in main oob.c:7
+    #1 0x00018960ab94  (&lt;unknown module&gt;)
+
+0x6020000000c0 is located 0 bytes after 16-byte region [0x6020000000b0,0x6020000000c0)
+allocated by thread T0 here:
+    #0 0x00010165d38c in malloc+0x78 (libclang_rt.asan_osx_dynamic.dylib:arm64e+0x3d38c)
+    #1 0x000100ffc804 in main oob.c:5
+...
+</code></pre>
+<p>(<code>-O0</code> turns optimizations off, so the compiler can't rearrange or remove the buggy code.) The plain build &quot;works&quot;: it scribbled on 4 bytes it doesn't own and printed the value back. That's what memory bugs look like in C: silent until they corrupt something important, often far away, sometimes only on another machine. <strong>AddressSanitizer</strong> (<code>-fsanitize=address</code>) instruments every memory access and stops at the first bad one, naming the line of the bad write (<code>oob.c:7</code>) and where the buffer was allocated (<code>oob.c:5</code>). The GPU equivalent of this bug is CUDA's &quot;an illegal memory access was encountered&quot;, and its sanitizer is <code>compute-sanitizer</code> (<a href="../compute/accelerator/writing-kernels.html">Writing kernels</a>).</p>
+<h3 id="the-c-youll-see-in-cuda-and-pytorch-code">The C++ you'll see in CUDA and PyTorch code</h3>
+<p>CUDA kernels and PyTorch extensions are C++, but mostly C-flavoured C++: the C above plus a handful of features. Recognize these and you can read them:</p>
+<pre><code class="language-cpp">// cpp_bits.cpp - the C++ features you'll meet in CUDA and PyTorch C++ code
+#include &lt;cstdio&gt;
+#include &lt;vector&gt;
+
+namespace mylib {                         // names grouped like a module: mylib::add_one
+void add_one(float &amp;x) { x += 1.0f; }     // &amp; in a parameter = reference: an alias, no copying
+}
+
+template &lt;typename T, int N&gt;              // generic over a type T and a compile-time int N
+T sum(const T *x) {
+    T s = 0;
+    for (int i = 0; i &lt; N; i++) s += x[i];
+    return s;
+}
+
+struct Counter {                          // a struct with a member function
+    int n = 0;
+    void bump() { n++; }
+};
+
+int main() {
+    float v = 1.0f;
+    mylib::add_one(v);                    // v changes, though we didn't write &amp;v
+    printf(&quot;v=%.1f\n&quot;, v);
+
+    int xi[3] = {1, 2, 3};
+    double xd[2] = {0.5, 0.25};
+    printf(&quot;sum&lt;int,3&gt;=%d  sum&lt;double,2&gt;=%.2f\n&quot;, sum&lt;int, 3&gt;(xi), sum&lt;double, 2&gt;(xd));
+
+    auto *buf = new float[4]{1, 2, 3, 4}; // auto: compiler infers float*; new[] is C++'s malloc
+    printf(&quot;buf[3]=%.0f\n&quot;, buf[3]);
+    delete[] buf;                         // new[] pairs with delete[]
+
+    std::vector&lt;float&gt; w(5, 0.5f);        // growable array that frees itself
+    w.push_back(2.0f);
+    printf(&quot;w.size()=%zu w.back()=%.1f data=%p\n&quot;, w.size(), w.back(), (void *)w.data());
+
+    Counter c;
+    c.bump(); c.bump();
+    printf(&quot;c.n=%d\n&quot;, c.n);
+    return 0;
+}
+</code></pre>
+<pre><code class="language-console">$ clang++ -std=c++17 -Wall -O2 -o cpp_bits cpp_bits.cpp &amp;&amp; ./cpp_bits
+v=2.0
+sum&lt;int,3&gt;=6  sum&lt;double,2&gt;=0.75
+buf[3]=4
+w.size()=6 w.back()=2.0 data=0x6000017282d0
+c.n=2
+</code></pre>
+<p>(<code>clang++</code> is the C++ compiler; <code>-std=c++17</code> selects the 2017 version of the C++ language.)</p>
+<ul>
+<li><strong>References</strong> (<code>float &amp;x</code>): a parameter that is an alias for the caller's variable. It does what a pointer does without the <code>&amp;</code>/<code>*</code> at each use. <code>const torch::Tensor &amp;t</code> in a PyTorch extension means &quot;the caller's tensor, not copied, not modified&quot;.</li>
+<li><strong>Namespaces</strong> (<code>a::b</code>): <code>torch::Tensor</code>, <code>std::vector</code>, <code>at::cuda::getCurrentCUDAStream()</code>. Read <code>::</code> like Python's <code>.</code> for modules.</li>
+<li><strong>Templates</strong> (<code>template &lt;typename T, int N&gt;</code>): one source, compiled separately for each type or constant you use it with (<code>sum&lt;int, 3&gt;</code>). Kernels use them to make tile sizes compile-time constants.</li>
+<li><strong><code>auto</code></strong> lets the compiler infer the type.</li>
+<li><strong><code>new</code>/<code>delete</code></strong> are C++'s <code>malloc</code>/<code>free</code> (<code>new T[n]</code> pairs with <code>delete[]</code>). Modern code mostly uses containers like <strong><code>std::vector</code></strong> (a growable array that frees itself; <code>.data()</code> is the raw pointer to its contiguous elements) instead.</li>
+<li><strong>Structs and classes have member functions</strong> (<code>c.bump()</code>), constructors and default field values.</li>
+</ul>
+<p>That's enough for this book's C++. The CUDA-specific additions (<code>__global__</code>, <code>&lt;&lt;&lt;grid, block&gt;&gt;&gt;</code>, <code>threadIdx</code>) and the rest of the C++ that kernels use (<code>constexpr</code>, <code>reinterpret_cast</code>, <code>#pragma unroll</code>) are taught in <a href="../compute/accelerator/writing-kernels.html#just-enough-c-to-read-cuda">Just enough C++ to read CUDA</a>.</p>
+<h2 id="make-and-makefiles">Make and Makefiles</h2>
+<p>Typing <code>clang</code> commands by hand stops scaling at three files. <strong>Make</strong> is the classic build tool: you describe what each file is built from and how, and <code>make</code> runs only the commands whose inputs changed. C/CUDA projects you'll build in this book (nccl-tests, perftest) use it, and many Python repos use a <code>Makefile</code> simply as a list of named shortcuts (<code>make test</code>, <code>make lint</code>). It comes with the Mac developer tools and Linux's <code>build-essential</code>.</p>
+<p>A <code>Makefile</code> for the three files from <a href="#headers-and-multiple-files">Headers and multiple files</a>:</p>
+<pre><code class="language-makefile"># Makefile
+CC      = clang
+CFLAGS  = -Wall -O2
+
+# target: prerequisites
+#     recipe lines (shell commands) must start with a TAB character
+dotprog: main.o vec.o
+	$(CC) -o $@ $^
+
+%.o: %.c vec.h
+	$(CC) $(CFLAGS) -c $&lt;
+
+.PHONY: run clean
+run: dotprog
+	./dotprog
+
+clean:
+	rm -f *.o dotprog
+</code></pre>
+<p>How to read it:</p>
+<ul>
+<li><strong><code>NAME = value</code></strong> defines a variable; <strong><code>$(NAME)</code></strong> uses it. Variables can be overridden from the command line: <code>make CC=gcc CFLAGS=-O0</code>. Build instructions for real projects mostly consist of setting such variables (nccl-tests is built with <code>make MPI=1 CUDA_HOME=/usr/local/cuda</code>, for example).</li>
+<li><strong>A rule</strong> is <code>target: prerequisites</code> followed by recipe lines. It means &quot;to make <code>target</code>, first make sure the prerequisites are up to date; then, if any prerequisite is newer than the target, run the recipe.&quot;</li>
+<li><strong><code>%.o: %.c vec.h</code></strong> is a pattern rule: any <code>X.o</code> is built from <code>X.c</code> (and <code>vec.h</code>). In recipes, <strong><code>$@</code></strong> is the target, <strong><code>$&lt;</code></strong> the first prerequisite, <strong><code>$^</code></strong> all of them.</li>
+<li><strong><code>.PHONY</code></strong> marks targets that are names for actions, not files.</li>
+<li><code>make</code> with no argument builds the first target in the file; <code>make run</code> builds <code>run</code>.</li>
+</ul>
+<pre><code class="language-console">$ make
+clang -Wall -O2 -c main.c
+clang -Wall -O2 -c vec.c
+clang -o dotprog main.o vec.o
+$ make
+make: `dotprog' is up to date.
+$ touch vec.c                  # update vec.c's modification time, as if edited
+$ make
+clang -Wall -O2 -c vec.c
+clang -o dotprog main.o vec.o
+$ touch vec.h                  # both .o files depend on the header
+$ make
+clang -Wall -O2 -c main.c
+clang -Wall -O2 -c vec.c
+clang -o dotprog main.o vec.o
+$ make run
+./dotprog
+dot = 32.0
+$ make -n clean                # -n: print what would run, run nothing
+rm -f *.o dotprog
+</code></pre>
+<p>Make decides by comparing file modification times, which is all &quot;incremental build&quot; means. Make echoes every command before running it, so a failing build shows you the exact compiler command that failed: copy it, run it by hand, add flags. <code>make -j8</code> runs up to 8 independent recipes in parallel; <code>make V=1</code> makes many projects print full commands.</p>
+<p>The error everyone hits once: recipe lines must start with a <strong>tab</strong>, not spaces.</p>
+<pre><code class="language-console">$ make -f Makefile.spaces      # the same file with the tabs replaced by 4 spaces
+Makefile.spaces:8: *** missing separator.  Stop.
+</code></pre>
+<p>Bigger C/C++ projects generate their Makefiles: <code>./configure &amp;&amp; make</code> (autotools: <code>configure</code> inspects your system and writes a Makefile), or <strong>CMake</strong> (<code>cmake -B build &amp;&amp; cmake --build build</code>, reading a <code>CMakeLists.txt</code>). PyTorch extensions are built through Python with <strong>ninja</strong>, a faster Make-like tool. You run all of these the same way: read the README's build section, set the variables it mentions (where CUDA is, which GPU architecture), and read the first error.</p>
+<h2 id="reading-logs-and-tracebacks">Reading logs and tracebacks</h2>
+<p>Most of your time debugging is spent reading text a program printed when it failed. A few habits make it much faster.</p>
+<h3 id="python-tracebacks-read-from-the-bottom">Python tracebacks: read from the bottom</h3>
+<pre><code class="language-python"># train.py - a bug three calls deep
+import torch, torch.nn as nn
+
+class Model(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.embed = nn.Embedding(100, 64)
+        self.proj = nn.Linear(32, 10)        # bug: should be nn.Linear(64, 10)
+
+    def forward(self, ids):
+        h = self.embed(ids)                  # (B, T, 64)
+        return self.proj(h)                  # expects (..., 32)
+
+def train_step(model, batch):
+    logits = model(batch)
+    return logits.mean()
+
+def main():
+    model = Model()
+    batch = torch.randint(0, 100, (4, 16))  # (B, T)
+    print(&quot;loss&quot;, train_step(model, batch).item())
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<pre><code class="language-console">$ python train.py
+Traceback (most recent call last):
+  File &quot;/private/tmp/tkdemo/tb/train.py&quot;, line 24, in &lt;module&gt;
+    main()
+  File &quot;/private/tmp/tkdemo/tb/train.py&quot;, line 21, in main
+    print(&quot;loss&quot;, train_step(model, batch).item())
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;/private/tmp/tkdemo/tb/train.py&quot;, line 15, in train_step
+    logits = model(batch)
+             ^^^^^^^^^^^^
+  File &quot;/private/tmp/tk/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py&quot;, line 1787, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;/private/tmp/tk/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py&quot;, line 1798, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;/private/tmp/tkdemo/tb/train.py&quot;, line 12, in forward
+    return self.proj(h)                  # expects (..., 32)
+           ^^^^^^^^^^^^
+  File &quot;/private/tmp/tk/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py&quot;, line 1787, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;/private/tmp/tk/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py&quot;, line 1798, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;/private/tmp/tk/.venv/lib/python3.12/site-packages/torch/nn/modules/linear.py&quot;, line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: addmm: mat1 and mat2 shapes cannot be multiplied (64x64 and 32x10)
+</code></pre>
+<ol>
+<li><strong>The last line is the error</strong>: its type (<code>RuntimeError</code>) and message. Read that first.</li>
+<li><strong>Frames are listed outermost first</strong>, so the line that actually failed is at the bottom, and the call chain that led there reads downward. Each frame is a file, a line number, a function name and the source line.</li>
+<li><strong>Find the lowest frame in <em>your</em> code</strong> (here <code>train.py</code>, line 12, <code>self.proj(h)</code>). Frames inside <code>site-packages/</code> are library code; the bug is almost never there. The <code>module.py</code> frames are PyTorch's <code>nn.Module.__call__</code> machinery and appear twice per module call.</li>
+<li><strong>Translate the message into your terms.</strong> <code>addmm</code> is the matmul inside <code>nn.Linear</code>; <code>64x64</code> is the input flattened to <span class="math inline"><span class="math-inline">(B \cdot T, d) = (4 \cdot 16, 64)</span></span>; <code>32x10</code> is the transposed weight. So the layer expects 32 input features and got 64: the bug is in <code>__init__</code>, not on the line where it surfaced.</li>
+</ol>
+<p>Two variations to know. <strong>Chained exceptions</strong> print several tracebacks separated by &quot;During handling of the above exception, another exception occurred:&quot; or &quot;The above exception was the direct cause of the following exception:&quot;; the first one is usually the root cause. And a <strong>multi-process job</strong> (DataLoader workers, or <code>torchrun</code> ranks: <code>torchrun</code> starts one copy of your training script per GPU, covered in <a href="../foundations/linux-and-os.html#how-torchrun-spawns-workers">the Linux chapter</a>) prints one traceback per failing process, interleaved; scroll up to the <em>first</em> error by time, since the others are often consequences (&quot;connection reset&quot; on ranks whose peer died).</p>
+<h3 id="errors-that-dont-point-at-the-bug">Errors that don't point at the bug</h3>
+<p>Some errors appear far from their cause:</p>
+<ul>
+<li><strong>Asynchronous GPU errors.</strong> CUDA kernels run asynchronously (<a href="../foundations/concurrency.html">Concurrency</a> explains why), so &quot;CUDA error: an illegal memory access was encountered&quot; is reported at some later call, often an unrelated <code>.item()</code> or <code>print</code>. Rerun with <code>CUDA_LAUNCH_BLOCKING=1</code> so each kernel finishes before the next line runs, and the traceback points at the real launch. (Untested here: no NVIDIA GPU.)</li>
+<li><strong>Import shadowing.</strong> A file in your directory with the name of a library wins over the library. Here <code>torch.py</code> is a forgotten scratch file containing <code>print(&quot;my experiment&quot;)</code>, and <code>run.py</code> is <code>import torch</code> followed by <code>x = torch.randn(3)</code>:</li>
+</ul>
+<pre><code class="language-console">$ ls
+run.py  torch.py
+$ python run.py
+my experiment
+Traceback (most recent call last):
+  File &quot;/private/tmp/tkdemo/shadow/run.py&quot;, line 2, in &lt;module&gt;
+    x = torch.randn(3)
+        ^^^^^^^^^^^
+AttributeError: module 'torch' has no attribute 'randn'
+$ python -c &quot;import torch; print(torch.__file__)&quot;
+my experiment
+/private/tmp/tkdemo/shadow/torch.py
+</code></pre>
+<p><code>module.__file__</code> is the check. The same happens with a script called <code>random.py</code>, <code>json.py</code> or <code>datasets.py</code>.</p>
+<ul>
+<li><strong>Killed with no traceback.</strong> A process that just prints <code>Killed</code> (exit code 137) was killed by the OS, usually the out-of-memory killer; Python never got a chance to print anything. See <a href="../foundations/linux-and-os.html#overcommit-and-the-oom-killer">the OOM killer</a>.</li>
+</ul>
+<h3 id="logs">Logs</h3>
+<p>A training or serving log is thousands of lines, mostly noise. The workflow:</p>
+<ul>
+<li><strong>Find the first error, not the last.</strong> <code>grep -n -m1 -iE 'error|exception|traceback' train.log</code> gives the line number of the first one (<code>-m1</code>: stop after one match); <code>sed -n '1200,1260p' train.log</code> (print only lines 1200-1260) or <code>less +1200 train.log</code> (open the pager at line 1200) shows the context around it. Later errors are usually consequences.</li>
+<li><strong>Look at the timestamps.</strong> The gap before a failure (a hang for 30 minutes, then a timeout) is often the clue.</li>
+<li><strong>Separate by source.</strong> In multi-rank logs, <code>grep 'rank3'</code> or the per-rank log files. Programs prefix lines with levels (<code>DEBUG</code>, <code>INFO</code>, <code>WARN</code>, <code>ERROR</code>); <code>grep -v INFO</code> removes the routine ones.</li>
+<li><strong>Turn up verbosity when the default says nothing.</strong> Many libraries read an environment variable for it, e.g. <code>NCCL_DEBUG=INFO</code> or <code>TORCH_DISTRIBUTED_DEBUG=DETAIL</code>; each chapter names the relevant ones.</li>
+</ul>
+<h3 id="searching-for-an-error">Searching for an error</h3>
+<p>Strip what's specific to you (paths, numbers, tensor sizes, hostnames, PIDs, i.e. process IDs) and search the stable part in quotes: <code>&quot;shapes cannot be multiplied&quot;</code>, not the whole line. Then, in order:</p>
+<ol>
+<li>
+<p><strong>The library's own source.</strong> The message is a string in the code, and the code around it tells you exactly what condition triggers it. With the library installed, grep its directory (<code>python -c &quot;import torch; print(torch.__file__)&quot;</code> tells you where it is):</p>
+<pre><code class="language-console">$ cd .venv/lib/python3.12/site-packages/torch
+$ grep -n &quot;cannot be multiplied&quot; include/ATen/native/LinearAlgebraUtils.h
+51:      &quot;: mat1 and mat2 shapes cannot be multiplied (&quot;,
+</code></pre>
+<p>In a cloned repository, <code>git grep -n &quot;the message&quot;</code> does the same.</p>
+</li>
+<li>
+<p><strong>The project's GitHub issues</strong> (search open <em>and</em> closed). Someone has usually hit it, and the issue tells you which version fixed it.</p>
+</li>
+<li>
+<p><strong>The general web</strong>, adding the library name and version.</p>
+</li>
+</ol>
+<p>Before you ask anyone else, collect what they'll ask for: the full traceback (not a screenshot), the exact command, the versions (<code>python -m pip list | grep -iE 'torch|numpy'</code>, <code>python check_env.py</code> from <a href="#one-setup-block-for-the-whole-book">above</a>), the OS and GPU, and the smallest script that reproduces it. Producing that smallest script finds the bug yourself about half the time.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<p>With this chapter behind you, the rest of the book's everyday mechanics should not get in your way:</p>
+<ul>
+<li>shell sessions in every chapter: the <code>$ </code> convention, paths, flags, pipes, <code>export</code>, background jobs, and the <strong>untested</strong> / <strong>sketched</strong> labels;</li>
+<li>the setup block at the top of a chapter, and why it creates a venv in <code>/tmp</code> or uses <code>uv</code>;</li>
+<li><code>git clone ... &amp;&amp; make</code> build recipes in <a href="../compute/gpu-software-stack.html">The GPU software stack</a> and <a href="../network/collectives-internals.html">Collectives internals</a>;</li>
+<li>the C benchmarks in <a href="../foundations/computer-architecture.html">Computer architecture</a>, and the C side of the CUDA code in <a href="../compute/accelerator/execution-model.html">the GPU execution model</a> and <a href="../compute/accelerator/writing-kernels.html">Writing kernels</a>;</li>
+<li>Kubernetes manifests and Slurm-adjacent YAML in <a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> (with its <a href="../orchestration/kubernetes-from-zero.html#yaml-for-kubernetes">YAML for Kubernetes</a> section), and <code>pyproject.toml</code>/<code>.toml</code> configs in <a href="../platform/rl-infrastructure.html">RL infrastructure</a>;</li>
+<li>JSONL structured logs filtered with <code>jq</code> in <a href="../platform/control-planes.html">Control planes</a>, and regex-based log parsing anywhere;</li>
+<li>Python tracebacks and C/CUDA error messages, well enough to find the frame that matters.</li>
+</ul>
+<p>Next: <a href="../foundations/computer-architecture.html">Computer architecture</a>, which puts the &quot;data lives at addresses&quot; picture from <a href="#reading-c">Reading C</a> onto real hardware.</p>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li><a href="https://missing.csail.mit.edu/">The Missing Semester of Your CS Education</a> (MIT): the shell, editors, git, data wrangling with regex, and build systems, as short lecture videos. The closest thing to this chapter at greater length.</li>
+<li><a href="https://docs.astral.sh/uv/">uv documentation</a> and the <a href="https://packaging.python.org/">Python Packaging User Guide</a> for environments and <code>pyproject.toml</code>.</li>
+<li><a href="https://git-scm.com/book">Pro Git</a> (free online), chapters 1-3, for git's model of commits and branches.</li>
+<li><a href="https://jqlang.org/manual/">jq manual</a>; <a href="https://yaml.org/spec/1.2.2/">YAML 1.2 spec</a> and <a href="https://ruudvanasseldonk.com/2023/01/11/the-yaml-document-from-hell">The YAML document from hell</a> for more traps; <a href="https://toml.io/">TOML spec</a>.</li>
+<li><a href="https://docs.python.org/3/howto/regex.html">Python <code>re</code> HOWTO</a>; <a href="https://regex101.com/">regex101</a> to test a pattern interactively against sample text.</li>
+<li><a href="https://www.gnu.org/software/make/manual/">GNU Make manual</a>, sections 2 (&quot;An Introduction to Makefiles&quot;) and 10 (implicit rules).</li>
+<li>Kernighan and Ritchie, <em>The C Programming Language</em> (2nd ed.), chapters 1, 5 (pointers and arrays) and 6 (structs). Still the shortest complete treatment.</li>
+<li><a href="../foundations/linux-and-os.html">Linux and the OS</a> in this book, for everything the terminal section only touched.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../README.html">&larr; Machine Learning Engineering Open Book</a><a class="next" href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

@@ -174,3 +174,7 @@ body { prince-text-replace: "'" "\2019" }
 .page_break {
   page-break-before: always;
 }
+
+/* equations: $...$ / $$...$$ are rendered to MathML by build/mdbook/md-to-html.py */
+math { font-family: "STIX Two Math", "STIXGeneral", "Cambria Math", serif; }
+math[display="block"] { margin: 0.6em 0; }

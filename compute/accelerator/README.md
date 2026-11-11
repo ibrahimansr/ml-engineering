@@ -107,9 +107,9 @@ I will make the following statement multiple times in this book: it's not enough
 
 The two metrics for a high ROI for ML training are:
 1. the speed at which the training will finish, because if the training takes 2-3x longer than planned, your model could become irrelevant before it was released - time is everything in the current super-competitive ML market.
-2. the total $$ spent to train the model, because if the training takes 2-3x longer than planned, you will end up spending 2-3x times more.
+2. the total \$\$ spent to train the model, because if the training takes 2-3x longer than planned, you will end up spending 2-3x times more.
 
-If the rest of the purchased/rented hardware isn't chosen carefully to match the required workload, chances are very high that the accelerators will idle a lot and both time and $$ will be lost. The most critical component is [network](../../network), then [storage](../../storage/), and the least critical ones are [CPU](../cpu) and [CPU memory](../cpu-memory) (at least for a typical training workload where any CPU limitations are compensated with multiple `DataLoader` workers).
+If the rest of the purchased/rented hardware isn't chosen carefully to match the required workload, chances are very high that the accelerators will idle a lot and both time and \$\$ will be lost. The most critical component is [network](../../network), then [storage](../../storage/), and the least critical ones are [CPU](../cpu) and [CPU memory](../cpu-memory) (at least for a typical training workload where any CPU limitations are compensated with multiple `DataLoader` workers).
 
 If the compute is rented one usually doesn't have the freedom to choose - the hardware is either set in stone or some components might be replaceable but with not too many choices. Thus there are times when the chosen cloud provider doesn't provide a sufficiently well matched hardware, in which case it's best to seek out a different provider.
 
@@ -164,7 +164,9 @@ As you can see the difference in performance is non-linear due to [the tile and 
 
 Theoretical peak FLOPS is what gets published on the accelerator's spec. And it's calculated as:
 
-`Theoretical FLOPS = compute_unit_clock_speed * FLOPs_per_clock_cycle_per_compute_unit * num_compute_units`
+$$
+\text{Theoretical FLOPS} = \text{compute\_unit\_clock\_speed} \cdot \text{FLOPs\_per\_clock\_cycle\_per\_compute\_unit} \cdot \text{num\_compute\_units}
+$$
 
 where:
 - `compute_unit_clock_speed` - how many times the compute unit clock ticks per second in Hz
@@ -173,7 +175,9 @@ where:
 
 FLOPs per clock cycle per compute unit is usually not published, but what one often finds is the FMAs per clock cycle per compute unit specs. FMA is Fused Multiply Add. And since 1 FMA is made of 2 FLOPs, we can expand the above formula to:
 
-`Theoretical FLOPS = compute_unit_clock_speed * FMAs_per_clock_cycle_per_compute_unit * 2 * num_compute_units`
+$$
+\text{Theoretical FLOPS} = \text{compute\_unit\_clock\_speed} \cdot \text{FMAs\_per\_clock\_cycle\_per\_compute\_unit} \cdot 2 \cdot \text{num\_compute\_units}
+$$
 
 Let's validate that this formula checks out. Let's compute some BF16 (half precision) TFLOPS and compare to the published specs.
 
@@ -197,14 +201,14 @@ For NVIDIA BF16 operations are performed by Tensor cores.
 
 Now let's do the math, by inserting the numbers from the table above into the last FMA-based formula:
 
-- `1830*10**6 * 512 * 2 * 528 / 10**12 = 989.430` TFLOPS
-- `1410*10**6 * 256 * 2 * 432 / 10**12 = 311.87` TFLOPS
+- $1830 \cdot 10^6 \cdot 512 \cdot 2 \cdot 528 / 10^{12} = 989.430$ TFLOPS
+- $1410 \cdot 10^6 \cdot 256 \cdot 2 \cdot 432 / 10^{12} = 311.87$ TFLOPS
 
 Both calculated numbers match the published specs - 989 for H100 SXM and 312 for A100 SXM.
 
-Note that this peak is an aggregate over the whole accelerator - `528` Tensor Cores is `4 x 132` SMs - so it is not what a single matmul achieves unless that matmul is large enough to occupy every SM. For why a part with more SMs does not automatically deliver more TFLOPS, see [Do more SMs give more TFLOPS?](../../training/performance/README.md#do-more-sms-give-more-tflops).
+Note that this peak is an aggregate over the whole accelerator - `528` Tensor Cores is $4 \times 132$ SMs - so it is not what a single matmul achieves unless that matmul is large enough to occupy every SM. For why a part with more SMs does not automatically deliver more TFLOPS, see [Do more SMs give more TFLOPS?](../../training/performance/README.md#do-more-sms-give-more-tflops).
 
-The H100 SXM clock above is 1830MHz, which is now NVIDIA's official figure. Earlier 1980MHz was the widely published number, and it doesn't work out: `1980*10**6 * 512 * 2 * 528 / 10**12 = 1070.530` TFLOPS, some 80 points above the spec. Before 1830MHz became official you could already recover it by inverting the same formula against the spec TFLOPS: `989 / (512 * 2 * 528 / 10**12) / 10**6 = 1829.20`. Which is a useful trick in general - if a vendor publishes the TFLOPS but not the clock, or publishes a clock that doesn't reproduce their own TFLOPS, the formula tells you which number they actually used.
+The H100 SXM clock above is 1830MHz, which is now NVIDIA's official figure. Earlier 1980MHz was the widely published number, and it doesn't work out: $1980 \cdot 10^6 \cdot 512 \cdot 2 \cdot 528 / 10^{12} = 1070.530$ TFLOPS, some 80 points above the spec. Before 1830MHz became official you could already recover it by inverting the same formula against the spec TFLOPS: $989 / (512 \cdot 2 \cdot 528 / 10^{12}) / 10^6 = 1829.20$. Which is a useful trick in general - if a vendor publishes the TFLOPS but not the clock, or publishes a clock that doesn't reproduce their own TFLOPS, the formula tells you which number they actually used.
 
 **For AMD @ BF16**:
 
@@ -220,10 +224,10 @@ The H100 SXM clock above is 1830MHz, which is now NVIDIA's official figure. Earl
 
 Let's calculate ourselves as before:
 
-- `2400*10**6 * 512 * 2 * 1024 / 10**12 = 2516.6` TFLOPS - matches AMD's published `2.5 PFLOPS` within their own rounding
-- `2200*10**6 * 512 * 2 * 1024 / 10**12 = 2306.9` TFLOPS - matches AMD's published `2.3 PFLOPS` for MI350X, the same silicon as MI355X at a lower clock
-- `2100*10**6 * 256 * 2 * 1216 / 10**12 = 1307.4` TFLOPS - matches the published spec, even though most of the time you will see the rounded down `1300` TFLOPS in the literature.
-- `1700*10**6 * 128 * 2 * 880 / 10**12 = 383.0` TFLOPS - matches the published spec exactly
+- $2400 \cdot 10^6 \cdot 512 \cdot 2 \cdot 1024 / 10^{12} = 2516.6$ TFLOPS - matches AMD's published `2.5 PFLOPS` within their own rounding
+- $2200 \cdot 10^6 \cdot 512 \cdot 2 \cdot 1024 / 10^{12} = 2306.9$ TFLOPS - matches AMD's published `2.3 PFLOPS` for MI350X, the same silicon as MI355X at a lower clock
+- $2100 \cdot 10^6 \cdot 256 \cdot 2 \cdot 1216 / 10^{12} = 1307.4$ TFLOPS - matches the published spec, even though most of the time you will see the rounded down `1300` TFLOPS in the literature.
+- $1700 \cdot 10^6 \cdot 128 \cdot 2 \cdot 880 / 10^{12} = 383.0$ TFLOPS - matches the published spec exactly
 
 Note the FMAs per Matrix Core doubling every CDNA generation - 128 on MI250X (CDNA2), 256 on MI300X (CDNA3), 512 on MI355X (CDNA4). Since the Matrix Core count barely moved (880 to 1216 to 1024), that per-core doubling is where almost all of the generational BF16 gain came from, not from more cores.
 
@@ -239,8 +243,8 @@ Intel Gaudi uses MMEs to do BF16 `matmul`
 
 Let's calculate ourselves as before:
 
-- Gaudi 2: `1650*10**6 * 256*256 * 2 * 2 / 10**12 = 432.5` TFLOPS - matches the published spec
-- Gaudi 3: `1600*10**6 * 256*256 * 2 * 8 / 10**12 = 1677` TFLOPS - note that this doesn't match the published spec in the whitepaper (1835TFLOPS), because in order to have 1835TFLOPS the clock has to be 1750MHz. i.e. the current incarnation of Gaudi3 is running at 1600MHz.
+- Gaudi 2: $1650 \cdot 10^6 \cdot 256 \cdot 256 \cdot 2 \cdot 2 / 10^{12} = 432.5$ TFLOPS - matches the published spec
+- Gaudi 3: $1600 \cdot 10^6 \cdot 256 \cdot 256 \cdot 2 \cdot 8 / 10^{12} = 1677$ TFLOPS - note that this doesn't match the published spec in the whitepaper (1835TFLOPS), because in order to have 1835TFLOPS the clock has to be 1750MHz. i.e. the current incarnation of Gaudi3 is running at 1600MHz.
 
 It should become obvious now that if your accelerator runs at a lower boost clock than the spec (e.g. overheating that leads to accelerator throttling) the expected TFLOPS will be lower than advertised.
 
@@ -436,7 +440,7 @@ Notes — the `Notes` column of all three tables points here:
 General notes:
 
 - For the full set of theoretical ones see [Theoretical accelerator TFLOPS](#tflops-comparison-table)
-- `MAMF %` / `MSMF %` are `MAMF/Theory*100` and `MSMF/Theory*100`
+- `MAMF %` / `MSMF %` are $\text{MAMF}/\text{Theory} \cdot 100$ and $\text{MSMF}/\text{Theory} \cdot 100$
 - While `mean` is probably what most users are interested in, the script reports `max`, `median` and `mean` - should you want the other numbers.
 - The `Shape` column is the MAMF shape; the MSMF shape, its power, its clock and the GPU temperature are in the numbered notes. There are usually many shapes with near-identical performance — these are listed for reproducibility.
 - `Siblings` = `yes`: every GPU of the node was measured while all the others ran a continuous matmul, and MAMF and MSMF are the median GPU. `Siblings` = `no`: one GPU measured alone, with its siblings idle. How `mamf-finder.py` measures either is explained [here](benchmarks/README.md#maximum-achievable-and-sustainable-matmul-flops-finder).
@@ -448,7 +452,7 @@ General notes:
 - MI325X was measured on 2026-10-05 with the unchanged version 4 finder at [`30ddd970`](https://github.com/stas00/ml-engineering/commit/30ddd97054eb01035c0a5079a58f011df603b525), with siblings idle. These are best-MAMF single-run pairs, not repeat medians or full-node results. FP8 input and output use the listed vendor format. See the [measurement details](https://github.com/stas00/ml-engineering/pull/140) for repeat ranges and higher MSMF results from separate runs.
 - AMD MI250X has 2 GCDs - so the theoretical TFLOPS needs to be halved, as a single matmul uses only 1 of them and 383TFLOPS is reported for 2 GCDs.
 
-**Why MSMF is well below Theory (and why that is not a broken GPU):** the advertised peak assumes the chip's *boost* clock (e.g. B200 ~1965 MHz → 2250 bf16 TFLOPS). A dense matmul that actually fills the SMs draws the full TDP (B200 1000 W / B300 1100 W / H200 700 W — those are the *spec* limits, not a sub-spec "cap"), so the SM clock settles well below boost. Rough ceiling: `Theory × sustained_clk / boost_clk` ≈ `2250 × 1410/1965 ≈ 1615` on B200 — in the ballpark of the measured 1439 MSMF (the rest is real-kernel overhead). A sparse layout can hold a *higher* saturated clock while still pinned at TDP (H200 MSMF at ~1900 MHz, B300 MSMF at 1455 MHz); that number is still sustainable.
+**Why MSMF is well below Theory (and why that is not a broken GPU):** the advertised peak assumes the chip's *boost* clock (e.g. B200 ~1965 MHz → 2250 bf16 TFLOPS). A dense matmul that actually fills the SMs draws the full TDP (B200 1000 W / B300 1100 W / H200 700 W — those are the *spec* limits, not a sub-spec "cap"), so the SM clock settles well below boost. Rough ceiling: $\text{Theory} \times \text{sustained\_clk} / \text{boost\_clk} \approx 2250 \times 1410/1965 \approx 1615$ on B200 — in the ballpark of the measured 1439 MSMF (the rest is real-kernel overhead). A sparse layout can hold a *higher* saturated clock while still pinned at TDP (H200 MSMF at ~1900 MHz, B300 MSMF at 1455 MHz); that number is still sustainable.
 
 **Why MAMF sits above MSMF:** MAMF is a short unsaturated burst. The two headlines often land on *different* shapes — a fat GEMM can be the better boost burst, a skinnier one the better sustained rate (or the reverse). Concretely (B300): `10752×14336×3072` bursts at **2032 MHz / 286 W → 1892 TFLOPS** (MAMF) but holds only 1487 TFLOPS once saturated; `8192×18432×1024` bursts lower at 1809 yet holds **1455 MHz / 1066 W → 1519 TFLOPS** (MSMF). `mamf-finder.py` times queued bursts after an idle and reports the median of the 5 fastest iterations whose sampled clock reached boost, so a throttled/base-clock reading can't masquerade as MAMF. After both headlines it prints each winning shape in both regimes. AMD MI300X has no such burst: it reaches its 750 W cap within the first ~4 ms kernel, so its MAMF is only 1-3% above MSMF and is a noisy reading of the same throttled state - use MSMF.
 
@@ -523,9 +527,9 @@ Notes:
 - While I was researching this table I found a wide variation of the above numbers. I think it's because either there were different implementations or the specs changed several times and different publications caught different specs. The table above comes from [wikipedia](https://en.wikipedia.org/wiki/High_Bandwidth_Memory).
 - Since HBM is a stack of multiple DRAM chips, the *Stack Height* specifies how many chips are per device.
 
-Beware that sometimes memory specs may not be very clear about what GB means. Sometimes it's GiB (`2**30` bytes), but written as GB. At other times it's actually GB (`10**9` bytes). Bandwidth (`GBps`, `TBps`) almost always means decimal units (`1GBps = 10**9` bytes per second). To convert GiB to GB: `x * 2**30 / 10**9`. To convert from GB to GiB: `x * 10**9 / 2**30`. Most often, memory size will be in GiB (with the `i` omitted), while bandwidth will use decimal GBps or TBps.
+Beware that sometimes memory specs may not be very clear about what GB means. Sometimes it's GiB ($2^{30}$ bytes), but written as GB. At other times it's actually GB ($10^9$ bytes). Bandwidth (`GBps`, `TBps`) almost always means decimal units ($1\ \text{GBps} = 10^9$ bytes per second). To convert GiB to GB: $x \cdot 2^{30} / 10^9$. To convert from GB to GiB: $x \cdot 10^9 / 2^{30}$. Most often, memory size will be in GiB (with the `i` omitted), while bandwidth will use decimal GBps or TBps.
 
-To make things even more confusing, the advertised capacity isn't always what you actually get to use. One possible explanation for NVIDIA B200's 192GB and 180GB figures is that it physically has 192GiB of HBM3e - 8 stacks of 24GiB each (these are GiB and not decimal GB: DRAM die density is inherently binary, so a stack of 8x 24Gbit dies is `8*24*2**30/8 = 24GiB`, and 8 stacks give 192GiB - vendors just print it as "192GB"). Under this interpretation, only about 180GiB is usable in HGX/DGX systems and the rest is reserved, e.g. for ECC; `192*15/16 = 180` exactly, suggesting that 1/16 is held back. So the 192-versus-180 difference would be physical versus usable capacity, not GB versus GiB, and this is why the table below lists NVIDIA's 180GB hardware/platform figure. However, the 192GiB physical capacity, eight-stack layout, binary-unit interpretation, and 1/16 reservation are derived from arithmetic: NVIDIA has not officially documented this relationship, and the actual hardware layout or memory accounting could differ.
+To make things even more confusing, the advertised capacity isn't always what you actually get to use. One possible explanation for NVIDIA B200's 192GB and 180GB figures is that it physically has 192GiB of HBM3e - 8 stacks of 24GiB each (these are GiB and not decimal GB: DRAM die density is inherently binary, so a stack of 8x 24Gbit dies is $8 \cdot 24 \cdot 2^{30}/8 = 24\ \text{GiB}$, and 8 stacks give 192GiB - vendors just print it as "192GB"). Under this interpretation, only about 180GiB is usable in HGX/DGX systems and the rest is reserved, e.g. for ECC; $192 \cdot 15/16 = 180$ exactly, suggesting that 1/16 is held back. So the 192-versus-180 difference would be physical versus usable capacity, not GB versus GiB, and this is why the table below lists NVIDIA's 180GB hardware/platform figure. However, the 192GiB physical capacity, eight-stack layout, binary-unit interpretation, and 1/16 reservation are derived from arithmetic: NVIDIA has not officially documented this relationship, and the actual hardware layout or memory accounting could differ.
 
 Typically, the more on-device memory an accelerator has, the better its performance. At any given time usually most of the model weights aren't being used as they wait for their turn to be processed and thus large memory allows more of the model to be on the accelerator memory and immediately available for access and update. When there is not enough memory, sometimes the model has to be split across multiple accelerators, or offloaded to CPU and/or disk.
 
@@ -584,15 +588,15 @@ Notes:
 
 The `Peak Bandwidth` figures above aren't measured - like the [theoretical TFLOPS](#how-to-calculate-theoretical-tflops) they fall out of three numbers:
 
-```
-bandwidth (bytes/sec) = memory clock (Hz) * bus width (bytes) * 2
-```
+$$
+\text{bandwidth (bytes/sec)} = \text{memory clock (Hz)} \times \text{bus width (bytes)} \times 2
+$$
 
-The `*2` is because HBM, like all Double Data Rate memory, transfers on both the rising and the falling clock edge - hence one transfer per half-cycle rather than per cycle. The bus width is the *whole* memory interface summed across every stack, not one stack's width, which is the easiest of the three to get wrong.
+The $\times 2$ is because HBM, like all Double Data Rate memory, transfers on both the rising and the falling clock edge - hence one transfer per half-cycle rather than per cycle. The bus width is the *whole* memory interface summed across every stack, not one stack's width, which is the easiest of the three to get wrong.
 
 Worked on a B200: `nvidia-smi -q -d CLOCK` reports a 3996MHz memory clock and the bus is 8192 bits, so 1024 bytes:
 
-- `3996*10**6 * 1024 * 2 / 10**12 = 8.184` TBps
+- $3996 \cdot 10^6 \cdot 1024 \cdot 2 / 10^{12} = 8.184$ TBps
 
 against the 8.00TBps NVIDIA publishes and this table carries. The 2.3% gap is the published figure being rounded down, not an error in the arithmetic - which is the normal outcome and the reason this is worth doing as a *cross-check* rather than as a way to obtain the number. If your result is far off rather than a couple of percent off, one of the three inputs is wrong.
 
@@ -975,7 +979,7 @@ They typically target inference.
 
 ### How to get the best price
 
-Remember that the advertised prices are almost always open to negotiations as long as you're willing to buy/rent in bulk or if renting for a 1-3 years. What you will discover is that the actual price that you end up paying could be many times less than the advertised "public" price. Some cloud providers already include the discount as you choose a longer commitment on their website, but it's always the best to negotiate directly with their sales team. In addition or instead of a $$-discount you could be offered some useful features/upgrades for free.
+Remember that the advertised prices are almost always open to negotiations as long as you're willing to buy/rent in bulk or if renting for a 1-3 years. What you will discover is that the actual price that you end up paying could be many times less than the advertised "public" price. Some cloud providers already include the discount as you choose a longer commitment on their website, but it's always the best to negotiate directly with their sales team. In addition or instead of a \$\$-discount you could be offered some useful features/upgrades for free.
 
 If your company has venture capital investors - it could help a lot to mention that, as then the cloud provider knows you are likely to buy more compute down the road and more likely to discount more.
 
@@ -1031,7 +1035,7 @@ for example, AMD MI250 has:
 
 [Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html)
 
-- 24x 100 Gigabit Ethernet (RoCEv2) integrated on chip - 21 of which are used for intra-node and 3 for inter-node (so `21*8=168` cards for intra-node (262.5GBps per Gaudi chip), and `3*8=24` cards for inter-node (2.4Tbps between nodes)
+- 24x 100 Gigabit Ethernet (RoCEv2) integrated on chip - 21 of which are used for intra-node and 3 for inter-node (so $21 \times 8=168$ cards for intra-node (262.5GBps per Gaudi chip), and $3 \times 8=24$ cards for inter-node (2.4Tbps between nodes)
 - 96GiB HBM2E memory on board w/2.45TBps bandwidth per chip, for a total of 768GiB per node
 
 A server/node is built from 8 Gaudi accelerators, which can then be expanded with racks of those servers.

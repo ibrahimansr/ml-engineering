@@ -50,12 +50,14 @@ Take a 70-billion-parameter dense transformer trained with the standard mixed-pr
 
 (This is the accounting from the ZeRO paper. Some setups keep fp32 gradients and pay 18 bytes, others shard or quantize optimizer state and pay less. 16 is the usual starting point. See [the dtype chapter](../training/dtype.md) for the variations.)
 
-```
-weights alone (bf16):   70e9 x 2 bytes  =   140 GB
-full training state:    70e9 x 16 bytes = 1,120 GB
-one H100:                                    80 GB
-minimum GPUs just to hold the state:  1120 / 80 = 14
-```
+$$
+\begin{aligned}
+\text{weights alone (bf16):}\quad & 70 \times 10^9 \times 2\ \text{bytes} = 140\ \text{GB} \\
+\text{full training state:}\quad & 70 \times 10^9 \times 16\ \text{bytes} = 1{,}120\ \text{GB} \\
+\text{one H100:}\quad & 80\ \text{GB} \\
+\text{minimum GPUs just to hold the state:}\quad & 1120 / 80 = 14
+\end{aligned}
+$$
 
 Even the weights alone do not fit on one 80 GB card. The full training state needs at least 14 GPUs' worth of memory, *before* activations. Activation memory depends on batch size, sequence length and whether you recompute activations. For long sequences it can be as large as everything else combined. So the state of the model has to be split across devices. That splitting is model parallelism in its various forms (tensor, pipeline, ZeRO/FSDP sharding). In one line each: tensor parallelism splits every weight matrix across GPUs, pipeline parallelism gives each GPU a different block of layers, and ZeRO/FSDP keeps one slice of every parameter, gradient and optimizer state per GPU and gathers the rest just in time. All three are explained properly in [Data parallel vs model parallel](#data-parallel-vs-model-parallel) below. It is not an optimization. Without it the model does not run at all.
 
@@ -63,33 +65,37 @@ Even the weights alone do not fit on one 80 GB card. The full training state nee
 
 A standard estimate of training compute for a dense transformer is:
 
-```
-training FLOPs ~= 6 x N x D
-    N = number of parameters
-    D = number of training tokens
-```
+$$
+\text{training FLOPs} \approx 6 N D
+$$
+
+where $N$ is the number of parameters and $D$ the number of training tokens.
 
 The 6 comes from about 2 FLOPs per parameter per token for the forward pass (one multiply and one add) and about 4 for the backward pass (gradients with respect to both activations and weights). The [training arithmetic chapter](../training/arithmetic.md) derives it properly.
 
-Take N = 70e9 and D = 15e12 tokens (the token count reported for Llama 3):
+Take $N = 70 \times 10^9$ and $D = 15 \times 10^{12}$ tokens (the token count reported for Llama 3):
 
-```
-FLOPs = 6 x 70e9 x 15e12 = 6.3e24
-```
+$$
+\text{FLOPs} = 6 \times 70 \times 10^9 \times 15 \times 10^{12} = 6.3 \times 10^{24}
+$$
 
 An H100 SXM has a dense bf16 peak of about 989 TFLOPS. Real training gets a fraction of peak, called MFU (Model FLOPs Utilization). Assume a respectable 40%:
 
-```
-achieved per GPU = 0.40 x 989e12 = 3.96e14 FLOP/s
+$$
+\text{achieved per GPU} = 0.40 \times 989 \times 10^{12} = 3.96 \times 10^{14}\ \text{FLOP/s}
+$$
 
-1 GPU:        6.3e24 / 3.96e14 = 1.59e10 s  ~= 505 years
-1,000 GPUs:   505 years / 1000             ~= 184 days
-16,384 GPUs:  505 years / 16384            ~= 11 days
-```
+$$
+\begin{aligned}
+\text{1 GPU:}\quad & 6.3 \times 10^{24} / (3.96 \times 10^{14}) = 1.59 \times 10^{10}\ \text{s} \approx 505\ \text{years} \\
+\text{1,000 GPUs:}\quad & 505\ \text{years} / 1000 \approx 184\ \text{days} \\
+\text{16,384 GPUs:}\quad & 505\ \text{years} / 16384 \approx 11\ \text{days}
+\end{aligned}
+$$
 
 These assume perfect scaling, meaning a thousand GPUs run a thousand times faster. Real jobs lose some of that to communication and failures, which is what most of this chapter is about. Still, the order of magnitude makes the point: on one GPU this training run would outlast every person who might care about the result.
 
-Cross-check (treat it as approximate). Meta's Llama 3.1 model card reports about 7.0M H100-hours for the 70B model. 6.3e24 / (7.0e6 x 3600 s) = 2.5e14 FLOP/s per GPU, which is about 25% of peak. That fits a large real job, which loses throughput to restarts, evals and imperfect overlap. The 6ND estimate gets you within a small factor of reality. That is what it is for.
+Cross-check (treat it as approximate). Meta's Llama 3.1 model card reports about 7.0M H100-hours for the 70B model. $6.3 \times 10^{24} / (7.0 \times 10^6 \times 3600\ \text{s}) = 2.5 \times 10^{14}$ FLOP/s per GPU, which is about 25% of peak. That fits a large real job, which loses throughput to restarts, evals and imperfect overlap. The $6ND$ estimate gets you within a small factor of reality. That is what it is for.
 
 So you distribute because you have to (memory) and because you want results this year (time). Everything else follows from the fact that you now have thousands of independent computers that must act as one.
 
@@ -345,11 +351,11 @@ Real systems do not solve the two generals problem. They step around it, in two 
 
 ### The Byzantine generals problem: when nodes lie
 
-The two generals problem is about an unreliable *network*. The **Byzantine generals problem** (Lamport, Shostak and Pease, 1982) is about unreliable *nodes*. Now there are `n` generals, the messengers are reliable, but up to `f` of the generals are traitors who may say anything: tell one general "attack" and another "retreat", forge what a third general said, or stay quiet. The honest generals must still agree on one plan.
+The two generals problem is about an unreliable *network*. The **Byzantine generals problem** (Lamport, Shostak and Pease, 1982) is about unreliable *nodes*. Now there are $n$ generals, the messengers are reliable, but up to $f$ of the generals are traitors who may say anything: tell one general "attack" and another "retreat", forge what a third general said, or stay quiet. The honest generals must still agree on one plan.
 
-The surprising result is that this needs **`n >= 3f + 1`**: strictly fewer than a third of the participants may be traitors (Kleppmann's notes, section 2.2). Three generals cannot tolerate one traitor. Say A is the commander and orders "attack", and B and C are lieutenants. If C is a traitor, C tells B "A told me to retreat". B now holds "attack" from A and "retreat" via C. If instead A is the traitor and sent "attack" to B and "retreat" to C, and C honestly reports "A told me to retreat", B holds exactly the same two messages. B cannot tell the two worlds apart, so it cannot know whether to follow A. A fourth general breaks the tie. The general counting argument: you can only wait for `n - f` replies, because `f` nodes may never answer. Up to `f` of the replies you do get may be lies, so for the honest ones to outnumber them you need `(n - f) - f > f`, which is `n > 3f`. (With crash faults alone, a node that fails is just silent and never lies, so a majority suffices: `2f + 1`, which is the etcd and Raft rule [below](#leader-election-and-consensus).) Digital signatures help, because a traitor can no longer forge what an honest general said, but the problem stays hard.
+The surprising result is that this needs **$n \ge 3f + 1$**: strictly fewer than a third of the participants may be traitors (Kleppmann's notes, section 2.2). Three generals cannot tolerate one traitor. Say A is the commander and orders "attack", and B and C are lieutenants. If C is a traitor, C tells B "A told me to retreat". B now holds "attack" from A and "retreat" via C. If instead A is the traitor and sent "attack" to B and "retreat" to C, and C honestly reports "A told me to retreat", B holds exactly the same two messages. B cannot tell the two worlds apart, so it cannot know whether to follow A. A fourth general breaks the tie. The general counting argument: you can only wait for $n - f$ replies, because $f$ nodes may never answer. Up to $f$ of the replies you do get may be lies, so for the honest ones to outnumber them you need $(n - f) - f > f$, which is $n > 3f$. (With crash faults alone, a node that fails is just silent and never lies, so a majority suffices: $2f + 1$, which is the etcd and Raft rule [below](#leader-election-and-consensus).) Digital signatures help, because a traitor can no longer forge what an honest general said, but the problem stays hard.
 
-Inside one datacenter, you trust your own ranks, and you never pay for Byzantine tolerance. You need it when you do not control the participants: decentralized training over the internet, where volunteers or rented GPUs contribute gradients, any one of which might be buggy, faulty or malicious. There the `3f + 1` bound tells you how much of the swarm an attacker may control before no protocol can save you, and robust aggregation ([When peers are untrusted](#when-peers-are-untrusted), later in this chapter) and [decentralized training](../training/decentralized-training.md) are the practical responses.
+Inside one datacenter, you trust your own ranks, and you never pay for Byzantine tolerance. You need it when you do not control the participants: decentralized training over the internet, where volunteers or rented GPUs contribute gradients, any one of which might be buggy, faulty or malicious. There the $3f + 1$ bound tells you how much of the swarm an attacker may control before no protocol can save you, and robust aggregation ([When peers are untrusted](#when-peers-are-untrusted), later in this chapter) and [decentralized training](../training/decentralized-training.md) are the practical responses.
 
 ### System models: what you assume about nodes, links and time
 
@@ -381,32 +387,43 @@ The practical rule: before you pick a timeout, name the model. If you assume syn
 
 ### Failure arithmetic
 
-Suppose each node independently fails on average once every `M` days. That is its MTBF, mean time between failures. If failures are independent and memoryless (the usual exponential model), the failure rates of the nodes simply add:
+Suppose each node independently fails on average once every $M$ days. That is its MTBF, mean time between failures. If failures are independent and memoryless (the usual exponential model), the failure rates of the nodes simply add:
 
-```
-job failure rate = (number of nodes) / M
-job MTBF         = M / (number of nodes)
-```
+$$
+\text{job failure rate} = \frac{\text{number of nodes}}{M}
+$$
+
+$$
+\text{job MTBF} = \frac{M}{\text{number of nodes}}
+$$
 
 Worked example: say each node fails once every 1,000 days, about 2.7 years. That sounds very reliable. Now run a 1,000-node job:
 
-```
-job MTBF = 1000 days / 1000 nodes = 1 day = 24 hours
-P(no failure in a given 24 h window) = exp(-24/24) = exp(-1) = 0.37
-```
+$$
+\text{job MTBF} = 1000\ \text{days} / 1000\ \text{nodes} = 1\ \text{day} = 24\ \text{hours}
+$$
+
+$$
+P(\text{no failure in a given 24 h window}) = e^{-24/24} = e^{-1} = 0.37
+$$
 
 A node that you would call "rock solid" on its own gives you a job that **fails about once a day**, and has only a 37% chance of getting through any given day untouched.
 
 Real data agrees. The Llama 3 paper reports 419 unexpected interruptions over a 54-day period on a 16,384-GPU H100 job, roughly one every 3.1 hours. Most were attributed to hardware, with GPUs and HBM the largest categories. Turned into per-GPU rates (these assume the job always had all 16,384 GPUs, which is approximately true):
 
-```
-per-GPU MTBF ~= 16384 x 54 days / 419 ~= 2,112 GPU-days ~= 5.8 years
+$$
+\text{per-GPU MTBF} \approx 16384 \times 54\ \text{days} / 419 \approx 2{,}112\ \text{GPU-days} \approx 5.8\ \text{years}
+$$
 
-at that per-GPU rate:
-  8-GPU single node job:     MTBF ~= 2112 / 8    days ~= 0.7 years
-  1,000-GPU job:             MTBF ~= 2112 / 1000 days ~= 51 hours
-  8,000-GPU (1,000-node) job: MTBF ~= 2112 / 8000 days ~= 6.3 hours
-```
+At that per-GPU rate:
+
+$$
+\begin{aligned}
+\text{8-GPU single node job:}\quad & \text{MTBF} \approx 2112 / 8\ \text{days} \approx 0.7\ \text{years} \\
+\text{1,000-GPU job:}\quad & \text{MTBF} \approx 2112 / 1000\ \text{days} \approx 51\ \text{hours} \\
+\text{8,000-GPU (1,000-node) job:}\quad & \text{MTBF} \approx 2112 / 8000\ \text{days} \approx 6.3\ \text{hours}
+\end{aligned}
+$$
 
 Each GPU fails about once every 6 years. At scale you still lose a GPU every few hours. This is why the [fault tolerance chapter](../training/fault-tolerance/README.md) opens with "always plan to have more nodes than needed". At scale, failure is a steady background rate that you plan for, not a rare event.
 
@@ -445,22 +462,27 @@ A **service-level objective (SLO)** makes the target precise and includes latenc
 
 If failures are routine, you need checkpoints, and you need to decide how often to take them. Checkpointing too often wastes time writing. Checkpointing too rarely wastes time redoing lost work. A classic first-order answer is Young's formula:
 
-```
-optimal checkpoint interval  T ~= sqrt(2 x C x MTBF)
-    C = time to write one checkpoint (while training is paused)
-```
+$$
+T_\text{opt} \approx \sqrt{2 \cdot C \cdot \text{MTBF}}
+$$
 
-Example: C = 5 minutes, job MTBF = 24 hours = 1,440 minutes:
+where $T_\text{opt}$ is the optimal checkpoint interval and $C$ the time to write one checkpoint (while training is paused).
 
-```
-T ~= sqrt(2 x 5 x 1440) = 120 minutes
+Example: $C = 5$ minutes, job MTBF = 24 hours = 1,440 minutes:
 
-overhead ~= C/T + T/(2 x MTBF)
-         = 5/120 + 120/2880
-         = 4.2% (writing) + 4.2% (expected lost work) ~= 8.3%
-```
+$$
+T \approx \sqrt{2 \times 5 \times 1440} = 120\ \text{minutes}
+$$
 
-That is before restart time (scheduling, loading the checkpoint, warming up), which in practice is often the bigger term. Two levers come out of the formula. Make C smaller with asynchronous or sharded checkpoints, so `T` can shrink with it. Make MTBF larger by removing bad nodes before they join the job. See the [checkpoints chapter](../training/checkpoints/README.md).
+$$
+\begin{aligned}
+\text{overhead} &\approx \frac{C}{T} + \frac{T}{2 \cdot \text{MTBF}} \\
+&= \frac{5}{120} + \frac{120}{2880} \\
+&= 4.2\%\ \text{(writing)} + 4.2\%\ \text{(expected lost work)} \approx 8.3\%
+\end{aligned}
+$$
+
+That is before restart time (scheduling, loading the checkpoint, warming up), which in practice is often the bigger term. Two levers come out of the formula. Make $C$ smaller with asynchronous or sharded checkpoints, so $T$ can shrink with it. Make MTBF larger by removing bad nodes before they join the job. See the [checkpoints chapter](../training/checkpoints/README.md).
 
 ### Try this
 
@@ -503,7 +525,7 @@ T =  960 min -> overhead  41.5%
 The minimum is at Young's interval, and the simulated 9.0% is close to the first-order 8.3% estimate. The curve is flat near the optimum: anywhere from 1 to 4 hours costs within a few percent. Getting the order of magnitude right matters much more than the exact value.
 
 1. Add a restart cost (say 15 minutes of scheduling and loading after each failure) to `wall_time`. How much does the overhead go up, and does the best `T` move?
-2. Cut `C` to 0.5 minutes (an async checkpoint) and find the new best `T`. Compare with `sqrt(2 x 0.5 x 1440)`.
+2. Cut `C` to 0.5 minutes (an async checkpoint) and find the new best `T`. Compare with $\sqrt{2 \times 0.5 \times 1440}$.
 3. In `partial.py`, change the client timeout to 3 seconds. Which of the four peers changes category? Now make the "slow" server sleep 5 seconds. There is no timeout value that is right for every peer, and that is the heartbeat section's point.
 4. In `nines.py`, give each of the five services on the rollout path two independent replicas at 99.9% each. What is the path's availability now? Then assume the two replicas of the sandbox pool share one network switch that is up 99.95% of the time. Which number dominates?
 5. Write down the system model (nodes, links, timing) for three things you use: a single-node `torchrun` job, a Kubernetes cluster's etcd, and a decentralized training swarm over the internet. For each, which failure detector could you build?
@@ -685,17 +707,19 @@ Why BSP? It is easy to reason about. After every superstep, all replicas are in 
 
 Under BSP, step time is the **maximum** over ranks, not the average:
 
-```
-step_time = max(compute_time[r] for r in ranks) + communication
-```
+$$
+\text{step time} = \max_{r \in \text{ranks}} \text{compute time}_r + \text{communication}
+$$
 
 The maximum of many random variables lives in the tail of their distribution. Suppose each rank, on any given step, has a 0.1% chance of a hiccup (a GC pause, a page fault, a noisy neighbour, a thermally throttled GPU, a slow dataloader read):
 
-```
-P(at least one rank hiccups on a step):
-   8 ranks:      1 - 0.999^8    =  0.8%
-   1,000 ranks:  1 - 0.999^1000 = 63%
-```
+$$
+P(\text{at least one of 8 ranks hiccups on a step}) = 1 - 0.999^{8} = 0.8\%
+$$
+
+$$
+P(\text{at least one of 1,000 ranks hiccups on a step}) = 1 - 0.999^{1000} = 63\%
+$$
 
 A 1-in-1000 event on one rank becomes the normal case for the job. This is "tail at scale" (Dean and Barroso's 2013 paper of that name is the classic reference). At scale your step time is set by your p99.9 worker, not your median one.
 
@@ -761,9 +785,9 @@ Two effects show up. At 8 ranks the step is already 8 ms slower with no hiccups 
 
 Every computer keeps time with a quartz crystal oscillator, and no two crystals run at exactly the same rate. Typical drift is on the order of tens of parts per million (it depends on hardware and temperature, so treat this as a ballpark):
 
-```
-20 ppm x 86,400 s/day = 1.7 seconds of drift per day
-```
+$$
+20\ \text{ppm} \times 86{,}400\ \text{s/day} = 1.7\ \text{seconds of drift per day}
+$$
 
 Left alone, two nodes' clocks would disagree by seconds within a day.
 
@@ -852,7 +876,7 @@ Practical rules for debugging:
 2. **Compare timestamps only within one node,** or across nodes only when the gaps are much larger than plausible clock skew (seconds, not milliseconds).
 3. **Use durations, not absolute times,** to find stragglers. "Rank 40's forward took 900 ms, everyone else took 600 ms" is robust to clock skew.
 
-The theoretical answer to "what happened before what" without synchronized clocks is Lamport's logical clocks (1978): every process keeps a counter, increments it on each event and attaches it to every message, and on receiving a message sets its counter to `max(own, received) + 1`. You will not implement this for training, but step counters and collective sequence numbers are the same idea.
+The theoretical answer to "what happened before what" without synchronized clocks is Lamport's logical clocks (1978): every process keeps a counter, increments it on each event and attaches it to every message, and on receiving a message sets its counter to $\max(\text{own}, \text{received}) + 1$. You will not implement this for training, but step counters and collective sequence numbers are the same idea.
 
 ### Logical clocks: Lamport and vector clocks
 
@@ -932,7 +956,7 @@ The Lamport clock puts A's first event "before" C's last one, but no message cha
 
 Lamport clocks are still useful, for a different job. Sorting events by the pair `(L(e), process id)` gives a **total order**, every pair of events ordered and ties broken by process id, that is *consistent with causality*: if `a -> b`, `a` sorts first. Every process that sees the same set of timestamped events sorts them into the same sequence. That idea, everyone processing the same events in the same order, is the foundation of [total-order broadcast](#total-order-broadcast-and-state-machine-replication) below.
 
-Where you meet these in practice: replicated stores such as Dynamo and Riak used vector clocks (or the related "version vectors") to detect conflicting concurrent writes instead of silently picking one. Vector clocks cost O(number of processes) per message, which is why training stacks use the cheaper version: a single per-communicator sequence number. Every rank issues collectives in the same order (SPMD), so "collective #81,234" names the same logical event on every rank, and a rank stuck at #81,233 is the one behind.
+Where you meet these in practice: replicated stores such as Dynamo and Riak used vector clocks (or the related "version vectors") to detect conflicting concurrent writes instead of silently picking one. Vector clocks cost $O(\text{number of processes})$ per message, which is why training stacks use the cheaper version: a single per-communicator sequence number. Every rank issues collectives in the same order (SPMD), so "collective #81,234" names the same logical event on every rank, and a rank stuck at #81,233 is the one behind.
 
 ### Try this
 
@@ -1047,7 +1071,7 @@ Here is the fundamental problem. **In an asynchronous network you cannot disting
 
 This is why PyTorch's distributed timeouts look the way they do. The default process-group timeout is long: 30 minutes for gloo (verified in PyTorch 2.15), and 10 minutes for NCCL in recent releases (from memory; check `torch.distributed.constants` for your version). It has to be long enough for legitimate slow operations like a rank-0-only checkpoint save, and short enough that a hang does not burn a whole night. If you have one known-slow operation, the right fix is usually to raise the timeout for it specifically (pass `timeout=` to `init_process_group` or `new_group`), not to shorten it globally.
 
-Fixed timeouts are not the only option. The **phi-accrual failure detector** (Hayashibara et al., 2004; used by Cassandra and Akka) learns the normal distribution of heartbeat gaps and outputs a suspicion level `phi = -log10(P(a gap this long))` instead of yes/no. `phi = 8` means "a gap this long happens by chance 1 time in 10^8". When heartbeats are very regular it notices silence quickly, and when they are noisy it waits longer. Here are three detectors on the same heartbeat trace: a peer that pauses for 6 seconds at t of about 30 s (alive, maybe writing a checkpoint), then really dies at about t = 61 s:
+Fixed timeouts are not the only option. The **phi-accrual failure detector** (Hayashibara et al., 2004; used by Cassandra and Akka) learns the normal distribution of heartbeat gaps and outputs a suspicion level $\phi = -\log_{10} P(\text{a gap this long})$ instead of yes/no. $\phi = 8$ means "a gap this long happens by chance 1 time in $10^8$". When heartbeats are very regular it notices silence quickly, and when they are noisy it waits longer. Here are three detectors on the same heartbeat trace: a peer that pauses for 6 seconds at t of about 30 s (alive, maybe writing a checkpoint), then really dies at about t = 61 s:
 
 ```python
 # heartbeat.py -- fixed-timeout vs phi-accrual failure detection on the same trace
@@ -1617,7 +1641,7 @@ Without fencing, the paused worker overwrote a newer checkpoint with an older on
 
 Strong consistency costs coordination (consensus or similar) on every write. Eventual consistency is cheaper and stays available, but the application has to tolerate stale reads.
 
-A common middle ground is **quorum replication** (as in Dynamo and Cassandra). With N replicas, a write waits for acknowledgements from W of them and a read asks R of them, keeping the newest version it sees. If `R + W > N`, every read set overlaps every write set in at least one replica, so a read is guaranteed to see the latest acknowledged write. The simulation below reads immediately after a write, before the remaining replicas have caught up:
+A common middle ground is **quorum replication** (as in Dynamo and Cassandra). With $N$ replicas, a write waits for acknowledgements from $W$ of them and a read asks $R$ of them, keeping the newest version it sees. If $R + W > N$, every read set overlaps every write set in at least one replica, so a read is guaranteed to see the latest acknowledged write. The simulation below reads immediately after a write, before the remaining replicas have caught up:
 
 ```python
 # quorum.py -- async replication (eventual) vs quorum reads/writes (R + W > N)
@@ -1650,7 +1674,7 @@ N=3 W=2 R=2 (R+W>N ): stale reads right after write =   0.0%
 N=3 W=3 R=1 (R+W>N ): stale reads right after write =   0.0%
 ```
 
-The stale fractions match the counting argument. With W=1 and R=1, you read the one fresh replica only 1 time in 3. As soon as `R + W > N`, staleness drops to zero. The knobs trade read latency against write latency: W=3, R=1 makes writes wait for the slowest replica and reads fast, and W=1, R=3 does the reverse. (Real quorum systems have further corner cases, such as concurrent writes and "sloppy" quorums during failures, so `R + W > N` alone is not full linearizability.)
+The stale fractions match the counting argument. With $W = 1$ and $R = 1$, you read the one fresh replica only 1 time in 3. As soon as $R + W > N$, staleness drops to zero. The knobs trade read latency against write latency: $W = 3, R = 1$ makes writes wait for the slowest replica and reads fast, and $W = 1, R = 3$ does the reverse. (Real quorum systems have further corner cases, such as concurrent writes and "sloppy" quorums during failures, so $R + W > N$ alone is not full linearizability.)
 
 ### Linearizability, serializability and eventual consistency
 
@@ -1948,17 +1972,23 @@ There have historically been two architectures for synchronizing gradients.
 
 **All-reduce.** There is no server. Workers run a collective algorithm, classically a *ring*, in which each rank exchanges chunks only with its neighbours. Baidu popularized ring all-reduce for deep learning in 2017, and Uber's Horovod (2018) made it mainstream.
 
-Arithmetic, for a 7B model with bf16 gradients (S = 14 GB) and 64 workers, each with 50 GB/s (400 Gb/s) of network bandwidth:
+Arithmetic, for a 7B model with bf16 gradients ($S = 14$ GB) and 64 workers, each with 50 GB/s (400 Gb/s) of network bandwidth:
 
-```
-Single parameter server:
-   the server must receive 64 x 14 GB = 896 GB per step
-   at 50 GB/s:  ~18 s per step, and it gets worse linearly with more workers
+Single parameter server: the server must receive
 
-Ring all-reduce:
-   each rank sends (and receives) 2 x (N-1)/N x S = 2 x 63/64 x 14 GB ~= 27.6 GB
-   at 50 GB/s:  ~0.55 s per step, almost independent of N
-```
+$$
+64 \times 14\ \text{GB} = 896\ \text{GB per step}
+$$
+
+At 50 GB/s that is ~18 s per step, and it gets worse linearly with more workers.
+
+Ring all-reduce: each rank sends (and receives)
+
+$$
+2 \times \frac{N-1}{N} \times S = 2 \times \frac{63}{64} \times 14\ \text{GB} \approx 27.6\ \text{GB}
+$$
+
+At 50 GB/s that is ~0.55 s per step, almost independent of $N$.
 
 The ring's per-rank traffic stays at about 2S no matter how many workers you add. That is why it is called bandwidth-optimal. The PS bottleneck can be reduced by sharding parameters across many servers, but then you are running and provisioning a second fleet of machines. [Collective communication internals](../network/collectives-internals.md) has the full cost models, including latency terms and tree algorithms.
 
@@ -2008,7 +2038,7 @@ n= 8: per-rank sent 1.750 x S   (2(n-1)/n = 1.750)
 n=16: per-rank sent 1.875 x S   (2(n-1)/n = 1.875)
 ```
 
-Per-rank traffic approaches 2S and never exceeds it, however many ranks there are. Latency is a different story: the ring takes `2(n-1)` sequential steps, which is why NCCL also has tree algorithms for small messages and large n (see [collective internals](../network/collectives-internals.md)).
+Per-rank traffic approaches $2S$ and never exceeds it, however many ranks there are. Latency is a different story: the ring takes $2(n-1)$ sequential steps, which is why NCCL also has tree algorithms for small messages and large n (see [collective internals](../network/collectives-internals.md)).
 
 1. Count steps instead of elements. At n = 1,024 and 5 microseconds per step, what is the latency floor of a ring all-reduce, independent of message size?
 2. Turn `ring_allreduce` into a pure `reduce_scatter` (stop after the first loop) and confirm that rank r ends up holding the fully summed chunk `(r + 1) % n`. That is the output ZeRO/FSDP keeps.

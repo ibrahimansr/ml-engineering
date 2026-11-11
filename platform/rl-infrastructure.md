@@ -63,7 +63,7 @@ Each line in that loop blocks until the previous one finishes. The rest of the c
 
 ### Where the time goes: arithmetic for a realistic config
 
-Configuration: a Qwen2.5-32B-like dense model (64 layers, 8 KV heads of dim 128, about 32.5B parameters) on 64 H100s. One GRPO step uses 256 prompts × 16 samples, 1024-token prompts, and long-tailed reasoning responses (lognormal, median about 6k tokens, capped at 32k). Generation runs on 16 TP=4 engines. Training recomputes the old-policy logprobs (`2N` FLOPs per token), runs a reference-model forward (`2N`), and a forward+backward (`6N`), for `10N` FLOPs per token.
+Configuration: a Qwen2.5-32B-like dense model (64 layers, 8 KV heads of dim 128, about 32.5B parameters) on 64 H100s. One GRPO step uses 256 prompts × 16 samples, 1024-token prompts, and long-tailed reasoning responses (lognormal, median about 6k tokens, capped at 32k). Generation runs on 16 TP=4 engines. Training recomputes the old-policy logprobs ($2N$ FLOPs per token), runs a reference-model forward ($2N$), and a forward+backward ($6N$), for $10N$ FLOPs per token.
 
 The script below simulates one engine with continuous batching. Each decode step costs one read of the weights plus one read of every active sequence's KV cache from HBM. That is the decode roofline from [inference arithmetic](../inference/arithmetic.md#decode-latency-lower-bound), assuming 60% of peak HBM bandwidth is achieved. The script calls that fraction `MBU` (model bandwidth utilization), the memory-bandwidth counterpart of MFU.
 
@@ -152,7 +152,7 @@ How to read the output:
 
 1. **Generation is about two thirds of a synchronous step, even with oracle scheduling.** It also understates the problem. The step waits for the slowest of 16 engines, and this simulation measures only one of them.
 2. **The tail costs 1.9×.** The same total number of tokens, spread evenly across sequences, would take 432 s instead of 837 s. For 35% of decode steps the engine has 16 or fewer sequences running, so it reads 65 GB of weights per step to produce at most 16 tokens. A 32k-token response needs 32,768 *sequential* decode steps no matter how many GPUs you have. Generation time has a floor set by the longest sequence, not by total work.
-3. **Training is regular and predictable.** 473 s comes from `10N × tokens / (64 × 989 TFLOP/s × 0.4)`. It scales almost linearly with GPU count and does not depend on the length distribution, only on the total number of tokens.
+3. **Training is regular and predictable.** 473 s comes from $10N \times \text{tokens} / (64 \times 989\ \text{TFLOP/s} \times 0.4)$. It scales almost linearly with GPU count and does not depend on the length distribution, only on the total number of tokens.
 
 The same reasoning applies to any long-chain-of-thought setup. Reports from frameworks and labs put generation at roughly half to 80% of wall time. That share depends on the length distribution, which is why almost every infrastructure idea in this chapter targets the generation tail.
 
@@ -246,7 +246,7 @@ disagg 48 gen / 16 train    1892 s/step  (generator idle 70%)
 
 What this shows:
 
-- **With perfect linear scaling, overlap by itself is zero-sum.** The best disaggregated split (30/34) gives 922 s, which is just `432 + 473`: generation work plus training work. That is the same as colocated with partial rollouts (935 s, which differs only by the assumed switch cost). The 1340 → ~930 s improvement comes from **removing the tail**, not from overlapping the two phases.
+- **With perfect linear scaling, overlap by itself is zero-sum.** The best disaggregated split (30/34) gives 922 s, which is just $432 + 473$: generation work plus training work. That is the same as colocated with partial rollouts (935 s, which differs only by the assumed switch cost). The 1340 → ~930 s improvement comes from **removing the tail**, not from overlapping the two phases.
 - **Disaggregation is unforgiving about the split.** Misjudge the ratio by 25% and one side idles 34-45% of the time. The right split also moves during training, because response lengths change as the policy learns. (Response length often grows during reasoning RL.)
 - Disaggregation wins when the linear-scaling assumption fails in its favour. Inference and training can use different parallelism, different hardware (cheaper or older GPUs for inference, even consumer GPUs over the internet in decentralized setups), and different failure domains. Inference capacity becomes elastic: engines join and leave without stopping the trainer. You also skip the memory juggling entirely. Colocation wins when the cluster is small, the network between pools is slow, or the run must be strictly on-policy.
 
@@ -269,18 +269,18 @@ Most large-scale frameworks now support both. Open systems built for long agenti
 
 Systems use the following modes, ordered from fully on-policy to most off-policy:
 
-| Mode | Behaviour policy for a batch trained at version `v` | Who uses it (as of late 2026; verify) |
+| Mode | Behaviour policy for a batch trained at version $v$ | Who uses it (as of late 2026; verify) |
 |---|---|---|
-| Synchronous | `v` exactly | TRL default, verl/OpenRLHF default colocated mode |
-| One-step off-policy | `v-1`: generate batch `n+1` while training on batch `n` | verl `one_step_off_policy`, prime-rl's basic overlap, OpenRLHF `--train.async_enable` with queue size 1 |
-| Bounded async | any version `≥ v-k` | AReaL (arXiv 2505.24298), prime-rl `orchestrator.max_staleness` |
+| Synchronous | exactly $v$ | TRL default, verl/OpenRLHF default colocated mode |
+| One-step off-policy | version $v-1$: generate batch $n+1$ while training on batch $n$ | verl `one_step_off_policy`, prime-rl's basic overlap, OpenRLHF `--train.async_enable` with queue size 1 |
+| Bounded async | any version $\ge v-k$ | AReaL (arXiv 2505.24298), prime-rl `orchestrator.max_staleness` |
 | In-flight weight updates | a *single* rollout spans several versions; weights change mid-generation | PipelineRL (arXiv 2509.19128), OpenRLHF `--train.partial_rollout_enable`, AReaL interruptible rollouts |
 
-In-flight updates exist because of the tail. Without them, a 32k-token rollout started at version `v` will finish at version `v+5` and is entirely 5 steps stale. With them, its last tokens were sampled by a recent policy. The cost is that the KV cache for the first part of the response was computed under the old weights. Systems generally keep that stale KV rather than recompute it, and record per-token versions so the loss can account for them.
+In-flight updates exist because of the tail. Without them, a 32k-token rollout started at version $v$ will finish at version $v+5$ and is entirely 5 steps stale. With them, its last tokens were sampled by a recent policy. The cost is that the KV cache for the first part of the response was computed under the old weights. Systems generally keep that stale KV rather than recompute it, and record per-token versions so the loss can account for them.
 
 ### A toy async RL pipeline
 
-The following toy contains every moving part of an async system, scaled down until it runs in two seconds. The **trainer** is a separate OS process (`multiprocessing`), as a real trainer would be. The **generator** is one `asyncio` event loop that keeps `SLOTS` rollouts in flight at once, as an inference engine with continuous batching does. The two are connected by a **bounded queue**, which provides backpressure. Weights are a shared-memory array published together with a **version counter** under a lock, which stands in for weight sync. The stdlib provides these directly: `mp.Array("d", A)` is an array of `A` C doubles in shared memory that both processes can index like a list, `mp.Value("i", 0)` is a single shared C int read and written through `.value`, and `lock=False` skips their built-in per-object lock because the code uses one explicit `mp.Lock()` to cover the weights and the version together ([shared memory](../foundations/concurrency.md#shared-memory) and its race conditions are covered in the concurrency chapter). The policy is a 4-way softmax, reward is 1 for action 3, and rollout length is lognormal so the tail is real. `k` is the maximum lag: a rollout may *start* only if its batch index is at most `k` ahead of the trainer's version. `k=0` is the synchronous loop.
+The following toy contains every moving part of an async system, scaled down until it runs in two seconds. The **trainer** is a separate OS process (`multiprocessing`), as a real trainer would be. The **generator** is one `asyncio` event loop that keeps `SLOTS` rollouts in flight at once, as an inference engine with continuous batching does. The two are connected by a **bounded queue**, which provides backpressure. Weights are a shared-memory array published together with a **version counter** under a lock, which stands in for weight sync. The stdlib provides these directly: `mp.Array("d", A)` is an array of `A` C doubles in shared memory that both processes can index like a list, `mp.Value("i", 0)` is a single shared C int read and written through `.value`, and `lock=False` skips their built-in per-object lock because the code uses one explicit `mp.Lock()` to cover the weights and the version together ([shared memory](../foundations/concurrency.md#shared-memory) and its race conditions are covered in the concurrency chapter). The policy is a 4-way softmax, reward is 1 for action 3, and rollout length is lognormal so the tail is real. $k$ is the maximum lag: a rollout may *start* only if its batch index is at most $k$ ahead of the trainer's version. $k=0$ is the synchronous loop.
 
 ```python
 # toy_async_rl.py - generator (asyncio, many concurrent rollouts) -> bounded queue -> trainer (process).
@@ -398,21 +398,21 @@ k=1, step by step:
 
 What this output shows (your timings will differ):
 
-- **Synchronous (`k=0`) keeps the trainer only 31% busy.** It waits for the slowest rollout of every batch. Allowing one step of lag cuts wall time 2.6× (5.99 → 2.32 s), and the trainer reaches about 80-95% busy. This is the async win: the next batch's rollouts fill the slots the tail leaves empty.
-- **Staleness at training time is not bounded by `k`.** With `k=1` the step-by-step log shows rollouts 4 and 5 versions stale. The gate applies when a rollout *starts*, and a long rollout started at version 5 can finish after the trainer reaches version 10. Every system that gates only at submission has this property. To bound staleness at training time you must also act at consumption: drop or mask stale tokens (prime-rl masks tokens beyond `max_staleness` and never cancels rollouts, per its `docs/algorithms.md`), or interrupt and resume long rollouts with new weights.
-- **The importance ratio drifts away from 1 as staleness grows** (mean max `|r-1|` goes 0 → 0.16 → 0.25 → 0.42). This toy has 4 actions and a large learning rate. With real vocabularies and long sequences the effect compounds per token, which is the next section.
-- **Backpressure works.** With `k=4` the generator outruns the trainer, the queue fills to its bound of 2, and `q.put` blocks the generator instead of letting memory grow and staleness explode. Adding 4× more slots (`slots=64`) changes nothing, because the trainer is now the bottleneck. The queue depth tells you which side to scale, exactly as in [the concurrency chapter](../foundations/concurrency.md#producerconsumer-and-backpressure).
+- **Synchronous ($k=0$) keeps the trainer only 31% busy.** It waits for the slowest rollout of every batch. Allowing one step of lag cuts wall time 2.6× (5.99 → 2.32 s), and the trainer reaches about 80-95% busy. This is the async win: the next batch's rollouts fill the slots the tail leaves empty.
+- **Staleness at training time is not bounded by $k$.** With $k=1$ the step-by-step log shows rollouts 4 and 5 versions stale. The gate applies when a rollout *starts*, and a long rollout started at version 5 can finish after the trainer reaches version 10. Every system that gates only at submission has this property. To bound staleness at training time you must also act at consumption: drop or mask stale tokens (prime-rl masks tokens beyond `max_staleness` and never cancels rollouts, per its `docs/algorithms.md`), or interrupt and resume long rollouts with new weights.
+- **The importance ratio drifts away from 1 as staleness grows** (mean max $\lvert r-1 \rvert$ goes 0 → 0.16 → 0.25 → 0.42). This toy has 4 actions and a large learning rate. With real vocabularies and long sequences the effect compounds per token, which is the next section.
+- **Backpressure works.** With $k=4$ the generator outruns the trainer, the queue fills to its bound of 2, and `q.put` blocks the generator instead of letting memory grow and staleness explode. Adding 4× more slots (`slots=64`) changes nothing, because the trainer is now the bottleneck. The queue depth tells you which side to scale, exactly as in [the concurrency chapter](../foundations/concurrency.md#producerconsumer-and-backpressure).
 - Two macOS details came up while writing this. `multiprocessing.Queue.qsize()` raises `NotImplementedError` on macOS, so the queue depth is computed from counters. And the lock around the weights+version write matters: without it a generator could read new weights with an old version number, or the reverse, and every staleness metric would be wrong. Real systems have the same requirement. The version must travel with the weights, atomically.
 
 ### Importance-ratio corrections systems use
 
-Let `π` be the trainer's current policy and `μ` the behaviour policy that produced the tokens (stale weights, a different numeric stack, or both). Then the per-token ratio is `r_t = π(y_t | x, y_<t) / μ(y_t | x, y_<t)`. PPO and GRPO already use a ratio, but against `π_old`. Infrastructure mismatch adds a *second* ratio, and it is easy to get the two confused. The standard corrections:
+Let $\pi$ be the trainer's current policy and $\mu$ the behaviour policy that produced the tokens (stale weights, a different numeric stack, or both). Then the per-token ratio is $r_t = \pi(y_t \mid x, y_{<t}) / \mu(y_t \mid x, y_{<t})$. PPO and GRPO already use a ratio, but against $\pi_{\text{old}}$. Infrastructure mismatch adds a *second* ratio, and it is easy to get the two confused. The standard corrections:
 
-- **Recompute `π_old` on the trainer** instead of trusting the sampler's logprobs (the `2N` forward in the step budget). PPO clipping then operates on trainer-vs-trainer ratios, and the sampler/trainer gap is handled separately.
-- **Truncated importance sampling (TIS)**: weight each token by `min(r_t, C)`, with `C` typically 2. This was popularised for exactly this sampler/trainer mismatch by Yao et al., "Your Efficient RL Framework Secretly Brings You Off-Policy RL Training" (blog, August 2025). It has V-trace lineage (IMPALA, arXiv 1802.01561).
-- **Masking instead of weighting**: drop tokens, or whole sequences, whose ratio leaves a band. IcePop (from Ant's Ling team, 2025) masks tokens outside `[ratio_low, ratio_high]`. prime-rl ships it as an opt-in loss with defaults 0.2 and 5.0, and its default loss masks tokens whose *probability* change `|π − μ|` exceeds `eps = 0.3` (prime-rl `docs/algorithms.md`, as of November 2026). TRL's GRPO has `vllm_importance_sampling_correction` (default `True`), `vllm_importance_sampling_mode` (default `"sequence_mask"`) and `vllm_importance_sampling_clip_max` (default `3.0`) in `grpo_config.py` as of November 2026.
+- **Recompute $\pi_{\text{old}}$ on the trainer** instead of trusting the sampler's logprobs (the $2N$ forward in the step budget). PPO clipping then operates on trainer-vs-trainer ratios, and the sampler/trainer gap is handled separately.
+- **Truncated importance sampling (TIS)**: weight each token by $\min(r_t, C)$, with $C$ typically 2. This was popularised for exactly this sampler/trainer mismatch by Yao et al., "Your Efficient RL Framework Secretly Brings You Off-Policy RL Training" (blog, August 2025). It has V-trace lineage (IMPALA, arXiv 1802.01561).
+- **Masking instead of weighting**: drop tokens, or whole sequences, whose ratio leaves a band. IcePop (from Ant's Ling team, 2025) masks tokens outside `[ratio_low, ratio_high]`. prime-rl ships it as an opt-in loss with defaults 0.2 and 5.0, and its default loss masks tokens whose *probability* change $\lvert \pi - \mu \rvert$ exceeds `eps = 0.3` (prime-rl `docs/algorithms.md`, as of November 2026). TRL's GRPO has `vllm_importance_sampling_correction` (default `True`), `vllm_importance_sampling_mode` (default `"sequence_mask"`) and `vllm_importance_sampling_clip_max` (default `3.0`) in `grpo_config.py` as of November 2026.
 - **Decoupled PPO objective**: separate the *proximal* policy (for the trust region) from the *behaviour* policy (for the IS weight). Hilton et al., "Batch size-invariance for policy optimization" (arXiv 2110.00641). AReaL uses it for stale data.
-- **Staleness bounds plus diagnostics**: cap `k`, and log the mismatch KL *per staleness bin*. Bin 0 then isolates pure numerics, and higher bins show drift from staleness (prime-rl logs `mismatch_kl_by_staleness/{bin}`).
+- **Staleness bounds plus diagnostics**: cap $k$, and log the mismatch KL *per staleness bin*. Bin 0 then isolates pure numerics, and higher bins show drift from staleness (prime-rl logs `mismatch_kl_by_staleness/{bin}`).
 
 How large is the ratio spread from staleness alone? Here is a synthetic experiment where each optimizer step moves the logits by a fixed amount of noise:
 
@@ -458,7 +458,7 @@ staleness k= 4: ratio p1 0.824 p99 1.205 max   1.34  | frac clipped by TIS(C=2) 
 staleness k=16: ratio p1 0.455 p99 1.986 max   3.08  | frac clipped by TIS(C=2) 0.0095  | ESS/T 0.908
 ```
 
-The bottom four lines are the staleness part. The p1-p99 ratio band widens from `[0.96, 1.05]` at one step of staleness to `[0.46, 1.99]` at 16, and TIS clipping only starts to bite at large `k`. The effective sample size (`ESS = (Σr)² / Σr²`) falls slowly, so in this toy moderate staleness wastes little data. Real policy drift per step depends on learning rate and data and is not Gaussian. Measure it on your own run with the per-bin mismatch KL. The top three lines are the zero-staleness part, covered next. (The "k1" estimator there is the plain Monte Carlo estimate of `KL(μ‖π)`: the mean of `log μ − log π` over tokens sampled from `μ`. It is unbiased but an individual estimate can be negative, as it is here. The non-negative `k3` variant used for alerting appears in [Infrastructure health signals](#infrastructure-health-signals).)
+The bottom four lines are the staleness part. The p1-p99 ratio band widens from $[0.96, 1.05]$ at one step of staleness to $[0.46, 1.99]$ at 16, and TIS clipping only starts to bite at large $k$. The effective sample size ($\text{ESS} = (\sum r)^2 / \sum r^2$) falls slowly, so in this toy moderate staleness wastes little data. Real policy drift per step depends on learning rate and data and is not Gaussian. Measure it on your own run with the per-bin mismatch KL. The top three lines are the zero-staleness part, covered next. (The "k1" estimator there is the plain Monte Carlo estimate of $\operatorname{KL}(\mu \,\Vert\, \pi)$: the mean of $\log \mu - \log \pi$ over tokens sampled from $\mu$. It is unbiased but an individual estimate can be negative, as it is here. The non-negative `k3` variant used for alerting appears in [Infrastructure health signals](#infrastructure-health-signals).)
 
 ### Sampler-trainer mismatch at zero staleness
 
@@ -466,7 +466,7 @@ Even with identical weights and version, the inference engine and the trainer co
 
 - **Precision and kernels.** The engine uses fused attention and decode kernels, sometimes FP8 weights or KV, and its reduction order depends on batch shape. The trainer uses training kernels in bf16 with fp32 accumulation. See [determinism and batch invariance](../inference/serving-engine-internals.md#determinism-and-batch-invariance).
 - **MoE routing flips**: a near-tie in the router sends the token to a different expert, so the output is different, not just rounded differently.
-- **Sampling post-processing**: temperature, top-p/top-k and repetition penalty change `μ`. If the engine returns logprobs of the *raw* distribution but sampled from the *processed* one (or the reverse), the ratio is wrong for every token. TRL's config notes that `repetition_penalty != 1.0` requires turning its IS correction off for this reason.
+- **Sampling post-processing**: temperature, top-p/top-k and repetition penalty change $\mu$. If the engine returns logprobs of the *raw* distribution but sampled from the *processed* one (or the reverse), the ratio is wrong for every token. TRL's config notes that `repetition_penalty != 1.0` requires turning its IS correction off for this reason.
 - **Tokenization and templates**: the trainer may score a *different token sequence* than the one sampled. See [chat templates and tokenization](#chat-templates-and-tokenization-consistency).
 
 In `ratios.py` above, only bf16 rounding of the logits is simulated. The per-token `|log r|` is about 1.2e-2, but it is unbiased noise, so the sequence-level sum over 8192 tokens nearly cancels (ratio 1.014) and the KL estimate is around 0. Real mismatch is **systematic**: the same kernel errs the same way, and MoE flips are discrete. Systematic error accumulates over long sequences instead of cancelling. That is why sequence-level masks exist, and why batch-invariant inference kernels and an fp32 LM head (TRL's `cast_lm_head_to_fp32`) are things RL teams actually pay for. The practical rule: **log the mismatch KL from the very first step**. In a healthy setup it is small (around 1e-3 or less per token is a commonly cited range; this is not a universal threshold) and flat. A jump means something in the infrastructure changed.
@@ -539,7 +539,7 @@ The bandwidths are rounded hardware numbers: H100 HBM 3.35 TB/s, NVLink 450 GB/s
 
 ### Resharding between FSDP and TP layouts
 
-The trainer stores parameters in its own layout, and the engine expects a different one. FSDP2 keeps each parameter as a dim-0 shard per rank. An engine with TP=`t` expects column-parallel weights (q/k/v, gate/up) split by output rows and row-parallel weights (o, down) split by input columns ([TP derivation](../training/model-parallelism/derivations.md#column-and-row-splits)). Engines also **fuse** weights: vLLM loads q, k and v into a single `qkv_proj` and gate and up into `gate_up_proj`. Resharding means gathering each parameter, cutting it the way the engine wants, and fusing per TP rank. Fusing in the wrong order is the classic silent bug:
+The trainer stores parameters in its own layout, and the engine expects a different one. FSDP2 keeps each parameter as a dim-0 shard per rank. An engine with TP $= t$ expects column-parallel weights (q/k/v, gate/up) split by output rows and row-parallel weights (o, down) split by input columns ([TP derivation](../training/model-parallelism/derivations.md#column-and-row-splits)). Engines also **fuse** weights: vLLM loads q, k and v into a single `qkv_proj` and gate and up into `gate_up_proj`. Resharding means gathering each parameter, cutting it the way the engine wants, and fusing per TP rank. Fusing in the wrong order is the classic silent bug:
 
 ```python
 # reshard.py - FSDP (dim-0 shards over 4 trainer ranks) -> TP=2 inference layout with a fused QKV.
@@ -589,7 +589,7 @@ Real implementations differ mainly in *where* the gather happens:
 | Approach | How | Cost |
 |---|---|---|
 | Gather on trainer, send full tensors | trainer all-gathers each param (as FSDP does every forward), rank 0 or a few ranks send | simple. One sender's NIC bounds it, unless you shard the sending |
-| Gather per engine shard | each trainer rank sends its slice directly to whichever engine ranks need it (an `M × N` transfer plan) | optimal bandwidth, complex planning. Several frameworks precompute such a plan |
+| Gather per engine shard | each trainer rank sends its slice directly to whichever engine ranks need it (an $M \times N$ transfer plan) | optimal bandwidth, complex planning. Several frameworks precompute such a plan |
 | Same layout both sides | inference uses the trainer's own sharding (e.g. Megatron TP=TP) | no resharding, but constrains both sides |
 | Engine reads a checkpoint | trainer writes safetensors to shared storage or serves it over HTTP, engines load | most decoupled and elastic. Storage bandwidth bounds it (see [storage](../foundations/storage-and-data.md)) |
 
@@ -613,7 +613,7 @@ engines.rpc("resume_generation", version=v + 1)
 
 Three details in that sketch are easy to miss:
 
-- **Bucketing.** Every collective pays a fixed latency `α` (see the [cost model](../training/model-parallelism/derivations.md#collective-cost-models-alpha-beta-ring)). A large model has thousands of tensors (norm weights, biases, per-expert weights), and broadcasting them one by one is latency-bound. Flatten them into buckets of tens to hundreds of MB. The effect is visible even on CPU with gloo:
+- **Bucketing.** Every collective pays a fixed latency $\alpha$ (see the [cost model](../training/model-parallelism/derivations.md#collective-cost-models-alpha-beta-ring)). A large model has thousands of tensors (norm weights, biases, per-expert weights), and broadcasting them one by one is latency-bound. Flatten them into buckets of tens to hundreds of MB. The effect is visible even on CPU with gloo:
 
 ```python
 # bcast.py - trainer rank 0 broadcasts a "state dict" to 3 inference ranks (gloo, CPU).
@@ -653,7 +653,7 @@ per-tensor:   647.4 ms      99 MB/s  weights correct on rank 1: True
 bucketed  :    37.9 ms    1688 MB/s  weights correct on rank 1: True
 ```
 
-On this run, 4000 small broadcasts were 17× slower than one 64 MB broadcast. (Other runs gave between 17× and 38×. The absolute numbers are loopback TCP and mean nothing for NCCL, but the ratio is the α term.) The first version of this script aborted with a gloo `Unexpected opcode` error on macOS. It ran after I pinned the socket interface with `GLOO_SOCKET_IFNAME=lo0` and fixed a copy bug in the same edit, so I did not isolate which change fixed it.
+On this run, 4000 small broadcasts were 17× slower than one 64 MB broadcast. (Other runs gave between 17× and 38×. The absolute numbers are loopback TCP and mean nothing for NCCL, but the ratio is the $\alpha$ term.) The first version of this script aborted with a gloo `Unexpected opcode` error on macOS. It ran after I pinned the socket interface with `GLOO_SOCKET_IFNAME=lo0` and fixed a copy bug in the same edit, so I did not isolate which change fixed it.
 
 - **Prefix-cache invalidation.** Prefix caching ([serving internals](../inference/serving-engine-internals.md#prefix-caching)) reuses KV blocks keyed by token hashes. After a weight update those blocks hold KV computed with the old weights, so the engine must flush them (vLLM's `reset_prefix_cache`). If it doesn't, the next rollouts quietly mix versions. GRPO makes heavy use of prefix caching, since `G` samples share a prompt, so this matters.
 - **Version tagging.** Every rollout must record the version of the weights that produced each token. With in-flight updates that means a per-token version.
@@ -1078,7 +1078,7 @@ docker run --rm --network none --read-only --tmpfs /work:rw,size=64m \
 
 ### Sandbox fleets: throughput and cold starts
 
-The fleet size follows from [Little's law](../inference/arithmetic.md#littles-law), `concurrency = arrival rate × time in system`:
+The fleet size follows from [Little's law](../inference/arithmetic.md#littles-law), $\text{concurrency} = \text{arrival rate} \times \text{time in system}$:
 
 ```python
 # sandbox_fleet.py - how many sandboxes does the reward side need?
@@ -1260,7 +1260,7 @@ Training reward is measured on the training distribution, with the training samp
 - **Pin the version.** Evaluate a specific checkpoint version and record it. In async systems, "the model at step 400" has to be defined: the trainer's weights after step 400, synced to an engine.
 - **Fixed sampling settings and seeds**, distinct from training settings (e.g. temperature 0.6, top-p 0.95, `n=16` for pass@k). With batch-dependent numerics, even greedy decoding is not reproducible across fleet states. Report averages over enough samples.
 - **Separate priority or a separate engine slice**, so that evals do not steal the tail-filling slots and change training dynamics. prime-rl's orchestrator has explicit eval source and sink modules for this. In verl it is a periodic validation step.
-- **Uncertainty.** On a 500-problem benchmark, a pass@1 difference of 1-2 points is often within noise. Use pass@k with the unbiased estimator and report a confidence interval. (pass@k is the probability that at least one of `k` samples for a problem is correct. Estimating it as "draw exactly `k` samples" is noisy, so you draw `n ≥ k`, count `c` correct, and use `1 - C(n-c, k) / C(n, k)`, the chance that a random size-`k` subset contains a correct one.)
+- **Uncertainty.** On a 500-problem benchmark, a pass@1 difference of 1-2 points is often within noise. Use pass@k with the unbiased estimator and report a confidence interval. (pass@k is the probability that at least one of $k$ samples for a problem is correct. Estimating it as "draw exactly $k$ samples" is noisy, so you draw $n \ge k$, count $c$ correct, and use $1 - \binom{n-c}{k} / \binom{n}{k}$, the chance that a random size-$k$ subset contains a correct one.)
 
 ```python
 # passk.py - unbiased pass@k from n samples with c correct (Chen et al. 2021, arXiv 2107.03374)
@@ -1377,7 +1377,7 @@ ALERT: mismatch KL outliers rows [13] (max 4.40)
 ALERT: 6 aborted rollouts (engine restarts?)
 ```
 
-The mismatch KL here is the `k3` estimator (`exp(-d) - 1 + d` with `d = log μ - log π`), which is non-negative per sample, so it can be used for alerting. The planted bug (row 13, the trainer scoring different tokens) stands out by about five orders of magnitude, and so does the NaN reward. Per-staleness-bin means separate it from drift: the bin-2 mean is inflated only by the bad row. In production these become per-step dashboard series with alert thresholds, and a bad batch is quarantined (saved to disk for inspection) instead of trained on.
+The mismatch KL here is the `k3` estimator ($e^{-d} - 1 + d$ with $d = \log \mu - \log \pi$), which is non-negative per sample, so it can be used for alerting. The planted bug (row 13, the trainer scoring different tokens) stands out by about five orders of magnitude, and so does the NaN reward. Per-staleness-bin means separate it from drift: the bin-2 mean is inflated only by the bad row. In production these become per-step dashboard series with alert thresholds, and a bad batch is quarantined (saved to disk for inspection) instead of trained on.
 
 ### Checkpointing and resuming an RL run
 
@@ -1392,7 +1392,7 @@ Resuming RL means restoring more than model weights:
 | carry-over pool (partial rollouts), replay buffers | or decide to drop them on resume, and record that you did |
 | engine weights | engines restart from the checkpoint, *then* sync. Never assume the engines kept their weights |
 
-In-flight rollouts at the time of a crash are usually cheaper to drop than to persist. Test resumption once, early: kill the run at step `N`, resume, and check that step `N+1` metrics are continuous. See [fault tolerance](../training/fault-tolerance/README.md) for the general machinery.
+In-flight rollouts at the time of a crash are usually cheaper to drop than to persist. Test resumption once, early: kill the run at step $N$, resume, and check that step $N+1$ metrics are continuous. See [fault tolerance](../training/fault-tolerance/README.md) for the general machinery.
 
 ## Open frameworks survey
 

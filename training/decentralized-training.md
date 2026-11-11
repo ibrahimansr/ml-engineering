@@ -9,8 +9,8 @@ This chapter is about what changes when the GPUs that train one model are not in
 - [Networking](../foundations/networking.md): latency vs bandwidth, TCP, the bandwidth-delay product, NAT basics, why TCP is slow for HPC. This chapter only adds the wide-area parts.
 - [Distributed systems](../foundations/distributed-systems.md): partial failure, heartbeats, rendezvous, "slow vs dead", elastic training.
 - [Collectives internals](../network/collectives-internals.md): the alpha-beta model and ring all-reduce. Every bandwidth number below plugs into the formulas derived there.
-- [Parallelism derivations](model-parallelism/derivations.md): DDP communication volume (`2·b_g·Ψ` bytes per rank per step) and when DDP becomes comm-bound. This chapter starts from that result.
-- [Training arithmetic](arithmetic.md): `6Ψ` FLOPs per token and MFU.
+- [Parallelism derivations](model-parallelism/derivations.md): DDP communication volume ($2 \cdot b_g \cdot \Psi$ bytes per rank per step) and when DDP becomes comm-bound. This chapter starts from that result.
+- [Training arithmetic](arithmetic.md): $6\Psi$ FLOPs per token and MFU.
 
 Helpful but optional: [containers](../foundations/containers-and-virtualization.md) for how contributors package workers, and [GPU software stack](../compute/gpu-software-stack.md) for driver/CUDA version mismatches.
 
@@ -24,7 +24,7 @@ A **WAN** (wide-area network) is any network that spans buildings, cities or con
 
 ### The bandwidth gap, in seconds
 
-The [parallelism derivations](model-parallelism/derivations.md#communication-volume) show that DDP sends about `2·b_g·Ψ` bytes per rank per step for a ring all-reduce of the gradients, where `Ψ` is the parameter count and `b_g` the bytes per gradient element. Here is that cost on links of different speeds. **[ran]**
+The [parallelism derivations](model-parallelism/derivations.md#communication-volume) show that DDP sends about $2 \cdot b_g \cdot \Psi$ bytes per rank per step for a ring all-reduce of the gradients, where $\Psi$ is the parameter count and $b_g$ the bytes per gradient element. Here is that cost on links of different speeds. **[ran]**
 
 ```python
 # wan_math.py -- time for one ring all-reduce of the full gradient: t = 2(N-1)/N * M / beta  (latency ignored)
@@ -63,19 +63,19 @@ link                                 1B          10B         100B
 100B: one step of 1048576 tokens on 8xH100@40% MFU =  198.8 s
 ```
 
-(MFU, model FLOPs utilization, is the fraction of the GPUs' peak FLOP/s that goes into the model's `6Ψ` FLOPs per token; see [training arithmetic](arithmetic.md#mfu-and-hfu-properly).)
+(MFU, model FLOPs utilization, is the fraction of the GPUs' peak FLOP/s that goes into the model's $6\Psi$ FLOPs per token; see [training arithmetic](arithmetic.md#mfu-and-hfu-properly).)
 
 Read the 10B column. One 8-GPU node computes a 1M-token step in about 20 s. Over a 1 Gbps link, the gradient all-reduce for that step takes 4.7 minutes. That is 14x longer than the compute, so the GPUs would sit idle about 93% of the time. Inside a node with 3.2 Tbps of NICs, the same all-reduce takes 88 ms and hides under the backward pass.
 
 The gap between the fabric and the WAN is about 3,000x (3.2 Tbps vs 1 Gbps). No overlap trick closes a 3,000x gap. The only fix is to **send fewer bytes**: communicate less often, send smaller messages, or both. Most of this chapter is about how to do that without hurting the model.
 
-Notice that `Ψ` cancels in the ratio, as the [derivations chapter](model-parallelism/derivations.md#when-is-ddp-comm-bound) shows: compute and DDP traffic both scale with `Ψ`. A bigger model does not get you out of the problem. Only more tokens per sync, or fewer bytes per sync, help.
+Notice that $\Psi$ cancels in the ratio, as the [derivations chapter](model-parallelism/derivations.md#when-is-ddp-comm-bound) shows: compute and DDP traffic both scale with $\Psi$. A bigger model does not get you out of the problem. Only more tokens per sync, or fewer bytes per sync, help.
 
 ### Latency and the alpha term
 
 Bandwidth is not the only thing that gets worse. **RTT** (round-trip time, how long a tiny message takes to go there and back) is about 5 µs inside an InfiniBand rack, about 70 ms between the US and Europe, and 150-250 ms between Europe and Asia. Light in fiber covers about 200 km per millisecond, so a 10,000 km path costs at least 50 ms each way before any router touches the packet.
 
-A ring all-reduce has `2(N-1)` sequential steps, and each one pays the latency `α` (the fixed per-message cost; see the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). With 14 nodes spread across three continents and an average one-way hop of 50 ms:
+A ring all-reduce has $2(N-1)$ sequential steps, and each one pays the latency $\alpha$ (the fixed per-message cost; see the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). With 14 nodes spread across three continents and an average one-way hop of 50 ms:
 
 ```python
 >>> N, alpha = 14, 0.050
@@ -104,29 +104,43 @@ The rest of the chapter takes these in order: the algorithm (DiLoCo), what real 
 
 ### From DDP to local SGD
 
-In DDP, every worker computes a gradient on its own data and all workers average gradients **every step**. **Local SGD** relaxes that. Each worker runs `H` optimizer steps on its own, with no communication. Then all workers average their *parameters* and continue from the average. `H` is the number of **inner steps** per **outer step** (one round of averaging).
+In DDP, every worker computes a gradient on its own data and all workers average gradients **every step**. **Local SGD** relaxes that. Each worker runs $H$ optimizer steps on its own, with no communication. Then all workers average their *parameters* and continue from the average. $H$ is the number of **inner steps** per **outer step** (one round of averaging).
 
-```
-DDP:        step: grad_k = ∇L_k(θ);  g = mean_k(grad_k)      ← all-reduce every step
-                  θ = opt(θ, g)
+DDP, every step (one all-reduce per step):
 
-Local SGD:  repeat H times on each worker k independently:
-                  θ_k = opt(θ_k, ∇L_k(θ_k))                  ← no communication
-            then: θ = mean_k(θ_k);  θ_k = θ for all k        ← one all-reduce per H steps
-```
+$$
+\text{grad}_k = \nabla L_k(\theta), \quad g = \operatorname{mean}_k(\text{grad}_k), \quad \theta \leftarrow \operatorname{opt}(\theta, g)
+$$
 
-Communication drops by a factor of `H`. The price is that workers drift apart during the `H` steps, since each follows its own data. Averaging drifted models is not the same as taking `H` steps of large-batch SGD, and the gap grows with `H` and with how different the workers' data is. Federated learning calls this algorithm **FedAvg** ("Communication-Efficient Learning of Deep Networks from Decentralized Data", McMahan et al., arXiv:1602.05629). The optimization literature studied it as local SGD ("Local SGD Converges Fast and Communicates Little", Stich, arXiv:1805.09767; "Don't Use Large Mini-Batches, Use Local SGD", Lin et al., arXiv:1808.07217).
+Local SGD: repeat $H$ times on each worker $k$ independently, with no communication,
+
+$$
+\theta_k \leftarrow \operatorname{opt}(\theta_k, \nabla L_k(\theta_k))
+$$
+
+then one all-reduce per $H$ steps:
+
+$$
+\theta = \operatorname{mean}_k(\theta_k), \quad \theta_k \leftarrow \theta \ \text{for all } k
+$$
+
+Communication drops by a factor of $H$. The price is that workers drift apart during the $H$ steps, since each follows its own data. Averaging drifted models is not the same as taking $H$ steps of large-batch SGD, and the gap grows with $H$ and with how different the workers' data is. Federated learning calls this algorithm **FedAvg** ("Communication-Efficient Learning of Deep Networks from Decentralized Data", McMahan et al., arXiv:1602.05629). The optimization literature studied it as local SGD ("Local SGD Converges Fast and Communicates Little", Stich, arXiv:1805.09767; "Don't Use Large Mini-Batches, Use Local SGD", Lin et al., arXiv:1808.07217).
 
 ### Pseudo-gradients and the outer optimizer
 
-The step that makes local SGD work at LLM scale is to treat the averaging step as an optimizer step in its own right. Define the **pseudo-gradient** of worker `k` after an inner loop as
+The step that makes local SGD work at LLM scale is to treat the averaging step as an optimizer step in its own right. Define the **pseudo-gradient** of worker $k$ after an inner loop as
 
-```
-Δ_k = θ_global − θ_k          # where the round started, minus where worker k ended up
-Δ   = mean_k(Δ_k)              # one all-reduce
-```
+$$
+\Delta_k = \theta_\text{global} - \theta_k
+$$
 
-`Δ` points from where the workers went back toward where they started, so it has the same sign convention as a gradient: stepping *against* it moves you toward the workers. Plain parameter averaging is exactly `θ_global ← θ_global − 1.0 · Δ`, which is SGD with learning rate 1 on the pseudo-gradient. Once you see it that way, you can use any optimizer you like for the outer step: momentum, Nesterov, Adam ("Adaptive Federated Optimization", Reddi et al., arXiv:2003.00295, calls this FedOpt; "SlowMo", Wang et al., arXiv:1910.00643, adds outer momentum to local SGD).
+(where the round started, minus where worker $k$ ended up), and one all-reduce gives
+
+$$
+\Delta = \operatorname{mean}_k(\Delta_k)
+$$
+
+$\Delta$ points from where the workers went back toward where they started, so it has the same sign convention as a gradient: stepping *against* it moves you toward the workers. Plain parameter averaging is exactly $\theta_\text{global} \leftarrow \theta_\text{global} - 1.0 \cdot \Delta$, which is SGD with learning rate 1 on the pseudo-gradient. Once you see it that way, you can use any optimizer you like for the outer step: momentum, Nesterov, Adam ("Adaptive Federated Optimization", Reddi et al., arXiv:2003.00295, calls this FedOpt; "SlowMo", Wang et al., arXiv:1910.00643, adds outer momentum to local SGD).
 
 **DiLoCo** ("DiLoCo: Distributed Low-Communication Training of Language Models", Douillard et al., arXiv:2311.08105) is this recipe with specific choices that work well for transformers:
 
@@ -155,8 +169,8 @@ for w in workers:
 
 Three facts explain the choices. They are intuitions supported by the ablations in the DiLoCo paper, not proofs.
 
-1. **The pseudo-gradient is a big, low-noise step.** It is the sum of `H` AdamW updates, averaged over `K` workers. Pseudo-gradients from consecutive rounds point in similar directions. Momentum accumulates that consistent direction, so the outer step can be larger than any single worker's drift.
-2. **Outer lr < 1 with momentum 0.9 means each round's effective step is larger than plain averaging.** With momentum `β = 0.9`, a direction that persists is amplified by up to `1/(1-β) = 10` in steady state. With lr 0.7 that is up to 7x a single averaged move. The DiLoCo paper reports that Nesterov beat plain averaging, SGD with momentum, and Adam as the outer optimizer.
+1. **The pseudo-gradient is a big, low-noise step.** It is the sum of $H$ AdamW updates, averaged over $K$ workers. Pseudo-gradients from consecutive rounds point in similar directions. Momentum accumulates that consistent direction, so the outer step can be larger than any single worker's drift.
+2. **Outer lr < 1 with momentum 0.9 means each round's effective step is larger than plain averaging.** With momentum $\beta = 0.9$, a direction that persists is amplified by up to $1/(1-\beta) = 10$ in steady state. With lr 0.7 that is up to 7x a single averaged move. The DiLoCo paper reports that Nesterov beat plain averaging, SGD with momentum, and Adam as the outer optimizer.
 3. **Nesterov looks ahead.** It evaluates the momentum at the point you're about to move to, which damps overshoot when the direction changes. That matters when one outer step represents hundreds of inner steps.
 
 Here is the update `torch.optim.SGD(nesterov=True)` applies, written out (dampening 0):
@@ -169,7 +183,7 @@ theta = theta - lr * (d + beta * v)       # Nesterov: gradient + lookahead momen
 
 ### Choosing H
 
-`H` trades communication against drift. You want it just large enough that the outer sync fits inside (or barely outside) the compute of one inner loop. Using the INTELLECT-1 configuration below (10B params, 14 nodes, 8×H100 per node, global batch 128 × 8192 tokens per node, 36% MFU):
+$H$ trades communication against drift. You want it just large enough that the outer sync fits inside (or barely outside) the compute of one inner loop. Using the INTELLECT-1 configuration below (10B params, 14 nodes, 8×H100 per node, global batch 128 × 8192 tokens per node, 36% MFU):
 
 ```python
 # hide_math.py -- can DiLoCo hide the outer all-reduce? INTELLECT-1-like numbers.   [ran]
@@ -203,11 +217,11 @@ DDP bf16 @ 1 Gbps: 5.0 min of comm per 22 s of compute -> utilization 6.9%
 bytes ratio DDP(bf16, every step) / DiLoCo(int8, every 100): 200x;  vs fp32 grads: 400x
 ```
 
-The estimated inner loop, 36.8 minutes, is close to the "about 38 minutes" the INTELLECT-1 report gives. The 400x figure matches the report's "400x less bandwidth than data parallel" claim if the baseline is fp32 gradients and the comparison is int8 pseudo-gradients every 100 steps. The rule of thumb: **pick `H` so that `H · t_step` is at least 10x `t_sync`**. Then a blocking sync costs under 10% of throughput, and you have headroom for a slow link. Larger `H` saves more bandwidth but drifts more. The DiLoCo paper's ablation over `H` (which I have not re-checked for the exact range) finds quality degrading slowly, not abruptly, as `H` grows.
+The estimated inner loop, 36.8 minutes, is close to the "about 38 minutes" the INTELLECT-1 report gives. The 400x figure matches the report's "400x less bandwidth than data parallel" claim if the baseline is fp32 gradients and the comparison is int8 pseudo-gradients every 100 steps. The rule of thumb: **pick $H$ so that $H \cdot t_\text{step}$ is at least 10x $t_\text{sync}$**. Then a blocking sync costs under 10% of throughput, and you have headroom for a slow link. Larger $H$ saves more bandwidth but drifts more. The DiLoCo paper's ablation over $H$ (which I have not re-checked for the exact range) finds quality degrading slowly, not abruptly, as $H$ grows.
 
 ### A runnable toy: DDP vs DiLoCo on CPU
 
-This script simulates `K = 4` workers in one process, so it measures the *optimization* effect of DiLoCo and counts the bytes a real ring all-reduce would send. It does not measure network time. The model is a 2-layer, 119k-parameter character-level GPT. The data is the Python standard library's source code, which is on every machine. Worker `k` trains only on its own contiguous quarter of the corpus, so the data is non-IID (different files, different styles), which is the realistic case for decentralized training. Every method gets exactly the same compute: 1200 steps per worker, 16 × 64 tokens per worker per step. **[ran]**
+This script simulates $K = 4$ workers in one process, so it measures the *optimization* effect of DiLoCo and counts the bytes a real ring all-reduce would send. It does not measure network time. The model is a 2-layer, 119k-parameter character-level GPT. The data is the Python standard library's source code, which is on every machine. Worker $k$ trains only on its own contiguous quarter of the corpus, so the data is non-IID (different files, different styles), which is the realistic case for decentralized training. Every method gets exactly the same compute: 1200 steps per worker, 16 × 64 tokens per worker per step. **[ran]**
 
 ```python
 # diloco_toy.py -- DDP vs Local-SGD vs DiLoCo (+ compressed pseudo-gradients), K simulated workers, one CPU process.
@@ -387,7 +401,7 @@ The `time` column is CPU wall-clock for the simulation, which shared the machine
 What the toy shows, with two seeds:
 
 - **The dumb baseline matters.** One worker with no communication reaches 2.11. Every method that uses four workers should beat that, and anything that doesn't (top-1% sparsification) is worse than not communicating at all.
-- **DDP is the quality ceiling at this scale.** DDP reaches 1.778 / 1.827. DiLoCo with H=50 reaches 1.885 / 1.915 while sending 50x fewer bytes. That gap of about 0.1 nats is *not* what the DiLoCo paper reports at scale (parity with DDP). The toy is tiny, short (24 outer steps in total) and untuned: the outer lr, `H` and the inner lr were not swept. Read it as "the mechanism works and costs something", not as a measurement of the gap.
+- **DDP is the quality ceiling at this scale.** DDP reaches 1.778 / 1.827. DiLoCo with H=50 reaches 1.885 / 1.915 while sending 50x fewer bytes. That gap of about 0.1 nats is *not* what the DiLoCo paper reports at scale (parity with DDP). The toy is tiny, short (24 outer steps in total) and untuned: the outer lr, $H$ and the inner lr were not swept. Read it as "the mechanism works and costs something", not as a measurement of the gap.
 - **Nesterov beats plain averaging**: 1.885 vs 1.911 (seed 0) and 1.915 vs 1.964 (seed 1). Same bytes, same compute, one variable changed. The direction agrees with the paper.
 - **H=200 costs more quality** (1.957) for another 4x fewer bytes.
 - **int8 is free here.** 1.885 vs 1.885 and 1.914 vs 1.915, at 4x fewer bytes. Of all the compression knobs, quantizing pseudo-gradients is the one to try first.
@@ -429,10 +443,10 @@ Hivemind's own lineage is useful background. "Towards Crowdsourced Training of L
 | Model | Llama-3 style, 42 layers, hidden 4096, 32 heads, 8 KV heads ([GQA](../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic)), vocab 128,256 |
 | Duration | 42 days (Oct 10 to Nov 22, 2024) |
 | Nodes | 8×H100 each, started at 4 nodes, peaked at 14 (112 H100s) |
-| Inner optimizer | AdamW, lr 7.5e-5, β = (0.9, 0.95), wd 0.1, 1000 warmup steps, batch 128 × 8192 tokens |
+| Inner optimizer | AdamW, lr 7.5e-5, $\beta = (0.9, 0.95)$, wd 0.1, 1000 warmup steps, batch 128 × 8192 tokens |
 | Outer optimizer | Nesterov, lr 0.7, momentum 0.9 |
 | H | 100 inner steps (about 38 min of compute) |
-| Pseudo-gradient wire format | int8, range mean ± 6σ split into 256 buckets, **reduction done in fp32** |
+| Pseudo-gradient wire format | int8, range $\text{mean} \pm 6\sigma$ split into 256 buckets, **reduction done in fp32** |
 | Inter-node bandwidth | 500 Mb/s to 4 Gb/s |
 | Median all-reduce time | 103 s (USA only), 382 s (USA + Europe), 469 s (global) |
 | Compute utilization | 95.7% (USA), 85.6% (USA + Europe), 83.0% (global) |
@@ -479,9 +493,9 @@ q = (d / s).round().clamp(-127, 127)    # int8 on the wire, 1 byte per element
 d_hat = q * s                           # what the receiver reconstructs
 ```
 
-Real systems use finer scales (per block of 128 or 2048 elements, as in torchft's `quantization.py`) so that one outlier doesn't flatten everything else to zero. INTELLECT-1 used a different scheme: it clipped the range to mean ± 6σ and used 256 uniform buckets.
+Real systems use finer scales (per block of 128 or 2048 elements, as in torchft's `quantization.py`) so that one outlier doesn't flatten everything else to zero. INTELLECT-1 used a different scheme: it clipped the range to $\text{mean} \pm 6\sigma$ and used 256 uniform buckets.
 
-The subtle part is **reducing quantized data**. A ring all-reduce sums partial results at every hop. If you add two int8 tensors, you overflow. If you dequantize, add, and requantize at every hop, you pay `N-1` rounds of rounding error plus the CPU or GPU time to do it. Two common approaches:
+The subtle part is **reducing quantized data**. A ring all-reduce sums partial results at every hop. If you add two int8 tensors, you overflow. If you dequantize, add, and requantize at every hop, you pay $N-1$ rounds of rounding error plus the CPU or GPU time to do it. Two common approaches:
 
 ```
 Option A (INTELLECT-1 style):  wire = int8, accumulate = fp32
@@ -503,9 +517,9 @@ How low can you go? On the published evidence:
 
 ### Sparsification: top-k and error feedback
 
-**Top-k sparsification** sends only the `k` largest-magnitude entries and their indices. At 1% density with fp32 values and int32 indices, that is 8 bytes × 0.01 = 0.08 bytes per parameter instead of 4, a 50x reduction. It has two structural problems.
+**Top-k sparsification** sends only the $k$ largest-magnitude entries and their indices. At 1% density with fp32 values and int32 indices, that is 8 bytes × 0.01 = 0.08 bytes per parameter instead of 4, a 50x reduction. It has two structural problems.
 
-1. **Sparse tensors don't all-reduce.** Worker A's top 1% and worker B's top 1% sit at different indices. Their sum has up to 2% nonzeros, and after `K` workers up to `K`%. You can't keep summing in place along a ring. You need an **all-gather** of everyone's (index, value) lists, in which each worker sends its payload to `K-1` others. The toy accounts for this with `allgather_bytes`. Per-worker traffic grows with `K`, the opposite of a ring all-reduce. (Deep Gradient Compression, Lin et al., arXiv:1712.01887, works around this with hierarchical schemes. Some systems share a random seed so that all workers pick the same indices: random-k with a shared mask, which does all-reduce.)
+1. **Sparse tensors don't all-reduce.** Worker A's top 1% and worker B's top 1% sit at different indices. Their sum has up to 2% nonzeros, and after $K$ workers up to $K$%. You can't keep summing in place along a ring. You need an **all-gather** of everyone's (index, value) lists, in which each worker sends its payload to $K-1$ others. The toy accounts for this with `allgather_bytes`. Per-worker traffic grows with $K$, the opposite of a ring all-reduce. (Deep Gradient Compression, Lin et al., arXiv:1712.01887, works around this with hierarchical schemes. Some systems share a random seed so that all workers pick the same indices: random-k with a shared mask, which does all-reduce.)
 2. **Dropped mass is gone**, unless you remember it. **Error feedback** (EF) keeps a per-worker residual of everything not yet sent and adds it to the next round's input:
 
 ```python
@@ -518,15 +532,15 @@ EF is what makes 1-bit SGD (Seide et al., Interspeech 2014), Deep Gradient Compr
 
 So why did EF make things *worse* in the toy (2.678 with EF vs 2.489 without at top-1%, two seeds in agreement)? My hypothesis, which I have not ablated further:
 
-- With `H = 50` and only 24 outer steps, a residual entry may wait many rounds before it gets sent. By then it is a 500-inner-step-old correction, applied to a model that has moved on.
-- Nesterov momentum with β = 0.9 then amplifies these stale bursts. Plain averaging with EF (2.414) did better than Nesterov with EF (2.678), which is consistent with this.
+- With $H = 50$ and only 24 outer steps, a residual entry may wait many rounds before it gets sent. By then it is a 500-inner-step-old correction, applied to a model that has moved on.
+- Nesterov momentum with $\beta = 0.9$ then amplifies these stale bursts. Plain averaging with EF (2.414) did better than Nesterov with EF (2.678), which is consistent with this.
 - Per-step gradient compression papers have thousands of steps for the residual to drain. Here there are 24.
 
 The practical conclusion matches what the systems above actually shipped: **for pseudo-gradients, quantize first. Treat sparsification as a research problem, not a default.** If you do sparsify, the momentum and the error-feedback buffer have to be designed together, which is exactly DeMo's idea (below).
 
 ### Low-rank: PowerSGD
 
-**PowerSGD** ("PowerSGD: Practical Low-Rank Gradient Compression for Distributed Optimization", Vogels et al., arXiv:1905.13727) approximates each `n × m` gradient matrix as `P · Qᵀ` with rank `r`, using one step of power iteration per training step, warm-started from the previous step's `Q`. It sends `r(n+m)` numbers instead of `n·m`. Because `P` and `Q` are dense, they **do** all-reduce. It uses error feedback. PyTorch ships it as a DDP communication hook:
+**PowerSGD** ("PowerSGD: Practical Low-Rank Gradient Compression for Distributed Optimization", Vogels et al., arXiv:1905.13727) approximates each $n \times m$ gradient matrix as $P \cdot Q^\top$ with rank $r$, using one step of power iteration per training step, warm-started from the previous step's $Q$. It sends $r(n+m)$ numbers instead of $n \cdot m$. Because $P$ and $Q$ are dense, they **do** all-reduce. It uses error feedback. PyTorch ships it as a DDP communication hook:
 
 ```python
 # untested in this chapter: it hung on Gloo/CPU (torch 2.15, macOS) once compression kicked in.
@@ -566,7 +580,7 @@ I'm reasonably but not fully sure the sign step is in the published algorithm. C
 
 **Claimed, not independently verified**: DisTrO (github.com/NousResearch/DisTrO). The repository contains a README and a preliminary report PDF dated August 26, 2024, and no source code. The README describes DisTrO as a family of optimizers that cut inter-GPU communication by three to four orders of magnitude, and calls DeMo its "original seed idea". Secondary coverage of the preliminary report quotes an 857x reduction (74.4 GB down to 86.8 MB per step) for a 1.2B Llama-2-style model. The README says production code later moved into the Psyche repository and a DeMo v2 paper appeared on OpenReview in October 2025. I have not read either. Treat the "1000x-10,000x" headline as a claim until you've read a full method description with baselines.
 
-The general lesson: when a compression paper reports "Nx less communication", ask (1) relative to what baseline precision (fp32? bf16?), (2) per step or per token, (3) whether the collective is still an all-reduce or has turned into an all-gather that scales with `K`, and (4) whether quality was compared at equal tokens *and* equal wall-clock time.
+The general lesson: when a compression paper reports "Nx less communication", ask (1) relative to what baseline precision (fp32? bf16?), (2) per step or per token, (3) whether the collective is still an all-reduce or has turned into an all-gather that scales with $K$, and (4) whether quality was compared at equal tokens *and* equal wall-clock time.
 
 ## Streaming and overlapping outer syncs
 
@@ -574,8 +588,8 @@ The general lesson: when a compression paper reports "Nx less communication", as
 
 In blocking DiLoCo, the GPUs idle while the outer all-reduce runs, which cost INTELLECT-1 17% of its compute globally. "Streaming DiLoCo with overlapping communication" (Douillard et al., arXiv:2501.18512) makes three changes:
 
-1. **Fragments.** Split the model into `F` fragments (for example, groups of layers). Sync one fragment at a time on a staggered schedule. The total bytes are the same, but the **peak** bandwidth drops by `F`, because you never send the whole model at once.
-2. **Overlap with delay τ.** Start a fragment's all-reduce, keep doing `τ` more inner steps while it's in flight, then apply the result. The paper merges local and global copies with a mixing factor α.
+1. **Fragments.** Split the model into $F$ fragments (for example, groups of layers). Sync one fragment at a time on a staggered schedule. The total bytes are the same, but the **peak** bandwidth drops by $F$, because you never send the whole model at once.
+2. **Overlap with delay $\tau$.** Start a fragment's all-reduce, keep doing $\tau$ more inner steps while it's in flight, then apply the result. The paper merges local and global copies with a mixing factor $\alpha$.
 3. **Quantize** the exchanged pseudo-gradients to low precision (see above).
 
 The paper reports similar quality to the baseline at the billion-parameter scale, while needing about two orders of magnitude less bandwidth (the abstract's wording; the peak-bandwidth reduction comes from the fragment schedule).
@@ -584,7 +598,7 @@ The paper reports similar quality to the baseline at the billion-parameter scale
 
 ([source](https://arxiv.org/html/2501.18512v1))
 
-The arithmetic of fragments, for a 10B model with int8 payloads and `H = 100` **[ran]** (part of `hetero.py` in the [heterogeneous hardware](#heterogeneous-hardware) section):
+The arithmetic of fragments, for a 10B model with int8 payloads and $H = 100$ **[ran]** (part of `hetero.py` in the [heterogeneous hardware](#heterogeneous-hardware) section):
 
 ```python
 P, b, H = 10e9, 1, 100
@@ -652,11 +666,11 @@ tau=5 alpha=0.0  P=33.6M  last loss 0.8776  blocked on comm  0.00 s  total 10.51
 tau=5 alpha=0.5  P=33.6M  last loss 0.9054  blocked on comm  0.00 s  total 13.15 s
 ```
 
-On localhost, a 134 MB all-reduce takes about 40 ms, so there was little to hide (0.20 s over 5 rounds). The point is the mechanism: with `τ = 5`, time blocked on communication went to zero. The `total` column is noisy at this scale. Over a real 1 Gbps WAN, the same 134 MB takes about 1 s per sync, and `τ` inner steps have to cover that.
+On localhost, a 134 MB all-reduce takes about 40 ms, so there was little to hide (0.20 s over 5 rounds). The point is the mechanism: with $\tau = 5$, time blocked on communication went to zero. The `total` column is noisy at this scale. Over a real 1 Gbps WAN, the same 134 MB takes about 1 s per sync, and $\tau$ inner steps have to cover that.
 
-The `alpha = 0` line also shows what overlap costs. The pseudo-gradient was computed *before* the last `τ` steps, and setting `p = g` discards those `τ` steps of local progress. Keep `τ` small relative to `H`, or mix with α > 0 so that some local progress survives. The loss numbers here are from a regression toy with 5 rounds. They don't tell you which α is better. The Streaming DiLoCo paper ablates that.
+The `alpha = 0` line also shows what overlap costs. The pseudo-gradient was computed *before* the last $\tau$ steps, and setting `p = g` discards those $\tau$ steps of local progress. Keep $\tau$ small relative to $H$, or mix with $\alpha > 0$ so that some local progress survives. The loss numbers here are from a regression toy with 5 rounds. They don't tell you which $\alpha$ is better. The Streaming DiLoCo paper ablates that.
 
-torchft's `DiLoCo` class exposes these knobs directly (see [torchft](#torchft-as-of-031) below): `model_fragments=[...]`, `fragment_sync_delay` (the docstring calls it the paper's τ), `fragment_update_alpha`, and `should_quantize`.
+torchft's `DiLoCo` class exposes these knobs directly (see [torchft](#torchft-as-of-031) below): `model_fragments=[...]`, `fragment_sync_delay` (the docstring calls it the paper's $\tau$), `fragment_update_alpha`, and `should_quantize`.
 
 ## Elastic membership and fault tolerance
 
@@ -673,7 +687,7 @@ The [distributed systems chapter](../foundations/distributed-systems.md#failure-
 
 A failure every 1.7 hours, against an outer step every 38 minutes, means about one round in three has a membership change. Restarting the whole job from a checkpoint each time is not an option. The system has to keep going with whoever is left, and let newcomers join without stopping everyone else.
 
-DiLoCo is naturally suited to this. Between syncs, workers are independent. A worker that dies mid-round loses only its own `H` steps. The others just average over one fewer pseudo-gradient. DDP has no such slack: one dead rank stalls the all-reduce for everyone, every step.
+DiLoCo is naturally suited to this. Between syncs, workers are independent. A worker that dies mid-round loses only its own $H$ steps. The others just average over one fewer pseudo-gradient. DDP has no such slack: one dead rank stalls the all-reduce for everyone, every step.
 
 ### Heartbeats and membership
 
@@ -735,7 +749,7 @@ The INTELLECT-1 report says peer-to-peer checkpoint transfers took 30-60 minutes
 - **Ship from many peers in parallel**, each sending a different shard, like BitTorrent. The newcomer's downlink becomes the bottleneck instead of one sender's uplink.
 - **Choose blocking or non-blocking join.** INTELLECT-1 had two modes. In *non-blocking* mode, the joiner downloads while others keep training, then joins the next outer step contributing a zero pseudo-gradient for the round it missed. In *blocking* mode, active nodes pause. The report says they used blocking mode because non-blocking caused small loss spikes.
 
-The zero-pseudo-gradient detail matters for the math. If the outer step averages over `K` participants and one contributes zero, the update is scaled by `(K-1)/K`. An implementation must either exclude non-contributors from the denominator or accept the damping deliberately:
+The zero-pseudo-gradient detail matters for the math. If the outer step averages over $K$ participants and one contributes zero, the update is scaled by $(K-1)/K$. An implementation must either exclude non-contributors from the denominator or accept the damping deliberately:
 
 ```python
 # average only over workers that actually trained this round
@@ -854,7 +868,7 @@ The macOS workaround at the top of the script is needed because torchft 0.3.1's 
 
 ### Fixed H vs fixed time
 
-If every worker must do exactly `H` inner steps before a sync, the round takes as long as the slowest worker, and the fast ones idle. **[ran]** (the speed ratios are illustrative, not measured)
+If every worker must do exactly $H$ inner steps before a sync, the round takes as long as the slowest worker, and the fast ones idle. **[ran]** (the speed ratios are illustrative, not measured)
 
 ```python
 # hetero.py -- fixed-H vs fixed-time inner loops when workers run at different speeds.
@@ -884,8 +898,8 @@ fixed time 16.7 min: steps done {'H100': 100, 'A100': 33, 'H100 (throttled)': 80
 There are three ways out:
 
 1. **Fixed time, variable H.** Each worker runs inner steps until a wall-clock deadline, then syncs. Its pseudo-gradient then represents a different amount of work, so weight it by steps done (or tokens processed) instead of averaging uniformly. The open question is how much a 20-step pseudo-gradient and a 100-step one disagree, and whether their average is still a good outer gradient. As far as I know, there's no settled answer.
-2. **Scale the batch, not the steps.** Give slower workers a smaller per-step batch so that all workers do `H` steps in the same time. The gradient noise then differs across workers, but each step represents the same amount of optimization progress. This only works within a range, because a worker's memory sets its minimum and maximum batch.
-3. **Group by speed.** Put similar hardware in the same replica group and run several groups at different `H`. This is more complex, and you need async-style outer updates (Async Local-SGD, arXiv:2401.09135).
+2. **Scale the batch, not the steps.** Give slower workers a smaller per-step batch so that all workers do $H$ steps in the same time. The gradient noise then differs across workers, but each step represents the same amount of optimization progress. This only works within a range, because a worker's memory sets its minimum and maximum batch.
+3. **Group by speed.** Put similar hardware in the same replica group and run several groups at different $H$. This is more complex, and you need async-style outer updates (Async Local-SGD, arXiv:2401.09135).
 
 ### What else differs
 
@@ -979,7 +993,7 @@ pong from node-c (100.101.1.4) via DERP(fra) in 48ms
 
 ### WAN TCP tuning
 
-Recall from [networking](../foundations/networking.md#bandwidth-delay-product): one TCP connection can have at most one window of unacknowledged data in flight, so its throughput is at most `window / RTT`. Here is what a typical Linux autotuning maximum (about 6 MiB receive buffer) allows on WAN paths:
+Recall from [networking](../foundations/networking.md#bandwidth-delay-product): one TCP connection can have at most one window of unacknowledged data in flight, so its throughput is at most $\text{window} / \text{RTT}$. Here is what a typical Linux autotuning maximum (about 6 MiB receive buffer) allows on WAN paths:
 
 ```python
 # [ran]
@@ -1083,15 +1097,20 @@ d=8192 tokens=1: 0.016 MB/hop; @1Gbps 0.13 ms transfer
 d=12288 tokens=1: 0.025 MB/hop; @1Gbps 0.20 ms transfer
 ```
 
-For training, a 2048-token sequence crossing a stage boundary is 34 MB, or 0.27 s at 1 Gbps. A stage holding several transformer layers computes for longer than that on a big model, so the bandwidth can be hidden. Activation traffic per stage scales with `d`, while compute per stage scales with `d²`, so larger models make pipelines *more* WAN-friendly. **SWARM Parallelism** ("SWARM Parallelism: Training Large Models Can Be Surprisingly Communication-Efficient", Ryabinin et al., arXiv:2301.11913) builds on this argument (the paper calls it the square-cube law). It forms temporary randomized pipelines between unreliable peers, rebalances stages when peers fail, and reports training a ~1B-shared-parameter model on preemptible T4 GPUs (cloud GPUs that can be taken away at any time, sold at a discount) with under 200 Mb/s links.
+For training, a 2048-token sequence crossing a stage boundary is 34 MB, or 0.27 s at 1 Gbps. A stage holding several transformer layers computes for longer than that on a big model, so the bandwidth can be hidden. Activation traffic per stage scales with $d$, while compute per stage scales with $d^2$, so larger models make pipelines *more* WAN-friendly. **SWARM Parallelism** ("SWARM Parallelism: Training Large Models Can Be Surprisingly Communication-Efficient", Ryabinin et al., arXiv:2301.11913) builds on this argument (the paper calls it the square-cube law). It forms temporary randomized pipelines between unreliable peers, rebalances stages when peers fail, and reports training a ~1B-shared-parameter model on preemptible T4 GPUs (cloud GPUs that can be taken away at any time, sold at a discount) with under 200 Mb/s links.
 
-For inference, generating one token (a **decode** step: one new token per forward pass, reusing cached keys and values of earlier tokens; see [the KV cache](../models/architectures.md#the-kv-cache), and [inference arithmetic](../inference/arithmetic.md#what-this-means-for-prefill-vs-decode) for the full treatment) sends only `d × 2` bytes per hop (16 KB at d=8192), so transfer time is negligible and the cost is **latency**: one RTT per pipeline stage per token. With 8 stages spread across a continent at 20 ms each, that's 160 ms per token before any compute. **Petals** ("Petals: Collaborative Inference and Fine-tuning of Large Models", Borzunov et al., arXiv:2209.01188) runs BLOOM-176B this way. Volunteers each serve a few blocks, clients route through a chain of servers, and the paper reports roughly one step per second for interactive generation (my recollection of the paper's headline; check it). That's slow by datacenter standards, but it serves a model that no single participant could load.
+For inference, generating one token (a **decode** step: one new token per forward pass, reusing cached keys and values of earlier tokens; see [the KV cache](../models/architectures.md#the-kv-cache), and [inference arithmetic](../inference/arithmetic.md#what-this-means-for-prefill-vs-decode) for the full treatment) sends only $d \times 2$ bytes per hop (16 KB at $d = 8192$), so transfer time is negligible and the cost is **latency**: one RTT per pipeline stage per token. With 8 stages spread across a continent at 20 ms each, that's 160 ms per token before any compute. **Petals** ("Petals: Collaborative Inference and Fine-tuning of Large Models", Borzunov et al., arXiv:2209.01188) runs BLOOM-176B this way. Volunteers each serve a few blocks, clients route through a chain of servers, and the paper reports roughly one step per second for interactive generation (my recollection of the paper's headline; check it). That's slow by datacenter standards, but it serves a model that no single participant could load.
 
 ```
 Petals client generating one token through 4 volunteer servers:
   client --(16 KB, RTT 20 ms)--> blocks 0-17 --> blocks 18-35 --> blocks 36-53 --> blocks 54-69 --> client
-  time/token ≈ Σ RTT_i + Σ compute_i  ≈ 4 × 20 ms + 4 × (few ms)   -- latency-bound, not bandwidth-bound
 ```
+
+$$
+\text{time/token} \approx \sum_i \text{RTT}_i + \sum_i \text{compute}_i \approx 4 \times 20\ \text{ms} + 4 \times (\text{few ms})
+$$
+
+Latency-bound, not bandwidth-bound.
 
 Expert parallelism over the WAN (Learning@home, arXiv:2002.04013) has the same structure: route each token to an expert hosted by some peer, so the RTT is paid per MoE layer. The [expert parallel section](model-parallelism/derivations.md#expert-parallelism) explains why all-to-all latency dominates there even inside a datacenter. Across the internet, it dominates even more. As of late 2026, none of the large, publicly documented decentralized pre-training runs I know of used WAN pipeline or expert parallelism. They used DiLoCo-style data parallelism with each replica inside one well-connected node or cluster.
 
@@ -1130,7 +1149,7 @@ coord median         cosine to true update +0.988   norm     97.4
 trimmed mean k=1     cosine to true update +0.992   norm     95.8
 ```
 
-One attacker out of eight turned the mean into its exact opposite. A coordinate-wise median or trimmed mean ignores it. This is the idea behind **Byzantine-robust aggregation** (a *Byzantine* participant is one that can behave arbitrarily, including lying; see [when peers are untrusted](../foundations/distributed-systems.md#when-peers-are-untrusted)): Krum ("Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent", Blanchard et al., NeurIPS 2017), and BTARD ("Secure Distributed Training at Scale", Gorbunov et al., arXiv:2106.11257), which does robust aggregation inside a decentralized all-reduce. Two limits apply. Robust aggregators need the full set of updates in one place, or a protocol to emulate that, which doesn't fit a bandwidth-optimal ring. And a smart attacker sends something small and subtly wrong, not `-50×`, which robust statistics cannot tell apart from honest noise.
+One attacker out of eight turned the mean into its exact opposite. A coordinate-wise median or trimmed mean ignores it. This is the idea behind **Byzantine-robust aggregation** (a *Byzantine* participant is one that can behave arbitrarily, including lying; see [when peers are untrusted](../foundations/distributed-systems.md#when-peers-are-untrusted)): Krum ("Machine Learning with Adversaries: Byzantine Tolerant Gradient Descent", Blanchard et al., NeurIPS 2017), and BTARD ("Secure Distributed Training at Scale", Gorbunov et al., arXiv:2106.11257), which does robust aggregation inside a decentralized all-reduce. Two limits apply. Robust aggregators need the full set of updates in one place, or a protocol to emulate that, which doesn't fit a bandwidth-optimal ring. And a smart attacker sends something small and subtly wrong, not $-50\times$, which robust statistics cannot tell apart from honest noise.
 
 ### Why "just recompute and compare hashes" fails
 

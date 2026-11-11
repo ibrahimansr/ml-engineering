@@ -79,7 +79,7 @@ The [OCP microscaling (MX) formats](https://github.com/openxla/xla/discussions/1
 - 0.78125 bytes * number of parameters for MXFP6
 - 0.53125 bytes * number of parameters for MXFP4
 
-Example: Meta-Llama-3.1-8B in bf16 will need `2 (bf16 bytes) * 8B (num of params) = 16GB` (approximately)
+Example: Meta-Llama-3.1-8B in bf16 will need $2\ (\text{bf16 bytes}) \times 8\text{B}\ (\text{num of params}) = 16\ \text{GB}$ (approximately)
 
 
 #### KV Caching
@@ -92,22 +92,28 @@ It'd be very expensive to recalculate all the previous KV (Key Value) values bef
 
 KV cache size is directly proportional to the input sequence length and batch size. Past query values aren't used in the attention mechanism and thus don't need to be cached.
 
-A KV cache of 1 token requires `dtype_bytes * 2 * num_hidden_layers * hidden_size * num_key_value_heads / num_attention_heads` bytes
+A KV cache of 1 token requires
+
+$$
+\text{dtype\_bytes} \cdot 2 \cdot \text{num\_hidden\_layers} \cdot \text{hidden\_size} \cdot \frac{\text{num\_key\_value\_heads}}{\text{num\_attention\_heads}}
+$$
+
+bytes
 
 notes:
 - `dtype_bytes` is bytes per dtype: 4 bytes for fp32, 2 bytes for bf16/fp16, etc.
 - `2` stands for keys + values as there are 2 of them.
-- `num_key_value_heads / num_attention_heads` is the factor that will depend on whether multi-query (MQA), grouped-query (GQA) or multi-head attention (MHA) is used. for MHA it'll be 1, for MQA it'll be `1/num_attention_heads` and for GQA it'll depend on how many queries are used per group, i.e. `num_key_value_heads / num_attention_heads` which is the general case for MHA and MQA.
+- `num_key_value_heads / num_attention_heads` is the factor that will depend on whether multi-query (MQA), grouped-query (GQA) or multi-head attention (MHA) is used. for MHA it'll be 1, for MQA it'll be $1/\text{num\_attention\_heads}$ and for GQA it'll depend on how many queries are used per group, i.e. `num_key_value_heads / num_attention_heads` which is the general case for MHA and MQA.
 
 You can get these dimensions from `config.json` inside the model's folder or from an equivalent file if it's different. e.g. [meta-llama/Meta-Llama-3.1-8B](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B/blob/main/config.json).
 
 Examples:
 
-1 token Meta-Llama-3.1-8B in bf16 will need: `2 (bf16 bytes) * 2 (keys+values) * 32 (num_hidden_layers) * 4096 (hidden_size) * 8 (num_key_value_heads) / 32 (num_attention_heads)  / 10**6 = 0.131MB`. This model uses GQA so it uses 1/4th of the vanilla MHA.
+1 token Meta-Llama-3.1-8B in bf16 will need: $2\ (\text{bf16 bytes}) \cdot 2\ (\text{keys+values}) \cdot 32\ (\text{num\_hidden\_layers}) \cdot 4096\ (\text{hidden\_size}) \cdot 8\ (\text{num\_key\_value\_heads}) / 32\ (\text{num\_attention\_heads}) / 10^6 = 0.131\ \text{MB}$. This model uses GQA so it uses 1/4th of the vanilla MHA.
 
-A batch size of 1 of 1024 tokens will need `0.131*1024 = ~134MB`.
+A batch size of 1 of 1024 tokens will need $0.131 \times 1024 \approx 134\ \text{MB}$.
 
-A batch size of 128 of 1024 tokens each will need `0.131*1024*128 / 10**3 = ~17.2GB`.
+A batch size of 128 of 1024 tokens each will need $0.131 \times 1024 \times 128 / 10^3 \approx 17.2\ \text{GB}$.
 
 The KV cache for Meta-Llama-3.1-8B would have taken 4x more memory per token if it were to use MHA, 8x less memory if it were to use MQA. It's easy to see why from the MHA/GQA/MQA/MLA diagram further below.
 
@@ -197,16 +203,16 @@ But, of course, choosing random words will not lead to a good result, so we stil
 The most common sampling methods are:
 
 - **Top-K Sampling** method chooses the top k tokens based on their logit probability and then randomly picks one of those tokens.
-- **Top-p Sampling** (also known as **nucleus sampling**) is like Top-K Sampling, but the K varies for each next token and is calculated by adding up the top token probabilities till the threshold `p` is reached. So if there are predictions that the model is much more certain about only those will be considered.
+- **Top-p Sampling** (also known as **nucleus sampling**) is like Top-K Sampling, but the K varies for each next token and is calculated by adding up the top token probabilities till the threshold $p$ is reached. So if there are predictions that the model is much more certain about only those will be considered.
 
 #### Temperature
 
 Temperature is an independent logits transformation that can be combined with [Top-K or Top-p](#sampling) sampling, both of them, or neither. It has the following impact depending on its value:
 
-- `t==0.0`: literal softmax temperature division by zero is undefined. Some APIs use zero as shorthand for greedy decoding while others reject it, so use the API's explicit greedy mode when available.
-- `0.0<t<1.0`: the probabilities are pushed further apart, so the closer to 0.0 the less randomness - somewhere between precise and balanced use cases.
-- `t==1.0`: has no impact on sampling - the original training distribution is preserved here - balanced relevance and diversity use cases.
-- `t>1.0`: the probabilities are pushed closer together, creating a lot more randomness - creative use cases.
+- $t=0.0$: literal softmax temperature division by zero is undefined. Some APIs use zero as shorthand for greedy decoding while others reject it, so use the API's explicit greedy mode when available.
+- $0.0 < t < 1.0$: the probabilities are pushed further apart, so the closer to 0.0 the less randomness - somewhere between precise and balanced use cases.
+- $t=1.0$: has no impact on sampling - the original training distribution is preserved here - balanced relevance and diversity use cases.
+- $t>1.0$: the probabilities are pushed closer together, creating a lot more randomness - creative use cases.
 
 The following set of plots should make this crystal clear:
 
@@ -472,7 +478,7 @@ The average tokens per word varies with the language, somewhat with the tokenize
 
 And now we just need to divide by 60 to get Tokens Per Second (TPS) and invert to get time per output token (TPOT)
 
-So `TPOT = 60 / (WPM*1.5)` in seconds
+So $\text{TPOT} = 60 / (\text{WPM} \times 1.5)$ in seconds
 
 | Reader   | WPM |  TPM |   TPS |  TPOT |
 | :-----   | --: | ---: | ----: | ----: |
@@ -555,7 +561,7 @@ http_req_sending...: avg=133.8µs  min=20.47µs med=75.39µs  max=598.04µs p(90
 
 In the first line, 50% of responses completed in at most 13.31 seconds, 90% in at most 13.79 seconds, and 95% in at most 13.83 seconds. The slowest 5% took more than 13.83 seconds, up to the observed maximum of 14.12 seconds.
 
-The same interpretation applies to the other lines. For any metric, a correctly ordered sample must satisfy `min <= p50 <= p90 <= p95 <= max`; whether a higher value is better or worse depends on what is measured.
+The same interpretation applies to the other lines. For any metric, a correctly ordered sample must satisfy $\text{min} \le \text{p50} \le \text{p90} \le \text{p95} \le \text{max}$; whether a higher value is better or worse depends on what is measured.
 
 Percentiles summarize tails without letting one extreme observation dominate the report. They do not make the omitted tail unimportant: a p95 latency still means that 5% of requests were slower, which can represent many users at production scale.
 

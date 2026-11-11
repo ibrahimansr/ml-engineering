@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Parallelism - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../../compute/README.html">Compute (Stas)</a></li><li><a href="../../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details open><summary>Part 6. Training</summary><ul><li><a href="../../training/README.html">Training (Stas)</a></li><li><a href="../../training/model-parallelism/README.html" class="current">Model Parallelism (Stas)</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../../inference/README.html">Inference (Stas)</a></li><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../../resources/README.html">Resources (Stas)</a></li><li><a href="../../contributors.html">Contributors (Stas)</a></li><li><a href="../../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="model-parallelism">Model Parallelism</h1>
+<p>For the derivations of memory and communication costs of each approach see <a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles</a>.</p>
+<h2 id="parallelism-overview">Parallelism overview</h2>
+<p>In the modern Machine Learning the various approaches to parallelism are used to:</p>
+<ol>
+<li>Overcome GPU memory limitations. Examples:
+<ul>
+<li>fit very large models - e.g., t5-11b is 45GB in just model params</li>
+<li>fit very long sequences - e.g., 128K context length for Llama 3.1 models</li>
+</ul>
+</li>
+<li>significantly speed up training - finish training that would take a year in hours</li>
+</ol>
+<p>We will first discuss in depth various 1D parallelism techniques and their pros and cons and then look at how they can be combined into 2D and 3D parallelism to enable an even faster training and to support even bigger models. Various other powerful alternative approaches will be presented.</p>
+<p>While the main concepts most likely will apply to any other framework, this article is focused on PyTorch-based implementations.</p>
+<p>Two main approaches are used to enable training and inferring models that are bigger than the accelerator's memory:</p>
+<ol>
+<li>3D parallelism - very network efficient, but can be very invasive into the modeling code and require a lot more work to make it work correctly</li>
+<li>ZeRO parallelism - not very network efficient, but requires close to zero changes to the modeling code and very easy to make to work.</li>
+</ol>
+<h2 id="scalability-concepts">Scalability concepts</h2>
+<p>The following is the brief description of the main concepts that will be described later in depth in this document.</p>
+<ol>
+<li><a href="#data-parallelism">Data Parallelism</a> (DP) - the same setup is replicated multiple times, and each being fed a slice of the data. The processing is done in parallel and all setups are synchronized at the end of each training step.</li>
+<li><a href="#tensor-parallelism">TensorParallelism</a> (TP) - each tensor is split up into multiple chunks, so instead of having the whole tensor reside on a single gpu, each shard of the tensor resides on its designated gpu. During forward and backward processing the shards execute concurrently and exchange partial activations or gradients at layer-specific boundaries, often using all-reduce, all-gather, or reduce-scatter rather than synchronizing only at the end of the step. This is what one may call horizontal parallelism, as the splitting happens on horizontal level. See the <a href="https://docs.pytorch.org/tutorials/intermediate/TP_tutorial.html">PyTorch Tensor Parallel tutorial</a>.</li>
+<li><a href="#pipeline-parallelism">PipelineParallelism</a> (PP) - the model is split up vertically (layer-level) across multiple GPUs, so that only one or several layers of the model are places on a single gpu. Each gpu processes in parallel different stages of the pipeline and working on a small chunk of the batch.</li>
+<li><a href="#zero-data-parallelism">Zero Redundancy Optimizer</a> (ZeRO) - Also performs sharding of the tensors somewhat similar to TP, except the whole tensor gets reconstructed in time for a forward or backward computation, therefore the model doesn't need to be modified. It also supports various offloading techniques to compensate for limited GPU memory. Sharded DDP is another name for the foundational ZeRO concept as used by various other implementations of ZeRO.</li>
+<li><a href="#sequence-parallelism">Sequence Parallelism</a> - training on long input sequences requires huge amounts of GPU memory. This technique splits the processing of a single sequence across multiple GPUs.</li>
+<li><a href="#expert-parallelism">Expert Parallelism</a> - Mixture-Of-Experts (MoE) can be partitioned so that each expert has a dedicated GPU (or several of them).</li>
+</ol>
+<p>The introduction sections of this paper is probably one of the best explanations I have found on most common parallelism techniques <a href="https://arxiv.org/abs/2211.05953">Breadth-First Pipeline Parallelism</a>.</p>
+<h2 id="data-parallelism">Data Parallelism</h2>
+<h3 id="ddp">DDP</h3>
+<p>Most users with just 2 GPUs already enjoy the increased training speed up thanks to <code>DataParallel</code> (DP) and <code>DistributedDataParallel</code> (DDP) that are almost trivial to use. This is a built-in feature of PyTorch.</p>
+<p>For details see <a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html">DistributedDataParallel</a></p>
+<h3 id="zero-data-parallelism">ZeRO Data Parallelism</h3>
+<p>ZeRO-powered data parallelism (ZeRO-DP) is described on the following diagram from this <a href="https://www.microsoft.com/en-us/research/blog/zero-deepspeed-new-system-optimizations-enable-training-models-with-over-100-billion-parameters/">blog post</a>
+<img src="images/parallelism-zero.png" alt="DeepSpeed-Image-1" /></p>
+<p>It can be difficult to wrap one's head around it, but in reality the concept is quite simple. This is just the usual <code>DataParallel</code> (DP), except, instead of replicating the full model params, gradients and optimizer states, each GPU stores only a slice of it.  And then at run-time when the full layer params are needed just for the given layer, all GPUs synchronize to give each other parts that they miss - this is it.</p>
+<p>Consider this simple model with 3 layers, where each layer has 3 params:</p>
+<pre><code>La | Lb | Lc
+---|----|---
+a0 | b0 | c0
+a1 | b1 | c1
+a2 | b2 | c2
+</code></pre>
+<p>Layer La has weights a0, a1 and a2.</p>
+<p>If we have 3 GPUs, the Sharded DDP (= ZeRO-DP) splits the model onto 3 GPUs like so:</p>
+<pre><code>GPU0:
+La | Lb | Lc
+---|----|---
+a0 | b0 | c0
+
+GPU1:
+La | Lb | Lc
+---|----|---
+a1 | b1 | c1
+
+GPU2:
+La | Lb | Lc
+---|----|---
+a2 | b2 | c2
+</code></pre>
+<p>In a way this is the same horizontal slicing, as tensor parallelism, if you imagine the typical DNN diagram. Vertical slicing is where one puts whole layer-groups on different GPUs. But it's just the starting point.</p>
+<p>Now each of these GPUs will get the usual mini-batch as it works in DP:</p>
+<pre><code>x0 =&gt; GPU0
+x1 =&gt; GPU1
+x2 =&gt; GPU2
+</code></pre>
+<p>The inputs are unmodified - they think they are going to be processed by the normal model.</p>
+<p>First, the inputs hit the layer La.</p>
+<p>Let's focus just on GPU0: x0 needs a0, a1, a2 params to do its forward path, but GPU0 has only a0 - it gets sent a1 from GPU1 and a2 from GPU2, bringing all pieces of the model together.</p>
+<p>In parallel, GPU1 gets mini-batch x1 and it only has a1, but needs a0 and a2 params, so it gets those from GPU0 and GPU2.</p>
+<p>Same happens to GPU2 that gets input x2. It gets a0 and a1 from GPU0 and GPU1, and with its a2 it reconstructs the full tensor.</p>
+<p>All 3 GPUs get the full tensors reconstructed and a forward happens.</p>
+<p>As soon as the calculation is done, the data that is no longer needed gets dropped - it's only used during the calculation. The reconstruction is done efficiently via a pre-fetch.</p>
+<p>And the whole process is repeated for layer Lb, then Lc forward-wise, and then backward Lc -&gt; Lb -&gt; La.</p>
+<p>To me this sounds like an efficient group backpacking weight distribution strategy:</p>
+<ol>
+<li>person A carries the tent</li>
+<li>person B carries the stove</li>
+<li>person C carries the axe</li>
+</ol>
+<p>Now each night they all share what they have with others and get from others what they don't have, and in the morning they pack up their allocated type of gear and continue on their way. This is Sharded DDP / ZeRO DP.</p>
+<p>Compare this strategy to the simple one where each person has to carry their own tent, stove and axe, which would be far more inefficient. This is DataParallel (DP and DDP) in PyTorch.</p>
+<p>While reading the literature on this topic you may encounter the following synonyms: Sharded, Partitioned.</p>
+<p>If you pay close attention the way ZeRO partitions the model's weights - it looks very similar to tensor parallelism which will be discussed later. This is because it partitions/shards each layer's weights, unlike vertical model parallelism which is discussed next.</p>
+<p>Implementations of ZeRO-DP stages 1+2+3:</p>
+<ul>
+<li><a href="https://www.deepspeed.ai/tutorials/zero/">DeepSpeed</a></li>
+<li><a href="https://docs.pytorch.org/docs/stable/fsdp.html">PyTorch</a> (originally it was implemented in <a href="https://github.com/facebookresearch/fairscale/">FairScale</a> and later it was upstreamed into the PyTorch core)</li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<p>DeepSpeed ZeRO Integration:</p>
+<ul>
+<li><a href="https://huggingface.co/docs/transformers/main_classes/deepspeed">HF Trainer integration</a></li>
+<li><a href="https://huggingface.co/docs/accelerate/usage_guides/deepspeed">Accelerate</a></li>
+<li><a href="https://lightning.ai/docs/pytorch/stable/advanced/model_parallel/deepspeed.html">PyTorch Lightning</a></li>
+<li><a href="https://github.com/determined-ai/determined/tree/main/docs/model-dev-guide/api-guides/apis-howto/deepspeed">Determined.AI</a></li>
+</ul>
+<p>FSDP Integration:</p>
+<ul>
+<li><a href="https://huggingface.co/docs/transformers/main/en/fsdp">HF Trainer integration</a></li>
+<li><a href="https://huggingface.co/docs/accelerate/main/en/usage_guides/fsdp">Accelerate</a></li>
+<li><a href="https://lightning.ai/docs/pytorch/stable/advanced/model_parallel/fsdp.html">PyTorch Lightning</a></li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<p>Important papers:</p>
+<p>DeepSpeed and ZeRO in general:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/1910.02054">ZeRO: Memory Optimizations Toward Training Trillion Parameter Models</a></li>
+<li><a href="https://arxiv.org/abs/2101.06840">ZeRO-Offload: Democratizing Billion-Scale Model Training</a></li>
+<li><a href="https://arxiv.org/abs/2104.07857">ZeRO-Infinity: Breaking the GPU Memory Wall for Extreme Scale Deep Learning</a></li>
+<li><a href="https://arxiv.org/abs/2306.10209">ZeRO++: Extremely Efficient Collective Communication for Giant Model Training</a></li>
+<li><a href="https://arxiv.org/abs/2309.14509">DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</a></li>
+<li><a href="https://arxiv.org/abs/2311.00257">AMSP: Reducing Communication Overhead of ZeRO for Efficient LLM Training</a></li>
+</ul>
+<p>PyTorch:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2304.11277">PyTorch FSDP: Experiences on Scaling Fully Sharded Data Parallel</a></li>
+</ul>
+<p>Main DeepSpeed ZeRO Resources:</p>
+<ul>
+<li><a href="https://github.com/deepspeedai/DeepSpeed">Project's github</a></li>
+<li><a href="https://www.deepspeed.ai/getting-started/">Usage docs</a></li>
+<li><a href="https://deepspeed.readthedocs.io/en/latest/index.html">API docs</a></li>
+<li><a href="https://www.microsoft.com/en-us/research/search/?q=deepspeed">Blog posts</a></li>
+</ul>
+<h4 id="overcoming-the-huge-global-batch-size-issue">Overcoming the huge global batch size issue</h4>
+<p>If you use, say, 1024 accelerators, you'll have tiny shards per accelerator and a ton of free memory for micro-batch-size (MBS), let's say you can fit MBS=32 - you end up with GBS=32k - most likely not what you want.</p>
+<p>So you either need to deploy <a href="#tensor-parallelism">Tensor Parallelism</a> which is non-trivial to implement, or often it's much simpler to deploy <a href="#sequence-parallelism">Sequence Parallelism</a>. I'm yet to try it in action, but so far what I gathered is for:</p>
+<ul>
+<li>DeepSpeed ZeRO use <a href="#deepspeed-ulysses-sp">DeepSpeed-Ulysses</a></li>
+<li><a href="#arctic-long-sequence-training">Arctic Long Sequence Training</a></li>
+<li>FSDP use <a href="https://github.com/lucidrains/ring-attention-pytorch">Paged Ring Attention</a> (<a href="https://arxiv.org/abs/2402.08268">paper</a>)</li>
+</ul>
+<p>Please note that most likely it won't be as efficient as <a href="#tensor-parallelism">Tensor Parallelism</a> - but I don't yet know of the actual additional overhead.</p>
+<h4 id="zero-with-multiple-replicas">ZeRO with multiple replicas</h4>
+<p>By default ZeRO uses all GPUs to create a single model replica - that's the model is spread out across all gpus. Which leads to various limitations such as:</p>
+<ol>
+<li>the global batch size is inflexible - it's always a function of <span class="math inline"><span class="math-inline">\text{total\_gpus} \times \text{micro\_batch\_size}</span></span> - which on large clusters could lead to a huge global batch size which might be detrimental for efficient convergence. Granted one could use a tiny micro batch size to keep the global batch size in check, but this leads to smaller matrices on each GPU which results in less efficient compute</li>
+<li>the much faster intra-node networking is not being benefited from since the slower inter-node network defines the overall speed of communications.</li>
+</ol>
+<p><a href="https://arxiv.org/abs/2306.10209">ZeRO++</a> solves the 2nd limitation by introducing Hierarchical Weight Partition for ZeRO (hpZ). In this approach instead of spreading whole model weights across all the gpus, each model replica is restricted to a single node. This increases the memory usage by the total number of nodes, but now the 2x <code>all_gather</code> calls to gather the sharded components are performed over a much faster intra-node connection. Only the <code>reduce_scatter</code> to aggregate and redistribute gradients is performed over the slower inter-node network.</p>
+<p>The first limitation doesn't exactly get fixed since the overall global batch size remains the same, but since each replica is more efficient and because the additional memory pressure is likely to limit the possible micro batch size on each gpu, this overall should improve the throughput of the system.</p>
+<p>PyTorch FSDP has this feature implemented in <a href="https://docs.pytorch.org/docs/stable/fsdp.html">shardingStrategy.HYBRID_SHARD</a></p>
+<p>Papers:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2306.10209">ZeRO++: Extremely Efficient Collective Communication for Giant Model Training</a></li>
+<li><a href="https://arxiv.org/abs/2304.11277">PyTorch FSDP: Experiences on Scaling Fully Sharded Data Parallel</a></li>
+</ul>
+<h4 id="zero-variations">ZeRO variations</h4>
+<p>Published papers that propose modifications to the ZeRO protocol:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2205.00119">MiCS: Near-linear Scaling for Training Gigantic Model on Public Cloud</a> (2022)</li>
+<li><a href="https://arxiv.org/abs/2311.00257">AMSP: Super-Scaling LLM Training via Advanced Model States Partitioning</a> (2023)</li>
+</ul>
+<h2 id="pipeline-parallelism-methods">Pipeline Parallelism methods</h2>
+<h3 id="naive-model-parallelism-vertical">Naive Model Parallelism (Vertical)</h3>
+<p>Naive Model Parallelism (MP) is where one spreads groups of model layers across multiple GPUs. The mechanism is relatively simple - switch the desired layers <code>.to()</code> the desired devices and now whenever the data goes in and out those layers switch the data to the same device as the layer and leave the rest unmodified.</p>
+<p>We refer to it as Vertical MP, because if you remember how most models are drawn, we slice the layers vertically. For example, if the following diagram shows an 8-layer model:</p>
+<pre><code>===================  ===================
+|  0 | 1 | 2 | 3  |  |  4 | 5 | 6 | 7  |
+===================  ===================
+        gpu0                 gpu1
+</code></pre>
+<p>we just sliced it in 2 vertically, placing layers 0-3 onto GPU0 and 4-7 to GPU1.</p>
+<p>Now while data travels from layer 0 to 1, 1 to 2 and 2 to 3 this is just the normal model. But when data needs to pass from layer 3 to layer 4 it needs to travel from GPU0 to GPU1 which introduces a communication overhead. If the participating GPUs are on the same compute node (e.g. same physical machine) this copying is pretty fast, but if the GPUs are located on different compute nodes (e.g. multiple machines) the communication overhead could be significantly larger.</p>
+<p>Then layers 4 to 5 to 6 to 7 are as a normal model would have and when the 7th layer completes we often need to send the data back to layer 0 where the labels are (or alternatively send the labels to the last layer). Now the loss can be computed and the optimizer can do its work.</p>
+<p>Problems:</p>
+<ul>
+<li>the main deficiency and why this one is called &quot;naive&quot; MP, is that all but one GPU is idle at any given moment. So if 4 GPUs are used, it's almost identical to quadrupling the amount of memory of a single GPU, and ignoring the rest of the hardware. Plus there is the overhead of copying the data between devices. So 4x 6GB cards provide roughly the same aggregate capacity for partitioned layer state as 1x 24GB card, but the single card will complete the training faster because it avoids inter-device transfers. Naive MP is mainly a capacity technique: it can make a workload fit when its layer-associated training state exceeds one GPU's memory, provided each partition and its activations fit on the assigned GPU.</li>
+<li>shared embeddings may need to get copied back and forth between GPUs.</li>
+</ul>
+<h3 id="pipeline-parallelism">Pipeline Parallelism</h3>
+<p>Pipeline Parallelism (PP) is almost identical to a naive MP, but it solves the GPU idling problem, by chunking the incoming batch into micro-batches and artificially creating a pipeline, which allows different GPUs to concurrently participate in the computation process.</p>
+<p>The following illustration from the <a href="https://research.google/blog/introducing-gpipe-an-open-source-library-for-efficiently-training-large-scale-neural-network-models/">GPipe paper</a> shows the naive MP on the top, and PP on the bottom:</p>
+<p><img src="images/parallelism-gpipe-bubble.png" alt="mp-pp" /></p>
+<p>It's easy to see from the bottom diagram how PP has less dead zones, where GPUs are idle. The idle parts are referred to as the &quot;bubble&quot;.</p>
+<p>Both parts of the diagram show a parallelism that is of degree 4. That is 4 GPUs are participating in the pipeline. So there is the forward path of 4 pipe stages F0, F1, F2 and F3 and then the return reverse order backward path of B3, B2, B1 and B0.</p>
+<p>PP introduces a new hyper-parameter to tune and it's <code>chunks</code> which defines how many chunks of data are sent in a sequence through the same pipe stage. For example, in the bottom diagram you can see that <code>chunks=4</code>. GPU0 performs the same forward path on chunk 0, 1, 2 and 3 (F0,0, F0,1, F0,2, F0,3) and then it waits for other GPUs to do their work and only when their work is starting to be complete, GPU0 starts to work again doing the backward path for chunks 3, 2, 1 and 0 (B0,3, B0,2, B0,1, B0,0).</p>
+<p>Note that conceptually this is the same concept as gradient accumulation steps (GAS). PyTorch uses <code>chunks</code>, whereas DeepSpeed refers to the same hyper-parameter as GAS.</p>
+<p>Because of the chunks, PP introduces the concept of micro-batches (MBS). DP splits the global data batch size into mini-batches, so if you have a DP degree of 4, a global batch size of 1024 gets split up into 4 mini-batches of 256 each (1024/4). And if the number of <code>chunks</code> (or GAS) is 32 we end up with a micro-batch size of 8 (256/32). Each Pipeline stage works with a single micro-batch at a time.</p>
+<p>To calculate the global batch size of the DP + PP setup we then do: <span class="math inline"><span class="math-inline">\text{mbs} \times \text{chunks} \times \text{dp\_degree}</span></span> (<span class="math inline"><span class="math-inline">8 \times 32 \times 4=1024</span></span>).</p>
+<p>Let's go back to the diagram.</p>
+<p>With <code>chunks=1</code> you end up with the naive MP, which is very inefficient. With a very large <code>chunks</code> value you end up with tiny micro-batch sizes which could be not every efficient either. So one has to experiment to find the value that leads to the highest efficient utilization of the gpus.</p>
+<p>While the diagram shows that there is a bubble of &quot;dead&quot; time that can't be parallelized because the last <code>forward</code> stage has to wait for <code>backward</code> to complete the pipeline, the purpose of finding the best value for <code>chunks</code> is to enable a high concurrent GPU utilization across all participating GPUs which translates to minimizing the size of the bubble.</p>
+<p>The choice of the schedule is critical to the efficient performance, with the most common schedules being in the order of invention:</p>
+<ul>
+<li>sequential <a href="https://arxiv.org/abs/1811.06965">Gpipe: Efficient training of giant neural networks using pipeline parallelism</a></li>
+<li>interleaved 1F1B <a href="https://arxiv.org/abs/1806.03377">Pipedream: Fast and efficient pipeline parallel dnn training</a></li>
+<li>looped, depth-first <a href="https://arxiv.org/abs/2104.04473">Efficient large-scale language model training on gpu clusters using Megatron-LM</a></li>
+<li>breadth-first <a href="https://arxiv.org/abs/2211.05953">Breadth-First Pipeline Parallelism</a></li>
+<li>Llama 3 training used a combination of depth and breadth first for best performance and also allowed them to progressively modify the global batch size as the training progressed, which is typically very difficult to accomplish with PP. See <a href="https://arxiv.org/abs/2407.21783">The Llama 3 Herd of Models</a> section 3.3.2 Parallelism for Model Scaling.</li>
+</ul>
+<p>Here is for example an interleaved pipeline:</p>
+<p><img src="images/parallelism-sagemaker-interleaved-pipeline.png" alt="interleaved-pipeline-execution" /></p>
+<p>Here the bubble (idle time) is further minimized by prioritizing backward passes.</p>
+<p>It's used by DeepSpeed and SageMaker to name a few.</p>
+<p><a href="https://arxiv.org/abs/2412.19437">DeepSeek v3</a> introduced an even more efficient PP via DualPipe that reduces the bubble size and succeeds at a better compute/comms overlap. See section 3.2.1 of the paper for the specific details.</p>
+<p><img src="images/parallelism-pp-dualpipe.png" alt="dualpipe" />
+(<a href="https://arxiv.org/abs/2412.19437">source</a>)</p>
+<h3 id="pp-practical-caveats">PP practical caveats</h3>
+<p>Regardless of which PP stack you use, several constraints keep showing up:</p>
+<ul>
+<li>have to modify the model quite heavily, because the normal module graph has to be cut into pipeline stages - some APIs still want something close to an <code>nn.Sequential</code> of stages - which may require changes to the design of the model.</li>
+<li>stage boundaries are restricted in what they can pass. If you had a bunch of python variables flowing through the first stage of a single-process forward, you will have to find a way around it. Typical interfaces expect either a single Tensor or a tuple of Tensors as stage inputs and outputs, and those tensors must have a batch size as the very first dimension, since the pipeline is going to chunk the mini-batch into micro-batches.</li>
+<li>conditional control flow at the level of pipe stages is not possible - e.g., Encoder-Decoder models like T5 require special workarounds to handle a conditional encoder stage.</li>
+<li>have to arrange each layer so that the output of one stage becomes an input to the next.</li>
+<li>The first stage contains a heavy embedding which can be quite huge if the vocabulary is large - and this may require a custom splicing so that the first stage will contain less transformer blocks than other stages.</li>
+</ul>
+<p>Modern stacks ease some of the boilerplate, but they do not remove these structural constraints.</p>
+<h3 id="where-to-get-pp-today">Where to get PP today</h3>
+<p>The practical choices are production training stacks with their own PP, and PyTorch's composable API:</p>
+<ul>
+<li><a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a> - battle-tested PP (interleaved 1F1B and related schedules); model-specific, no separate public Pipe-style API</li>
+<li><a href="https://www.deepspeed.ai/tutorials/pipeline/">DeepSpeed</a> - PP as part of the DeepSpeed stack (often combined with ZeRO)</li>
+<li><a href="https://docs.pytorch.org/docs/stable/distributed.pipelining.html">torch.distributed.pipelining</a> - PyTorch's current PP toolkit (migrated from <a href="https://github.com/pytorch/pippy">PiPPy</a>); still <strong>alpha</strong> / API may change. Splits general models, ships schedules including GPipe, 1F1B, interleaved 1F1B, looped BFS, and DualPipeV (DeepSeek-style), and composes with DP/FSDP/TP - see <a href="https://github.com/pytorch/torchtitan">torchtitan</a> for a 3D-parallel Llama example</li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a> / <a href="https://github.com/huggingface/nanotron">nanotron</a> - full training stacks that use modern PP</li>
+<li><a href="https://github.com/deepseek-ai/DualPipe">DeepSeek DualPipe</a> - the schedule from <a href="https://arxiv.org/abs/2412.19437">DeepSeek-V3</a> (also appears as <code>ScheduleDualPipeV</code> in <code>torch.distributed.pipelining</code>)</li>
+<li><a href="https://arxiv.org/abs/2111.05972">SageMaker</a> - proprietary, AWS-only</li>
+</ul>
+<h3 id="related-reading">Related reading</h3>
+<ul>
+<li><a href="https://siboehm.com/articles/22/pipeline-parallel-training">Pipeline-Parallelism: Distributed Training via Model Partitioning</a></li>
+</ul>
+<h2 id="tensor-parallelism">Tensor Parallelism</h2>
+<p>In Tensor Parallelism each GPU processes only a slice of a tensor and only aggregates the full tensor for operations that require the whole thing.</p>
+<p>In this section we use concepts and diagrams from the <a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a> paper: <a href="https://arxiv.org/abs/2104.04473">Efficient Large-Scale Language Model Training on GPU Clusters</a>.</p>
+<p>The main building block of any transformer is a fully connected <code>nn.Linear</code> followed by a nonlinear activation <code>GeLU</code>.</p>
+<p>Following the Megatron's paper notation, we can write the dot-product part of it as <span class="math inline"><span class="math-inline">Y = \operatorname{GeLU}(XA)</span></span>, where <span class="math inline"><span class="math-inline">X</span></span> and <span class="math inline"><span class="math-inline">Y</span></span> are the input and output vectors, and <span class="math inline"><span class="math-inline">A</span></span> is the weight matrix.</p>
+<p>If we look at the computation in matrix form, it's easy to see how the matrix multiplication can be split between multiple GPUs:
+<img src="images/parallelism-tp-parallel_gemm.png" alt="Parallel GEMM" /></p>
+<p>If we split the weight matrix <span class="math inline"><span class="math-inline">A</span></span> column-wise across <span class="math inline"><span class="math-inline">N</span></span> GPUs and perform matrix multiplications <span class="math inline"><span class="math-inline">XA_1</span></span> through <span class="math inline"><span class="math-inline">XA_n</span></span> in parallel, then we will end up with <span class="math inline"><span class="math-inline">N</span></span> output vectors <span class="math inline"><span class="math-inline">Y_1, Y_2, \ldots, Y_n</span></span> which can be fed into <code>GeLU</code> independently:
+<img src="images/parallelism-tp-independent-gelu.png" alt="independent GeLU" /></p>
+<p>Using this principle, we can update an MLP of arbitrary depth, without the need for any synchronization between GPUs until the very end, where we need to reconstruct the output vector from shards. The Megatron-LM paper authors provide a helpful illustration for that:
+<img src="images/parallelism-tp-parallel_shard_processing.png" alt="parallel shard processing" /></p>
+<p>Parallelizing the multi-headed attention layers is even simpler, since they are already inherently parallel, due to having multiple independent heads!
+<img src="images/parallelism-tp-parallel_self_attention.png" alt="parallel self-attention" /></p>
+<p>Important: TP requires very fast network, and therefore since typically intra-node networks are much faster than inter-node networks it's not advisable to do TP across nodes. Practically, if a node has 4 GPUs, the highest TP degree is therefore 4. If you need a TP degree of 8, you need to use nodes that have at least 8 GPUs.</p>
+<p>TP can be combined with other parallelization methods.</p>
+<p>Alternative names:</p>
+<ul>
+<li>DeepSpeed calls it <a href="https://www.deepspeed.ai/tutorials/large-models-w-deepspeed/">tensor slicing</a></li>
+</ul>
+<p>Implementations:</p>
+<ul>
+<li><a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a> has an internal implementation, as it's very model-specific</li>
+<li><a href="https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html">PyTorch</a></li>
+<li><a href="https://arxiv.org/abs/2111.05972">SageMaker</a> - this is a proprietary solution that can only be used on AWS.</li>
+<li><a href="https://github.com/eleutherAI/Oslo">OSLO</a> has the tensor parallelism implementation based on the Transformers.</li>
+<li><a href="https://github.com/huggingface/nanotron">nanotron</a></li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<h3 id="async-tp">Async TP</h3>
+<p>One of the deficiencies of TP is that it's difficult to overlap its comms with compute. PyTorch is proposing to overcome this with <a href="https://discuss.pytorch.org/t/distributed-w-torchtitan-introducing-async-tensor-parallelism-in-pytorch/209487">Async-TP</a> which decomposes the dependent sequence of all-gather + matmul into series of cudaMemcpyAsync calls and smaller partial matmuls - and it does it automatically for you using <code>torch.compile</code>!</p>
+<ul>
+<li><a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a> has it implemented as well via<code>--tp-comm-overlap</code>.</li>
+</ul>
+<h3 id="related-reading-1">Related reading</h3>
+<ul>
+<li><a href="https://insujang.github.io/2024-01-11/tensor-parallelism-and-sequence-parallelism-detailed-analysis/#sequence-parallelism">Tensor Parallelism and Sequence Parallelism: Detailed Analysis</a></li>
+</ul>
+<h2 id="sequence-parallelism">Sequence Parallelism</h2>
+<p>ML tasks, such as DNA sequencing, may require training with very long sequence lengths (e.g. 256K), and even normal LLMs could be trained on sequences of 10k and longer.</p>
+<p>Self-Attention, which is a key component of Transformers, has quadratic compute complexity with respect to sequence length for standard dense attention. Kernels that materialize the full sequence-by-sequence attention matrix also require quadratic temporary memory. Memory-efficient kernels such as <a href="https://arxiv.org/abs/2205.14135">FlashAttention</a> avoid storing that matrix and keep attention memory linear in sequence length without removing the quadratic compute.</p>
+<p>At sufficiently long sequence lengths, even a batch size of 1 may not fit on a single GPU, so sequence parallelism partitions work along the sequence dimension. This increases the supported sequence length, but does not make it unlimited: the practical limit still depends on aggregate accelerator memory, compute time, communication overhead, and kernel constraints.</p>
+<p>As this type of parallelism is orthogonal to the other parallelization types described in this document, it can be combined with any of them, leading to 4D, ZeRO-DP+SP and other combinations.</p>
+<h3 id="deepspeed-ulysses-sp">DeepSpeed-Ulysses SP</h3>
+<p>Paper: <a href="https://arxiv.org/abs/2309.14509">DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</a></p>
+<p>In this implementation 2 elements are sharded:</p>
+<ol>
+<li>The multiple-head attention weights are split across the participating GPUs so that each GPU has a few sub-heads only. This is done when the model is created/loaded. This is somewhat similar to <a href="#tensor-parallelism">Tensor Parallelism</a>.</li>
+<li>During training each input sequence is partitioned into chunks and each chunk is sent to one of the GPUs, which reminds us of ZeRO-3 sharding, except instead of weights the inputs are sharded.</li>
+</ol>
+<p>During compute each sequence chunk is projected onto QKV and then gathered to the full sequence QKV on each device, computed on each device only for the subheads it owns and then gathered again into the full attention output for the MLP block.</p>
+<p><img src="images/deepspeed-ulysses.png" alt="deepspeed-ulysses sp" /></p>
+<p><a href="https://github.com/deepspeedai/DeepSpeed/tree/master/blogs/deepspeed-ulysses">source</a></p>
+<p>On the diagram:</p>
+<ol>
+<li>Input sequences N are partitioned across P available devices.</li>
+<li>Each local N/P partition of the input sequence is projected into queries (Q), keys (K) and values (V) embeddings.</li>
+<li>Next, local QKV embeddings are gathered into global QKV through highly optimized all-to-all collectives between participating compute devices.</li>
+<li>Then the attention computation per head is performed:</li>
+</ol>
+<p><img src="images/deepspeed-ulysses-math.png" alt="math" /></p>
+<ol start="5">
+<li>At the end another all-to-all collective transforms output context tensor of attention computation to sequence (N/P) parallel for subsequent operators (MLP MatMul, layer norm, etc.) in the remaining modules of transformer layer block.</li>
+</ol>
+<p>Example: Let's consider seqlen=8K, num_heads=128 and a single node of num_gpus=8</p>
+<ol>
+<li>each GPU gets a 1K-long chunk of the original sequence (<span class="math inline"><span class="math-inline">8\text{K}/8</span></span>)</li>
+<li>each GPU gets assigned 16 sub-heads (<span class="math inline"><span class="math-inline">128/8</span></span>)</li>
+<li>a. on gpu0 before <code>forward</code> the original sequence is gathered back into 8K tokens
+b. the attention computation is done on the first 16 sub-heads</li>
+</ol>
+<p>The same logic is performed on the remaining 7 GPUs, each computing 8k attention over its 16 sub-heads</p>
+<p>You can read the specifics of the very efficient comms <a href="https://github.com/deepspeedai/DeepSpeed/tree/master/blogs/deepspeed-ulysses#significant-communication-volume-reduction">here</a>.</p>
+<p>DeepSpeed-Ulysses keeps communication volume consistent by increasing GPUs proportional to message size or sequence length.</p>
+<h3 id="arctic-long-sequence-training">Arctic Long Sequence Training</h3>
+<p>Arctic Long Sequence Training ports <a href="#deepspeed-ulysses-sp">DeepSpeed-Ulysses</a> to HuggingFace Transformers, while updating it to work with modern attention head mechanisms and extends it further to enable a much longer sequence length support (or batch size) by tiling compute and offloading the activation checkpoints. The integration guide is <a href="https://www.deepspeed.ai/tutorials/ulysses-alst-sequence-parallelism/">here</a>.</p>
+<ul>
+<li>paper: https://arxiv.org/abs/2506.13996</li>
+<li>implementation and integration: <a href="https://github.com/snowflakedb/ArcticTraining/tree/main/projects/sequence-parallelism">ArcticTraining</a> and <a href="https://github.com/axolotl-ai-cloud/axolotl">Axolotl</a></li>
+</ul>
+<h3 id="colossal-ais-sp">Colossal-AI's SP</h3>
+<p>Paper: <a href="https://arxiv.org/abs/2105.13120">Sequence parallelism: Long sequence training from system perspective</a></p>
+<p>Colossal-AI's SP implementation uses ring self-attention, a ring-like communication collective in which query projections are local whereas key and values projections are transmitted in a ring-style to compute global attention, resulting in communication complexity linear in message size, M.</p>
+<h3 id="megatron-lms-sp">Megatron-LM's SP</h3>
+<p>Paper: <a href="https://arxiv.org/abs/2205.05198">Reducing Activation Recomputation in Large Transformer Models</a></p>
+<p>Megatron-LM's SP is tightly integrated with its TP. Megatron-LM partitions sequence along sequence dimensions and applies allgather and reduce scatter collective to aggregate QKV projections for attention computation. Its communication volume increases linearly with message size (M) regardless of number of compute devices.</p>
+<h3 id="ring-attention-with-blockwise-transformers">Ring Attention with Blockwise Transformers</h3>
+<p>Paper: <a href="https://arxiv.org/abs/2310.01889">Ring Attention with Blockwise Transformers for Near-Infinite Context</a></p>
+<p>Also known as Ring Self-Attention (RSA), the name coined in the <a href="#colossal-ais-sp">Colossal-AI's SP</a> paper that proposed the same ring-style passing of keys and values while the queries stay local. Both names are in common use, so <a href="#distflashattn">DistFlashAttn</a>'s comparison against Ring Self-Attention refers to this technique.</p>
+<ol>
+<li>Tensors are sharded along the sequence dimension throughout: <span class="math inline"><span class="math-inline">(\lfloor \text{seq\_len}/N \rfloor, d_{\text{model}})</span></span>-shaped</li>
+<li>In the attention layers, every GPU starts by computing the part of the attention scores they are able to w/ their available shards.</li>
+<li>Simultaneously, the keys and values from other sequence chunks are communicated around.</li>
+<li>Once the keys/values from another chunk are available, each GPU continues on with their attention computation using the key/value tensors from this new segment of the sequence</li>
+<li>Continue until attention computation is complete.</li>
+</ol>
+<p>SP Implementations:</p>
+<ul>
+<li><a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a></li>
+<li><a href="https://github.com/deepspeedai/DeepSpeed">DeepSpeed</a></li>
+<li><a href="https://colossalai.org/">Colossal-AI</a></li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<p>PyTorch is also working on this feature and calling it Context Parallel (CP).</p>
+<h3 id="distflashattn">DistFlashAttn</h3>
+<p><a href="https://arxiv.org/abs/2310.03294">DISTFLASHATTN: Distributed Memory-efficient Attention for Long-context LLMs Training</a> is reported to be many times faster than Ring Self-Attention, because it load balances the KVQ per token computation between the workers while performing Sequence Parallelism.</p>
+<p><img src="images/dist-flash-attn.png" alt="distflashattn" /></p>
+<h3 id="related-reading-2">Related reading</h3>
+<ul>
+<li><a href="https://insujang.github.io/2024-01-11/tensor-parallelism-and-sequence-parallelism-detailed-analysis/#sequence-parallelism">Tensor Parallelism and Sequence Parallelism: Detailed Analysis</a></li>
+</ul>
+<h2 id="tpsp">TP+SP</h2>
+<p>TP can be combined with SP in the same process group to minimize communication costs as explained in <a href="https://arxiv.org/abs/2205.05198">Reducing Activation Recomputation in Large Transformer Models</a>. For example in LLMs, TP is used for embedding, attention and linear layers and when dropout and layer norm are reached SP is used instead.</p>
+<h2 id="dppp">DP+PP</h2>
+<p>The following diagram from the DeepSpeed <a href="https://www.deepspeed.ai/tutorials/pipeline/">pipeline tutorial</a> demonstrates how one combines DP with PP.</p>
+<p><img src="images/parallelism-zero-dp-pp.png" alt="dp-pp-2d" /></p>
+<p>Here it's important to see how DP rank 0 doesn't see GPU2 and DP rank 1 doesn't see GPU3. To DP there is just GPUs 0 and 1 where it feeds data as if there were just 2 GPUs. GPU0 &quot;secretly&quot; offloads some of its load to GPU2 using PP. And GPU1 does the same by enlisting GPU3 to its aid.</p>
+<p>Since each dimension requires at least 2 GPUs, here you'd need at least 4 GPUs.</p>
+<p>Implementations:</p>
+<ul>
+<li><a href="https://github.com/deepspeedai/DeepSpeed">DeepSpeed</a></li>
+<li><a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a></li>
+<li><a href="https://arxiv.org/abs/2111.05972">SageMaker</a></li>
+<li><a href="https://github.com/eleutherAI/Oslo">OSLO</a></li>
+<li><a href="https://github.com/huggingface/nanotron">nanotron</a></li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<h2 id="dppptp">DP+PP+TP</h2>
+<p>To get an even more efficient training a 3D parallelism is used where PP is combined with TP and DP. This can be seen in the following diagram.</p>
+<p><img src="images/parallelism-deepspeed-3d.png" alt="dp-pp-tp-3d" /></p>
+<p>This diagram is from a blog post <a href="https://www.microsoft.com/en-us/research/blog/deepspeed-extreme-scale-model-training-for-everyone/">3D parallelism: Scaling to trillion-parameter models</a>, which is a good read as well.</p>
+<p>Since each dimension requires at least 2 GPUs, here you'd need at least 8 GPUs.</p>
+<p>Implementations:</p>
+<ul>
+<li><a href="https://github.com/deepspeedai/DeepSpeed">DeepSpeed</a> - DeepSpeed also includes an even more efficient DP, which they call ZeRO-DP.</li>
+<li><a href="https://github.com/NVIDIA/Megatron-LM">Megatron-LM</a></li>
+<li><a href="https://arxiv.org/abs/2111.05972">SageMaker</a></li>
+<li><a href="https://github.com/eleutherAI/Oslo">OSLO</a></li>
+<li><a href="https://github.com/huggingface/nanotron">nanotron</a></li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<h2 id="zero-dppptp">ZeRO DP+PP+TP</h2>
+<p>One of the main features of DeepSpeed is ZeRO, which is a super-scalable extension of DP. It has already been discussed in <a href="#zero-data-parallelism">ZeRO Data Parallelism</a>. Normally it's a standalone feature that doesn't require PP or TP. But it can be combined with PP and TP.</p>
+<p>When ZeRO-DP is combined with PP (and optionally TP) it typically enables only ZeRO stage 1 (optimizer sharding).</p>
+<p>While it's theoretically possible to use ZeRO stage 2 (gradient sharding) with Pipeline Parallelism, it will have bad performance impacts. There would need to be an additional reduce-scatter collective for every micro-batch to aggregate the gradients before sharding, which adds a potentially significant communication overhead. By nature of Pipeline Parallelism, small micro-batches are used and instead the focus is on trying to balance arithmetic intensity (micro-batch size) with minimizing the Pipeline bubble (number of micro-batches). Therefore those communication costs are going to hurt.</p>
+<p>In addition, there are already fewer layers than normal due to PP and so the memory savings won't be huge. PP already reduces gradient size by <span class="math inline"><span class="math-inline">1/\text{PP}</span></span>, and so gradient sharding savings on top of that are less significant than pure DP.</p>
+<p>ZeRO stage 3 is not a good choice either for the same reason - more inter-node communications required.</p>
+<p>And since we have ZeRO, the other benefit is ZeRO-Offload. Since this is stage 1 optimizer states can be offloaded to CPU.</p>
+<p>Implementations:</p>
+<ul>
+<li><a href="https://github.com/deepspeedai/Megatron-DeepSpeed">Megatron-DeepSpeed</a> and <a href="https://github.com/bigscience-workshop/Megatron-DeepSpeed">Megatron-DeepSpeed from BigScience</a>, which is the fork of the former repo.</li>
+<li><a href="https://github.com/eleutherAI/Oslo">OSLO</a></li>
+<li><a href="https://github.com/pytorch/torchtitan">torchtitan</a></li>
+</ul>
+<p>Important papers:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2201.11990">Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B, A Large-Scale Generative Language Model</a></li>
+</ul>
+<h2 id="expert-parallelism">Expert Parallelism</h2>
+<p>When Mixture-Of-Experts (MoE) is used (in particular during inference) one could give each expert its own accelerator (or a few if one isn't enough), which is referred to as Expert Parallelism (EP). This adds another dimension for parallelization and can significantly speed things up for large batches that are likely to hit all of the experts. Instead of communicating model weights, in EP tokens are being communicated instead. EP leads to a more efficient compute as matrix multiplication then deal with bigger inputs.</p>
+<p>For detailed explanations please see:</p>
+<ul>
+<li><a href="https://arxiv.org/abs/2201.05596">DeepSpeed-MoE: Advancing Mixture-of-Experts Inference and Training to Power Next-Generation AI Scale</a></li>
+<li><a href="https://huggingface.co/blog/moe#parallelism">Mixture of Experts Explained</a></li>
+</ul>
+<h2 id="other-parallelism-approaches">Other parallelism approaches</h2>
+<h3 id="flexflow">FlexFlow</h3>
+<p><a href="https://github.com/flexflow/flexflow-train">FlexFlow</a> also solves the parallelization problem in a slightly different approach.</p>
+<p>Paper: <a href="https://arxiv.org/abs/1807.05358">&quot;Beyond Data and Model Parallelism for Deep Neural Networks&quot; by Zhihao Jia, Matei Zaharia, Alex Aiken</a></p>
+<p>It performs a sort of 4D Parallelism over Sample-Operator-Attribute-Parameter.</p>
+<ol>
+<li>Sample = Data Parallelism (sample-wise parallel)</li>
+<li>Operator = Parallelize a single operation into several sub-operations</li>
+<li>Attribute = Data Parallelism (length-wise parallel)</li>
+<li>Parameter = Model Parallelism (regardless of dimension - horizontal or vertical)</li>
+</ol>
+<p>Examples:</p>
+<ul>
+<li>Sample</li>
+</ul>
+<p>Let's take 10 batches of sequence length 512. If we parallelize them by sample dimension into 2 devices, we get 10 x 512 which becomes be 5 x 2 x 512.</p>
+<ul>
+<li>Operator</li>
+</ul>
+<p>Layer normalization requires the mean and variance, so standard deviation and mean aren't independent operations. For an illustrative operator decomposition across 2 devices (cuda:0, cuda:1), first copy the input data to both devices, then let cuda:0 reduce <span class="math inline"><span class="math-inline">\sum x</span></span> while cuda:1 reduces <span class="math inline"><span class="math-inline">\sum x^2</span></span>. The results can be combined as <span class="math inline"><span class="math-inline">\text{mean} = E[x]</span></span> and <span class="math inline"><span class="math-inline">\text{variance} = E[x^2] - E[x]^2</span></span>. This direct moment formula can lose numerical precision, so production implementations typically use a stable reduction algorithm instead. See the PyTorch <a href="https://docs.pytorch.org/docs/stable/generated/torch.std_mean.html"><code>torch.std_mean</code> documentation</a>.</p>
+<ul>
+<li>Attribute</li>
+</ul>
+<p>We have 10 batches of 512 length. If we parallelize them by attribute dimension into 2 devices, 10 x 512 will be 10 x 2 x 256.</p>
+<ul>
+<li>Parameter</li>
+</ul>
+<p>It is similar with tensor model parallelism or naive layer-wise model parallelism.</p>
+<p><img src="images/parallelism-flexflow.jpeg" alt="flex-flow-soap" /></p>
+<p>The significance of this framework is that it takes resources like (1) GPU/TPU/CPU vs. (2) RAM/DRAM vs. (3) fast-intra-connect/slow-inter-connect and it automatically optimizes all these  algorithmically deciding which parallelisation to use where.</p>
+<p>One very important aspect is that FlexFlow is designed for optimizing DNN parallelizations for models with static and fixed workloads, since models with dynamic behavior may prefer different parallelization strategies across iterations.</p>
+<p>So the promise is very attractive - it runs a 30min simulation on the cluster of choice and it comes up with the best strategy to utilise this specific environment. If you add/remove/replace any parts it'll run and re-optimize the plan for that. And then you can train. A different setup will have its own custom optimization.</p>
+<h2 id="parallelism-network-collectives">Parallelism network collectives</h2>
+<p>As intra- and inter-node speeds have an order of magnitude difference, it's crucial to choose different parallelization techniques for intra- and inter-node crossing. e.g. TP should stay inside the fastest, lowest-latency domain because of its massive synchronization requirements - traditionally that means within the node, but on rack-scale systems like NVL72 that domain spans many nodes (called supernode), so the real rule is to keep TP inside the scale-up fabric and to cross into the slower scale-out network only when measurement says you can afford it or capacity leaves no choice. Moreover, some accelerators, like the recent AMD MI3** series have a very slow gpu-to-gpu connectivity which again impacts how parallelism is done for the best performance.</p>
+<p>Here is a useful tidbit: the all-reduce collective can be decomposed into two separate phases: reduce-scatter and all-gather.</p>
+<p><img src="images/all-reduce-reduce-scatter-all-gather.png" alt="all-reduce = reduce-scatter and all-gather" />
+(<a href="https://engineering.fb.com/2021/07/15/open-source/fsdp/attachment/fsdp-graph-2a/">source</a>)</p>
+<p>Here is the breakdown of which collectives are used for which parallelization strategies:</p>
+<ul>
+<li>DDP: 1x all-reduce for the gradients - ideally overlapping with compute - total volume: 2x model params comms</li>
+<li>ZeRO-DP ZeRO-1/ZeRO-2: 1x reduce-scatter for gradients plus 1x all-gather to collect all the updated parameters- total volume: 2x model params comms</li>
+<li>ZeRO-DP ZeRO-3: 2x all-gather for weights (before <code>forward</code> + before <code>backward</code>) plus 1x reduce-scatter for gradients - total volume: 3x model params comms (1.5x more than DDP and ZeRO-1/ZeRO-2)</li>
+<li>TP: 2x all-gather and 2x reduce-scatter</li>
+<li>PP: 2x send + 2x recv - overlapping with compute in the steady phase</li>
+<li>SP: depends on implementation: with hidden size h, sequence length of N, and parallelism degree of P
+<ul>
+<li>Megatron-LM: 2x all-gather and 2x reduce-scatter with volume <span class="math inline"><span class="math-inline">4Nh</span></span> per transformers layer <a href="https://arxiv.org/abs/2309.14509">section 3.2 in paper</a></li>
+<li>DeepSpeed Ulysses: 2x all-to-all with volume <span class="math inline"><span class="math-inline">4Nh/P</span></span> per transformers layer <a href="https://arxiv.org/abs/2309.14509">section 3.2 in paper</a></li>
+</ul>
+</li>
+</ul>
+<p>It's possible that you will find different implementations that may use different communication patterns.</p>
+<h2 id="inter-node-speed-requirements-to-use-zero">Inter-node speed requirements to use ZeRO</h2>
+<p>The ZeRO scalability protocol, be it DeepSpeed ZeRO or PyTorch FSDP, requires a lot more inter-node traffic than TP+PP+DP solutions, and sometimes it can't take advantage of the faster intra-node connectivity, and therefore if your inter-node network is slow your expensive GPUs might be massively bottlenecked by the comms.</p>
+<p>The ZeRO protocol partially overlaps comms with compute, so ideally you want to get close to <span class="math inline"><span class="math-inline">\text{comms\_time} \le \text{compute\_time}</span></span>. The overlap is not perfect, so there will be always some network bottleneck, but we want to make sure that <code>comms_time</code> is not much larger than <code>compute_time</code>.</p>
+<p>In ZeRO-3, we have <code>all_gather</code> on weights in <code>forward</code>, then <code>all_gather</code> on weights in <code>backward</code>, last is <code>reduce_scatter</code> on gradients in backward. In total there are 3 global collective calls each sending a model size multiplied by how many bytes per parameter are used. e.g. a 10B param model in bf16 under ZeRO-3 will need to send <span class="math inline"><span class="math-inline">10 \times 2 \times 3</span></span> = 60GB of data.</p>
+<p>In comparison <a href="https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html">DistributedDataParallel</a> (DDP) uses a single <code>all_reduce</code> call, but which requires 2x data transmission, and so a 10B param model in bf16 under DDP will need to send <span class="math inline"><span class="math-inline">10 \times 2 \times 2</span></span> = 40GB of data.</p>
+<p>ZeRO-1 which only shards the optimiser states, like DDP, will too need to transmit 40GB of data (one <code>all_gather</code> and one <code>reduce_scatter</code>.)</p>
+<p>Here is how to calculate time in seconds for communication and compute:</p>
+<div class="math block">
+<div class="math-display">\text{comms\_time} = \frac{\text{comms\_multiplier} \cdot \text{n\_bytes} \cdot \text{model\_size\_in\_B}}{\text{inter-node-throughput\_in\_GBps}}</div>
+</div>
+<div class="math block">
+<div class="math-display">\text{compute\_time} = \frac{\text{n\_passes} \cdot \text{n\_bytes} \cdot \text{model\_size\_in\_B} \cdot \text{seqlen} \cdot \text{global\_batch\_size}}{\text{total\_gpus} \cdot 10^3 \cdot \text{tflops\_wo\_comms}}</div>
+</div>
+<p>The compute time formula is a rough estimate which works for any Transformer-block based model. It ignores any small computations and includes only the massive <code>matmul</code>s.</p>
+<p>The comms time formula is also a first-order estimate. <code>comms_multiplier</code> is the sum of the <a href="https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth">busbw correction factors</a> of the collectives performed in a single step - <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> for <code>all_reduce</code> and <span class="math inline"><span class="math-inline">(n-1)/n</span></span> each for <code>all_gather</code> and <code>reduce_scatter</code>, where <span class="math inline"><span class="math-inline">n</span></span> is the number of ranks - which is where DDP's 2 and ZeRO-3's 3 come from. It drops the <span class="math inline"><span class="math-inline">(n-1)/n</span></span> part, which is a good approximation for a large number of ranks (0.998 at the 512 ranks used below), but too optimistic for a small one (0.875 at 8 ranks). And the throughput you plug in has to be the measured <code>busbw</code> rather than <code>algbw</code>, since <code>algbw</code> shrinks as ranks are added - though even <code>busbw</code> can vary somewhat between collectives at the same payload, because NCCL may pick a different algorithm or protocol for each.</p>
+<p>As an experiment let's use the data points from <a href="https://huggingface.co/HuggingFaceM4/idefics-80b/">IDEFICS-80B</a> training.</p>
+<p>When we trained IDEFICS-80B with a 340Gbps EFA we were getting only 90TFLOPS w/ DeepSpeed ZeRO-3 on A100s as compared to 150+TFLOPS one was getting with Megatron's TP+PP+DP. and moreover a big chunk of the model was frozen as were building a new models based on one language and one vision model. So our multiplier was less than 3. On the other hand we were using activation recomputation to save memory, so this is an additional transmission of all model weights and to top it all off since nccl wasn't supporting proper half-precision reduction we used fp32 for gradient reductions, so really our multiplier wasn't 3 but more like 4.5.</p>
+<p>Values used for IDEFICS-80B training:</p>
+<ul>
+<li><code>model_size_in_B</code> = <code>80</code></li>
+<li><code>n_bytes</code> = <code>2</code> in case of bf16 which is 2 bytes</li>
+<li><code>comms_multiplier</code> = <code>3</code> in the case of ZeRO-3/FSDP (1x reduce_scatter + 2x all_gather (fwd + bwd)) and 2 in case of ZeRO-1 (1x reduce_scatter + 1x all_gather),</li>
+<li>additionally, in the case of IDEFICS-80B we decided to <a href="../../training/dtype.html#when-to-use-fp32-accumulators">reduce grads in fp32</a> to minimize NCCL accumulation loss, so we actually had <span class="math inline"><span class="math-inline">\text{comms\_multiplier} \cdot \text{n\_bytes}=3 \cdot 2+2=4 \cdot 2</span></span> for the additional 2 bytes but since half the model was frozen only about half of gradients were sent, so we still have the multiplier of 3.</li>
+<li><code>n_passes</code> = <code>4</code> with activation recomputation, or <code>3</code> w/o it. The model has to do only 1x compute per <code>forward</code> and 2x per <code>backward</code> (since the grads are calculated twice - once wrt inputs and once wrt weights). And with activation recomputation one more <code>forward</code> is done.</li>
+<li><code>total_gpus</code> = <code>512</code></li>
+<li><code>global_batch_size</code> = <code>3584</code></li>
+<li><code>seqlen</code> = <code>1024</code></li>
+<li><code>inter-node-throughput_in_GBps</code> = 42.5 (340Gbps) (AWS EFA v1)
+-<code>tflops_wo_comms</code> is the tflops w/o the communication overhead. Not theoretical peak as that is unachievable, but perhaps ~80% in the case of A100@BF16 - so <span class="math inline"><span class="math-inline">312 \times 0.8 \approx 250</span></span> TFLOPS (rounded up).</li>
+</ul>
+<p>We derived 340Gbps inter-node network throughput using <code>all_reduce_bench.py</code> with a payload of 4GiB (now renamed to <a href="../../network/benchmarks/torch-dist-bench.py">torch-dist-bench.py</a> ). In the case of IDEFICS-80B we had 80 layers, so approximately each layer was 1B params large. Which means that each layer was sending 2GB of data for bf16 tensors and 4GB of data with fp32 tensors, which matches the network benchmark. If you were to have a much smaller layer size, I'd recommend adapting the benchmark to that size. For example, if your layer size was only 100M param large, then your payload would be 0.2GB for bf16 tensors. As this is an order of magnitude smaller, the network is likely to give you a lower bandwidth, and you should use that in your calculations.</p>
+<p>footnote: if parts of your model are frozen, then there will be less data sent in syncing the gradients. in IDEFICS we had more than half of the model frozen, so when grads were reduced we only had about half the traffic.</p>
+<p>Which gives us:</p>
+<ul>
+<li>comms = <span class="math inline"><span class="math-inline">3 \cdot 2 \cdot 80 / 42.5</span></span> = 11 sec</li>
+<li>compute = <span class="math inline"><span class="math-inline">4 \cdot 2 \cdot 80 \cdot 1024 \cdot 3584 / (512 \cdot 10^3 \cdot 250)</span></span> = 18 sec</li>
+</ul>
+<p>If we check against our IDEFICS-80B logs, we see that each iteration took about 49 seconds.</p>
+<p>So the good news is that the math checks out as comms + compute are in the ballpark of the measured time.</p>
+<p>We can do another sanity check by feeding the compute formulae 90TFLOPS that we logged, in which case:</p>
+<ul>
+<li>compute = <span class="math inline"><span class="math-inline">4 \cdot 2 \cdot 80 \cdot 1024 \cdot 3584 / (512 \cdot 10^3 \cdot 90)</span></span> = 51 sec</li>
+</ul>
+<p>and so 49 and 51 secs are pretty close. Except this tells us nothing since the logged TFLOPS were calculated using this formula, so, of course, it should match.</p>
+<p>What I'd expect in the best case is where I have used close to theoretical peak TFLOPS in the formula and received the compute estimate to be about the same as the actual compute time measured on the system. Remember that since comms are interleaved with compute, when we measure <code>forward</code>+<code>backward</code> wallclock time it includes comms in it.</p>
+<p>What's the conclusion? I'd say more investigation is needed as clearly there are additional hidden bottlenecks here. I no longer have access to this setup to investigate, so I will repeat this exercise afresh when I train another largish model and share the updated math with you. But this workout should give you a feeling for what's going on behind the scenes and how all these numbers work together.</p>
+<p>Also this discussion didn't include into the math gradient accumulation steps (GAS). In the case of IDEFICS-80B it wasn't used. If GAS&gt;1 the theoretical compute time doesn't change, but comms time instead of <span class="math inline"><span class="math-inline">3 \cdot 2 \cdot M/\text{GBps}</span></span> would become <span class="math inline"><span class="math-inline">\text{GAS} \cdot 3 \cdot 2 \cdot M/\text{GBps}</span></span>. The weights gathering via <code>all_gather</code> for <code>forward</code> and <code>backward</code> would transpire as many times as there are gradient accumulation steps. In theory for grads it'd need to happen only once, but since there is no place to store intermediary grads of the gathered weight on each GPU it'll have to be reduced GAS times as well. This is for ZeRO-2 and ZeRO-3. For ZeRO-1 GAS&gt;1 requires no additional comms.</p>
+<p>We also didn't discuss the <code>DataLoader</code> as a potential bottleneck here, but we tested that it was under 1 sec, i.e. a very small overhead.</p>
+<p>Going back to comms math, we also didn't take into an account various hardware latencies, but when dealing with a large payloads they shouldn't add up a significant additional overhead.</p>
+<p>And now you know how long it'll take to transmit that many GBs over the network of your system. For example, if the network were to be 5x slower than the one we used for IDEFICS-80B training, that is 8.5GBps (68Gbps) then:</p>
+<ul>
+<li>comms = <span class="math inline"><span class="math-inline">3 \cdot 2 \cdot 80 / 8.5</span></span> = 56 sec</li>
+</ul>
+<p>which would definitely be a huge bottleneck compared to the faster compute.</p>
+<p>If the network were to be 5x faster, that is 212GBps (1700Gbps) then:</p>
+<ul>
+<li>comms = <span class="math inline"><span class="math-inline">3 \cdot 2 \cdot 80 / 212</span></span> = 2 sec</li>
+</ul>
+<p>which would be insignificant comparatively to the compute time, especially if some of it is successfully overlapped with the compute.</p>
+<p>Also the DeepSpeed team empirically <a href="https://github.com/deepspeedai/DeepSpeed/issues/2928#issuecomment-1463041491">benchmarked a 176B model</a> on 384 V100 GPUs (24 DGX-2 nodes) and found that:</p>
+<ol>
+<li>With 100Gbps IB, we only have &lt;20TFLOPS per GPU (bad)</li>
+<li>With 200-400Gbps IB, we achieve reasonable TFLOPS around 30-40 per GPU (ok)</li>
+<li>For 800Gbps IB, we reach 40+TFLOPS per GPU (excellent)</li>
+</ol>
+<p>To remind the peak TFLOPS for NVIDIA V100 at fp16 is <a href="https://www.nvidia.com/en-gb/data-center/tesla-v100/">125TFLOPS</a>.</p>
+<p>But be careful here - this benchmark is for V100s! Which is about 2-3x slower than A100, and 4-8x slower than H100 for half-precision. So the comms have to be at least 4-8x faster for H100 nodes to match the above table at half precision. We need more benchmarks with more recent hardware.</p>
+<p>footnote: the 2-3x range is because the official specs claim 3x TFLOPS increase for V100-&gt;A100, and A100-&gt;H100 each, but users benchmarking the difference report at most 2.5x improvements.</p>
+<p>They also noticed that when training at scale, the communication overhead is more pronounced with small micro-batch size per GPU. And we may not be able to increase micro-batch size since global-batch size is often fixed to achieve good model convergence rate. This is solved by the recently introduced <a href="#zero-with-multiple-replicas">ZeRO++</a>.</p>
+<p>Finally, when doing the math above you need to know the actual bandwidth you get on your setup - which changes with payload size - the larger the payload the better the bandwidth. To get this information you need to look at your <code>reduce_bucket_size</code> and <code>prefetch_bucket_size</code> settings in the DeepSpeed configuration file for reduction and prefetch correspondingly. The default is 0.5B params, which is 1GB in half-precision (0.5B x 2 bytes), or 2GB (0.5B x 4 bytes) if you use fp32 precision. So in order to measure the actual throughput you need to run an <code>all_reduce</code> benchmark with that payload and see what bandwidth gets reported. Then you can feed it to the calculations above.</p>
+<h2 id="which-strategy-to-use-when">Which Strategy To Use When</h2>
+<p>Here is a very rough outline at which parallelism strategy to use when. The first on each list is typically faster.</p>
+<p><strong>⇨ Single GPU</strong></p>
+<ul>
+<li>
+<p>Model fits onto a single GPU:</p>
+<ol>
+<li>Normal use</li>
+</ol>
+</li>
+<li>
+<p>Model doesn't fit onto a single GPU:</p>
+<ol>
+<li>ZeRO + Offload CPU and optionally NVMe</li>
+<li>as above plus Memory Centric Tiling (see below for details) if the largest layer can't fit into a single GPU</li>
+</ol>
+</li>
+<li>
+<p>Largest Layer not fitting into a single GPU:</p>
+<ol>
+<li>ZeRO - Enable <a href="https://deepspeed.readthedocs.io/en/latest/zero3.html#memory-centric-tiling">Memory Centric Tiling</a> (MCT). It allows you to run arbitrarily large layers by automatically splitting them and executing them sequentially. MCT reduces the number of parameters that are live on a GPU, but it does not affect the activation memory. As this need is very rare as of 2026-08 a manual override of <code>torch.nn.Linear</code> needs to be done by the user.</li>
+</ol>
+</li>
+</ul>
+<p><strong>⇨ Single Node / Multi-GPU</strong></p>
+<ul>
+<li>
+<p>Model fits onto a single GPU:</p>
+<ol>
+<li>DDP - Distributed DP</li>
+<li>ZeRO - may or may not be faster depending on the situation and configuration used</li>
+</ol>
+</li>
+<li>
+<p>Model doesn't fit onto a single GPU:</p>
+<ol>
+<li>PP</li>
+<li>ZeRO</li>
+<li>TP</li>
+</ol>
+<p>With very fast intra-node connectivity of NVLINK or NVSwitch all three should be mostly on par, without these PP will be faster than TP or ZeRO. The degree of TP may also make a difference. Best to experiment to find the winner on your particular setup.</p>
+<p>TP is almost always used within a single node. That is TP size &lt;= gpus per node.</p>
+</li>
+<li>
+<p>Largest Layer not fitting into a single GPU:</p>
+<ol>
+<li>If not using ZeRO - must use TP, as PP alone won't be able to fit.</li>
+<li>With ZeRO see the same entry for &quot;Single GPU&quot; above</li>
+</ol>
+</li>
+</ul>
+<p><strong>⇨ Multi-Node / Multi-GPU</strong></p>
+<ul>
+<li>
+<p>If the model fits into a single node first try <a href="#zero-with-multiple-replicas">ZeRO with multiple replicas</a>, because then you will be doing ZeRO over the faster intra-node connectivity, and DDP over slower inter-node</p>
+</li>
+<li>
+<p>When you have fast inter-node connectivity:</p>
+<ol>
+<li>ZeRO - as it requires close to no modifications to the model</li>
+<li>PP+TP+DP - less communications, but requires massive changes to the model</li>
+</ol>
+</li>
+<li>
+<p>when you have slow inter-node connectivity and still low on GPU memory:</p>
+<ol>
+<li>DP+PP+TP+ZeRO-1</li>
+</ol>
+</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../../training/README.html">&larr; Training</a><a class="next" href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

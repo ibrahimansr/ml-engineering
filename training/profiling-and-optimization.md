@@ -76,7 +76,7 @@ Memory is a sixth concern that cuts across all five: when you run out, you are f
 
 ### Write down the expected number first
 
-Before profiling, compute what the step *should* cost, so you know whether you are 10% or 10x off. For a dense decoder transformer, [training FLOPs per token](arithmetic.md#flops-of-a-decoder-transformer) are about `6 * N_nonembedding + 12 * n_layer * seq_len * d_model`. Divide by a realistic achievable FLOP/s to get a floor on step time:
+Before profiling, compute what the step *should* cost, so you know whether you are 10% or 10x off. For a dense decoder transformer, [training FLOPs per token](arithmetic.md#flops-of-a-decoder-transformer) are about $6 \cdot N_{\text{nonembedding}} + 12 \cdot n_{\text{layer}} \cdot \text{seq\_len} \cdot d_{\text{model}}$. Divide by a realistic achievable FLOP/s to get a floor on step time:
 
 ```python
 # expected_step.py - lower bound on step time before you run anything  [ran]
@@ -246,7 +246,7 @@ The baseline training run below achieved 1.40 TFLOP/s of model FLOPs. That is 41
 
 ### Worked example at H100 scale
 
-**[arithmetic only; no H100 run]** GPT-2 small (12 layers, `d_model = 768`) at `seq_len = 1024`, counting non-embedding parameters as `12 * L * d^2` = 84.9M:
+**[arithmetic only; no H100 run]** GPT-2 small (12 layers, $d_{\text{model}} = 768$) at $\text{seq\_len} = 1024$, counting non-embedding parameters as $12 \cdot L \cdot d^2 = 84.9\text{M}$:
 
 ```python
 # [ran: arithmetic]
@@ -483,7 +483,7 @@ aten::gelu_backward...         4.80%      45.379ms  ...            12        [[1
               aten::mm         3.79%      35.839ms  ...            12                    [[4096, 256], [256, 1024]]
 ```
 
-The top two rows are the manual attention: `Q @ K^T` producing `(B*H, T, T) = (64, 256, 256)` and `P @ V`. The softmax over the `(16, 4, 256, 256)` scores is fifth. That is the `T^2` work that SDPA/FlashAttention replaces, and the trace shows it before you have changed anything.
+The top two rows are the manual attention: $QK^\top$ producing $(B \cdot H, T, T) = (64, 256, 256)$ and $PV$. The softmax over the `(16, 4, 256, 256)` scores is fifth. That is the $T^2$ work that SDPA/FlashAttention replaces, and the trace shows it before you have changed anything.
 
 ### Exporting and opening a trace
 
@@ -668,7 +668,7 @@ attn=sdpa   ckpt=False saved for backward:  280.8 MiB
 attn=sdpa   ckpt=True  saved for backward:   28.3 MiB
 ```
 
-Check it by hand. One fp32 attention-probability tensor `(16, 4, 256, 256)` is `16*4*256*256*4 B = 16 MiB`, and 4 layers make 64 MiB. Switching to SDPA removes exactly those 64 MiB, because the fused kernel does not save the `T x T` probabilities. Checkpointing every block leaves only the block inputs (`16*256*256*4 B = 4 MiB` each) plus the head and loss. The count also includes weight tensors that autograd references (they are not extra memory), so treat it as an upper bound on activation bytes. Comparing this number with the [Korthikanti formula](arithmetic.md#korthikanti-et-al-derived) for your model is the fastest way to find an op that saves an unexpected fp32 copy.
+Check it by hand. One fp32 attention-probability tensor `(16, 4, 256, 256)` is $16 \cdot 4 \cdot 256 \cdot 256 \cdot 4\ \text{B} = 16\ \text{MiB}$, and 4 layers make 64 MiB. Switching to SDPA removes exactly those 64 MiB, because the fused kernel does not save the $T \times T$ probabilities. Checkpointing every block leaves only the block inputs ($16 \cdot 256 \cdot 256 \cdot 4\ \text{B} = 4\ \text{MiB}$ each) plus the head and loss. The count also includes weight tensors that autograd references (they are not extra memory), so treat it as an upper bound on activation bytes. Comparing this number with the [Korthikanti formula](arithmetic.md#korthikanti-et-al-derived) for your model is the fastest way to find an op that saves an unexpected fp32 copy.
 
 On the Apple GPU, `torch.mps.current_allocated_memory()` and `torch.mps.driver_allocated_memory()` give current numbers. There is no peak counter or snapshot API on MPS as of PyTorch 2.15, so the CUDA tools below have no Mac equivalent.
 
@@ -903,7 +903,7 @@ These are the standard changes, roughly in the order you should try them: cheape
 | remove per-step syncs | syncs, CPU overhead | large if launch-bound, ~0 if GPU-bound | no `cudaStreamSynchronize` per step | 20-30% (tiny model), noise (big model) |
 | DataLoader workers / pinned memory | dataloader | eliminates data wait when CPU-side prep is the bottleneck | `next()` time ~0; no GPU gap at step start | 74.5 -> 65.0 ms with 50 ms/batch prep |
 | fused / foreach optimizer | CPU overhead | fewer kernels in `optimizer.step()` | optimizer range time in trace | within noise |
-| SDPA / FlashAttention | kernels, memory | FlashAttention paper: 3x end-to-end on GPT-2 at seq 1K vs the Hugging Face Transformers implementation (arXiv:2205.14135); no `T^2` activation | `flash`/`efficient_attention` kernel in trace; activation memory drop | memory -64 MiB; speed within noise at T=256 |
+| SDPA / FlashAttention | kernels, memory | FlashAttention paper: 3x end-to-end on GPT-2 at seq 1K vs the Hugging Face Transformers implementation (arXiv:2205.14135); no $T^2$ activation | `flash`/`efficient_attention` kernel in trace; activation memory drop | memory -64 MiB; speed within noise at $T=256$ |
 | `torch.compile` | CPU overhead, kernels (fusion) | PyTorch 2.0 release: ~1.4x mean training speedup over 163 models on A100 (as of Mar 2023) | `triton_*` kernels; fewer kernels; check graph breaks | 1.22x (64.2 -> 52.6-53.9 ms) |
 | activation checkpointing | memory (costs time) | +~33% compute for full recompute ([arithmetic](arithmetic.md#what-recomputation-adds)); pays when freed memory buys a bigger batch or removes sharding | activation memory drop, step time up | memory 345 -> 28 MiB; 1.30x slower |
 | bigger micro-batch | CPU overhead, small-kernel inefficiency | better until GPU saturates, then flat; changes optimization dynamics | tok/s vs B curve flattens | flat (GPU already saturated at B=16) |
@@ -972,7 +972,7 @@ with sdpa_kernel(SDPBackend.FLASH_ATTENTION):          # raises if flash is not 
     y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
 ```
 
-Common reasons it silently falls back to the slow math path: fp32 inputs (flash needs fp16/bf16), an explicit `attn_mask` instead of `is_causal=True`, or an unsupported head dimension. In the trace, look for `flash_fwd`/`flash_bwd` or `efficient_attention` kernels instead of `bmm` + `softmax`. On the M4 at `T = 256` it saved the 64 MiB of saved probabilities (measured above) but not time. The `T^2` part is 14% of FLOPs here (3.1M of 22.5M per token), and the payoff grows with sequence length.
+Common reasons it silently falls back to the slow math path: fp32 inputs (flash needs fp16/bf16), an explicit `attn_mask` instead of `is_causal=True`, or an unsupported head dimension. In the trace, look for `flash_fwd`/`flash_bwd` or `efficient_attention` kernels instead of `bmm` + `softmax`. On the M4 at $T = 256$ it saved the 64 MiB of saved probabilities (measured above) but not time. The $T^2$ part is 14% of FLOPs here (3.1M of 22.5M per token), and the payoff grows with sequence length.
 
 ### Activation checkpointing
 

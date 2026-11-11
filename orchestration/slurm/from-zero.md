@@ -1387,7 +1387,7 @@ The `by state` line is the one to show your team: in this sample, 384 of the ~1,
 
 ### GPU-hours and fair-share calculator
 
-Before submitting a big run, do the arithmetic: how many GPU-hours, how much preemption will cost, and what it will do to your team's priority. The fair-share part uses the classic formula `F = 2^(-U/S)` with usage decayed by a 7-day half-life; Slurm's default Fair Tree algorithm ranks associations differently but moves in the same direction ([internals](../internals.md#priority-prioritymultifactor) has the details).
+Before submitting a big run, do the arithmetic: how many GPU-hours, how much preemption will cost, and what it will do to your team's priority. The fair-share part uses the classic formula $F = 2^{-U/S}$ with usage decayed by a 7-day half-life; Slurm's default Fair Tree algorithm ranks associations differently but moves in the same direction ([internals](../internals.md#priority-prioritymultifactor) has the details).
 
 ```python
 #!/usr/bin/env python3
@@ -1469,7 +1469,7 @@ team A, U/S=1.35: ~3.0 idle days to get back to F=0.5
 selfcheck ok
 ```
 
-How to read it: team A used 4x its normal rate (512 GPUs instead of 128) for three days. That alone pushed it from below its share to 35% over (`U/S = 1.35`), and its fair-share factor fell from above 0.5 to 0.39, so team C's jobs (`F = 0.63`) now go first. Because usage decays with a 7-day half-life, even if team A stops completely it takes about `7 * log2(1.35) = 3.0` days to get back to parity. This is why a team that burns its share in a sprint waits in the queue the next week. The real number for your cluster comes from `sshare -l` (the `RawUsage` column is in decayed TRES-billing-seconds; `TRESBillingWeights` decides how much a GPU counts against a CPU).
+How to read it: team A used 4x its normal rate (512 GPUs instead of 128) for three days. That alone pushed it from below its share to 35% over ($U/S = 1.35$), and its fair-share factor fell from above 0.5 to 0.39, so team C's jobs ($F = 0.63$) now go first. Because usage decays with a 7-day half-life, even if team A stops completely it takes about $7 \cdot \log_2(1.35) = 3.0$ days to get back to parity. This is why a team that burns its share in a sprint waits in the queue the next week. The real number for your cluster comes from `sshare -l` (the `RawUsage` column is in decayed TRES-billing-seconds; `TRESBillingWeights` decides how much a GPU counts against a CPU).
 
 The preemption line is the other half of the trade: a `low` QoS that's 6% more expensive per useful GPU-hour (at 6 preemptions per 3 days and a 1-hour checkpoint interval) is a good deal if it starts days earlier.
 

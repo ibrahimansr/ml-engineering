@@ -7,7 +7,7 @@ This chapter assumes you know the transformer math. It does not assume you know 
 - [Computer architecture](../../foundations/computer-architecture.md) - the GPU memory hierarchy (HBM vs SRAM) and why FLOP/s and bytes/s are separate limits. The roofline argument used throughout this chapter depends on it.
 - [Concurrency](../../foundations/concurrency.md) - streams, asynchronous launches and overlap. "Overlap compute with communication" is a concurrency statement, and every cost model below depends on whether the overlap actually happens.
 - [Toolkit](../../foundations/toolkit.md) - running commands in a terminal, Python virtual environments, `export` of environment variables. The setup block below uses all three.
-- [Networking](../../foundations/networking.md) - latency vs bandwidth, NVLink vs InfiniBand, RDMA, loopback and network interfaces, and [how PyTorch distributed bootstraps](../../foundations/networking.md#how-pytorch-distributed-bootstraps) (rendezvous, `MASTER_ADDR`/`MASTER_PORT`). Every `β` in this chapter is a networking number.
+- [Networking](../../foundations/networking.md) - latency vs bandwidth, NVLink vs InfiniBand, RDMA, loopback and network interfaces, and [how PyTorch distributed bootstraps](../../foundations/networking.md#how-pytorch-distributed-bootstraps) (rendezvous, `MASTER_ADDR`/`MASTER_PORT`). Every $\beta$ in this chapter is a networking number.
 - [Distributed systems](../../foundations/distributed-systems.md) - ranks, process groups, collectives, and why a slow rank stalls everyone.
 - [Execution model](../../compute/accelerator/execution-model.md) - GEMMs, [FlashAttention and online softmax](../../compute/accelerator/execution-model.md#flashattention), and reading a profiler trace. The context-parallel section builds on online softmax.
 - [Collectives internals](../../network/collectives-internals.md) - the alpha-beta model, ring/tree algorithms, bus bandwidth, bisection bandwidth and oversubscription, and compute-communication overlap. This chapter uses its formulas without re-deriving them.
@@ -43,23 +43,23 @@ On this Mac, leaving out `--master-addr 127.0.0.1` and `GLOO_SOCKET_IFNAME=lo0` 
 
 | Symbol | Meaning |
 |---|---|
-| `Ψ` | number of model parameters |
-| `N` | number of ranks in a collective (a *rank* is one process, normally driving one GPU) |
-| `M` | message size in bytes (defined per collective below) |
-| `α` | per-message latency (seconds): fixed startup cost of one send |
-| `β` | per-rank bandwidth (bytes/s) in one direction on the slowest link the collective crosses |
-| `F` | achieved FLOP/s per GPU (not peak) |
-| `B, T, h` | micro-batch size (sequences), sequence length, hidden size |
-| `L` | number of transformer layers |
-| `t, p, d, c, e` | tensor-, pipeline-, data-, context-, expert-parallel degree |
-| `m` | number of micro-batches per pipeline per step |
+| $\Psi$ | number of model parameters |
+| $N$ | number of ranks in a collective (a *rank* is one process, normally driving one GPU) |
+| $M$ | message size in bytes (defined per collective below) |
+| $\alpha$ | per-message latency (seconds): fixed startup cost of one send |
+| $\beta$ | per-rank bandwidth (bytes/s) in one direction on the slowest link the collective crosses |
+| $F$ | achieved FLOP/s per GPU (not peak) |
+| $B, T, h$ | micro-batch size (sequences), sequence length, hidden size |
+| $L$ | number of transformer layers |
+| $t, p, d, c, e$ | tensor-, pipeline-, data-, context-, expert-parallel degree |
+| $m$ | number of micro-batches per pipeline per step |
 
 Hardware used in the worked examples. These match H100 SXM specs:
 
 - **HBM** (High Bandwidth Memory, the GPU's on-package DRAM, the memory "GPU memory" usually refers to): 80 GB per H100.
-- **NVLink** (NVIDIA's GPU-to-GPU link inside a node, routed through NVSwitch chips so that any GPU can reach any other at full speed): 900 GB/s per GPU *bidirectional*, so `β_nvl = 450 GB/s` per direction. Achieved NCCL bus bandwidth is lower. Measure yours with the [network benchmarks](../../network/benchmarks/).
-- **InfiniBand (IB)** (the inter-node network; each GPU has its own NIC, a network interface card, and talks to it via **RDMA**, remote direct memory access, which means one machine writes directly into another machine's memory without going through either CPU): 400 Gb/s per GPU, so `β_ib = 400/8 = 50 GB/s` per direction.
-- Dense BF16 peak is 989 TFLOP/s. I assume 40% MFU (model FLOPs utilization: useful model FLOP/s divided by peak, defined in [training arithmetic](../arithmetic.md#mfu-and-hfu-properly)), so `F = 0.4 * 989e12 = 395.6e12 FLOP/s`. This is an assumption, not a measurement.
+- **NVLink** (NVIDIA's GPU-to-GPU link inside a node, routed through NVSwitch chips so that any GPU can reach any other at full speed): 900 GB/s per GPU *bidirectional*, so $\beta_{\text{nvl}} = 450\ \text{GB/s}$ per direction. Achieved NCCL bus bandwidth is lower. Measure yours with the [network benchmarks](../../network/benchmarks/).
+- **InfiniBand (IB)** (the inter-node network; each GPU has its own NIC, a network interface card, and talks to it via **RDMA**, remote direct memory access, which means one machine writes directly into another machine's memory without going through either CPU): 400 Gb/s per GPU, so $\beta_{\text{ib}} = 400/8 = 50\ \text{GB/s}$ per direction.
+- Dense BF16 peak is 989 TFLOP/s. I assume 40% MFU (model FLOPs utilization: useful model FLOP/s divided by peak, defined in [training arithmetic](../arithmetic.md#mfu-and-hfu-properly)), so $F = 0.4 \cdot 989 \times 10^{12} = 395.6 \times 10^{12}\ \text{FLOP/s}$. This is an assumption, not a measurement.
 
 A **node** here means 8 GPUs sharing one NVLink domain. A **collective** is a communication operation in which every rank of a group takes part, for example all of them summing a tensor together. **NCCL** is NVIDIA's library that implements collectives on GPUs. A **kernel** is a single function launched on the GPU. A **CUDA stream** is an ordered queue of kernels. Kernels on different streams may run concurrently, which is the mechanism behind every "overlap" claim in this chapter (see [multiple streams in PyTorch](../../foundations/concurrency.md#multiple-streams-in-pytorch) and [streams and what "async" means](../../network/collectives-internals.md#streams-and-what-async-means)).
 
@@ -168,16 +168,16 @@ broadcast       rank 3: [0.0, 1.0, 2.0, 3.0]
 ```
 
 - **all-reduce**: everyone ends with the elementwise sum. Used for DDP gradients and tensor-parallel partial sums.
-- **reduce-scatter**: the sum is computed, but rank `i` keeps only the `i`-th slice. Used for sharded gradients (ZeRO, FSDP) and sequence parallelism.
+- **reduce-scatter**: the sum is computed, but rank $i$ keeps only the $i$-th slice. Used for sharded gradients (ZeRO, FSDP) and sequence parallelism.
 - **all-gather**: every rank contributes a slice and everyone ends with the concatenation. Used to reassemble sharded parameters.
-- **all-to-all**: rank `i` sends its `j`-th slice to rank `j`. It is a distributed transpose. Used for MoE token dispatch and Ulysses attention.
+- **all-to-all**: rank $i$ sends its $j$-th slice to rank $j$. It is a distributed transpose. Used for MoE token dispatch and Ulysses attention.
 - **broadcast**: rank 0's tensor is copied to everyone. Used at initialization.
 
 The `assert` in the script checks the identity the rest of this chapter leans on: an all-reduce is exactly a reduce-scatter followed by an all-gather.
 
 ### The ring algorithm, built by hand
 
-The standard way to all-reduce large tensors is the *ring*: arrange the ranks in a circle, cut the tensor into `N` chunks, and pass chunks to the right neighbour. In `N-1` steps of "send a chunk, add the one you received" each rank ends up owning the full sum of one chunk (that is a reduce-scatter). In `N-1` more steps of "send the finished chunk along" everyone gets every finished chunk (that is an all-gather). Each step every rank sends `M/N` bytes, so the total sent per rank is `2(N-1)/N · M`. Here it is with point-to-point `isend`/`irecv` (`dist.isend(t, dst)` and `dist.irecv(t, src)` start a non-blocking send to or receive from one rank and return a request object whose `.wait()` blocks until the transfer is done; posting the send and the receive before waiting on either is what keeps two neighbours from deadlocking while each waits for the other), checked against `dist.all_reduce` and with the bytes counted:
+The standard way to all-reduce large tensors is the *ring*: arrange the ranks in a circle, cut the tensor into $N$ chunks, and pass chunks to the right neighbour. In $N-1$ steps of "send a chunk, add the one you received" each rank ends up owning the full sum of one chunk (that is a reduce-scatter). In $N-1$ more steps of "send the finished chunk along" everyone gets every finished chunk (that is an all-gather). Each step every rank sends $M/N$ bytes, so the total sent per rank is $2(N-1)/N \cdot M$. Here it is with point-to-point `isend`/`irecv` (`dist.isend(t, dst)` and `dist.irecv(t, src)` start a non-blocking send to or receive from one rank and return a request object whose `.wait()` blocks until the transfer is done; posting the send and the receive before waiting on either is what keeps two neighbours from deadlocking while each waits for the other), checked against `dist.all_reduce` and with the bytes counted:
 
 ```python
 # ring_allreduce.py
@@ -227,37 +227,47 @@ $ torchrun --nproc-per-node 4 --master-addr 127.0.0.1 ring_allreduce.py
 ring all-reduce matches dist.all_reduce; rank 0 sent 6,291,456 B = 1.500 x M; formula 2(N-1)/N = 1.500
 ```
 
-The key property is that per-rank traffic is about `2M` no matter how many ranks there are: each rank only ever talks to its two neighbours, and the work is spread evenly. That is why the bandwidth term below barely depends on `N`.
+The key property is that per-rank traffic is about $2M$ no matter how many ranks there are: each rank only ever talks to its two neighbours, and the work is spread evenly. That is why the bandwidth term below barely depends on $N$.
 
 ### The formulas
 
-The derivations are in [collectives internals](../../network/collectives-internals.md). The results for the ring algorithm on `N` ranks are:
+The derivations are in [collectives internals](../../network/collectives-internals.md). The results for the ring algorithm on $N$ ranks are:
 
-```
-all-reduce      (every rank ends with the sum of all ranks' M-byte buffers)
-    t_AR = 2(N-1)·α + 2·(N-1)/N · M/β
+**all-reduce** (every rank ends with the sum of all ranks' $M$-byte buffers):
 
-reduce-scatter  (input M bytes per rank; rank i ends with the summed i-th 1/N slice)
-    t_RS = (N-1)·α + (N-1)/N · M/β
+$$
+t_{\text{AR}} = 2(N-1)\cdot\alpha + 2\cdot\frac{N-1}{N}\cdot\frac{M}{\beta}
+$$
 
-all-gather      (rank i holds M/N; every rank ends with the full M bytes)
-    t_AG = (N-1)·α + (N-1)/N · M/β
+**reduce-scatter** (input $M$ bytes per rank; rank $i$ ends with the summed $i$-th $1/N$ slice):
 
-all-to-all      (rank i sends a distinct M/N slice to each rank j; M = rank's total send buffer)
-    t_A2A ≈ (N-1)·α + (N-1)/N · M/β      (pairwise exchange, assumes full bisection bandwidth)
-```
+$$
+t_{\text{RS}} = (N-1)\cdot\alpha + \frac{N-1}{N}\cdot\frac{M}{\beta}
+$$
+
+**all-gather** (rank $i$ holds $M/N$; every rank ends with the full $M$ bytes):
+
+$$
+t_{\text{AG}} = (N-1)\cdot\alpha + \frac{N-1}{N}\cdot\frac{M}{\beta}
+$$
+
+**all-to-all** (rank $i$ sends a distinct $M/N$ slice to each rank $j$; $M$ = rank's total send buffer; pairwise exchange, assumes full bisection bandwidth):
+
+$$
+t_{\text{A2A}} \approx (N-1)\cdot\alpha + \frac{N-1}{N}\cdot\frac{M}{\beta}
+$$
 
 Three facts are used repeatedly:
 
-1. `AR = RS + AG`, exactly in volume. Every rank sends `2(N-1)/N · M` bytes for an all-reduce and `(N-1)/N · M` for each half. This identity drives ZeRO, FSDP and sequence parallelism.
-2. The bandwidth term barely depends on `N`, and the latency term grows linearly in `N`. At large `N` and small `M`, NCCL switches to tree/NVLS algorithms with `O(log N)` latency. The bandwidth formulas above remain a good lower bound for large messages.
-3. `β` is the bottleneck link. A ring that spans nodes runs at roughly NIC speed (50 GB/s), not NVLink speed, even though most of its hops are intra-node. NCCL runs one ring per NIC in parallel, which is why the per-GPU NIC bandwidth is the right `β`.
+1. $\text{AR} = \text{RS} + \text{AG}$, exactly in volume. Every rank sends $2(N-1)/N \cdot M$ bytes for an all-reduce and $(N-1)/N \cdot M$ for each half. This identity drives ZeRO, FSDP and sequence parallelism.
+2. The bandwidth term barely depends on $N$, and the latency term grows linearly in $N$. At large $N$ and small $M$, NCCL switches to tree/NVLS algorithms with $O(\log N)$ latency. The bandwidth formulas above remain a good lower bound for large messages.
+3. $\beta$ is the bottleneck link. A ring that spans nodes runs at roughly NIC speed (50 GB/s), not NVLink speed, even though most of its hops are intra-node. NCCL runs one ring per NIC in parallel, which is why the per-GPU NIC bandwidth is the right $\beta$.
 
-From here on, "volume" means bytes sent per rank, and I often drop the `(N-1)/N` factor when `N` is large.
+From here on, "volume" means bytes sent per rank, and I often drop the $(N-1)/N$ factor when $N$ is large.
 
 ### Measuring α and β
 
-`α` and `β` are not datasheet numbers; you measure them by timing a collective at many message sizes and fitting a line. The same procedure works on a laptop over loopback and on a cluster over InfiniBand (with NCCL and GPU tensors instead of gloo and CPU tensors):
+$\alpha$ and $\beta$ are not datasheet numbers; you measure them by timing a collective at many message sizes and fitting a line. The same procedure works on a laptop over loopback and on a cluster over InfiniBand (with NCCL and GPU tensors instead of gloo and CPU tensors):
 
 ```python
 # alphabeta.py
@@ -306,11 +316,11 @@ fit: alpha = 48.9 us per message, beta = 3.76 GB/s per rank (loopback, gloo, 4 r
 half-bandwidth message size M_1/2 = alpha*beta*N = 735 KB
 ```
 
-The shape is what matters, not the loopback numbers. Small messages cost a few hundred microseconds regardless of size (`α` dominates; the jitter between them is noise on a shared laptop), large messages approach a fixed bandwidth (`β` dominates), and the crossover is `M_1/2 = N·α·β`, the message size at which you get half the peak bandwidth. On an H100 cluster `α` is a few to tens of microseconds and `β` is tens to hundreds of GB/s, so `M_1/2` is in the MB range. That is why DDP and FSDP group gradients into buckets of tens of MB. "busbw" (bus bandwidth) here is `2(N-1)/N · M / t`, the same normalization `nccl-tests` (NVIDIA's standard collective benchmark, see [collectives internals](../../network/collectives-internals.md#the-same-measurement-on-gpus-nccl-tests-and-torch-dist-bench)) uses ([algbw vs busbw](../../network/collectives-internals.md#algbw-vs-busbw)), so that a perfect ring reports the link bandwidth regardless of `N`. The fit is from one run on a busy laptop, so treat the exact values as an anecdote.
+The shape is what matters, not the loopback numbers. Small messages cost a few hundred microseconds regardless of size ($\alpha$ dominates; the jitter between them is noise on a shared laptop), large messages approach a fixed bandwidth ($\beta$ dominates), and the crossover is $M_{1/2} = N \cdot \alpha \cdot \beta$, the message size at which you get half the peak bandwidth. On an H100 cluster $\alpha$ is a few to tens of microseconds and $\beta$ is tens to hundreds of GB/s, so $M_{1/2}$ is in the MB range. That is why DDP and FSDP group gradients into buckets of tens of MB. "busbw" (bus bandwidth) here is $2(N-1)/N \cdot M / t$, the same normalization `nccl-tests` (NVIDIA's standard collective benchmark, see [collectives internals](../../network/collectives-internals.md#the-same-measurement-on-gpus-nccl-tests-and-torch-dist-bench)) uses ([algbw vs busbw](../../network/collectives-internals.md#algbw-vs-busbw)), so that a perfect ring reports the link bandwidth regardless of $N$. The fit is from one run on a busy laptop, so treat the exact values as an anecdote.
 
 ## Data parallelism (DDP)
 
-**DDP** (DistributedDataParallel) keeps a full replica of the model on each of the `d` ranks, gives each a different slice of the batch, and averages gradients with an all-reduce before the optimizer step. Because the loss is a mean over examples, the average of per-slice gradients equals the full-batch gradient, so every replica takes exactly the step that a single huge GPU would.
+**DDP** (DistributedDataParallel) keeps a full replica of the model on each of the $d$ ranks, gives each a different slice of the batch, and averages gradients with an all-reduce before the optimizer step. Because the loss is a mean over examples, the average of per-slice gradients equals the full-batch gradient, so every replica takes exactly the step that a single huge GPU would.
 
 ### Bucketing and overlap
 
@@ -321,9 +331,9 @@ Gradients become available in roughly reverse layer order during backward. PyTor
 - After the first iteration, rebuilds the buckets in the *observed* gradient-ready order (`_rebuild_buckets`). In torch 2.15 the default (no `find_unused_parameters`, no `static_graph`) is to put everything in one bucket for the first iteration and only build real buckets from the observed order; the demo below shows this.
 - With `gradient_as_bucket_view=True`, `param.grad` is a view into the bucket, which saves one gradient-sized copy.
 
-The point of bucketing is the `α` term. One all-reduce per parameter tensor pays `2(N-1)α` hundreds of times. One all-reduce of the whole model can't start until backward finishes, so nothing overlaps. A bucket of 25 MB is large enough to be bandwidth-bound and small enough to give many overlap opportunities. The exposed communication is the last bucket, plus any part of the total that doesn't fit under backward compute.
+The point of bucketing is the $\alpha$ term. One all-reduce per parameter tensor pays $2(N-1)\alpha$ hundreds of times. One all-reduce of the whole model can't start until backward finishes, so nothing overlaps. A bucket of 25 MB is large enough to be bandwidth-bound and small enough to give many overlap opportunities. The exposed communication is the last bucket, plus any part of the total that doesn't fit under backward compute.
 
-Gradient accumulation uses `no_sync()`: skip the all-reduce on the first `k-1` micro-batches. This costs nothing extra in memory, because the gradients exist anyway.
+Gradient accumulation uses `no_sync()`: skip the all-reduce on the first $k-1$ micro-batches. This costs nothing extra in memory, because the gradients exist anyway.
 
 All three behaviours, observed with a *comm hook* (a function DDP calls once per bucket instead of its built-in all-reduce; here it records the bucket and then does the same all-reduce-and-average):
 
@@ -392,29 +402,33 @@ The DDP gradient equals the single-process full-batch gradient to 5e-10 (float r
 
 ### Communication volume
 
-With `b_g` bytes per gradient element (2 for bf16 gradients, 4 for fp32 gradients as in classic AMP, automatic mixed precision via `torch.autocast`, with fp32 params; see [mixed precision internals](../arithmetic.md#mixed-precision-internals)), one all-reduce of all gradients per step sends:
+With $b_g$ bytes per gradient element (2 for bf16 gradients, 4 for fp32 gradients as in classic AMP, automatic mixed precision via `torch.autocast`, with fp32 params; see [mixed precision internals](../arithmetic.md#mixed-precision-internals)), one all-reduce of all gradients per step sends:
 
-```
-V_DDP = 2·(d-1)/d · b_g·Ψ  ≈  2·b_g·Ψ  bytes per rank per step
-```
+$$
+V_{\text{DDP}} = 2\cdot\frac{d-1}{d}\cdot b_g\Psi \approx 2\,b_g\Psi \quad \text{bytes per rank per step}
+$$
 
-This is independent of batch size and of `d`.
+This is independent of batch size and of $d$.
 
 ### When is DDP comm-bound?
 
-Let `T_g` be the tokens each GPU processes per optimizer step. Ignoring attention FLOPs, training compute is `6Ψ` FLOPs per token (2 forward, 4 backward). See [arithmetic](../arithmetic.md#where-6n-comes-from).
+Let $T_g$ be the tokens each GPU processes per optimizer step. Ignoring attention FLOPs, training compute is $6\Psi$ FLOPs per token (2 forward, 4 backward). See [arithmetic](../arithmetic.md#where-6n-comes-from).
 
-```
-t_compute  = 6·Ψ·T_g / F
-t_backward = 4·Ψ·T_g / F        # the only window into which the all-reduce can overlap
-t_comm     = 2·b_g·Ψ / β
-```
+$$
+\begin{aligned}
+t_{\text{compute}} &= 6\Psi T_g / F \\
+t_{\text{backward}} &= 4\Psi T_g / F \\
+t_{\text{comm}} &= 2 b_g \Psi / \beta
+\end{aligned}
+$$
 
-Comm is fully hidden only if `t_comm ≤ t_backward`:
+$t_{\text{backward}}$ is the only window into which the all-reduce can overlap.
 
-```
-2·b_g·Ψ/β ≤ 4·Ψ·T_g/F    ⟹    T_g ≥ b_g·F / (2β)
-```
+Comm is fully hidden only if $t_{\text{comm}} \le t_{\text{backward}}$:
+
+$$
+\frac{2 b_g \Psi}{\beta} \le \frac{4\Psi T_g}{F} \quad\Longrightarrow\quad T_g \ge \frac{b_g F}{2\beta}
+$$
 
 **Ψ cancels.** Whether DDP is comm-bound depends only on tokens per GPU per step, achieved FLOP/s and bandwidth, not on model size. Bigger models need more memory, but they are not more comm-bound under DDP.
 
@@ -435,20 +449,20 @@ NVLink grad bytes 2: hide under backward if T_g >= b_g*F/(2*beta) = 879 tokens/G
 NVLink grad bytes 4: hide under backward if T_g >= b_g*F/(2*beta) = 1,758 tokens/GPU/step; break-even vs whole step b_g*F/(3*beta) = 1,172
 ```
 
-For bf16 gradients (`b_g = 2`), `F = 395.6 TFLOP/s` and `β = 50 GB/s`, the all-reduce hides under backward only above about 7,912 tokens per GPU per step, and breaks even against the whole step (no overlap) at about 5,275. With fp32 gradient reduction, double these. If the gradient all-reduce stays on NVLink (single node, 450 GB/s), the threshold drops to about 880 tokens. These thresholds assume perfect overlap and full achieved bandwidth. In practice, give yourself 2x headroom.
+For bf16 gradients ($b_g = 2$), $F = 395.6\ \text{TFLOP/s}$ and $\beta= 50\ \text{GB/s}$, the all-reduce hides under backward only above about 7,912 tokens per GPU per step, and breaks even against the whole step (no overlap) at about 5,275. With fp32 gradient reduction, double these. If the gradient all-reduce stays on NVLink (single node, 450 GB/s), the threshold drops to about 880 tokens. These thresholds assume perfect overlap and full achieved bandwidth. In practice, give yourself 2x headroom.
 
 ## ZeRO and FSDP
 
 ### Memory per GPU
 
-With Adam and mixed precision, each parameter needs 2 bytes (bf16 weights), 2 bytes (bf16 gradients) and `K = 12` bytes of optimizer state (fp32 master weights, fp32 momentum, fp32 variance), for 16 bytes in total. See [ZeRO](https://arxiv.org/abs/1910.02054) (Rajbhandari et al., arXiv 1910.02054). The observation behind ZeRO is that under DDP every rank stores and updates an identical copy of all of this. Sharding over `d` data-parallel ranks means each rank keeps, and updates, only `1/d` of it:
+With Adam and mixed precision, each parameter needs 2 bytes (bf16 weights), 2 bytes (bf16 gradients) and $K = 12$ bytes of optimizer state (fp32 master weights, fp32 momentum, fp32 variance), for 16 bytes in total. See [ZeRO](https://arxiv.org/abs/1910.02054) (Rajbhandari et al., arXiv 1910.02054). The observation behind ZeRO is that under DDP every rank stores and updates an identical copy of all of this. Sharding over $d$ data-parallel ranks means each rank keeps, and updates, only $1/d$ of it:
 
-| Stage | Sharded | Bytes / GPU | 70.55B params, `d=64` |
+| Stage | Sharded | Bytes / GPU | 70.55B params, $d=64$ |
 |---|---|---|---|
-| DDP | nothing | `16Ψ` | 1128.8 GB |
-| ZeRO-1 | optimizer states | `4Ψ + 12Ψ/d` | 295.4 GB |
-| ZeRO-2 | + gradients | `2Ψ + 14Ψ/d` | 156.5 GB |
-| ZeRO-3 / FSDP | + parameters | `16Ψ/d` | 17.6 GB |
+| DDP | nothing | $16\Psi$ | 1128.8 GB |
+| ZeRO-1 | optimizer states | $4\Psi+ 12\Psi/d$ | 295.4 GB |
+| ZeRO-2 | + gradients | $2\Psi+ 14\Psi/d$ | 156.5 GB |
+| ZeRO-3 / FSDP | + parameters | $16\Psi/d$ | 17.6 GB |
 
 ```python
 # zero_mem.py
@@ -488,11 +502,11 @@ The ZeRO stages and what each shards:
 
 These exclude activations, temporary unsharded buffers and fragmentation.
 
-FSDP2's usual setup (`MixedPrecisionPolicy(param_dtype=bf16, reduce_dtype=fp32)`) stores the *sharded* parameter in fp32 and uses it as the master copy. The sharded state is then `4 (fp32 param) + 4 (fp32 grad) + 8 (Adam m, v) = 16Ψ/d`, the same total with a different split. The bf16 copy exists only transiently, in the all-gathered (unsharded) buffer.
+FSDP2's usual setup ($MixedPrecisionPolicy(param_{\text{dtype}}=bf16, reduce_{\text{dtype}}=fp32)$) stores the *sharded* parameter in fp32 and uses it as the master copy. The sharded state is then $4\ (\text{fp32 param}) + 4\ (\text{fp32 grad}) + 8\ (\text{Adam } m, v) = 16\Psi/d$, the same total with a different split. The bf16 copy exists only transiently, in the all-gathered (unsharded) buffer.
 
 ### A sharded optimizer step, by hand
 
-The mechanism is short enough to write out. Each rank computes gradients for the full model on its slice of the batch, exactly as in DDP. Then, instead of an all-reduce, a reduce-scatter gives each rank the averaged gradient of only its `1/d` of the parameters; each rank runs AdamW on that slice only (so Adam's `m` and `v` exist only for that slice); and an all-gather puts the updated parameters back together. This is ZeRO-2 (ZeRO-1 differs only in keeping the full gradient buffer around):
+The mechanism is short enough to write out. Each rank computes gradients for the full model on its slice of the batch, exactly as in DDP. Then, instead of an all-reduce, a reduce-scatter gives each rank the averaged gradient of only its $1/d$ of the parameters; each rank runs AdamW on that slice only (so Adam's $m$ and $v$ exist only for that slice); and an all-gather puts the updated parameters back together. This is ZeRO-2 (ZeRO-1 differs only in keeping the full gradient buffer around):
 
 ```python
 # zero_step.py
@@ -559,28 +573,28 @@ Adam state on this rank: 1,051,136 B (unsharded would be 4,204,544 B, ratio 1/4)
 bytes sent per rank per step: 3,153,408 = 1.500 x (4 B x params); DDP all-reduce would be 2(N-1)/N = 1.500x
 ```
 
-After three steps the sharded model matches the single-process reference to 1e-5 (the gradients differ in the last bits because they were summed in a different order, and Adam's normalization amplifies those differences early in training). Each rank holds a quarter of the Adam state, and the bytes sent are exactly those of an all-reduce: `1.5 = 2(N-1)/N` times the gradient size at `N = 4`. Sharding the optimizer is free in communication.
+After three steps the sharded model matches the single-process reference to 1e-5 (the gradients differ in the last bits because they were summed in a different order, and Adam's normalization amplifies those differences early in training). Each rank holds a quarter of the Adam state, and the bytes sent are exactly those of an all-reduce: $1.5 = 2(N-1)/N$ times the gradient size at $N = 4$. Sharding the optimizer is free in communication.
 
 ### Communication volume: why ZeRO-3 is 1.5x DDP
 
-Count bf16 bytes per rank per step, with `b = 2`:
+Count bf16 bytes per rank per step, with $b = 2$:
 
-- **DDP**: all-reduce of gradients, `2bΨ`.
-- **ZeRO-1/2**: reduce-scatter the gradients (each rank needs only its gradient shard to update its optimizer shard), `bΨ`. Then all-gather the updated bf16 parameters, `bΨ`. Total `2bΨ`, the same as DDP. This is just the `AR = RS + AG` identity with the optimizer step inserted in the middle, as measured above.
+- **DDP**: all-reduce of gradients, $2b\Psi$.
+- **ZeRO-1/2**: reduce-scatter the gradients (each rank needs only its gradient shard to update its optimizer shard), $b\Psi$. Then all-gather the updated bf16 parameters, $b\Psi$. Total $2b\Psi$, the same as DDP. This is just the $\text{AR} = \text{RS} + \text{AG}$ identity with the optimizer step inserted in the middle, as measured above.
 - **ZeRO-3**: parameters are not resident, so:
-  - forward: all-gather each layer's params before use, `bΨ`
-  - backward: all-gather them again, because they were freed after forward, `bΨ`
-  - backward: reduce-scatter gradients, `bΨ`
+  - forward: all-gather each layer's params before use, $b\Psi$
+  - backward: all-gather them again, because they were freed after forward, $b\Psi$
+  - backward: reduce-scatter gradients, $b\Psi$
   - no final all-gather, because each rank updates only its own shard and the next forward will gather
-  - total `3bΨ = 1.5 × V_DDP`
+  - total $3b\Psi = 1.5 \times V_{\text{DDP}}$
 
-Gradient accumulation changes this. ZeRO-3 with `reshard_after_forward=True` repeats the two all-gathers for each micro-batch. If it also reduce-scatters every micro-batch, as it does by default, the cost becomes `3bΨ·k` for `k` micro-batches. With FSDP2 you can trade memory for volume: `reshard_after_forward=False` keeps unsharded params from forward to backward (which is ZeRO-2 behaviour, `2bΨ`), and `model.set_requires_gradient_sync(False)` on all but the last micro-batch accumulates unsharded gradients locally. The [survey's discussion of gradient accumulation steps (GAS)](README.md#inter-node-speed-requirements-to-use-zero) covers the DeepSpeed side.
+Gradient accumulation changes this. ZeRO-3 with `reshard_after_forward=True` repeats the two all-gathers for each micro-batch. If it also reduce-scatters every micro-batch, as it does by default, the cost becomes $3b\Psi\cdot k$ for $k$ micro-batches. With FSDP2 you can trade memory for volume: `reshard_after_forward=False` keeps unsharded params from forward to backward (which is ZeRO-2 behaviour, $2b\Psi$), and `model.set_requires_gradient_sync(False)` on all but the last micro-batch accumulates unsharded gradients locally. The [survey's discussion of gradient accumulation steps (GAS)](README.md#inter-node-speed-requirements-to-use-zero) covers the DeepSpeed side.
 
-The comm-bound condition is the same derivation as for DDP, with `3bΨ` in place of `2bΨ`. Forward all-gathers can overlap with forward compute, so the window is the whole step:
+The comm-bound condition is the same derivation as for DDP, with $3b\Psi$ in place of $2b\Psi$. Forward all-gathers can overlap with forward compute, so the window is the whole step:
 
-```
-3·b·Ψ/β ≤ 6·Ψ·T_g/F   ⟹   T_g ≥ b·F/(2β) = F/β ≈ 7,912 tokens/GPU   (bf16, IB)
-```
+$$
+\frac{3 b \Psi}{\beta} \le \frac{6\Psi T_g}{F} \quad\Longrightarrow\quad T_g \ge \frac{b F}{2\beta} = \frac{F}{\beta} \approx 7{,}912\ \text{tokens/GPU} \quad (\text{bf16, IB})
+$$
 
 ### FSDP2 in practice
 
@@ -644,11 +658,11 @@ Rank 0 holds 131,392 of 525,568 parameters: a quarter of every weight's rows, pl
 
 ### Prefetching
 
-FSDP overlaps by running layer `i+1`'s all-gather on a separate stream while layer `i` computes:
+FSDP overlaps by running layer $i+1$'s all-gather on a separate stream while layer $i$ computes:
 
 - **Forward prefetch**: issue AG(i+1) before compute(i). FSDP2 does this implicitly, one layer ahead. `module.set_modules_to_forward_prefetch([...])` prefetches more (used in the HSDP demo below).
 - **Backward prefetch**: issue AG(i-1) before RS(i), so the next layer's parameters arrive while the current layer's gradients are being reduced (FSDP1 `BackwardPrefetch.BACKWARD_PRE`; FSDP2 has `set_modules_to_backward_prefetch`).
-- **Memory cost**: about 2 unsharded layers of bf16 params, plus 1 unsharded layer of gradients during backward. For a 70B Llama layer (855.7M params) that is `2·2·855.7e6 ≈ 3.4 GB` plus about 1.7 GB, which is small next to activations. Deeper prefetch buys more slack for late all-gathers at one layer of memory per step of depth:
+- **Memory cost**: about 2 unsharded layers of bf16 params, plus 1 unsharded layer of gradients during backward. For a 70B Llama layer (855.7M params) that is $2 \cdot 2 \cdot 855.7 \times 10^{6} \approx 3.4\ \text{GB}$ plus about 1.7 GB, which is small next to activations. Deeper prefetch buys more slack for late all-gathers at one layer of memory per step of depth:
 
 ```python
 # prefetch_mem.py
@@ -672,7 +686,7 @@ Prefetch depth is limited by memory. Overlap is limited by the CPU: if the Pytho
 
 | | FSDP1 (`FullyShardedDataParallel`) | FSDP2 (`fully_shard`) |
 |---|---|---|
-| Unit of sharding | one `FlatParameter` per wrapped module: all params flattened and concatenated, then split into `d` equal 1-D chunks | each parameter is a `DTensor` sharded on dim 0 (`Shard(0)`) |
+| Unit of sharding | one `FlatParameter` per wrapped module: all params flattened and concatenated, then split into $d$ equal 1-D chunks | each parameter is a `DTensor` sharded on dim 0 (`Shard(0)`) |
 | Consequences | a parameter may straddle ranks; per-param attributes (dtype, `requires_grad`, weight decay) need `use_orig_params=True` and are awkward; padding at the end | per-param semantics preserved; frozen params, per-param optimizers, fp8 all-gather are natural |
 | Composition with TP | params are already DTensors after TP, so flat-param over DTensor is clumsy | 2-D `DTensor` with placements `(Shard(0) on dp, Shard(k) on tp)` on a 2-D mesh |
 | Memory management | `recordStream`-based (`Tensor.record_stream` tells the caching allocator that another CUDA stream still uses a tensor, so the allocator delays reusing its memory until that stream's queued work is done, at a time that depends on GPU progress), which can make memory release non-deterministic | copy-in/copy-out into a per-group flat buffer, deterministic frees |
@@ -703,19 +717,21 @@ norm.weight  FSDP1 ranks 1..1  |  FSDP2 every rank holds rows 512 of 4096
 mlp.weight   FSDP1 ranks 1..7  |  FSDP2 every rank holds rows 1792 of 14336
 ```
 
-Under FSDP1, rank 1 holds the end of `q.weight`, all of `q.bias` and `norm.weight`, and the start of `mlp.weight`, so "apply no weight decay to norms" or "freeze `q`" has to be expressed in terms of slices of one flat buffer. Under FSDP2 every rank holds `1/8` of the rows of each parameter, as a separate tensor.
+Under FSDP1, rank 1 holds the end of `q.weight`, all of `q.bias` and `norm.weight`, and the start of `mlp.weight`, so "apply no weight decay to norms" or "freeze `q`" has to be expressed in terms of slices of one flat buffer. Under FSDP2 every rank holds $1/8$ of the rows of each parameter, as a separate tensor.
 
 Communication volume is identical. The differences are in memory determinism, composability and correctness of per-parameter features. Reference: [PyTorch FSDP](https://arxiv.org/abs/2304.11277) (Zhao et al., arXiv 2304.11277) for FSDP1, [TorchTitan](https://arxiv.org/abs/2410.06511) (Liang et al., arXiv 2410.06511) for FSDP2 in a 4D stack.
 
 ### HSDP (hybrid sharding)
 
-Shard within a group of `s` ranks and replicate across `r = d/s` groups. Pick `s` = one node so that the AG/RS traffic stays on NVLink:
+Shard within a group of $s$ ranks and replicate across $r = d/s$ groups. Pick $s$ = one node so that the AG/RS traffic stays on NVLink:
 
-```
-memory           = 16Ψ/s
-intra-group comm = 3·b·Ψ·(s-1)/s          over β_nvl  (AG, AG, RS)
-inter-group comm = 2·b·(Ψ/s)·(r-1)/r      over β_ib   (all-reduce of the gradient shard)
-```
+$$
+\begin{aligned}
+\text{memory} &= 16\Psi/s \\
+\text{intra-group comm} &= 3 b \Psi\cdot\frac{s-1}{s} \quad \text{over } \beta_{\text{nvl}}\ (\text{AG, AG, RS}) \\
+\text{inter-group comm} &= 2 b\cdot\frac{\Psi}{s}\cdot\frac{r-1}{r} \quad \text{over } \beta_{\text{ib}}\ (\text{all-reduce of the gradient shard})
+\end{aligned}
+$$
 
 ```python
 # hsdp_cost.py
@@ -736,7 +752,7 @@ flat ZeRO-3: 423 GB over IB | HSDP s=8: 370 GB NVLink + 35.0 GB IB (12.1x fewer 
 largest model with 16*psi/8 <= 40 GB: 20B params
 ```
 
-Inter-node bytes drop by `1.5·s` relative to flat ZeRO-3, but memory is only divided by `s`. For a 70B model with `s = 8`, `16·70.55e9/8 = 141 GB`, which doesn't fit. HSDP (shard = 8) is a tool for models where `16Ψ/8 = 2Ψ` bytes fits, roughly `Ψ ≲ 20B` on 80 GB if you leave about half of HBM for activations. For larger models, shrink `Ψ` per rank with TP/PP first.
+Inter-node bytes drop by $1.5 \cdot s$ relative to flat ZeRO-3, but memory is only divided by $s$. For a 70B model with $s = 8$, $16 \cdot 70.55 \times 10^{9}/8 = 141\ \text{GB}$, which doesn't fit. HSDP (shard = 8) is a tool for models where $16\Psi/8 = 2\Psi$ bytes fits, roughly $\Psi\lesssim 20\text{B}$ on 80 GB if you leave about half of HBM for activations. For larger models, shrink $\Psi$ per rank with TP/PP first.
 
 In FSDP2, HSDP is just `fully_shard` on a 2-D mesh: the first dimension replicates, the second shards. Four ranks as two "nodes" of two:
 
@@ -795,10 +811,10 @@ Data parallelism and ZeRO split the *batch*; every rank still runs every matmul 
 
 ### Column and row splits
 
-For a 2-layer MLP `Z = act(X A) B` with `X: (BT, h)`, `A: (h, 4h)`, `B: (4h, h)`:
+For a 2-layer MLP $Z = \operatorname{act}(XA)\,B$ with $X: (BT, h)$, $A: (h, 4h)$, $B: (4h, h)$:
 
-- **Column-parallel A**: `A = [A_1 … A_t]` split along the output dim. Rank `i` computes `Y_i = act(X A_i)`, shape `(BT, 4h/t)`. The activation is elementwise, so no communication is needed (splitting along rows would have required a sum *before* the nonlinearity).
-- **Row-parallel B**: `B = [B_1; …; B_t]` split along the input dim. Rank `i` computes `Z_i = Y_i B_i`, shape `(BT, h)`, a *partial sum*. `Z = Σ_i Z_i` requires one all-reduce.
+- **Column-parallel A**: $A = [A_1 \dots A_t]$ split along the output dim. Rank $i$ computes $Y_i = \operatorname{act}(XA_i)$, shape $(BT, 4h/t)$. The activation is elementwise, so no communication is needed (splitting along rows would have required a sum *before* the nonlinearity).
+- **Row-parallel B**: $B = [B_1; \dots ; B_t]$ split along the input dim. Rank $i$ computes $Z_i = Y_i B_i$, shape $(BT, h)$, a *partial sum*. $Z = \sum_i Z_i$ requires one all-reduce.
 
 Why the first matmul must be split by columns, in four lines:
 
@@ -819,28 +835,26 @@ $ python why_columns.py
 column split error 0.0e+00 | row split error 5.2e+00
 ```
 
-`gelu(a + b) ≠ gelu(a) + gelu(b)`, so a row split of `A` would force an all-reduce before the activation. A column split hands each rank complete pre-activations for its columns, and the elementwise GELU commutes with the split.
+$\operatorname{gelu}(a + b) \ne \operatorname{gelu}(a) + \operatorname{gelu}(b)$, so a row split of $A$ would force an all-reduce before the activation. A column split hands each rank complete pre-activations for its columns, and the elementwise GELU commutes with the split.
 
-Attention works the same way: `W_Q, W_K, W_V` are column-parallel *by heads* (rank `i` owns `n_heads/t` query heads and `n_kv/t` KV heads), attention is computed locally per head, and `W_O` is row-parallel. This requires `n_kv % t == 0`, or KV-head replication when `t > n_kv`.
+Attention works the same way: $W_Q, W_K, W_V$ are column-parallel *by heads* (rank $i$ owns $n_{\text{heads}}/t$ query heads and $n_{\text{kv}}/t$ KV heads), attention is computed locally per head, and $W_O$ is row-parallel. This requires $n_{\text{kv}} \bmod t = 0$, or KV-head replication when $t > n_{\text{kv}}$.
 
 ### The f / g conjugate operators
 
 Megatron inserts two autograd functions per block:
 
-```
-f:  forward = identity        backward = all-reduce(dX)     # at block input, before the column-parallel GEMM
-g:  forward = all-reduce(Z)   backward = identity           # at block output, after the row-parallel GEMM
-```
+- $f$: forward = identity, backward = all-reduce($dX$). It sits at the block input, before the column-parallel GEMM.
+- $g$: forward = all-reduce($Z$), backward = identity. It sits at the block output, after the row-parallel GEMM.
 
-Where `f` and `f̄` sit in a Megatron TP layer (Korthikanti et al.; the figure's `f̄` is what this chapter calls `g`):
+Where $f$ and $\bar{f}$ sit in a Megatron TP layer (Korthikanti et al.; the figure's $\bar{f}$ is what this chapter calls $g$):
 
 ![transformer layer with tensor parallelism](images/megatron-tp-f-g-operators.jpg)
 
 ([source](https://arxiv.org/abs/2205.05198))
 
-Why `f`'s backward is an all-reduce: `X` feeds every rank's `A_i`, so `dL/dX = Σ_i dY_i A_i^T`, a sum of partials across ranks. Why `g`'s backward is the identity: `Z` is replicated, and each rank already holds the full `dZ`.
+Why $f$'s backward is an all-reduce: $X$ feeds every rank's $A_i$, so $dL/dX = \sum_i dY_i A_i^{\top}$, a sum of partials across ranks. Why $g$'s backward is the identity: $Z$ is replicated, and each rank already holds the full $dZ$.
 
-A toy TP MLP on 4 ranks, with `f` and `g` written as `torch.autograd.Function`s, checked against the unsharded MLP for both the output and every gradient:
+A toy TP MLP on 4 ranks, with $f$ and $g$ written as `torch.autograd.Function`s, checked against the unsharded MLP for both the output and every gradient:
 
 ```python
 # tp_mlp.py
@@ -911,17 +925,17 @@ all-reduces: forward 1 (g), backward 1 (f)
 weights per rank: 32,768 of 131,072
 ```
 
-Output, input gradient and each rank's weight-gradient shard match the unsharded computation to float32 rounding. Exactly one all-reduce ran in forward (`g`) and one in backward (`f`), and each rank stored a quarter of the weights.
+Output, input gradient and each rank's weight-gradient shard match the unsharded computation to float32 rounding. Exactly one all-reduce ran in forward ($g$) and one in backward ($f$), and each rank stored a quarter of the weights.
 
 ### Exactly which all-reduces happen per layer
 
-A transformer layer has two blocks (attention, MLP), and each block has one `f` and one `g`:
+A transformer layer has two blocks (attention, MLP), and each block has one $f$ and one $g$:
 
 | Phase | All-reduces | Where |
 |---|---|---|
-| forward | 2 | `g` after attention `W_O`, `g` after MLP `B` |
-| backward | 2 | `f` before attention QKV, `f` before MLP `A` |
-| forward recompute (full activation checkpointing: activations are discarded after forward and recomputed in backward; see [what recomputation adds](../arithmetic.md#what-recomputation-adds)) | +2 | the forward `g`s run again |
+| forward | 2 | $g$ after attention $W_O$, $g$ after MLP $B$ |
+| backward | 2 | $f$ before attention QKV, $f$ before MLP $A$ |
+| forward recompute (full activation checkpointing: activations are discarded after forward and recomputed in backward; see [what recomputation adds](../arithmetic.md#what-recomputation-adds)) | +2 | the forward $g$s run again |
 
 You don't have to take this on trust. PyTorch's built-in TP (`ColwiseParallel` / `RowwiseParallel` applied with `parallelize_module`) can be inspected with `CommDebugMode`, which counts every collective DTensor issues. Here on a two-block layer, with and without sequence parallelism (next section):
 
@@ -975,30 +989,34 @@ TP+SP  forward {'all_gather_into_tensor': 2, 'reduce_scatter_tensor': 2}  backwa
 
 Two all-reduces forward and two backward, as in the table. With SP, each all-reduce becomes an all-gather plus a reduce-scatter.
 
-Each all-reduce is over an activation of `B·T·h` elements, `M = 2BTh` bytes in bf16. Per layer per rank:
+Each all-reduce is over an activation of $B \cdot T \cdot h$ elements, $M = 2BTh$ bytes in bf16. Per layer per rank:
 
-```
-V_TP(layer) = 4 · 2(t-1)/t · 2BTh = 16·B·T·h·(t-1)/t  bytes     (no recompute)
-            = 24·B·T·h·(t-1)/t                                   (full recompute)
-```
+$$
+\begin{aligned}
+V_{\text{TP}}(\text{layer}) &= 4\cdot 2\,\frac{t-1}{t}\cdot 2BTh = 16\,BTh\,\frac{t-1}{t}\ \text{bytes} \qquad \text{(no recompute)} \\
+&= 24\,BTh\,\frac{t-1}{t}\ \text{bytes} \qquad \text{(full recompute)}
+\end{aligned}
+$$
 
 ### Why TP stays inside NVLink
 
-TP communication is on the critical path. `g`'s output is the next block's input, so unless you use async-TP / collective-matmul decomposition ([survey](README.md#async-tp), [collectives internals](../../network/collectives-internals.md#async-tp--collective-matmul)), the GPU waits for it. Compare comm time to compute time per layer. For a standard layer with `12h²` params, the per-rank FLOPs are `6·12h²·BT/t` (forward + backward), so:
+TP communication is on the critical path. $g$'s output is the next block's input, so unless you use async-TP / collective-matmul decomposition ([survey](README.md#async-tp), [collectives internals](../../network/collectives-internals.md#async-tp--collective-matmul)), the GPU waits for it. Compare comm time to compute time per layer. For a standard layer with $12h^2$ params, the per-rank FLOPs are $6 \cdot 12h^2 \cdot BT/t$ (forward + backward), so:
 
-```
-t_comm / t_compute = [16·BTh·(t-1)/t / β] / [72·h²·BT/(t·F)]
-                   = 2·(t-1)·F / (9·h·β)
-```
+$$
+\begin{aligned}
+\frac{t_{\text{comm}}}{t_{\text{compute}}} &= \frac{16\,BTh\,(t-1)/t \,/\, \beta}{72\,h^2\,BT/(tF)} \\
+&= \frac{2(t-1)F}{9h\beta}
+\end{aligned}
+$$
 
-B and T cancel. The ratio depends only on `t`, `h` and the ratio of FLOP/s to bandwidth. For `t = 8`, `h = 8192`, `F = 395.6 TFLOP/s`:
+B and T cancel. The ratio depends only on $t$, $h$ and the ratio of FLOP/s to bandwidth. For $t = 8$, $h = 8192$, $F = 395.6\ \text{TFLOP/s}$:
 
-| Link | `β` | ratio |
+| Link | $\beta$ | ratio |
 |---|---|---|
-| NVLink (per direction) | 450 GB/s | `2·7·395.6e12/(9·8192·450e9)` = **0.167** |
+| NVLink (per direction) | 450 GB/s | $2 \cdot 7 \cdot 395.6 \times 10^{12}/(9 \cdot 8192 \cdot 450 \times 10^{9})$ = **0.167** |
 | IB per GPU | 50 GB/s | **1.50** |
 
-The exact computation for Llama-70B layer shapes (855.7M params/layer, GQA, causal attention FLOPs included) at `B=1, T=8192`:
+The exact computation for Llama-70B layer shapes (855.7M params/layer, GQA, causal attention FLOPs included) at $B=1, T=8192$:
 
 ```python
 # tp_cost.py
@@ -1030,7 +1048,7 @@ one AR: 234.9 MB -> 0.52 ms NVLink, 4.70 ms IB
 exposed fraction: NVLink 15%, IB 131%
 ```
 
-So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is the whole argument. It holds for any `h` you are likely to train: you would need `h ≳ 74k` to bring cross-IB TP down to the NVLink ratio. On NVL72-class systems (GB200 NVL72: a rack of 72 Blackwell GPUs on one NVLink switch fabric), the NVLink domain is 72 GPUs, and the same formula says TP can go wider. You still pay the `(t-1)/t` factor and shrinking GEMMs (`h/t` gets small, efficiency drops). That second effect is not in this model, so measure it.
+So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is the whole argument. It holds for any $h$ you are likely to train: you would need $h \gtrsim 74\text{k}$ to bring cross-IB TP down to the NVLink ratio. On NVL72-class systems (GB200 NVL72: a rack of 72 Blackwell GPUs on one NVLink switch fabric), the NVLink domain is 72 GPUs, and the same formula says TP can go wider. You still pay the $(t-1)/t$ factor and shrinking GEMMs ($h/t$ gets small, efficiency drops). That second effect is not in this model, so measure it.
 
 ## Sequence parallelism and context parallelism
 
@@ -1038,20 +1056,16 @@ So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is t
 
 Reference: [Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/abs/2205.05198) (Korthikanti et al., arXiv 2205.05198).
 
-With SP, `g` (all-gather) and `ḡ` (reduce-scatter) replace the all-reduces (these are the figure's names, from the paper: its `g` is the new `f` below and its `ḡ` the new `g`), and the norm/dropout regions are sharded along the sequence:
+With SP, $g$ (all-gather) and $\bar{g}$ (reduce-scatter) replace the all-reduces (these are the figure's names, from the paper: its $g$ is the new $f$ below and its $\bar{g}$ the new $g$), and the norm/dropout regions are sharded along the sequence:
 
 ![transformer layer with tensor and sequence parallelism](images/megatron-tp-sp-g-operators.jpg)
 
 ([source](https://arxiv.org/abs/2205.05198))
 
-Under plain TP, LayerNorm, dropout and the residual stream are *replicated* on all `t` ranks, which is wasted memory. SP shards those regions along the sequence dimension and rewrites the conjugate operators using `AR = RS + AG`:
+Under plain TP, LayerNorm, dropout and the residual stream are *replicated* on all $t$ ranks, which is wasted memory. SP shards those regions along the sequence dimension and rewrites the conjugate operators using $\text{AR} = \text{RS} + \text{AG}$:
 
-```
-g  →  forward: reduce-scatter along T  (B, T, h) partials → (B, T/t, h)
-      backward: all-gather
-f  →  forward: all-gather along T      (B, T/t, h) → (B, T, h)
-      backward: reduce-scatter
-```
+- $g$ becomes: forward = reduce-scatter along $T$, partials $(B, T, h) \to (B, T/t, h)$; backward = all-gather.
+- $f$ becomes: forward = all-gather along $T$, $(B, T/t, h) \to (B, T, h)$; backward = reduce-scatter.
 
 The toy MLP again, now with a LayerNorm in front, the input sharded by tokens, and the two new operators. It matches the unsharded block, and the forward bytes equal exactly one all-reduce:
 
@@ -1120,17 +1134,19 @@ max abs diff vs unsharded: {'Z': '1.3e-06', 'dX': '4.1e-06', 'dA': '9.5e-06'}
 forward bytes sent: AG 24,576 + RS 24,576 = 49,152; one all-reduce of M would be 2(t-1)/t*M = 49,152
 ```
 
-Forward volume per layer: 2 AG + 2 RS at `(t-1)/t · 2BTh` each, which equals 2 ARs. Per-layer volume is unchanged. One implementation detail: Megatron-LM keeps only the *sharded* input of a column-parallel linear and re-all-gathers it in backward to compute `dW`, overlapped with the `dX` GEMM. That is one extra AG per block in backward. I believe this is the current behaviour of `LinearWithGradAccumulationAndAsyncCommunication`, but verify it against your version. PyTorch's DTensor SP does not do this: `tp_count.py` above shows exactly 2 all-gathers in backward (the conjugates of the 2 forward reduce-scatters) and no extra ones. My inference is that DTensor saves the gathered `(B, T, h)` input for `dW`, which costs `t` times more activation memory for those tensors than the Megatron scheme. I have not measured the memory directly.
+Forward volume per layer: 2 AG + 2 RS at $(t-1)/t \cdot 2BTh$ each, which equals 2 ARs. Per-layer volume is unchanged. One implementation detail: Megatron-LM keeps only the *sharded* input of a column-parallel linear and re-all-gathers it in backward to compute $dW$, overlapped with the $dX$ GEMM. That is one extra AG per block in backward. I believe this is the current behaviour of `LinearWithGradAccumulationAndAsyncCommunication`, but verify it against your version. PyTorch's DTensor SP does not do this: `tp_count.py` above shows exactly 2 all-gathers in backward (the conjugates of the 2 forward reduce-scatters) and no extra ones. My inference is that DTensor saves the gathered $(B, T, h)$ input for $dW$, which costs $t$ times more activation memory for those tensors than the Megatron scheme. I have not measured the memory directly.
 
-Activation memory per layer (bytes, fp16/bf16 with dropout masks, standard GPT block with a `4h` MLP, `a` = heads), from the paper:
+Activation memory per layer (bytes, fp16/bf16 with dropout masks, standard GPT block with a $4h$ MLP, $a$ = heads), from the paper:
 
-```
-no parallelism:  s·b·h·(34 + 5·a·s/h)
-TP:              s·b·h·(10 + 24/t + 5·a·s/(h·t))
-TP + SP:         s·b·h·(34/t + 5·a·s/(h·t))
-```
+$$
+\begin{aligned}
+\text{no parallelism:} &\quad s\cdot b\cdot h\cdot\left(34 + \frac{5as}{h}\right) \\
+\text{TP:} &\quad s\cdot b\cdot h\cdot\left(10 + \frac{24}{t} + \frac{5as}{ht}\right) \\
+\text{TP + SP:} &\quad s\cdot b\cdot h\cdot\left(\frac{34}{t} + \frac{5as}{ht}\right)
+\end{aligned}
+$$
 
-The `5as/h` term is the materialized `s×s` attention score/softmax/dropout. FlashAttention doesn't store it ([execution model](../../compute/accelerator/execution-model.md#flashattention)), so drop the term. At `s = 8192`, `b = 1`, `h = 8192`, `t = 8`:
+The $5as/h$ term is the materialized $s \times s$ attention score/softmax/dropout. FlashAttention doesn't store it ([execution model](../../compute/accelerator/execution-model.md#flashattention)), so drop the term. At $s = 8192$, $b = 1$, $h = 8192$, $t = 8$:
 
 ```python
 # sp_mem.py
@@ -1152,7 +1168,7 @@ The non-shardable "10" term disappears. For SwiGLU/GQA models the constants diff
 
 ### Context parallelism (CP)
 
-CP shards *all* activations along `T`, including inside attention. Every layer except attention is token-local, so only attention communicates. Q is local. Each query block needs all keys and values, subject to the causal mask.
+CP shards *all* activations along $T$, including inside attention. Every layer except attention is token-local, so only attention communicates. Q is local. Each query block needs all keys and values, subject to the causal mask.
 
 Ring attention passes KV blocks around the ring while each host computes blockwise attention on its query block:
 
@@ -1166,14 +1182,15 @@ Ulysses instead uses two all-to-alls to swap the sharded dimension from sequence
 
 ([source](https://arxiv.org/abs/2309.14509))
 
-**Ring attention** ([Ring Attention with Blockwise Transformers](https://arxiv.org/abs/2310.01889), Liu et al., arXiv 2310.01889). Rank `i` holds `Q_i, K_i, V_i` for `T/c` tokens. In `c-1` steps it passes its current KV block to rank `i+1` (a point-to-point send/recv, P2P for short, not a collective), receives one from `i-1`, and accumulates attention with online softmax:
+**Ring attention** ([Ring Attention with Blockwise Transformers](https://arxiv.org/abs/2310.01889), Liu et al., arXiv 2310.01889). Rank $i$ holds $Q_i, K_i, V_i$ for $T/c$ tokens. In $c-1$ steps it passes its current KV block to rank $i+1$ (a point-to-point send/recv, P2P for short, not a collective), receives one from $i-1$, and accumulates attention with online softmax:
 
-```
-forward  volume/rank = (c-1) · B · (T/c) · 2·d_kv · b    ≈  2·B·T·d_kv·b       (d_kv = n_kv·d_head)
-backward volume/rank ≈ 2× forward  (KV circulates again, plus dK, dV circulate back)
-```
+$$
+\text{forward volume/rank} = (c-1)\cdot B\cdot\frac{T}{c}\cdot 2d_{\text{kv}}\cdot b \approx 2BT\,d_{\text{kv}}\,b, \qquad d_{\text{kv}} = n_{\text{kv}}\,d_{\text{head}}
+$$
 
-*Online softmax* is what makes the blockwise computation exact: keep a running row-max `m`, a running normalizer `l` and a running unnormalized output, and when a new block raises the max, rescale what you have accumulated by `exp(m_old - m_new)`. This is the same trick FlashAttention uses inside one GPU, derived in [execution model: online softmax](../../compute/accelerator/execution-model.md#online-softmax). The simulation below runs the `c` ranks in one process (the KV "send" is just indexing a different block), checks the result against PyTorch's causal SDPA (`F.scaled_dot_product_attention` with `is_causal=True`), and counts how much work each rank does under the two token layouts discussed under causal load balancing below:
+Backward volume per rank is about $2\times$ forward (KV circulates again, plus $dK$, $dV$ circulate back).
+
+*Online softmax* is what makes the blockwise computation exact: keep a running row-max $m$, a running normalizer $l$ and a running unnormalized output, and when a new block raises the max, rescale what you have accumulated by $\exp(m_{\text{old}} - m_{\text{new}})$. This is the same trick FlashAttention uses inside one GPU, derived in [execution model: online softmax](../../compute/accelerator/execution-model.md#online-softmax). The simulation below runs the $c$ ranks in one process (the KV "send" is just indexing a different block), checks the result against PyTorch's causal SDPA (`F.scaled_dot_product_attention` with `is_causal=True`), and counts how much work each rank does under the two token layouts discussed under causal load balancing below:
 
 ```python
 # ring_attention.py
@@ -1228,20 +1245,21 @@ zigzag    : max |ring - SDPA causal| = 4.8e-07; score elements per rank [32832, 
 formula, contiguous: 2 - 1/c = 1.750
 ```
 
-Overlap condition: step `j` computes a `(T/c)×(T/c)` block, `4·(T/c)²·h` FLOPs, while sending `2·(T/c)·d_kv·b` bytes:
+Overlap condition: step $j$ computes a $(T/c) \times (T/c)$ block, $4 \cdot (T/c)^2 \cdot h$ FLOPs, while sending $2 \cdot (T/c) \cdot d_{\text{kv}} \cdot b$ bytes:
 
-```
-4·(T/c)²·h / F  ≥  4·(T/c)·d_kv / β     (b = 2)
-⟹  T/c ≥ F·d_kv / (h·β)
-```
+$$
+\frac{4\,(T/c)^2\,h}{F} \ge \frac{4\,(T/c)\,d_{\text{kv}}}{\beta} \quad (b = 2) \quad\Longrightarrow\quad \frac{T}{c} \ge \frac{F\,d_{\text{kv}}}{h\beta}
+$$
 
-For the 70B (`h = 8192`, `d_kv = 1024`) over IB: `T/c ≥ 395.6e12·1024/(8192·50e9) ≈ 989` tokens per rank. With MHA (`d_kv = h`) it is `F/β ≈ 7,912`. With GQA, ring CP can cross nodes at modest chunk lengths, and it has no head-count constraint.
+For the 70B ($h = 8192$, $d_{\text{kv}} = 1024$) over IB: $T/c \ge 395.6 \times 10^{12} \cdot 1024/(8192 \cdot 50 \times 10^{9}) \approx 989$ tokens per rank. With MHA ($d_{\text{kv}} = h$) it is $F/\beta\approx 7{,}912$. With GQA, ring CP can cross nodes at modest chunk lengths, and it has no head-count constraint.
 
-**Ulysses** ([DeepSpeed-Ulysses](https://arxiv.org/abs/2309.14509), Jacobs et al., arXiv 2309.14509). Before attention, an all-to-all converts sequence-sharding into head-sharding: `(B, T/c, n_heads, d)` → `(B, T, n_heads/c, d)`. Full-sequence attention then runs locally on `n_heads/c` heads, and an all-to-all on O converts back. Per rank, forward:
+**Ulysses** ([DeepSpeed-Ulysses](https://arxiv.org/abs/2309.14509), Jacobs et al., arXiv 2309.14509). Before attention, an all-to-all converts sequence-sharding into head-sharding: $(B, T/c, n_{\text{heads}}, d)$ → $(B, T, n_{\text{heads}}/c, d)$. Full-sequence attention then runs locally on $n_{\text{heads}}/c$ heads, and an all-to-all on O converts back. Per rank, forward:
 
-```
-volume = (c-1)/c · B·(T/c) · (h_q + 2·d_kv + h_o) · b       # Q, K, V in; O out; h_q = h_o = h
-```
+$$
+\text{volume} = \frac{c-1}{c}\cdot B\cdot\frac{T}{c}\cdot(h_q + 2d_{\text{kv}} + h_o)\cdot b
+$$
+
+with Q, K, V going in and O coming out, and $h_q = h_o = h$.
 
 Both all-to-alls, on 4 real processes:
 
@@ -1288,13 +1306,13 @@ local shapes: in (1, 64, 8, 32) -> attention on (1, 256, 2, 32) -> out (1, 64, 8
 max |Ulysses - full causal attention| over all ranks = 0.0e+00
 ```
 
-The difference is exactly zero because each head's attention is computed by the same kernel on the same numbers; only where it runs changed. The reshapes are the whole trick: before the all-to-all, rank `r` cuts its `(T/c)` tokens by head group and sends head group `j` to rank `j`; after it, rank `r` holds all `T` tokens for head group `r`.
+The difference is exactly zero because each head's attention is computed by the same kernel on the same numbers; only where it runs changed. The reshapes are the whole trick: before the all-to-all, rank $r$ cuts its $(T/c)$ tokens by head group and sends head group $j$ to rank $j$; after it, rank $r$ holds all $T$ tokens for head group $r$.
 
-Comparison per layer forward, GQA with `h/d_kv = 8`:
+Comparison per layer forward, GQA with $h/d_{\text{kv}} = 8$:
 
-```
-Ulysses / Ring = (2h + 2d_kv) / (c · 2d_kv) = (h + d_kv)/(c·d_kv) = 9/c
-```
+$$
+\frac{\text{Ulysses}}{\text{Ring}} = \frac{2h + 2d_{\text{kv}}}{c\cdot 2d_{\text{kv}}} = \frac{h + d_{\text{kv}}}{c\,d_{\text{kv}}} = \frac{9}{c}
+$$
 
 ```python
 # cp_cost.py
@@ -1319,24 +1337,24 @@ causal contiguous split, c=4: busiest rank does 1.750x the mean
 causal contiguous split, c=8: busiest rank does 1.875x the mean
 ```
 
-At `T = 128k`, `c = 8`: ring sends 469.8 MB per rank and Ulysses 528.5 MB (ratio 1.125). With strong GQA, ring sends *fewer* bytes until `c > 9`. With MHA (`d_kv = h`) the ratio is `2/c`, and Ulysses wins for any `c > 2`. This is the regime where the "constant comm volume" claim in the Ulysses paper is most favourable. Other trade-offs:
+At $T = 128\text{k}$, $c = 8$: ring sends 469.8 MB per rank and Ulysses 528.5 MB (ratio 1.125). With strong GQA, ring sends *fewer* bytes until $c > 9$. With MHA ($d_{\text{kv}} = h$) the ratio is $2/c$, and Ulysses wins for any $c > 2$. This is the regime where the "constant comm volume" claim in the Ulysses paper is most favourable. Other trade-offs:
 
 | | Ring | Ulysses |
 |---|---|---|
-| head constraint | none | `n_heads % c == 0` and `n_kv % c == 0`, otherwise replicate KV heads. 70B GQA: `c ≤ 8` |
+| head constraint | none | $n_{\text{heads}} \bmod c = 0$ and $n_{\text{kv}} \bmod c = 0$, otherwise replicate KV heads. 70B GQA: $c \le 8$ |
 | overlap | natural (P2P overlaps the block compute) | all-to-all is a sync point before/after attention, harder to hide |
 | fabric | P2P, tolerates crossing IB | all-to-all wants high bisection, best on NVLink |
-| kernel | needs a ring/online-softmax wrapper around flash attention | stock flash attention on full `T` |
+| kernel | needs a ring/online-softmax wrapper around flash attention | stock flash attention on full $T$ |
 
 The two compose (2D, or "USP" style, after Unified Sequence Parallelism, which combines them): Ulysses inside the node, ring across nodes.
 
-**Causal load balancing.** With a contiguous split, rank `i` attends to `i+1` blocks, so work is proportional to `i + 1/2` and the last rank does `(c-1/2)/(c/2) = 2 - 1/c` times the mean: 1.5x at `c = 2`, 1.875x at `c = 8`. Fix (zigzag): cut T into `2c` chunks and give rank `i` chunks `i` and `2c-1-i`. Work becomes `(i+½) + (2c-1-i+½) = 2c`, the same on every rank. `ring_attention.py` above measures it: contiguous max/mean 1.749 at `c = 4` (formula 1.750), zigzag exactly 1.000. Megatron-CP and the Llama 3 CP use this layout. Llama 3 ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783) all-gathers K/V instead of ringing them, which is simpler and, with GQA, cheap.
+**Causal load balancing.** With a contiguous split, rank $i$ attends to $i+1$ blocks, so work is proportional to $i + 1/2$ and the last rank does $(c-1/2)/(c/2) = 2 - 1/c$ times the mean: 1.5x at $c = 2$, 1.875x at $c = 8$. Fix (zigzag): cut T into $2c$ chunks and give rank $i$ chunks $i$ and $2c-1-i$. Work becomes $(i+\tfrac{1}{2}) + (2c-1-i+\tfrac{1}{2}) = 2c$, the same on every rank. `ring_attention.py` above measures it: contiguous max/mean 1.749 at $c = 4$ (formula 1.750), zigzag exactly 1.000. Megatron-CP and the Llama 3 CP use this layout. Llama 3 ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783) all-gathers K/V instead of ringing them, which is simpler and, with GQA, cheap.
 
 ## Pipeline parallelism
 
-Split `L` layers into `p` stages, and split the per-replica batch into `m` micro-batches. Each stage lives on a different device (or TP group); a micro-batch's activations flow forward through the stages and its gradients flow back. In this section only, `F`, `B`, `W` (not FLOP/s and batch size) denote per-micro-batch per-stage times for forward, backward-for-inputs and backward-for-weights. Normalize to `F = 1`, `B_full = B + W = 2`. The survey's [PP section](README.md#pipeline-parallelism) has the pictures.
+Split $L$ layers into $p$ stages, and split the per-replica batch into $m$ micro-batches. Each stage lives on a different device (or TP group); a micro-batch's activations flow forward through the stages and its gradients flow back. In this section only, $F$, $B$, $W$ (not FLOP/s and batch size) denote per-micro-batch per-stage times for forward, backward-for-inputs and backward-for-weights. Normalize to $F = 1$, $B_{\text{full}} = B + W = 2$. The survey's [PP section](README.md#pipeline-parallelism) has the pictures.
 
-The simulator below makes every claim in this section checkable. It is a unit-time list scheduler: each device has an ordered list of operations; at each time step a device starts its next operation if that operation's input is ready (the forward of the previous stage, or the backward of the next stage), and otherwise idles. For zero-bubble schedules, an idle device may instead run a deferred weight-gradient `W`. It prints one row per device: digits are forward passes of micro-batch `0..7`, lowercase letters are backward passes (`a` = micro-batch 0), uppercase letters are `W` passes, `.` is idle (the *bubble*).
+The simulator below makes every claim in this section checkable. It is a unit-time list scheduler: each device has an ordered list of operations; at each time step a device starts its next operation if that operation's input is ready (the forward of the previous stage, or the backward of the next stage), and otherwise idles. For zero-bubble schedules, an idle device may instead run a deferred weight-gradient $W$. It prints one row per device: digits are forward passes of micro-batch `0..7`, lowercase letters are backward passes (`a` = micro-batch 0), uppercase letters are $W$ passes, `.` is idle (the *bubble*).
 
 ```python
 # pp_sim.py
@@ -1466,14 +1484,16 @@ p=16, m=64 (no timeline):
 
 ### GPipe and 1F1B: the bubble
 
-GPipe ([arXiv 1811.06965](https://arxiv.org/abs/1811.06965)) runs all `m` forwards, then all `m` backwards. Stage `p-1` can't start until micro-batch 0 has passed `p-1` stages, and the drain is symmetric. The critical path is:
+GPipe ([arXiv 1811.06965](https://arxiv.org/abs/1811.06965)) runs all $m$ forwards, then all $m$ backwards. Stage $p-1$ can't start until micro-batch 0 has passed $p-1$ stages, and the drain is symmetric. The critical path is:
 
-```
-t_total  = (m + p - 1) · (t_F + t_B)
-t_useful =  m          · (t_F + t_B)
-bubble fraction (of total)  = (p-1)/(m+p-1)
-bubble / ideal              = (p-1)/m
-```
+$$
+\begin{aligned}
+t_{\text{total}} &= (m + p - 1)\cdot(t_F + t_B) \\
+t_{\text{useful}} &= m\cdot(t_F + t_B) \\
+\text{bubble fraction (of total)} &= \frac{p-1}{m+p-1} \\
+\text{bubble / ideal} &= \frac{p-1}{m}
+\end{aligned}
+$$
 
 The bubble, from the GPipe paper:
 
@@ -1481,34 +1501,34 @@ The bubble, from the GPipe paper:
 
 ([source](https://arxiv.org/abs/1811.06965))
 
-1F1B (PipeDream-Flush, [arXiv 2006.09503](https://arxiv.org/abs/2006.09503)) reorders the same work. After `p - i` warm-up forwards, stage `i` alternates one forward and one backward. The bubble is *identical*, `(p-1)/(m+p-1)`, because the critical path still contains `p-1` fills and drains. What changes is memory:
+1F1B (PipeDream-Flush, [arXiv 2006.09503](https://arxiv.org/abs/2006.09503)) reorders the same work. After $p - i$ warm-up forwards, stage $i$ alternates one forward and one backward. The bubble is *identical*, $(p-1)/(m+p-1)$, because the critical path still contains $p-1$ fills and drains. What changes is memory:
 
 | Schedule | Micro-batches of activations in flight on stage 0 |
 |---|---|
-| GPipe | `m` |
-| 1F1B | `p` (stage `i` holds `p - i`) |
+| GPipe | $m$ |
+| 1F1B | $p$ (stage $i$ holds $p - i$) |
 
-The simulator output shows both: GPipe and 1F1B both take 33 units with a 27.3% bubble at `p = 4, m = 8`, matching `3/11`, but GPipe holds 8 micro-batches of activations on every device while 1F1B holds `[4, 3, 2, 1]`. So 1F1B lets you raise `m` to shrink the bubble without raising memory.
+The simulator output shows both: GPipe and 1F1B both take 33 units with a 27.3% bubble at $p = 4, m = 8$, matching $3/11$, but GPipe holds 8 micro-batches of activations on every device while 1F1B holds `[4, 3, 2, 1]`. So 1F1B lets you raise $m$ to shrink the bubble without raising memory.
 
 ### Interleaved 1F1B
 
-[Megatron-LM 2021](https://arxiv.org/abs/2104.04473) (Narayanan et al., arXiv 2104.04473). Each device owns `v` non-contiguous chunks of `L/(pv)` layers. A chunk's F/B takes `1/v` of a stage's time, and the fill/drain still crosses `p-1` devices, so:
+[Megatron-LM 2021](https://arxiv.org/abs/2104.04473) (Narayanan et al., arXiv 2104.04473). Each device owns $v$ non-contiguous chunks of $L/(pv)$ layers. A chunk's F/B takes $1/v$ of a stage's time, and the fill/drain still crosses $p-1$ devices, so:
 
-```
-bubble = (p-1)·(t_F+t_B)/v        fraction = (p-1)/(v·m + p - 1)
-```
+$$
+\text{bubble} = \frac{(p-1)\cdot(t_F+t_B)}{v}, \qquad \text{fraction} = \frac{p-1}{v\cdot m + p - 1}
+$$
 
-The cost is `v`× more P2P messages, and slightly more memory. Megatron-LM's implementation warms up `2(p-1) + (v-1)·p` chunk-forwards on rank 0 (the simulator uses the same warm-up rule and ordering). In units of one micro-batch's activations for a full stage, that gives `(2(p-1) + (v-1)p + 1)/v = p + (p-1)/v` in flight. I derived this from the code's warm-up count, not from the paper; the simulator reproduces it (5.5 at `p = 4, v = 2`; 23.5 and 19.75 at `p = 16` with `v = 2, 4`). It also requires `m % p == 0` in Megatron.
+The cost is $v$× more P2P messages, and slightly more memory. Megatron-LM's implementation warms up $2(p-1) + (v-1) \cdot p$ chunk-forwards on rank 0 (the simulator uses the same warm-up rule and ordering). In units of one micro-batch's activations for a full stage, that gives $(2(p-1) + (v-1)p + 1)/v = p + (p-1)/v$ in flight. I derived this from the code's warm-up count, not from the paper; the simulator reproduces it (5.5 at $p = 4, v = 2$; 23.5 and 19.75 at $p = 16$ with $v = 2, 4$). It also requires $m \bmod p = 0$ in Megatron.
 
 ### Zero-bubble: ZB-H1, ZB-H2
 
-[Zero Bubble Pipeline Parallelism](https://arxiv.org/abs/2401.10241) (Qi et al., arXiv 2401.10241) splits backward into `B` (computes `dX`, on the critical path to the previous stage) and `W` (computes `dW`, needed only by the optimizer). `W` can be scheduled into the holes.
+[Zero Bubble Pipeline Parallelism](https://arxiv.org/abs/2401.10241) (Qi et al., arXiv 2401.10241) splits backward into $B$ (computes $dX$, on the critical path to the previous stage) and $W$ (computes $dW$, needed only by the optimizer). $W$ can be scheduled into the holes.
 
-- **ZB-H1**: same peak memory as 1F1B (`p` micro-batches). Bubble `(p-1)(t_F + t_B - t_W)`. With `F = B = W = 1` that is `(p-1)` versus 1F1B's `3(p-1)`, a third of the bubble.
-- **ZB-H2**: more warm-up forwards fill the start, and Ws fill the end. The bubble is about 0 (it relies on bypassing the optimizer-step sync, with post-hoc validation). Peak memory is about `2p` micro-batches.
-- A `W`-deferred micro-batch keeps its inputs and output-grads alive until `W` runs, which is where the extra memory comes from.
+- **ZB-H1**: same peak memory as 1F1B ($p$ micro-batches). Bubble $(p-1)(t_F + t_B - t_W)$. With $F = B = W = 1$ that is $(p-1)$ versus 1F1B's $3(p-1)$, a third of the bubble.
+- **ZB-H2**: more warm-up forwards fill the start, and Ws fill the end. The bubble is about 0 (it relies on bypassing the optimizer-step sync, with post-hoc validation). Peak memory is about $2p$ micro-batches.
+- A $W$-deferred micro-batch keeps its inputs and output-grads alive until $W$ runs, which is where the extra memory comes from.
 
-In the simulator, ZB-H1 is the 1F1B order of F and B plus one rule: a `W` runs whenever the device would otherwise idle, or when starting another forward would push the device above `p` live micro-batches (1F1B's peak, reached on device 0). That greedy rule reproduces the paper's bubble exactly: 27 units, 11.1%, against 33 units for 1F1B, with peak memory `p = 4` on every device. Note that later devices now hold 4 micro-batches instead of 1F1B's `p - i`: ZB-H1 keeps the *peak* the same, not every device's footprint. The bubble formula across a different configuration (for 1F1B read `W = 0`, `B` = the whole backward):
+In the simulator, ZB-H1 is the 1F1B order of F and B plus one rule: a $W$ runs whenever the device would otherwise idle, or when starting another forward would push the device above $p$ live micro-batches (1F1B's peak, reached on device 0). That greedy rule reproduces the paper's bubble exactly: 27 units, 11.1%, against 33 units for 1F1B, with peak memory $p = 4$ on every device. Note that later devices now hold 4 micro-batches instead of 1F1B's $p - i$: ZB-H1 keeps the *peak* the same, not every device's footprint. The bubble formula across a different configuration (for 1F1B read $W = 0$, $B$ = the whole backward):
 
 ```python
 # zb_sweep.py
@@ -1530,13 +1550,13 @@ zb-h1  F=1 B=1 W=1: step 103 units, bubble 7 units = 6.8%, formula (p-1)(F+B-W) 
 
 ### DualPipe
 
-DeepSeek-V3 ([arXiv 2412.19437](https://arxiv.org/abs/2412.19437)) feeds micro-batches from *both ends* of the pipeline. Each device holds 2 stages (stage `i` and `p-1-i`), so parameters are duplicated (2×). It overlaps one chunk's forward with another's backward (`F&B`), so that the expert-parallel all-to-all of one hides under the compute of the other. Their table, using their notation (`B` = full backward, `W` = weight part):
+DeepSeek-V3 ([arXiv 2412.19437](https://arxiv.org/abs/2412.19437)) feeds micro-batches from *both ends* of the pipeline. Each device holds 2 stages (stage $i$ and $p-1-i$), so parameters are duplicated (2×). It overlaps one chunk's forward with another's backward ($F\&B$), so that the expert-parallel all-to-all of one hides under the compute of the other. Their table, using their notation ($B$ = full backward, $W$ = weight part):
 
 | Schedule | Bubble | Params | Activations |
 |---|---|---|---|
-| 1F1B | `(p-1)(F+B)` | 1× | `p` |
-| ZB1P | `(p-1)(F+B-2W)` | 1× | `p` |
-| DualPipe | `(p/2-1)(F&B+B-3W)` | 2× | `p+1` |
+| 1F1B | $(p-1)(F+B)$ | 1× | $p$ |
+| ZB1P | $(p-1)(F+B-2W)$ | 1× | $p$ |
+| DualPipe | $(p/2-1)(F\&B+B-3W)$ | 2× | $p+1$ |
 
 DualPipe's bidirectional schedule:
 
@@ -1544,14 +1564,14 @@ DualPipe's bidirectional schedule:
 
 ([source](https://arxiv.org/abs/2412.19437))
 
-For `p = 16`, `m = 64`, `F = 1`, `B = 2`, `W = 1`, and pessimistically `F&B = F + B = 3` (no overlap gain), with useful work `m·(F+B) = 192` units:
+For $p = 16$, $m = 64$, $F = 1$, $B = 2$, $W = 1$, and pessimistically $F\&B = F + B = 3$ (no overlap gain), with useful work $m \cdot (F+B) = 192$ units:
 
 - 1F1B: 45 units, 19.0% of the step
 - ZB1P: 15 units, 7.2%
 - DualPipe: 14 units, 6.8%
-- interleaved with `v = 2`: 22.5 units, 10.5%
+- interleaved with $v = 2$: 22.5 units, 10.5%
 
-The simulator's `p = 16, m = 64` sweep reproduces the 1F1B (19.0%), interleaved (10.5%) and ZB-H1 (7.2%) numbers; it does not implement DualPipe. DualPipe's real win is not the bubble. It is that the all-to-all disappears under `F&B` overlap, which this bubble table doesn't capture.
+The simulator's $p = 16, m = 64$ sweep reproduces the 1F1B (19.0%), interleaved (10.5%) and ZB-H1 (7.2%) numbers; it does not implement DualPipe. DualPipe's real win is not the bubble. It is that the all-to-all disappears under $F\&B$ overlap, which this bubble table doesn't capture.
 
 ```python
 # dualpipe_bubble.py
@@ -1573,7 +1593,7 @@ interleaved v=2  bubble  22.5 units = 10.5% of the step
 
 ### P2P volume
 
-Each stage boundary sends one activation forward and one gradient backward per micro-batch: `2·B·T·h·b` bytes. With TP+SP each TP rank sends only its `1/t` shard. This is tiny compared with DP and TP, which is why PP is the one parallelism that tolerates IB well.
+Each stage boundary sends one activation forward and one gradient backward per micro-batch: $2 \cdot B \cdot T \cdot h \cdot b$ bytes. With TP+SP each TP rank sends only its $1/t$ shard. This is tiny compared with DP and TP, which is why PP is the one parallelism that tolerates IB well.
 
 ```python
 # pp_p2p.py
@@ -1633,23 +1653,21 @@ $ torchrun --nproc-per-node 2 --master-addr 127.0.0.1 pp_two_stage.py
 max |grad_pipeline - grad_reference| over both stages: 3.7e-08; messages per micro-batch: 1 send each way
 ```
 
-This is the GPipe schedule for `p = 2` with explicit sends: rank 0 runs stage 0 for every micro-batch and ships activations, rank 1 runs stage 1 and the loss and ships activation gradients back. The gradients match the unsplit model. Production pipelines (`torch.distributed.pipelining`, Megatron) add the schedule logic, shape negotiation and overlap, but the communication is exactly these two messages per micro-batch per boundary.
+This is the GPipe schedule for $p = 2$ with explicit sends: rank 0 runs stage 0 for every micro-batch and ships activations, rank 1 runs stage 1 and the loss and ships activation gradients back. The gradients match the unsplit model. Production pipelines ($torch.distributed.pipelining$, Megatron) add the schedule logic, shape negotiation and overlap, but the communication is exactly these two messages per micro-batch per boundary.
 
 ## Expert parallelism
 
-An MoE layer has `E` experts and routes each token to `k` of them. EP places `E/e` experts per rank in a group of `e` ranks. Background is in the [survey](README.md#expert-parallelism).
+An MoE layer has $E$ experts and routes each token to $k$ of them. EP places $E/e$ experts per rank in a group of $e$ ranks. Background is in the [survey](README.md#expert-parallelism).
 
 ### Dispatch / combine volume
 
-With `n` tokens on a rank (after attention), forward:
+With $n$ tokens on a rank (after attention), forward:
 
-```
-dispatch: all-to-all, send n·k·h·b_d bytes   (k copies of each token's hidden state; b_d = 1 for FP8 dispatch, 2 for bf16)
-combine:  all-to-all, send n·k·h·b_c bytes   (expert outputs back, b_c = 2)
-fraction leaving the rank ≈ (e-1)/e under uniform routing
-```
+- dispatch: all-to-all, send $n\cdot k\cdot h\cdot b_d$ bytes ($k$ copies of each token's hidden state; $b_d = 1$ for FP8 dispatch, 2 for bf16)
+- combine: all-to-all, send $n\cdot k\cdot h\cdot b_c$ bytes (expert outputs back, $b_c = 2$)
+- fraction leaving the rank $\approx (e-1)/e$ under uniform routing
 
-Backward repeats both in reverse, so a layer costs about `2·n·k·h·(b_d + b_c)·(e-1)/e` per rank.
+Backward repeats both in reverse, so a layer costs about $2 \cdot n \cdot k \cdot h \cdot (b_d + b_c) \cdot (e-1)/e$ per rank.
 
 The full forward path on 4 ranks with 8 experts and top-2 routing: compute routes, sort token copies by destination, exchange the counts (every rank must know how much it will receive, since routing is data-dependent), all-to-all with *uneven* splits, run the local experts, all-to-all back, and weight by the gate values:
 
@@ -1709,22 +1727,22 @@ rank 0 sent 2944 of 4096 dispatch bytes off-rank (uniform routing: (e-1)/e = 0.7
 
 The result equals running all experts locally. Even with a random router the loads are uneven (one rank receives half of what another does), and that imbalance is what the next two subsections are about. 72% of rank 0's dispatch bytes left the rank, close to the uniform-routing estimate of 75%.
 
-DeepSeek-V3 caps cross-node fan-out with *node-limited routing*. Each token goes to experts on at most `M = 4` nodes, and is sent over IB once per target node, then forwarded over NVLink to the GPUs in that node. IB volume per token per MoE layer is then at most `M·h·b` per direction-pass instead of `k·h·b`.
+DeepSeek-V3 caps cross-node fan-out with *node-limited routing*. Each token goes to experts on at most $M = 4$ nodes, and is sent over IB once per target node, then forwarded over NVLink to the GPUs in that node. IB volume per token per MoE layer is then at most $M \cdot h \cdot b$ per direction-pass instead of $k \cdot h \cdot b$.
 
 ### Capacity factor
 
 Static-shape implementations (GShard [arXiv 2006.16668](https://arxiv.org/abs/2006.16668), Switch [arXiv 2101.03961](https://arxiv.org/abs/2101.03961)) give each expert a fixed buffer:
 
-```
-capacity C = CF · (tokens in EP group · k) / E
-```
+$$
+\text{capacity } C = \text{CF}\cdot\frac{(\text{tokens in EP group})\cdot k}{E}
+$$
 
-Tokens beyond `C` are dropped, which means they skip the expert through the residual connection. Buffers are padded to `C`, so the a2a (all-to-all) volume and expert FLOPs scale with `CF`. `CF = 1.25` costs 25% more bytes and FLOPs than perfect balance, and still drops tokens whenever an expert's load is more than 1.25x the mean. Dropless implementations (grouped GEMM with variable sizes, as in MegaBlocks, [arXiv 2211.15841](https://arxiv.org/abs/2211.15841)) remove the padding, but then the slowest rank sets the step time. Load balance is a throughput problem, not just a quality problem.
+Tokens beyond $C$ are dropped, which means they skip the expert through the residual connection. Buffers are padded to $C$, so the a2a (all-to-all) volume and expert FLOPs scale with $\text{CF}$. $\text{CF} = 1.25$ costs 25% more bytes and FLOPs than perfect balance, and still drops tokens whenever an expert's load is more than 1.25x the mean. Dropless implementations (grouped GEMM with variable sizes, as in MegaBlocks, [arXiv 2211.15841](https://arxiv.org/abs/2211.15841)) remove the padding, but then the slowest rank sets the step time. Load balance is a throughput problem, not just a quality problem.
 
 ### Aux loss vs aux-loss-free balancing
 
-- **Aux loss (Switch)**: `L_aux = α · E · Σ_i f_i · P_i`, where `f_i` is the fraction of tokens routed to expert `i` and `P_i` is the mean router probability for expert `i`. Switch uses `α = 0.01`. It pushes towards uniform load, but the gradient interferes with the LM objective, and a larger `α` hurts quality.
-- **Aux-loss-free bias** ([Wang et al., arXiv 2408.15664](https://arxiv.org/abs/2408.15664), used in DeepSeek-V3). Add a per-expert bias `b_i` to the affinity *only for top-k selection*: `select topk(s_i + b_i)`. Gate values still use the unbiased `s_i`, normalized over the selected experts. After each step, `b_i -= γ` if expert `i` was overloaded and `b_i += γ` if it was underloaded. DeepSeek-V3 uses `γ = 0.001` for most of training, plus a tiny sequence-wise aux loss (`α = 1e-4`) as a guard against extreme per-sequence imbalance. There is no gradient through `b`, so the LM loss is untouched, and no token dropping. These constants come from my reading of the V3 report.
+- **Aux loss (Switch)**: $L_{\text{aux}} = \alpha \cdot E \cdot \sum_i f_i \cdot P_i$, where $f_i$ is the fraction of tokens routed to expert $i$ and $P_i$ is the mean router probability for expert $i$. Switch uses $\alpha= 0.01$. It pushes towards uniform load, but the gradient interferes with the LM objective, and a larger $\alpha$ hurts quality.
+- **Aux-loss-free bias** ([Wang et al., arXiv 2408.15664](https://arxiv.org/abs/2408.15664), used in DeepSeek-V3). Add a per-expert bias $b_i$ to the affinity *only for top-k selection*: $\text{select } \operatorname{topk}(s_i + b_i)$. Gate values still use the unbiased $s_i$, normalized over the selected experts. After each step, $b_i \leftarrow b_i - \gamma$ if expert $i$ was overloaded and $b_i \leftarrow b_i + \gamma$ if it was underloaded. DeepSeek-V3 uses $\gamma= 0.001$ for most of training, plus a tiny sequence-wise aux loss ($\alpha = 10^{-4}$) as a guard against extreme per-sequence imbalance. There is no gradient through $b$, so the LM loss is untouched, and no token dropping. These constants come from my reading of the V3 report.
 
 Both, on a synthetic router where some experts are systematically preferred (64 experts, top-8, 8192 tokens per step):
 
@@ -1767,7 +1785,7 @@ aux-free step 1000: max/mean load 1.06, CF=1.25 would drop 0.0%
 aux-free step 3000: max/mean load 1.07, CF=1.25 would drop 0.0%
 ```
 
-Without balancing, the busiest expert gets 2.45x the mean load, and even a capacity factor of 2.0 drops 2.6% of token copies. The bias update with `γ = 0.001` brings max/mean to about 1.06 within 1000 steps, after which `CF = 1.25` drops nothing. On a real model the router's preferences drift during training, so the bias keeps tracking them. This is a toy; real routing statistics are not Gaussian.
+Without balancing, the busiest expert gets 2.45x the mean load, and even a capacity factor of 2.0 drops 2.6% of token copies. The bias update with $\gamma= 0.001$ brings max/mean to about 1.06 within 1000 steps, after which $\text{CF} = 1.25$ drops nothing. On a real model the router's preferences drift during training, so the bias keeps tracking them. This is a toy; real routing statistics are not Gaussian.
 
 Measured expert load for aux-loss vs aux-loss-free models (DeepSeek-V3):
 
@@ -1777,9 +1795,9 @@ Measured expert load for aux-loss vs aux-loss-free models (DeepSeek-V3):
 
 ### EP × TP interactions
 
-- Attention is usually TP+SP, so at the MoE layer each TP rank holds `n/t` tokens and dispatches only those. The a2a volume per GPU is divided by `t`.
+- Attention is usually TP+SP, so at the MoE layer each TP rank holds $n/t$ tokens and dispatches only those. The a2a volume per GPU is divided by $t$.
 - TP *inside* an expert (expert-TP, ETP) splits already-small FFNs (`2048` wide in V3), giving tiny, inefficient GEMMs and an extra AG/RS per expert. The modern default is ETP = 1. The expert mesh `(EP, EDP)` is decoupled from the attention mesh `(TP, CP, DP)`, so that the same GPUs are factored differently for the two halves of the layer. Megatron calls this "MoE Parallel Folding" ([arXiv 2504.14960](https://arxiv.org/abs/2504.14960), Liu et al.).
-- Expert parameters are replicated across `EDP = world / (PP · EP)` ranks. Their gradients are reduced over that EDP group, not over the full DP group.
+- Expert parameters are replicated across $\text{EDP} = \text{world} / (\text{PP} \cdot \text{EP})$ ranks. Their gradients are reduced over that EDP group, not over the full DP group.
 
 ```python
 # ep_groups.py: which ranks form the EP and expert-DP groups (no processes needed)
@@ -1810,13 +1828,13 @@ A **DeviceMesh** is an n-D array of ranks. Each mesh dimension is a process grou
 | 4 | DP replicate (HSDP) | small per-step all-reduce of shards |
 | 5 | PP | tiny P2P, tolerates IB best |
 
-TorchTitan's mesh is `("pp", "dp_replicate", "dp_shard", "cp", "tp")`, outermost to innermost. Megatron's order string is `tp-cp-ep-dp-pp`, innermost first. Rank of coordinate `(pp, dpr, dps, cp, tp)`:
+TorchTitan's mesh is `("pp", "dp_replicate", "dp_shard", "cp", "tp")`, outermost to innermost. Megatron's order string is `tp-cp-ep-dp-pp`, innermost first. Rank of coordinate $(\text{pp}, \text{dpr}, \text{dps}, \text{cp}, \text{tp})$:
 
-```
-rank = (((pp·DPR + dpr)·DPS + dps)·CP + cp)·TP + tp
-```
+$$
+\text{rank} = (((\text{pp}\cdot\text{DPR} + \text{dpr})\cdot\text{DPS} + \text{dps})\cdot\text{CP} + \text{cp})\cdot\text{TP} + \text{tp}
+$$
 
-Eight processes as a `pp × dp × tp = 2 × 2 × 2` mesh, printing which ranks share each group:
+Eight processes as a $\text{pp} \times \text{dp} \times \text{tp} = 2 \times 2 \times 2$ mesh, printing which ranks share each group:
 
 ```python
 # mesh.py
@@ -1855,20 +1873,20 @@ TP groups are consecutive ranks (`[0, 1]`, `[2, 3]`, ...), which on a real clust
 Two non-obvious points:
 
 1. FSDP in TorchTitan shards over `dp_shard × cp` jointly, because CP ranks hold identical params. This flattened sub-mesh gets the FSDP collectives.
-2. The product of the inner dims assigned to NVLink must not exceed 8 here. `TP = 8` leaves CP and EP crossing IB.
+2. The product of the inner dims assigned to NVLink must not exceed 8 here. $\text{TP} = 8$ leaves CP and EP crossing IB.
 
 ## Worked example 1: 70B dense on 1024 H100
 
-Model (Llama-3-70B shapes): `h = 8192`, `L = 80`, FFN 28672 (SwiGLU), 64 query heads, 8 KV heads, `d_head = 128`, vocab 128256.
+Model (Llama-3-70B shapes): $h = 8192$, $L = 80$, FFN 28672 (SwiGLU), 64 query heads, 8 KV heads, $d_{\text{head}} = 128$, vocab 128256.
 
-- params/layer: attention `h·(64·128) + 2·h·(8·128) + (64·128)·h` = 151.0M; MLP `3·h·28672` = 704.6M; total 855.7M (including the two norm gains)
-- total `Ψ = 80·855.7M + 2·128256·8192 (untied embeddings) ≈ 70.55B`
+- params/layer: attention $h \cdot (64 \cdot 128) + 2 \cdot h \cdot (8 \cdot 128) + (64 \cdot 128) \cdot h$ = 151.0M; MLP $3 \cdot h \cdot 28672$ = 704.6M; total 855.7M (including the two norm gains)
+- total $\Psi = 80 \cdot 855.7\text{M} + 2 \cdot 128256 \cdot 8192\ (\text{untied embeddings}) \approx 70.55\text{B}$
 
-Workload: `T = 8192`, global batch `4·2^20 = 4,194,304` tokens, which is **512 sequences**. FLOPs/token is `6Ψ + 6·L·T·h` (causal attention: QKᵀ and AV are each `2Th` per layer forward, halved by the mask, times 3 for forward and backward):
+Workload: $T = 8192$, global batch $4 \cdot 2^{20} = 4{,}194{,}304$ tokens, which is **512 sequences**. FLOPs/token is $6\Psi+ 6 \cdot L \cdot T \cdot h$ (causal attention: $QK^{\top}$ and $AV$ are each $2Th$ per layer forward, halved by the mask, times 3 for forward and backward):
 
-- `6Ψ` = 423.3 GFLOP; attention 32.2 GFLOP (+7.6%)
-- step = `455.5e9 · 4,194,304` = 1.911e18 FLOP
-- `t_compute = 1.911e18 / 1024 / 395.6e12` = **4.72 s** per step
+- $6\Psi$ = 423.3 GFLOP; attention 32.2 GFLOP (+7.6%)
+- step = $455.5 \times 10^{9} \cdot 4{,}194{,}304$ = 1.911e18 FLOP
+- $t_{\text{compute}} = 1.911 \times 10^{18} / 1024 / 395.6 \times 10^{12}$ = **4.72 s** per step
 
 The first constraint is easy to miss: **512 sequences < 1024 GPUs**. Pure DP would need half a sequence per GPU, so some model or context parallel degree ≥ 2 is mandatory.
 
@@ -1920,38 +1938,38 @@ trap: B with per-micro-batch resharding: 212 GB -> 4.2 s over IB
 
 ### Candidate A: FSDP over 1024 (CP = 2 intra-node, FSDP over `dp × cp`)
 
-- Memory: states `16Ψ/1024` = 1.10 GB. Activations at 4096 local tokens: about `34·4096·8192` = 1.14 GB/layer, 91 GB for 80 layers. **Doesn't fit without full checkpointing.** Full checkpointing stores `2·4096·8192·80` = 5.4 GB plus one layer's working set. It fits, but adds a recompute forward.
-- FSDP comm: `3·2·Ψ` = **422.9 GB/GPU** over IB (423.3 GB with the exact `Ψ`), **8.47 s**, versus 4.72 s of compute. Even with ZeRO-2 behaviour (`2·2Ψ`, 282 GB), it takes 5.6 s. **Comm-bound by about 1.8x.**
-- Sanity check against the DDP/FSDP threshold: 4096 tokens/GPU is below the `F/β ≈ 7,912` threshold for ZeRO-3, which is consistent.
-- HSDP with shard = 8 to keep AG/RS on NVLink needs `16Ψ/8` = 141 GB of states. It doesn't fit.
+- Memory: states $16\Psi/1024$ = 1.10 GB. Activations at 4096 local tokens: about $34 \cdot 4096 \cdot 8192$ = 1.14 GB/layer, 91 GB for 80 layers. **Doesn't fit without full checkpointing.** Full checkpointing stores $2 \cdot 4096 \cdot 8192 \cdot 80$ = 5.4 GB plus one layer's working set. It fits, but adds a recompute forward.
+- FSDP comm: $3 \cdot 2 \cdot \Psi$ = **422.9 GB/GPU** over IB (423.3 GB with the exact $\Psi$), **8.47 s**, versus 4.72 s of compute. Even with ZeRO-2 behaviour ($2 \cdot 2\Psi$, 282 GB), it takes 5.6 s. **Comm-bound by about 1.8x.**
+- Sanity check against the DDP/FSDP threshold: 4096 tokens/GPU is below the $F/\beta\approx 7{,}912$ threshold for ZeRO-3, which is consistent.
+- HSDP with shard = 8 to keep AG/RS on NVLink needs $16\Psi/8$ = 141 GB of states. It doesn't fit.
 
 Rejected.
 
 ### Candidate B: TP = 8 (+SP) intra-node × FSDP = 128
 
-Per TP rank `Ψ/8` = 8.82B. Each DP rank (one node) gets `512/128 = 4` sequences: micro-batch 1 sequence, 4 accumulation steps, no recompute.
+Per TP rank $\Psi/8$ = 8.82B. Each DP rank (one node) gets $512/128 = 4$ sequences: micro-batch 1 sequence, 4 accumulation steps, no recompute.
 
-- **FSDP** with `reshard_after_forward=False` and gradient sync only on the last micro-batch, so params are gathered once and gradients reduce-scattered once: `2·2·8.82e9` = 35.3 GB → **0.71 s** over IB, overlappable. With default per-micro-batch resharding it would be `4·3·2·8.82e9` = 212 GB → 4.2 s. That is the trap.
+- **FSDP** with `reshard_after_forward=False` and gradient sync only on the last micro-batch, so params are gathered once and gradients reduce-scattered once: $2 \cdot 2 \cdot 8.82 \times 10^{9}$ = 35.3 GB → **0.71 s** over IB, overlappable. With default per-micro-batch resharding it would be $4 \cdot 3 \cdot 2 \cdot 8.82 \times 10^{9}$ = 212 GB → 4.2 s. That is the trap.
 - **TP+SP**: 4 AR-equivalents/layer × 80 layers × 4 micro-batches × 234.9 MB = 300.6 GB → **0.67 s** on NVLink, largely exposed (on the critical path).
 - **Memory/GPU**:
   - sharded states 1.10 GB
   - unsharded bf16 params 17.6 GB
   - unsharded bf16 accumulated grads 17.6 GB
-  - activations `34/8·s·h·80` = 22.8 GB
-  - logits shard (vocab-parallel, fp32) `8192·128256·4/8` = 0.53 GB
+  - activations $34/8 \cdot s \cdot h \cdot 80$ = 22.8 GB
+  - logits shard (vocab-parallel, fp32) $8192 \cdot 128256 \cdot 4/8$ = 0.53 GB
   - total ≈ **60 GB**, about 20 GB headroom for fragmentation and temporaries
 
   An alternative that saves memory is per-micro-batch resharding, at 4.2 s of comm. Don't.
 
 ### Candidate C: TP = 8 × PP = 4 × DP = 32 (ZeRO-1)
 
-20 layers/stage, interleaved with `v = 5` (4 layers/chunk). `m = 512/32 = 16` micro-batches.
+20 layers/stage, interleaved with $v = 5$ (4 layers/chunk). $m = 512/32 = 16$ micro-batches.
 
-- **Memory**: params/GPU `Ψ/32` = 2.20B. ZeRO-1 over 32 gives `4·2.20 + 12·2.20/32` = 9.65 GB. Activations `(p + (p-1)/v) = 4.6` micro-batches × 20 layers × 285.2 MB = 26.2 GB. Total ≈ 36 GB.
-- **Bubble**: 1F1B `3/19` = 15.8%. Interleaved `3/(5·16+3)` = 3.6%, or 0.17 s.
-- **DP comm** (RS + AG): `2·2·2.20e9·31/32` = 8.5 GB → 0.17 s, overlappable.
-- **TP comm**: 20 layers × 16 micro-batches × 4 × 234.9 MB = 300.6 GB → 0.67 s. Same as B, because TP volume per GPU is `(L/p)·(seqs/d)·…`, and `p·d` is fixed at 128.
-- **PP P2P**: `16·2·2·8192·8192/8` = 0.54 GB, 0.01 s (`pp_p2p.py` above).
+- **Memory**: params/GPU $\Psi/32$ = 2.20B. ZeRO-1 over 32 gives $4 \cdot 2.20 + 12 \cdot 2.20/32$ = 9.65 GB. Activations $(p + (p-1)/v) = 4.6$ micro-batches × 20 layers × 285.2 MB = 26.2 GB. Total ≈ 36 GB.
+- **Bubble**: 1F1B $3/19$ = 15.8%. Interleaved $3/(5 \cdot 16+3)$ = 3.6%, or 0.17 s.
+- **DP comm** (RS + AG): $2 \cdot 2 \cdot 2.20 \times 10^{9} \cdot 31/32$ = 8.5 GB → 0.17 s, overlappable.
+- **TP comm**: 20 layers × 16 micro-batches × 4 × 234.9 MB = 300.6 GB → 0.67 s. Same as B, because TP volume per GPU is $(L/p) \cdot (\text{seqs}/d) \cdots$, and $p \cdot d$ is fixed at 128.
+- **PP P2P**: $16 \cdot 2 \cdot 2 \cdot 8192 \cdot 8192/8$ = 0.54 GB, 0.01 s (`pp_p2p.py` above).
 
 You can check the interleaved bubble with the simulator: `simulate("interleaved", 4, 16, v=5)` returns the same 3.6%.
 
@@ -1969,19 +1987,19 @@ You can check the interleaved bubble with the simulator: `simulate("interleaved"
 
 **Pick B.** It has the same exposed TP cost as C, no bubble, no PP code, and its IB traffic is 15% of compute time, so it hides with margin under a 4.7 s step. Its risk is FSDP overlap quality at 128 ranks with 80 layer-groups, which you can check in a profiler trace in 10 minutes. If the trace shows exposed all-gathers, C is the fallback: its IB traffic is 4x lower. Async-TP would cut the exposed 0.67 s in both. A variant to consider is TP4 × FSDP256 (2 sequences per TP group): TP 0.29 s (0.43 s if you add full recompute to cut the activations below), FSDP 3-pass 105 GB → 2.1 s, activations 45.6 GB. It is viable only if FSDP overlap is near perfect.
 
-All of these step times are cost-model estimates (40% MFU assumed, nominal `β`). None of them has been run on GPUs.
+All of these step times are cost-model estimates (40% MFU assumed, nominal $\beta$). None of them has been run on GPUs.
 
 ## Worked example 2: ~600B MoE (DeepSeek-V3 shapes) on 1024 H100
 
-Model: `h = 7168`, 61 layers (3 dense, 58 MoE), 256 routed experts + 1 shared expert, `k = 8`, expert FFN 2048, 671B total, 37B active.
+Model: $h = 7168$, 61 layers (3 dense, 58 MoE), 256 routed experts + 1 shared expert, $k = 8$, expert FFN 2048, 671B total, 37B active.
 
-- one expert: `3·7168·2048` = 44.04M
-- routed experts: `256·58·44.04M` = 653.9B
-- everything else (MLA attention, dense layers, shared experts, embeddings) ≈ `671 − 653.9` = **17.1B**
+- one expert: $3 \cdot 7168 \cdot 2048$ = 44.04M
+- routed experts: $256 \cdot 58 \cdot 44.04\text{M}$ = 653.9B
+- everything else (MLA attention, dense layers, shared experts, embeddings) ≈ $671 - 653.9$ = **17.1B**
 
-Workload (my choice): `T = 4096`, 4096 sequences = 16.78M tokens/step. Compute `6·37e9·16.78e6/1024/395.6e12` = **9.19 s** (active-param FLOPs only, MLA attention ignored).
+Workload (my choice): $T = 4096$, 4096 sequences = 16.78M tokens/step. Compute $6 \cdot 37 \times 10^{9} \cdot 16.78 \times 10^{6}/1024/395.6 \times 10^{12}$ = **9.19 s** (active-param FLOPs only, MLA attention ignored).
 
-Both candidates use PP = 16 (`58/16 ≈ 3.6` MoE layers/stage) and 64 attention-DP ranks per stage with ZeRO-1 for the non-expert 17.1B: `17.1/16` = 1.07B/stage, which gives `4·1.07 + 12·1.07/64` = 4.47 GB. Each rank handles `16.78M/64` = 262,144 tokens/step = 64 micro-batches of 4096 tokens. The PP P2P is `64·2·4096·7168·2` = 7.5 GB → 0.15 s. The bubble is 7% with DualPipe or ZB, and 19% with 1F1B (numbers in the PP section).
+Both candidates use PP = 16 ($58/16 \approx 3.6$ MoE layers/stage) and 64 attention-DP ranks per stage with ZeRO-1 for the non-expert 17.1B: $17.1/16$ = 1.07B/stage, which gives $4 \cdot 1.07 + 12 \cdot 1.07/64$ = 4.47 GB. Each rank handles $16.78\text{M}/64$ = 262,144 tokens/step = 64 micro-batches of 4096 tokens. The PP P2P is $64 \cdot 2 \cdot 4096 \cdot 7168 \cdot 2$ = 7.5 GB → 0.15 s. The bubble is 7% with DualPipe or ZB, and 19% with 1F1B (numbers in the PP section).
 
 ```python
 # layout_moe.py
@@ -2032,18 +2050,18 @@ M2: experts/GPU 32, 5.11B params = 28.1 GB; a2a 286 GB NVLink -> 0.64 s; expert 
 
 ### Candidate M1: EP = 64 across 8 nodes (DeepSeek-V3's training layout, scaled to 1024 GPUs)
 
-- **Experts/GPU**: `256/64 = 4` per layer, so `3.6·4·44.04M` = 0.64B params, 10.2 GB at 16 B/param (EDP = 1, nothing to shard).
-- **a2a** with node-limited `M = 4`, FP8 dispatch and bf16 combine: per token per MoE layer forward+backward `2·(4·7168·1 + 4·7168·2)` = 172 KB. Per GPU per step `262,144 · 3.625 · 172 KB` = **163 GB over IB → 3.27 s**, which is 36% of compute. This has to be hidden (DualPipe's F&B overlap). Without node-limited routing (8 copies, 56/64 remote) it would be 5.7 s.
-- **Tokens/expert/micro-batch**: `4096·64·8/256` = 8192. The GEMMs are large and efficient.
+- **Experts/GPU**: $256/64 = 4$ per layer, so $3.6 \cdot 4 \cdot 44.04\text{M}$ = 0.64B params, 10.2 GB at 16 B/param (EDP = 1, nothing to shard).
+- **a2a** with node-limited $M = 4$, FP8 dispatch and bf16 combine: per token per MoE layer forward+backward $2 \cdot (4 \cdot 7168 \cdot 1 + 4 \cdot 7168 \cdot 2)$ = 172 KB. Per GPU per step $262{,}144 \cdot 3.625 \cdot 172\ \text{KB}$ = **163 GB over IB → 3.27 s**, which is 36% of compute. This has to be hidden (DualPipe's F&B overlap). Without node-limited routing (8 copies, 56/64 remote) it would be 5.7 s.
+- **Tokens/expert/micro-batch**: $4096 \cdot 64 \cdot 8/256$ = 8192. The GEMMs are large and efficient.
 
-DeepSeek reports roughly 1:1 computation-to-communication for cross-node EP on H800, versus my 0.36. The gap plausibly comes from FP8 compute (about 2x my `F`) and achieved a2a bandwidth well below 50 GB/s. I can't verify the split.
+DeepSeek reports roughly 1:1 computation-to-communication for cross-node EP on H800, versus my 0.36. The gap plausibly comes from FP8 compute (about 2x my $F$) and achieved a2a bandwidth well below 50 GB/s. I can't verify the split.
 
 ### Candidate M2: EP = 8 inside each node, EDP = 8 across nodes
 
-- **Experts/GPU**: 32 per layer, so `3.6·32·44.04M` = 5.11B params. With bf16 params and grads resident and fp32 master and Adam ZeRO-sharded over EDP = 8: `5.11·(2 + 2 + 12/8)` = **28.1 GB**. With 4.5 GB of dense states, that leaves about 45 GB for activations (2x expert params if you use DualPipe: +10 GB).
-- **a2a** entirely on NVLink: `262,144 · 3.625 · 2·8·7168·3 · 7/8` = 286 GB → **0.64 s**.
-- **Expert gradient RS+AG** over EDP = 8 (IB): `2·2·5.11e9·7/8` = 17.9 GB → 0.36 s, once per step, overlappable with backward.
-- **Tokens/expert/micro-batch**: `4096·8·8/256` = 1024. The GEMMs are 8x smaller per expert, with the same total FLOPs.
+- **Experts/GPU**: 32 per layer, so $3.6 \cdot 32 \cdot 44.04\text{M}$ = 5.11B params. With bf16 params and grads resident and fp32 master and Adam ZeRO-sharded over EDP = 8: $5.11 \cdot (2 + 2 + 12/8)$ = **28.1 GB**. With 4.5 GB of dense states, that leaves about 45 GB for activations (2x expert params if you use DualPipe: +10 GB).
+- **a2a** entirely on NVLink: $262{,}144 \cdot 3.625 \cdot 2 \cdot 8 \cdot 7168 \cdot 3 \cdot 7/8$ = 286 GB → **0.64 s**.
+- **Expert gradient RS+AG** over EDP = 8 (IB): $2 \cdot 2 \cdot 5.11 \times 10^{9} \cdot 7/8$ = 17.9 GB → 0.36 s, once per step, overlappable with backward.
+- **Tokens/expert/micro-batch**: $4096 \cdot 8 \cdot 8/256$ = 1024. The GEMMs are 8x smaller per expert, with the same total FLOPs.
 
 ### Pick
 
@@ -2057,7 +2075,7 @@ M1 becomes attractive when NVLink is weak (H800: 400 GB/s), when HBM is tight, o
 
 ## PyTorch recipe: DeviceMesh + FSDP2 + TP
 
-This is the composition chosen in worked example 1 (TP + SP inside a node, FSDP2 across nodes), written with PyTorch's own building blocks. An earlier version of this chapter presented it as an untested sketch. It has now been run end to end on CPU: 4 gloo processes as a `dp = 2 × tp = 2` mesh, a 2-layer model with the same structure as Llama (GQA attention, SwiGLU, RMSNorm, untied head), two micro-batches of gradient accumulation, three optimizer steps, compared parameter-by-parameter against the same model trained in one process. The model classes and the parallelization plan are unchanged from the GPU version; only the backend, the mesh device type, the sizes and the fp32 `param_dtype` differ, and each such line carries a comment saying what to use on GPUs. APIs as of PyTorch 2.15 (`torch.distributed.fsdp.fully_shard`; on versions before 2.6, `torch.distributed._composable.fsdp`).
+This is the composition chosen in worked example 1 (TP + SP inside a node, FSDP2 across nodes), written with PyTorch's own building blocks. An earlier version of this chapter presented it as an untested sketch. It has now been run end to end on CPU: 4 gloo processes as a $\text{dp} = 2 \times \text{tp} = 2$ mesh, a 2-layer model with the same structure as Llama (GQA attention, SwiGLU, RMSNorm, untied head), two micro-batches of gradient accumulation, three optimizer steps, compared parameter-by-parameter against the same model trained in one process. The model classes and the parallelization plan are unchanged from the GPU version; only the backend, the mesh device type, the sizes and the fp32 `param_dtype` differ, and each such line carries a comment saying what to use on GPUs. APIs as of PyTorch 2.15 (`torch.distributed.fsdp.fully_shard`; on versions before 2.6, `torch.distributed._composable.fsdp`).
 
 ```python
 # fsdp_tp.py
@@ -2201,24 +2219,24 @@ For the real 70B launch (`torchrun --nproc-per-node 8 --nnodes N ...`), the chan
 Notes on the recipe:
 
 - **Order matters.** Apply TP first, then FSDP. FSDP then shards the already-TP-sharded DTensor again on dim 0 (internally a strided shard, as the placement printout shows).
-- **Output layer.** Replicating the `(B, T, V)` logits costs `8192·128256·2` = 2.1 GB/sequence in bf16 (4.2 GB if upcast to fp32 for the loss). In production, keep `output_layouts=Shard(-1)` and wrap the loss in `torch.distributed.tensor.parallel.loss_parallel()`.
+- **Output layer.** Replicating the `(B, T, V)` logits costs $8192 \cdot 128256 \cdot 2$ = 2.1 GB/sequence in bf16 (4.2 GB if upcast to fp32 for the loss). In production, keep `output_layouts=Shard(-1)` and wrap the loss in `torch.distributed.tensor.parallel.loss_parallel()`.
 - **Data loading.** All TP ranks must see the same tokens. Shard the data by `mesh["dp"].get_local_rank()`, not by global rank, as the script does.
 - **Missing pieces.** No CP, no PP, no activation checkpointing, no `torch.compile`, no checkpoint save/resume. TorchTitan has all of these and should be your starting point for anything real.
 
 ## Facts I'm not certain about
 
 - Megatron-SP re-gathering the input for `dW` in backward is my reading of the code. It may be configurable or have changed. That PyTorch DTensor SP saves the gathered input instead is my inference from the collective counts in `tp_count.py`, not a memory measurement.
-- The interleaved-1F1B in-flight memory `p + (p-1)/v` is derived from Megatron's warm-up count, not quoted from the paper. The simulator reproduces it, but the simulator uses the same warm-up rule, so this is a consistency check, not independent confirmation.
+- The interleaved-1F1B in-flight memory $p + (p-1)/v$ is derived from Megatron's warm-up count, not quoted from the paper. The simulator reproduces it, but the simulator uses the same warm-up rule, so this is a consistency check, not independent confirmation.
 - The ZB-H1 schedule in the simulator is a greedy rule that reproduces the paper's bubble and peak-memory numbers; it is not the paper's exact schedule.
-- The DeepSeek-V3 constants (`γ = 0.001`, sequence-wise `α = 1e-4`, `M = 4` nodes, EP64/PP16 on 2048 H800) are from my reading of arXiv 2412.19437. The DualPipe table is reproduced from it.
+- The DeepSeek-V3 constants ($\gamma= 0.001$, sequence-wise $\alpha = 10^{-4}$, $M = 4$ nodes, EP64/PP16 on 2048 H800) are from my reading of arXiv 2412.19437. The DualPipe table is reproduced from it.
 - The activation-memory constant 34 is for a GPT block with a 4h GELU MLP and dropout. For SwiGLU/GQA models without dropout it is approximate.
-- All `β` values are nominal. Achieved all-reduce/all-to-all bus bandwidth is typically noticeably lower and depends on message size. Plug in measured busbw (`alphabeta.py`, or `nccl-tests` on GPUs).
+- All $\beta$ values are nominal. Achieved all-reduce/all-to-all bus bandwidth is typically noticeably lower and depends on message size. Plug in measured busbw (`alphabeta.py`, or `nccl-tests` on GPUs).
 - DDP's first-iteration single bucket is observed behaviour in torch 2.15 with default arguments; older versions bucketed from the first iteration.
 
 ## You can now read
 
 - [Collectives internals](../../network/collectives-internals.md) (an earlier chapter, worth rereading now) - how NCCL implements the collectives used here, and when it picks tree over ring.
-- [Decentralized training](../decentralized-training.md) - the same cost models when `β` is a WAN link and `α` is tens of milliseconds.
+- [Decentralized training](../decentralized-training.md) - the same cost models when $\beta$ is a WAN link and $\alpha$ is tens of milliseconds.
 - [Profiling and optimization](../profiling-and-optimization.md) - checking in a trace whether the overlap these cost models assume actually happens.
 - [RL infrastructure](../../platform/rl-infrastructure.md) - the parallelism layouts used for trainer and inference workers in RL systems.
 

@@ -20,13 +20,13 @@ This section is here to try to disambiguate the common performance metric defini
 
 - 1 FLOP (FLoating point OPeration) can be one of addition, subtraction, multiplication, or division operation.
 
-- 1 MAC (Multiply-ACCumulate) operation is a multiplication followed by an addition, that is: `a * b + c`
+- 1 MAC (Multiply-ACCumulate) operation is a multiplication followed by an addition, that is: $a \cdot b + c$
 
 Thus 1 MAC = 2 FLOPs. It's also quite common for modern hardware to perform 1 MAC in a single clock cycle.
 
 Please note that to calculate the number of MACs in relationship to FLOPs the reverse logic applies, that is MACs = 0.5 FLOPs - it's somewhat confusing since we have just said that 1 MAC = 2 FLOPs, but it checks out - observe: 100 FLOPs = 50 MACs - because there are 2 FLOPs in each MAC.
 
-Moreover, while 1 MAC = 2 FLOPs, the reverse isn't necessarily true. That is 2 FLOPs isn't necessarily equal to 1 MAC. For example, if you did `.5*.6` 100 times it'd be 100 FLOPs, which here would equal to 100 MACs, because here only the multiply part of the MAC is executed.
+Moreover, while 1 MAC = 2 FLOPs, the reverse isn't necessarily true. That is 2 FLOPs isn't necessarily equal to 1 MAC. For example, if you did $0.5 \times 0.6$ 100 times it'd be 100 FLOPs, which here would equal to 100 MACs, because here only the multiply part of the MAC is executed.
 
 **FLOP vs FLOPS vs FLOP/s**
 
@@ -79,18 +79,22 @@ footnote: When calculating TFLOPS it's important to remember that the math is di
 
 For decoder transformer models the following is an estimation formula which slightly under-reports the real TFLOPS:
 
-TFLOPS: `model_size_in_B * 4 * 2 * seqlen * global_batch_size / (time_in_sec_per_iteration * total_gpus * 1e3)`
+TFLOPS:
+
+$$
+\text{TFLOPS} = \frac{\text{model\_size\_in\_B} \cdot 4 \cdot 2 \cdot \text{seqlen} \cdot \text{global\_batch\_size}}{\text{time\_in\_sec\_per\_iteration} \cdot \text{total\_gpus} \cdot 10^3}
+$$
 
 The factor of 4 is used with activation/gradient checkpointing, otherwise it will be 3. For 100B+ models, activation checkpointing will almost always be on.
 
-So the `3*2` is often called "model FLOPs" and `4*2` - "hardware FLOPs", correlating to MFU and HFU (model and hardware FLOPS per second divided by the accelerator's theoretical peak FLOPS)
+So the $3 \cdot 2$ is often called "model FLOPs" and $4 \cdot 2$ - "hardware FLOPs", correlating to MFU and HFU (model and hardware FLOPS per second divided by the accelerator's theoretical peak FLOPS)
 
 ```bash
 perl -le '$ng=64; $ms=52; $gbs=1024; $sp=127; $seqlen=2048; print $ms*4*2*$seqlen*$gbs / ( $sp * $ng * 1e3)'
 ```
 (ng = total gpus, ms = model size in B, gbs = global batch size, sp = seconds per iteration)
 
-Here is the same formula using `bash` env vars and which breaks down GBS into `MBS*DP*GAS` (GAS in this case corresponded to `pp_chunks` which was the number of chunks in the pipeline, but normally GAS just stands for Gradient Accumulation Steps):
+Here is the same formula using `bash` env vars and which breaks down GBS into $\text{MBS} \cdot \text{DP} \cdot \text{GAS}$ (GAS in this case corresponded to `pp_chunks` which was the number of chunks in the pipeline, but normally GAS just stands for Gradient Accumulation Steps):
 ```bash
 echo "($MSIZE*4*2*SEQLEN*$MICRO_BATCH_SIZE*$DP_SIZE*$GAS)/($THROUGHPUT*$NNODES*$GPUS_PER_NODE*1000)" | bc -l
 ```
@@ -98,7 +102,7 @@ echo "($MSIZE*4*2*SEQLEN*$MICRO_BATCH_SIZE*$DP_SIZE*$GAS)/($THROUGHPUT*$NNODES*$
 
 The exact formula is in Equation 3 of Section 5.1 of the [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://arxiv.org/abs/2104.04473) paper. You can see the code [here](https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/251).
 
-footnote: For Inference only it'd be: `24Bsh^2 + 4Bs^2h` floating point operations per layer.
+footnote: For Inference only it'd be: $24Bsh^2 + 4Bs^2h$ floating point operations per layer.
 
 
 #### Automating FLOP calculation
@@ -161,9 +165,9 @@ As you can see, since Megatron-LM was using activation recomputation for these t
 
 More recent H100+A100 MFU/HFU numbers have been published [here](https://github.com/mosaicml/llm-foundry/tree/main/scripts/train/benchmarking#mfu-and-hfu).
 
-Now, whenever you see MFU or HFU numbers published you have to be careful comparing those numbers to any other similar numbers, until you know that the same way was used to calculate FLOPS. Since `HFU=Actual_Achieved_FLOPS/Theoretical_FLOPS` and `Theoretical_FLOPS` are fixed, the only variable here is the `Actual_Achieved_FLOPS` and since most of the time an estimated value is calculated based on parameter shapes, there are many versions of calculations out there, some of which are slightly imprecise whereas others are very imprecise. Compilers may also impact the effective FLOPs, by optimizing some operations away. Moreover you don't know how iteration time was measured.
+Now, whenever you see MFU or HFU numbers published you have to be careful comparing those numbers to any other similar numbers, until you know that the same way was used to calculate FLOPS. Since $\text{HFU}=\text{Actual\_Achieved\_FLOPS}/\text{Theoretical\_FLOPS}$ and `Theoretical_FLOPS` are fixed, the only variable here is the `Actual_Achieved_FLOPS` and since most of the time an estimated value is calculated based on parameter shapes, there are many versions of calculations out there, some of which are slightly imprecise whereas others are very imprecise. Compilers may also impact the effective FLOPs, by optimizing some operations away. Moreover you don't know how iteration time was measured.
 
-To recall `TFLOPS = FLOS / iteration_duration`. So, in order to do a fair comparison the 2 main questions to ask are:
+To recall $\text{TFLOPS} = \text{FLOS} / \text{iteration\_duration}$. So, in order to do a fair comparison the 2 main questions to ask are:
 1. Was the total used floating point operations calculated in the same way?
 2. Was the time component calculated back-to-back of each iteration, including the `DataLoader` and logging, vs only `fwd`+`bwd` parts.
 
@@ -264,9 +268,9 @@ There are the input and output that are being passed and returned by the forward
 
 Here is a rough breakdown of activation memory per GPU:
 
-1. Activation working memory: `dtype_size * num_of_hidden_states_copies * bs * seqlen * hidden_size`
-2. Activation checkpoints memory: `dtype_size * num_layers * bs * seqlen * hidden_size`
-3. Logits working memory: `fp32_size * bs * seqlen * vocab_size`
+1. Activation working memory: $\text{dtype\_size} \cdot \text{num\_of\_hidden\_states\_copies} \cdot \text{bs} \cdot \text{seqlen} \cdot \text{hidden\_size}$
+2. Activation checkpoints memory: $\text{dtype\_size} \cdot \text{num\_layers} \cdot \text{bs} \cdot \text{seqlen} \cdot \text{hidden\_size}$
+3. Logits working memory: $\text{fp32\_size} \cdot \text{bs} \cdot \text{seqlen} \cdot \text{vocab\_size}$
 
 In all the following calculations:
 - `dtype_size`: size of the one element of `dtype` being used, e.g. `1` byte for fp8, `2` for bf16, `4` for fp32, etc. - see [Tensor precision / Data types](../dtype.md) for the full set
@@ -277,7 +281,7 @@ In all the following calculations:
 - `num_layers`: the number of layers the model has
 - `vocab_size`: vocabulary size
 
-And `dtype_size * bs * seqlen * hidden_size` is the size of the `hidden_states` tensor, because that's its shape `[bs, seqlen, hidden_size]` multiplied by the size in bytes of a single element.
+And $\text{dtype\_size} \cdot \text{bs} \cdot \text{seqlen} \cdot \text{hidden\_size}$ is the size of the `hidden_states` tensor, because that's its shape `[bs, seqlen, hidden_size]` multiplied by the size in bytes of a single element.
 
 In the following explanation let's use the Llama-3 architecture and its [8B configuration](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/blob/main/config.json):
 ```
@@ -293,11 +297,13 @@ bs=1
 seqlen=32768
 ```
 
-We can immediately calculate the size of `hidden_states` tensor in bf16 to be: `2 * 1 * 32768 * 4096 / 2**30 = 0.25GiB`
+We can immediately calculate the size of `hidden_states` tensor in bf16 to be: $2 \cdot 1 \cdot 32768 \cdot 4096 / 2^{30} = 0.25\ \text{GiB}$
 
 Part 1. So first let's calculate how much working memory is needed to process a single layer forward:
 
-`activation_memory_per_layer = num_of_hidden_states_copies * dtype_size * bs * seqlen * hidden_size`
+$$
+\text{activation\_memory\_per\_layer} = \text{num\_of\_hidden\_states\_copies} \cdot \text{dtype\_size} \cdot \text{bs} \cdot \text{seqlen} \cdot \text{hidden\_size}
+$$
 
 The `num_of_hidden_states_copies` is typically between 20 and 50 and will vary between different model architectures. To get a good feeling for the variations - let's measure a handful of models using [activation-memory-per-layer.py](benchmarks/activation-memory-per-layer.py). What we get is:
 ```
@@ -317,34 +323,34 @@ Clearly some architectures allocate additional memory besides copies of `hidden_
 
 Now to our example model:
 
-`activation_memory_per_layer = 2 * 28 * 1 * 32768 * 4096 / 2**30 = 7GiB` (`28` came from the measurements output a few paragraphs earlier for `meta-llama/Llama-3.1-8B-Instruct`).
+$\text{activation\_memory\_per\_layer} = 2 \cdot 28 \cdot 1 \cdot 32768 \cdot 4096 / 2^{30} = 7\ \text{GiB}$ (`28` came from the measurements output a few paragraphs earlier for `meta-llama/Llama-3.1-8B-Instruct`).
 
 Part 2. Now that we know the memory allocated by each layer, 2 possible things will happen next depending on whether [gradient checkpointing](#gradient-checkpointing) is enabled or not:
 
-- If it's enabled, then we need to store `num_layers * hidden_states`.
+- If it's enabled, then we need to store $\text{num\_layers} \cdot \text{hidden\_states}$.
 
-In our example that would be: `32 * 0.25 = 8GiB` (we calculated `hidden_states = 0.25GiB` earlier).
+In our example that would be: $32 \cdot 0.25 = 8\ \text{GiB}$ (we calculated $\text{hidden\_states} = 0.25\ \text{GiB}$ earlier).
 
-- If it's not enabled, then activation memory will grow to `num_layers * activation_memory_per_layer`.
+- If it's not enabled, then activation memory will grow to $\text{num\_layers} \cdot \text{activation\_memory\_per\_layer}$.
 
-In our example that would be: `32 * 7 = 224GiB`
+In our example that would be: $32 \cdot 7 = 224\ \text{GiB}$
 
 Notice 8GiB vs 224GiB - that's a huge difference - therefore, clearly everybody activates the [gradient checkpointing](#gradient-checkpointing) feature despite the cost of recalculating the forward pass a second time.
 
-Part 3. Finally we have the loss calculation which typically requires manifesting the logits in fp32 and here the `vocab_size` dimension is typically the biggest dimension, hence: `fp32_size * bs * seqlen * vocab_size`
+Part 3. Finally we have the loss calculation which typically requires manifesting the logits in fp32 and here the `vocab_size` dimension is typically the biggest dimension, hence: $\text{fp32\_size} \cdot \text{bs} \cdot \text{seqlen} \cdot \text{vocab\_size}$
 
-In our example that would be: `4 * 1 * 32768 * 128256 /  2**30 = 15.7GiB` (~16GiB)
+In our example that would be: $4 \cdot 1 \cdot 32768 \cdot 128256 / 2^{30} = 15.7\ \text{GiB}$ (~16GiB)
 
 As you can see logits will use more memory than all the checkpointing activations for this model.
 
-Moreover, practically you typically end up with a factor of 6 instead of 4 for `dtype_size`, since usually `logits` is first created in the lower precision and then upcast to fp32 so you have 2 copies of it, thus `2+4=6`.
+Moreover, practically you typically end up with a factor of 6 instead of 4 for `dtype_size`, since usually `logits` is first created in the lower precision and then upcast to fp32 so you have 2 copies of it, thus $2+4=6$.
 
 Part 4. Total required activation memory is the sum of memory needed to compute one layer forward + activation checkpoints + logits activation memory when using gradient checkpointing. When not using gradient checkpointing it's the sum of 2 and 3, i.e. all the forwards activations and the logits memory.
 
 In our example:
 
-- w/ gradient checkpointing: `7 + 8 + 16 = 31GiB`
-- w/o gradient checkpointing: `224 + 16 = 240GiB`
+- w/ gradient checkpointing: $7 + 8 + 16 = 31\ \text{GiB}$
+- w/o gradient checkpointing: $224 + 16 = 240\ \text{GiB}$
 
 **Temporary Memory**
 
@@ -478,38 +484,42 @@ Model replica is how many gpus are needed to fit the full model.
 
 You can have as many data streams as there are replicas. Which is the same as the value of DP.
 - So in the simple case of a model fitting into a single GPU. There are as many data streams as there are GPUs. DP=N_GPUS
-- when the model doesn't fit onto a single GPU, then `DP=N_GPUs/(TP*PP)` in the case of 3D parallelism and DP=ZeRO-DP in the case of ZeRO parallelism.
+- when the model doesn't fit onto a single GPU, then $\text{DP}=\text{N\_GPUs}/(\text{TP} \cdot \text{PP})$ in the case of 3D parallelism and DP=ZeRO-DP in the case of ZeRO parallelism.
 
 Going back to our global batch size (GBS) it's calculated as:
 
-```
-GBS = MBS*DP
-```
+$$
+\text{GBS} = \text{MBS} \cdot \text{DP}
+$$
 
 So if you have 8 gpus (N_GPUS=8) and your MBS=4 and you do DP you end up with having GBS=32 because:
 
-```
-GBS = MBS*DP = 4*8 = 32
-```
+$$
+\text{GBS} = \text{MBS} \cdot \text{DP} = 4 \cdot 8 = 32
+$$
 
-If you use TP with a degree of 2 (TP=2) and PP with a degree of 2 (PP=2) this means each model replica takes 4 gpus (`TP*PP`), and thus with N_GPUS=8
+If you use TP with a degree of 2 (TP=2) and PP with a degree of 2 (PP=2) this means each model replica takes 4 gpus ($\text{TP} \cdot \text{PP}$), and thus with N_GPUS=8
 
-```
-DP = N_GPUS/(TP*PP) = 8 / (2*2) = 2
-```
+$$
+\text{DP} = \text{N\_GPUS}/(\text{TP} \cdot \text{PP}) = 8 / (2 \cdot 2) = 2
+$$
+
 and now GBS becomes:
 
-```
-GBS = MBS*DP = 4*2 = 8
-```
+$$
+\text{GBS} = \text{MBS} \cdot \text{DP} = 4 \cdot 2 = 8
+$$
 
 If your training setup requires [Gradient Accumulation](#gradient-accumulation), one usually defines the interval of how many steps to wait before performing a gradient accumulation. The term is usually Gradient Accumulation Steps (GAS). If GAS=4 (i.e. sync grads every 4 steps) and TP=1, PP=1 and DP=8:
 
 
-```
-DP = N_GPUS/(TP*PP) = 8 / (1*1) = 8
-GBS = MBS*DP*GAS = 4*8*4 = 128
-```
+$$
+\text{DP} = \text{N\_GPUS}/(\text{TP} \cdot \text{PP}) = 8 / (1 \cdot 1) = 8
+$$
+
+$$
+\text{GBS} = \text{MBS} \cdot \text{DP} \cdot \text{GAS} = 4 \cdot 8 \cdot 4 = 128
+$$
 
 Typically you want to make the micro batch size as large as possible so that the GPU memory is close to being full, but not too full.
 
@@ -640,26 +650,26 @@ There are multiple tile sizes that the kernel can choose from. If the GEMM size 
 
 Another quantization effect is called **wave quantization**. As the thread blocks are scheduled to SMs, only as many thread blocks as there are SMs may be scheduled at a time - 108 on A100, and 132 on H100/H200 (measured with `torch.cuda.get_device_properties(0).multi_processor_count`, so substitute your own accelerator's count before using any of the numbers here). Taking A100's 108: if 109 thread blocks must be scheduled, two rounds, or waves, of thread blocks must be scheduled to GPU. The first wave will have 108 thread blocks, and the second wave will have 1. The second wave will have almost the same latency as the first, but with a small fraction of the useful compute. As the matrix size increases, the last or tail wave grows. The throughput will increase, until a new wave is required. Then, the throughput will drop.
 
-What this means for transformers, is that for a given ratio of `h/a`, one needs to ensure they're on the crest of a wave. If you're using NVIDIA V100/A100 GPUs, we've already done this work for you in https://arxiv.org/pdf/2401.14489
+What this means for transformers, is that for a given ratio of $h/a$, one needs to ensure they're on the crest of a wave. If you're using NVIDIA V100/A100 GPUs, we've already done this work for you in https://arxiv.org/pdf/2401.14489
 
 An example of this for 32 attention heads:
 
 ![wave quantization](images/wave-quant.png)
 
-More powers of 2 in `h/a` helps!
+More powers of 2 in $h/a$ helps!
 
 
 ### Do more SMs give more TFLOPS?
 
-Take two accelerators identical for a given dtype - same matmul units per SM, same [FMAs](../../compute/accelerator/README.md#how-to-calculate-theoretical-tflops) per clock, same clock - where one has more SMs. Theoretical peak scales linearly with the count, because that is how it is derived - `clock * FMAs_per_clock_cycle_per_compute_unit * 2 * num_compute_units` - and that last term is a fixed multiple of the SM count: 4 Tensor Cores per SM on NVIDIA's Ampere, Hopper and Blackwell, with AMD and Intel counting their own units. Only the fixedness matters here. Achievable throughput does *not* scale linearly, and the gap is wave quantization.
+Take two accelerators identical for a given dtype - same matmul units per SM, same [FMAs](../../compute/accelerator/README.md#how-to-calculate-theoretical-tflops) per clock, same clock - where one has more SMs. Theoretical peak scales linearly with the count, because that is how it is derived - $\text{clock} \cdot \text{FMAs\_per\_clock\_cycle\_per\_compute\_unit} \cdot 2 \cdot \text{num\_compute\_units}$ - and that last term is a fixed multiple of the SM count: 4 Tensor Cores per SM on NVIDIA's Ampere, Hopper and Blackwell, with AMD and Intel counting their own units. Only the fixedness matters here. Achievable throughput does *not* scale linearly, and the gap is wave quantization.
 
-A GEMM decomposes into `C` thread blocks, `C = ceil(m/Tm) * ceil(n/Tn)` for a `Tm x Tn` tile. On `S` SMs that takes `W = ceil(C/S)` waves, and since a wave costs the same whether it is full or not, time is proportional to `W`. So for `S1 < S2` the speedup is not `S2/S1` but:
+A GEMM decomposes into $C$ thread blocks, $C = \lceil m/T_m \rceil \cdot \lceil n/T_n \rceil$ for a $T_m \times T_n$ tile. On $S$ SMs that takes $W = \lceil C/S \rceil$ waves, and since a wave costs the same whether it is full or not, time is proportional to $W$. So for $S_1 < S_2$ the speedup is not $S_2/S_1$ but:
 
-```
-speedup = ceil(C/S1) / ceil(C/S2)
-```
+$$
+\text{speedup} = \frac{\lceil C/S_1 \rceil}{\lceil C/S_2 \rceil}
+$$
 
-gives us a plot, which is a staircase, not a line. For example, B300 ships in at least two SKUs, with **148** and **152** SMs - same silicon, same clock, an SM ratio of `152/148` = **1.027**:
+gives us a plot, which is a staircase, not a line. For example, B300 ships in at least two SKUs, with **148** and **152** SMs - same silicon, same clock, an SM ratio of $152/148$ = **1.027**:
 
 | thread blocks | waves @148 | waves @152 | speedup | what happens                              |
 | ------------: | ---------: | ---------: | ------: | :---------------------------------------- |
@@ -672,9 +682,9 @@ gives us a plot, which is a staircase, not a line. For example, B300 ships in at
 
 footnote: thread blocks are also known as Cooperative Thread Array (CTA)
 
-2.7% more SMs buys anywhere from **nothing** to **2x**, on shape alone. Below one wave the extra SMs have no work. At a crossover the narrower part pays for a nearly-empty second wave and loses by up to 2x. Once both need the same wave count they tie again, and now the *wider* part wastes more: at `C = 296` the 148-SM part packs two waves exactly while the 152-SM part idles 8 slots in its second. Only as `C` grows does the advantage settle on the SM ratio - still 1.4% off at 3584, within 0.03% by 50000 - which is why vendors quote peak on enormous matmuls, the one place the staircase is flat.
+2.7% more SMs buys anywhere from **nothing** to **2x**, on shape alone. Below one wave the extra SMs have no work. At a crossover the narrower part pays for a nearly-empty second wave and loses by up to 2x. Once both need the same wave count they tie again, and now the *wider* part wastes more: at $C = 296$ the 148-SM part packs two waves exactly while the 152-SM part idles 8 slots in its second. Only as $C$ grows does the advantage settle on the SM ratio - still 1.4% off at 3584, within 0.03% by 50000 - which is why vendors quote peak on enormous matmuls, the one place the staircase is flat.
 
-The `3584` row is a shape you actually run: the MLP up-projection of a Llama-3.1-8B forward pass at 8K tokens. `hidden_size=4096` and `intermediate_size=14336` give an `8192 x 14336` output, which over a `128 x 256` tile is `64 * 56` = 3584 blocks, once per layer for 32 layers. It lands *above* the 1.027x ratio - the staircase straddles the ratio rather than approaching it from below.
+The `3584` row is a shape you actually run: the MLP up-projection of a Llama-3.1-8B forward pass at 8K tokens. `hidden_size=4096` and `intermediate_size=14336` give an `8192 x 14336` output, which over a `128 x 256` tile is $64 \times 56$ = 3584 blocks, once per layer for 32 layers. It lands *above* the 1.027x ratio - the staircase straddles the ratio rather than approaching it from below.
 
 So **an SM count does not tell you a throughput advantage** without your shapes, and a shape tuned on one part can land on the wrong side of a crossover on another. To place yourself, count your blocks and divide by your own SM count.
 
@@ -699,14 +709,14 @@ python -c "import torch; p=torch.cuda.get_device_properties(0); print(p.name, p.
 
 ### Number and size of attention heads
 
-Generally, it's most computationally efficient to keep the ratio of `h/a` as large as possible without accuracy degradation. A good figure from [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) showing this effect is:
+Generally, it's most computationally efficient to keep the ratio of $h/a$ as large as possible without accuracy degradation. A good figure from [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) showing this effect is:
 
 ![attention heads](images/attention-less-heads.png)
 
 
 ### Flash attention
 
-If you're using [Flash Attention](https://github.com/Dao-AILab/flash-attention), good news! These MHA sizing constraints are taken care of for you. Your only constraint is to have a large enough ratio of `h/a` to saturate your GPU cores:
+If you're using [Flash Attention](https://github.com/Dao-AILab/flash-attention), good news! These MHA sizing constraints are taken care of for you. Your only constraint is to have a large enough ratio of $h/a$ to saturate your GPU cores:
 
 ![flash attention](images/flash-attention.png)
 
@@ -718,15 +728,15 @@ The trap is the gap between silicon and kernels. A fully usable FA4 took many mo
 
 Models such as PaLM, LLaMA, Mistral and others use the SwiGLU activation function in place of the more common GLU activation function.
 
-The SwiGLU-based MLP contains an additional learned matrix in its activation function. There the MLP block contains 3 matrices instead of the original 2. To preserve the total number of parameters in the MLP block the paper that introduces [SwiGLU](https://arxiv.org/abs/2002.05202) proposes to use `dim_mlp = 8/3*dim_attn` instead of the typical `dim_mlp = 4*dim_attn`. The [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) paper provides recommendations for finding the value of hidden dimension (`h`) that would lead to the best `matmul` performance, and if you used `8/3*h` is likely to result in a much slower MLP block, because `8/3` will break all the alignments.
+The SwiGLU-based MLP contains an additional learned matrix in its activation function. There the MLP block contains 3 matrices instead of the original 2. To preserve the total number of parameters in the MLP block the paper that introduces [SwiGLU](https://arxiv.org/abs/2002.05202) proposes to use $\text{dim\_mlp} = 8/3 \cdot \text{dim\_attn}$ instead of the typical $\text{dim\_mlp} = 4 \cdot \text{dim\_attn}$. The [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) paper provides recommendations for finding the value of hidden dimension ($h$) that would lead to the best `matmul` performance, and if you used $8/3 \cdot h$ is likely to result in a much slower MLP block, because $8/3$ will break all the alignments.
 
-In order to overcome this problem one only needs to realize that the `8/3` coefficient is only a suggestion and thus it’s possible to find other near by coefficients that would lead to better-shaped MLP matrices. In fact if you look at the publicly available LLama-2 models, its 7B variant uses `11008/4096 = 2.6875` as a coefficient, which is quite close to `8/3 = 2.667`, and its 70B variant uses a much larger `28672/8192 = 3.5` coefficient. Here the 70B variant ended up with an MLP block that contains significantly more parameters than a typical transformer block that doesn’t use SwiGLU.
+In order to overcome this problem one only needs to realize that the $8/3$ coefficient is only a suggestion and thus it’s possible to find other near by coefficients that would lead to better-shaped MLP matrices. In fact if you look at the publicly available LLama-2 models, its 7B variant uses $11008/4096 = 2.6875$ as a coefficient, which is quite close to $8/3 = 2.667$, and its 70B variant uses a much larger $28672/8192 = 3.5$ coefficient. Here the 70B variant ended up with an MLP block that contains significantly more parameters than a typical transformer block that doesn’t use SwiGLU.
 
-Now that we know the recommended coefficient isn’t exact and since a good `h` has already been chosen, one can now search for a good nearby coefficient that still leads to high-performance GEMMs in the MLP. Running a brute-force search reveals that Llama-2-7B’s intermediate size is indeed one of the best performing sizes in its range.
+Now that we know the recommended coefficient isn’t exact and since a good $h$ has already been chosen, one can now search for a good nearby coefficient that still leads to high-performance GEMMs in the MLP. Running a brute-force search reveals that Llama-2-7B’s intermediate size is indeed one of the best performing sizes in its range.
 
 Here is [swiglu-maf-bench.py](benchmarks/matrix-shape/swiglu-maf-bench.py) that can be easily adapted to your use-case and once run on the target hardware the training will happen on, you will be able to find the best hidden size of the MLP.
 
-Let's run it on H100 with `h = 4096`:
+Let's run it on H100 with $h = 4096$:
 
 ```bash
 ./swiglu-maf-bench.py
@@ -746,7 +756,7 @@ Results: baseline, followed by near-by best performing d_ff results:
 11008  395.01 135266304
 ```
 
-As it can be easily seen the `8/3*4096=10922` leads to a rather slow performance. But `10944`, which is just `22` bigger than `10922`, gives a whooping 46% speedup for the `matmul`. The total corresponding MLP parameters is printed as well, should you want to choose slightly slower choices but with a different number of parameters.
+As it can be easily seen the $8/3 \cdot 4096=10922$ leads to a rather slow performance. But `10944`, which is just `22` bigger than `10922`, gives a whooping 46% speedup for the `matmul`. The total corresponding MLP parameters is printed as well, should you want to choose slightly slower choices but with a different number of parameters.
 
 
 ### Final recommendations for model sizing
@@ -754,10 +764,10 @@ As it can be easily seen the `8/3*4096=10922` leads to a rather slow performance
 The full recommendations are:
 1. Vocab size divisible by 64
 2. Microbatch size as large as possible
-3. `b*s`, `h/a`, and `h/t` should be divisible by a power of 2
-4. `(b*a)/t` should be an integer
-5. `t` should be small as possible
-6. For SwiGLU search for the best performing hidden size close to `8/3*h`
+3. Each of $b \cdot s$, $h/a$, and $h/t$ should be divisible by a power of 2
+4. $(b \cdot a)/t$ should be an integer
+5. $t$ should be small as possible
+6. For SwiGLU search for the best performing hidden size close to $8/3 \cdot h$
 
 ### Additional reading
 
@@ -780,7 +790,7 @@ As you can see it has 2 CPUs, each defining a NUMA block, and each such block co
 
 footnote: the diagram was generated by `lstopo a100.png` from [hwloc](https://github.com/open-mpi/hwloc).
 
-If you're using Hyper-Threads then you want to use `lstopo -l` to see the HT core count presented correctly. For example if you have 2 NUMA nodes with 8 accelerators and 104 physical cpu-cores and 208 logical cores - thus (`208/8=26` HT-cores per GPU), then the HT cores will be for:
+If you're using Hyper-Threads then you want to use `lstopo -l` to see the HT core count presented correctly. For example if you have 2 NUMA nodes with 8 accelerators and 104 physical cpu-cores and 208 logical cores - thus ($208/8=26$ HT-cores per GPU), then the HT cores will be for:
 
 - gpu0..3 `[0, 1,  2, 3, ...,  51, 104, 105, 106, ..., 129]`
 - gpu4..7 `[52, 53, 54, ..., 103, 156, 157, 158, ..., 207]`
@@ -908,7 +918,7 @@ To make it NUMA affinity-ready all you need to add is these 2 headers:
 #SBATCH --ntasks-per-socket=4
 ```
 
-`--ntasks-per-socket=4` assumes you have 2 cpu sockets with 8 accelerators - so `8/2=4` accelerators per socket.
+`--ntasks-per-socket=4` assumes you have 2 cpu sockets with 8 accelerators - so $8/2=4$ accelerators per socket.
 
 This is an even more precise solution, since it'd assign each process its own group of cpu-cores, rather than just give all the NUMA node 0 cpu-cores to the processes driving accelerators 0-3, and NUMA node 1 cpu-cores to the processes driving accelerators 4-7.
 

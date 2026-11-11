@@ -130,7 +130,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+# /site is the committed website (build/site/build_site.py), so it is not ignored
 
 # mypy
 .mypy_cache/
@@ -139,3 +139,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# the committed website: its .html pages are sources for Vercel, not build leftovers
+!/site/**

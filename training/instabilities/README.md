@@ -17,17 +17,17 @@ This proved to be a very crucial setting in our pre-BLOOM 104B experiments and w
 
 We referred to these two sources:
 
-1. "Transformers without Tears" paper https://arxiv.org/abs/1910.05895 prescribes: `sqrt(2/(NHIDDEN*5))`
+1. "Transformers without Tears" paper https://arxiv.org/abs/1910.05895 prescribes: $\sqrt{2/(\text{NHIDDEN} \cdot 5)}$
 
-2. The 530B training paper https://arxiv.org/abs/2201.11990 they used an even smaller init formula: `sqrt(1/(NHIDDEN*3))`
+2. The 530B training paper https://arxiv.org/abs/2201.11990 they used an even smaller init formula: $\sqrt{1/(\text{NHIDDEN} \cdot 3)}$
 
 and decided to go with the 530B one as it leads to an even smaller init value.
 
 To make it easier to compare the two formulas, they can be rewritten as:
-1. `sqrt(0.4000/NHIDDEN)`
-2. `sqrt(0.3333/NHIDDEN)`
+1. $\sqrt{0.4000/\text{NHIDDEN}}$
+2. $\sqrt{0.3333/\text{NHIDDEN}}$
 
-Thus for `NHIDDEN=14336` the math was `sqrt(1/(14336*3)) = 0.00482` and that's what we used. It surely wasn't the only reason why we had no stability issues during BLOOM-176B training, but I think it was one of the crucial ones.
+Thus for $\text{NHIDDEN}=14336$ the math was $\sqrt{1/(14336 \cdot 3)} = 0.00482$ and that's what we used. It surely wasn't the only reason why we had no stability issues during BLOOM-176B training, but I think it was one of the crucial ones.
 
 
 ## Numerical instabilities
@@ -56,10 +56,11 @@ Proposal: move the `norm_factor` inward, so Q and K are scaled down before matri
         attention_scores = matmul_result.view(*output_size)
 ```
 
-To make the operation mathematically equivalent, moving the norm factor inward requires taking sqrt again if n is a scalar, A and B matrices:
-```
-n * (A dot B) === (sqrt(n) * A) dot (sqrt(n) * B)
-```
+To make the operation mathematically equivalent, moving the norm factor inward requires taking sqrt again if $n$ is a scalar, A and B matrices:
+
+$$
+n (A \cdot B) \equiv (\sqrt{n} A) \cdot (\sqrt{n} B)
+$$
 
 Now A and B dimensions can be significantly larger.
 
@@ -67,9 +68,9 @@ The same post-multiply scaling problem also exists one level down, in the CUDA m
 
 For CUDA kernel writers [CuBlas](https://docs.nvidia.com/cuda/cublas/index.html)'s `GemmStridedBatchedEx` at the time of this writing has a similar issue. It is defined as:
 
-```
-C+i*strideC=αop(A+i*strideA)op(B+i*strideB)+β(C+i*strideC), for i ∈[0,batchCount−1]
-```
+$$
+C+i \cdot \text{strideC}=\alpha \operatorname{op}(A+i \cdot \text{strideA}) \operatorname{op}(B+i \cdot \text{strideB})+\beta (C+i \cdot \text{strideC}), \quad \text{for } i \in [0,\text{batchCount}-1]
+$$
 
 The issue is that `alpha` is multiplied after the matrix-matrix multiplication is done so it can cause instability.
 

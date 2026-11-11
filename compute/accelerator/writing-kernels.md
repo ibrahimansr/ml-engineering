@@ -272,7 +272,7 @@ A *kernel* is a C++ function marked `__global__`. The host (CPU) launches it and
 
 The other qualifiers you will see: `__device__` is a function callable only from GPU code (inlined helpers). `__host__ __device__` compiles for both sides. `__shared__` declares a variable in the block's shared memory (smem), visible to all threads of the block. `__restrict__` promises the compiler that pointers do not alias, which lets it use the read-only cache and reorder loads. `__syncthreads()` is a barrier for all threads of one block (there is no barrier across blocks inside a kernel, apart from *cooperative launches*, a special launch mode, `cudaLaunchCooperativeKernel`, that guarantees all blocks are resident at once so a grid-wide barrier cannot deadlock). `__forceinline__` forces a `__device__` helper to be inlined, and `__launch_bounds__(N)` on a kernel promises it is never launched with more than `N` threads per block, so the compiler can budget registers for that size ([occupancy](execution-model.md#occupancy-worked)).
 
-Limits worth memorizing (from the [CUDA programming guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html), compute capability 7.0 to 10.x): at most 1024 threads per block; `gridDim.x` up to `2^31 - 1`; `gridDim.y` and `gridDim.z` up to 65535; static `__shared__` up to 48 KB per block (more needs dynamic shared memory plus `cudaFuncSetAttribute`). Blocks should be a multiple of 32 threads, because the hardware runs 32-thread warps ([why](execution-model.md#sms-warps-and-schedulers)).
+Limits worth memorizing (from the [CUDA programming guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html), compute capability 7.0 to 10.x): at most 1024 threads per block; `gridDim.x` up to $2^{31} - 1$; `gridDim.y` and `gridDim.z` up to 65535; static `__shared__` up to 48 KB per block (more needs dynamic shared memory plus `cudaFuncSetAttribute`). Blocks should be a multiple of 32 threads, because the hardware runs 32-thread warps ([why](execution-model.md#sms-warps-and-schedulers)).
 
 The one line every elementwise kernel starts with is the global index, plus the check for the partial last block:
 
@@ -665,9 +665,9 @@ __global__ void sum_grid_stride(const float* __restrict__ x, float* __restrict__
 Why each one is faster than the last:
 
 - **v0, atomics**: `atomicAdd` on one address serializes in the L2's atomic unit. It is fine for a few thousand atomics, hopeless for millions. It is also non-deterministic: the order of the floating-point additions depends on timing.
-- **v1, shared-memory tree**: `log2(256) = 8` steps, each halving the active threads. *Sequential addressing* (`s[tid] += s[tid + stride]`, active threads `0..stride-1`) keeps active threads contiguous, so whole warps go idle together (no [divergence](execution-model.md#divergence)) and the 32 lanes touch 32 consecutive words (no [bank conflicts](execution-model.md#bank-conflicts)). Cost: 8 barriers and a smem round trip per step.
+- **v1, shared-memory tree**: $\log_2 256 = 8$ steps, each halving the active threads. *Sequential addressing* (`s[tid] += s[tid + stride]`, active threads `0..stride-1`) keeps active threads contiguous, so whole warps go idle together (no [divergence](execution-model.md#divergence)) and the 32 lanes touch 32 consecutive words (no [bank conflicts](execution-model.md#bank-conflicts)). Cost: 8 barriers and a smem round trip per step.
 - **v2, warp shuffles**: `__shfl_xor_sync(mask, v, m)` reads register `v` from lane `lane ^ m` directly, with no shared memory and no barrier inside a warp. Five steps reduce 32 lanes. Only the 8 warp partials go through smem, once. The XOR "butterfly" leaves the total in *every* lane, so every warp can finish the block reduction redundantly and the result needs no broadcast.
-- **v3, multi-block with many elements per thread**: launch a fixed grid of `4 x num_SMs` blocks. Each thread sums `n / (blocks * 256)` elements in registers with 16-byte loads (Harris's kernel 7 idea), and the tree runs once per block instead of once per 256 elements. A second launch reduces the partials. Two passes, no atomics, so the result is **bitwise deterministic** for a given grid size.
+- **v3, multi-block with many elements per thread**: launch a fixed grid of `4 x num_SMs` blocks. Each thread sums $n / (\text{blocks} \cdot 256)$ elements in registers with 16-byte loads (Harris's kernel 7 idea), and the tree runs once per block instead of once per 256 elements. A second launch reduces the partials. Two passes, no atomics, so the result is **bitwise deterministic** for a given grid size.
 
 The PyTorch wrapper and test for v3 (untested):
 
@@ -787,7 +787,7 @@ All three are "one row per block, reduce, then normalize" kernels. The only diff
 | op | per-thread state | merge(a, b) | passes over x |
 | :- | :--------------- | :---------- | ------------: |
 | softmax (naive) | max, then sum | max; sum | 3 (max, sum, write) |
-| softmax (online) | `(m, d)` running max and rescaled sum | `m = max(ma, mb); d = da e^(ma-m) + db e^(mb-m)` | 2 (stats, write) |
+| softmax (online) | $(m, d)$ running max and rescaled sum | $m = \max(m_a, m_b);\ d = d_a e^{m_a - m} + d_b e^{m_b - m}$ | 2 (stats, write) |
 | RMSNorm | sum of squares | `+` | 2 (stats, write) |
 | LayerNorm (Welford) | `(n, mean, M2)` | Chan et al. parallel merge | 2 (stats, write) |
 
@@ -870,9 +870,9 @@ __global__ void layernorm_f32(const float* __restrict__ x, const float* __restri
 
 Design notes:
 
-- **Why Welford for LayerNorm.** The tempting one-pass `var = E[x^2] - E[x]^2` subtracts two large, nearly equal numbers when `|mean| >> std`, and in fp32 it can lose every significant digit (it can even go negative). Welford's running `(n, mean, M2)` and Chan's merge are stable. The mirror output above confirms the merge on data with mean 100 and std 3. RMSNorm has no mean subtraction, so a plain sum of squares in fp32 is fine.
+- **Why Welford for LayerNorm.** The tempting one-pass $\operatorname{var} = E[x^2] - E[x]^2$ subtracts two large, nearly equal numbers when $\lvert\text{mean}\rvert \gg \text{std}$, and in fp32 it can lose every significant digit (it can even go negative). Welford's running `(n, mean, M2)` and Chan's merge are stable. The mirror output above confirms the merge on data with mean 100 and std 3. RMSNorm has no mean subtraction, so a plain sum of squares in fp32 is fine.
 - **The `-inf` guard** in `MergeMD` handles fully masked rows (attention with padding): `(-inf) - (-inf)` is NaN in IEEE arithmetic, and one NaN poisons the whole row. The Triton softmax below has the same guard, and the [tests](#testing-kernels) cover it.
-- **The second pass** re-reads `x`. For rows up to a few thousand elements that re-read hits L1/L2. The faster production layout caches the row in registers on the first pass. With `N <= 8192` bf16 and 256 threads that is at most 32 values per thread (the [register arithmetic](execution-model.md#choices-and-why) in the execution model chapter), and it removes the second HBM read entirely for rows evicted from L2.
+- **The second pass** re-reads `x`. For rows up to a few thousand elements that re-read hits L1/L2. The faster production layout caches the row in registers on the first pass. With $N \le 8192$ bf16 and 256 threads that is at most 32 values per thread (the [register arithmetic](execution-model.md#choices-and-why) in the execution model chapter), and it removes the second HBM read entirely for rows evicted from L2.
 - **One block per row** is wrong for small `N`: a 1024-wide row on 256 threads gives each thread 4 elements, and block-level barriers dominate. Production kernels (Apex, FlashAttention's layer norm, vLLM's `csrc/layernorm_kernels.cu`) map *one warp per row* when `N` is small, so the reduction is shuffles only, and one block per row when it is large.
 
 A test for the CUDA norms looks exactly like the Triton tests in [Testing kernels](#testing-kernels); `reduce_ext.py` above shows the build pattern.
@@ -1698,7 +1698,7 @@ grouped  : 3 distinct A row-blocks, 3 distinct B col-blocks -> 54 tile loads of 
 
 ### Fused cross-entropy
 
-For a 128K vocabulary, eager `F.cross_entropy` on `(B*T, V)` bf16 logits materializes fp32 softmax and gradient tensors several times the size of the logits. At `B*T = 16384` and `V = 128256`, one fp32 copy is 8.4 GB. The fused kernel computes the loss with an online logsumexp in one read, then **overwrites the logits buffer with the gradient** `(softmax - onehot) / n` in a second pass. The backward pass then just returns that buffer. This is the trick behind Liger-Kernel's cross-entropy. Its "fused linear cross-entropy" goes further and never materializes the logits at all, chunking the final matmul.
+For a 128K vocabulary, eager `F.cross_entropy` on `(B*T, V)` bf16 logits materializes fp32 softmax and gradient tensors several times the size of the logits. At $B \cdot T = 16384$ and $V = 128256$, one fp32 copy is 8.4 GB. The fused kernel computes the loss with an online logsumexp in one read, then **overwrites the logits buffer with the gradient** $(\operatorname{softmax} - \text{onehot}) / n$ in a second pass. The backward pass then just returns that buffer. This is the trick behind Liger-Kernel's cross-entropy. Its "fused linear cross-entropy" goes further and never materializes the logits at all, chunking the final matmul.
 
 ```python
 # cross_entropy.py - fused cross-entropy: loss and dlogits in one kernel, no (B, V) softmax tensor
@@ -1991,7 +1991,7 @@ A kernel that is fast and wrong is worse than useless, because it corrupts train
 
 1. **A reference implementation in plain PyTorch**, as simple as possible, computed in **fp64 (or fp32) on the same rounded inputs**. The "same rounded inputs" part is easy to get wrong. The harness below first compared a bf16 kernel to an fp64 softmax of the *unrounded* data, and failed with a relative error of 0.021 against bf16's tolerance of 0.016. The failure was the rounding of the input, not the kernel. Comparing against `softmax(x_bf16.double())` fixed it.
 2. **Tolerances per dtype.** `torch.testing.assert_close` defaults, printed from this PyTorch version: fp32 `rtol=1.3e-6, atol=1e-5`; fp16 `rtol=1e-3, atol=1e-5`; bf16 `rtol=1.6e-2, atol=1e-5`. For long reductions (GEMMs with big K, attention), a fixed tolerance is too tight or too loose. The more robust bar, used by FlashAttention's tests, is: **your error against the fp64 reference is at most ~2x the error of PyTorch's own implementation at the same dtype.**
-3. **Shapes that break kernels**: 1; sizes just below, at and above every block size (`BLOCK-1, BLOCK, BLOCK+1`); primes; large values that overflow int32 offsets (`M * stride > 2^31`); empty tensors; and random shapes from a *seeded* generator, so that a failure reproduces.
+3. **Shapes that break kernels**: 1; sizes just below, at and above every block size (`BLOCK-1, BLOCK, BLOCK+1`); primes; large values that overflow int32 offsets ($M \cdot \text{stride} > 2^{31}$); empty tensors; and random shapes from a *seeded* generator, so that a failure reproduces.
 4. **Layouts**: non-contiguous views (transposes, slices with `stride(-1) != 1`), storage offsets, different alignments.
 5. **Special values**: `-inf` rows (fully masked attention), very large magnitudes (overflow in `exp` without max subtraction), NaN propagation where PyTorch propagates it.
 6. **Determinism**: same input, same bits, run twice. If a kernel is non-deterministic by design (atomics, split-K), document it and offer a deterministic path.
@@ -2176,7 +2176,7 @@ The four questions, and what the SGEMM ladder looks like through them. The "what
 | kernel | 1. which SOL is high? | 2. what is the top stall? | 3. memory detail | next step |
 | :----- | :-------------------- | :------------------------ | :--------------- | :-------- |
 | 1 naive | both low (latency-bound) | Long Scoreboard (waiting on global loads) | global load sectors/request ~32 (ideal 4) | coalesce (kernel 2) |
-| 2 coalesced | memory (L1/L2) high-ish, compute low | Long Scoreboard | sectors/request ~4; DRAM traffic far above the ideal `(M*K + K*N + M*N) * 4` bytes | reuse via smem (kernel 3) |
+| 2 coalesced | memory (L1/L2) high-ish, compute low | Long Scoreboard | sectors/request ~4; DRAM traffic far above the ideal $(MK + KN + MN) \cdot 4$ bytes | reuse via smem (kernel 3) |
 | 3 smem | L1/shared high, FMA pipe low | MIO Throttle / Short Scoreboard (smem queue) | smem loads per FMA = 2 | more work per smem load (kernels 4, 5) |
 | 5 2D tile | compute (FMA) rising | fewer smem stalls; LG Throttle, issue-bound | many scalar LDG/LDS instructions | 128-bit loads (kernel 6) |
 | 6 vectorized | FMA pipe high | Not Selected / Math Pipe Throttle | spills? check `--ptxas-options=-v` | warptiling, double buffering, autotune |

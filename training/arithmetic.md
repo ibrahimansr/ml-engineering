@@ -89,27 +89,27 @@ Outputs pasted below are from one run. Timings on a shared laptop are noisy; ari
 
 | Symbol | Meaning |
 | :----- | :------ |
-| `b`    | micro-batch size (sequences) |
-| `s`    | sequence length (tokens) |
-| `h`    | hidden size (`d_model`) |
-| `L`    | number of layers |
-| `a`    | number of query heads |
-| `k`    | number of KV heads (GQA); `g = k/a` |
-| `d`    | head dimension, `h = a*d` |
-| `f`    | MLP intermediate size (`ffn_dim`) |
-| `V`    | vocabulary size |
-| `t`    | tensor-parallel degree |
-| `N`    | parameter count |
-| `D`    | training tokens |
+| $b$    | micro-batch size (sequences) |
+| $s$    | sequence length (tokens) |
+| $h$    | hidden size (`d_model`) |
+| $L$    | number of layers |
+| $a$    | number of query heads |
+| $k$    | number of KV heads (GQA); $g = k/a$ |
+| $d$    | head dimension, $h = a d$ |
+| $f$    | MLP intermediate size (`ffn_dim`) |
+| $V$    | vocabulary size |
+| $t$    | tensor-parallel degree |
+| $N$    | parameter count |
+| $D$    | training tokens |
 
 The two reference models (from their public `config.json`) are:
 
-| Model        | `h`  | `L` | `a` | `k` | `d` | `f`   | `V`    | tied emb |
+| Model        | $h$  | $L$ | $a$ | $k$ | $d$ | $f$   | $V$    | tied emb |
 | :----------- | ---: | --: | --: | --: | --: | ----: | -----: | :------- |
 | Llama-3-8B   | 4096 | 32  | 32  | 8   | 128 | 14336 | 128256 | no |
 | Llama-3-70B  | 8192 | 80  | 64  | 8   | 128 | 28672 | 128256 | no |
 
-Units: parameter and optimizer memory is in GB (1e9 bytes), activation memory is in GiB (2^30 bytes), and FLOP means a single multiply or add (1 MAC = 2 FLOP, see [MACs vs FLOP](performance/README.md#macs-vs-flop-vs-flops-vs-flops)). FLOP/s (with "/s") is a rate: FLOPs per second.
+Units: parameter and optimizer memory is in GB ($10^9$ bytes), activation memory is in GiB ($2^{30}$ bytes), and FLOP means a single multiply or add (1 MAC = 2 FLOP, see [MACs vs FLOP](performance/README.md#macs-vs-flop-vs-flops-vs-flops)). FLOP/s (with "/s") is a rate: FLOPs per second.
 
 ## FLOPs of a decoder transformer
 
@@ -117,22 +117,22 @@ Why count FLOPs at all? Because the GPU's arithmetic rate is the one number you 
 
 ### Per-matmul breakdown
 
-A dense matmul `(M, K) @ (K, N)` costs `2*M*K*N` FLOP: each of the `M*N` outputs is a dot product of length `K`, which is `K` multiplies and `K` adds. One token going through one layer of the forward pass therefore costs `2 * (number of weight elements it touches)` for every projection. The attention core adds a cost that grows with context length, because each token's query is compared against every earlier key.
+A dense matmul $(M \times K) \cdot (K \times N)$ costs $2MKN$ FLOP: each of the $MN$ outputs is a dot product of length $K$, which is $K$ multiplies and $K$ adds. One token going through one layer of the forward pass therefore costs $2 \times (\text{number of weight elements it touches})$ for every projection. The attention core adds a cost that grows with context length, because each token's query is compared against every earlier key.
 
 | Operation | Weight shape | Forward FLOP per token per layer |
 | :-------- | :----------- | :------------------------------- |
-| Q proj    | `(h, a*d)`   | `2*h*h` |
-| K, V proj | `(h, k*d)` x2 | `4*h*k*d = 4*g*h*h` |
-| scores `Q K^T` | - | `2*s*a*d = 2*s*h` (full) |
-| `softmax(S) V` | - | `2*s*h` (full) |
-| out proj  | `(a*d, h)`   | `2*h*h` |
-| SwiGLU gate, up, down | `(h,f)`,`(h,f)`,`(f,h)` | `6*h*f` |
-| LM head (once, not per layer) | `(h, V)` | `2*h*V` |
+| Q proj    | $(h, ad)$   | $2h^2$ |
+| K, V proj | $(h, kd)$ x2 | $4hkd = 4gh^2$ |
+| scores $QK^\top$ | - | $2sad = 2sh$ (full) |
+| $\operatorname{softmax}(S)\,V$ | - | $2sh$ (full) |
+| out proj  | $(ad, h)$   | $2h^2$ |
+| SwiGLU gate, up, down | $(h,f)$, $(h,f)$, $(f,h)$ | $6hf$ |
+| LM head (once, not per layer) | $(h, V)$ | $2hV$ |
 | input embedding | gather | 0 |
 
-Softmax, norms, RoPE, SiLU and residual adds are `O(s*h)` or `O(s*a)` elementwise work per token. Chinchilla's appendix counts softmax at `3*a*s` FLOP per token per layer, which is under 0.5% of the total at these shapes. Everyone drops it, and so does this chapter. These ops are memory-bandwidth bound: the time goes into reading and writing accelerator memory (HBM, the high-bandwidth DRAM stacked next to the GPU die), not into arithmetic. So they cost time but contribute almost no FLOPs, and that is one reason MFU can never reach 100%.
+Softmax, norms, RoPE, SiLU and residual adds are $O(sh)$ or $O(sa)$ elementwise work per token. Chinchilla's appendix counts softmax at $3as$ FLOP per token per layer, which is under 0.5% of the total at these shapes. Everyone drops it, and so does this chapter. These ops are memory-bandwidth bound: the time goes into reading and writing accelerator memory (HBM, the high-bandwidth DRAM stacked next to the GPU die), not into arithmetic. So they cost time but contribute almost no FLOPs, and that is one reason MFU can never reach 100%.
 
-Here is the breakdown for Llama-3-8B at `s = 8192`, in GFLOP per token per layer, forward only:
+Here is the breakdown for Llama-3-8B at $s = 8192$, in GFLOP per token per layer, forward only:
 
 ```python
 # breakdown.py
@@ -161,11 +161,11 @@ mlp share 61.8%, attention core share 23.5%
 GQA saves 0.0503 GFLOP/token/layer = 8.1% of the MHA layer
 ```
 
-The MLP is 62% of the forward FLOPs of a layer even at 8k context. The attention core (scores + `attn*V`) is 24% if counted without causal skipping.
+The MLP is 62% of the forward FLOPs of a layer even at 8k context. The attention core (scores + $\text{attn} \cdot V$) is 24% if counted without causal skipping.
 
 ### Where `6N` comes from
 
-For a linear layer `Y = X W` with `X: (T, K)` and `W: (K, N)`:
+For a linear layer $Y = XW$ with $X \in \mathbb{R}^{T \times K}$ and $W \in \mathbb{R}^{K \times N}$:
 
 ```python
 Y  = X @ W        # (T, N)  forward:  2*T*K*N
@@ -173,12 +173,12 @@ dX = dY @ W.T     # (T, K)  backward: 2*T*K*N  (activation grad, passed to the p
 dW = X.T @ dY     # (K, N)  backward: 2*T*K*N  (weight grad, used by the optimizer)
 ```
 
-The backward pass is two matmuls of the same size as the forward matmul. So the total is `3 x 2 = 6` FLOP per weight element per token, and summing over all weight matrices gives `6N` per token. The first layer does not need its `dX`, which saves a negligible amount. The rule holds only for parameters that take part in a matmul, which has two consequences:
+The backward pass is two matmuls of the same size as the forward matmul. So the total is $3 \times 2 = 6$ FLOP per weight element per token, and summing over all weight matrices gives $6N$ per token. The first layer does not need its $dX$, which saves a negligible amount. The rule holds only for parameters that take part in a matmul, which has two consequences:
 
-- The input embedding is a gather (a table lookup: row `i` of the table for token id `i`). It costs zero forward FLOPs and a scatter-add in backward. Counting it in `N` overstates the work by `6*V*h` per token. For Llama-3-8B that is `6 * 0.525B = 3.15 GFLOP` out of ~48, about 6.5%.
-- The LM head is a real `(h, V)` matmul and must be counted. With tied embeddings it is the same tensor, so you count it once, as the head.
+- The input embedding is a gather (a table lookup: row $i$ of the table for token id $i$). It costs zero forward FLOPs and a scatter-add in backward. Counting it in $N$ overstates the work by $6Vh$ per token. For Llama-3-8B that is $6 \times 0.525\text{B} = 3.15\ \text{GFLOP}$ out of ~48, about 6.5%.
+- The LM head is a real $(h, V)$ matmul and must be counted. With tied embeddings it is the same tensor, so you count it once, as the head.
 
-For an untied model, the right `N` for FLOP purposes is the non-embedding parameters plus the head. For Llama-3-8B that gives `N' = 6.980B + 0.525B = 7.505B` against a nominal 8.03B.
+For an untied model, the right $N$ for FLOP purposes is the non-embedding parameters plus the head. For Llama-3-8B that gives $N' = 6.980\text{B} + 0.525\text{B} = 7.505\text{B}$ against a nominal 8.03B.
 
 ### Checking the formula against PyTorch's FLOP counter
 
@@ -223,23 +223,28 @@ total 5,191,499,776  vs 12-convention formula 5,124,390,912
 
 Three things this shows:
 
-- The matmul count is `6*N'` **exactly**, to the FLOP. The embedding contributes nothing (it is not a matmul), and the head is counted.
-- `FlopCounterMode` counts the fused attention op over the full `T x T` square even though `is_causal=True`. It knows nothing about kernels skipping masked tiles. Its count is the "12 convention" described next, not the work the kernel actually did.
-- It counts attention backward as 2.5x forward. That is the FlashAttention backward (explained under [What recomputation adds](#what-recomputation-adds)), not the `2x` of the `6N` rule. So the counter's total is `6N' + 14*L*s*h` per token, a third convention. If you report MFU from `FlopCounterMode`, say so.
+- The matmul count is $6N'$ **exactly**, to the FLOP. The embedding contributes nothing (it is not a matmul), and the head is counted.
+- `FlopCounterMode` counts the fused attention op over the full $T \times T$ square even though `is_causal=True`. It knows nothing about kernels skipping masked tiles. Its count is the "12 convention" described next, not the work the kernel actually did.
+- It counts attention backward as 2.5x forward. That is the FlashAttention backward (explained under [What recomputation adds](#what-recomputation-adds)), not the $2\times$ of the $6N$ rule. So the counter's total is $6N' + 14Lsh$ per token, a third convention. If you report MFU from `FlopCounterMode`, say so.
 
 ### The attention term, and which constant
 
-Per layer, the two attention-core matmuls cost `4*s*h` forward FLOP per token when every query attends to all `s` keys. Multiplying by 3 for forward plus backward gives:
+Per layer, the two attention-core matmuls cost $4sh$ forward FLOP per token when every query attends to all $s$ keys. Multiplying by 3 for forward plus backward gives, with no causal discount:
 
-```
-FLOP/token = 6*N' + 12*L*s*h            # no causal discount
-FLOP/token = 6*N' + 6*L*s*h             # causal, masked half skipped
-```
+$$
+\text{FLOP/token} = 6N' + 12Lsh
+$$
+
+and, causal with the masked half skipped:
+
+$$
+\text{FLOP/token} = 6N' + 6Lsh
+$$
 
 Both constants are in use, and reported MFU numbers are not comparable unless you know which one was used:
 
-- **12**: PaLM appendix B (`6N + 12*L*H*Q*T`, in PaLM's notation `H` heads of dimension `Q`, so `H*Q = h`, and `T = s`), Chinchilla appendix F (which counts both attention matmuls over the full `s x s`), and the Megatron-LM paper's equation 3. Expanding Megatron's no-recompute form `72*b*s*L*h^2*(1 + s/(6h) + V/(12*L*h))` gives exactly `6*12*L*h^2 + 12*L*s*h + 6*h*V` per token for a 4h-MLP, MHA model (the symbolic check is below). With activation recomputation the paper uses 96 instead of 72 and `V/(16*L*h)`, which keeps the logit term at `6*h*V`, i.e. the LM head is not recomputed.
-- **6**: Kaplan et al. (arXiv:2001.08361), table 1, gives `C_forward = 2N + 2*n_layer*n_ctx*d_attn`, which is `6*L*s*h` for training. Numerically this equals "both attention matmuls with a causal discount". The table labels the row as the masking operation, so I am not certain this was the authors' reasoning.
+- **12**: PaLM appendix B ($6N + 12LHQT$, in PaLM's notation $H$ heads of dimension $Q$, so $HQ = h$, and $T = s$), Chinchilla appendix F (which counts both attention matmuls over the full $s \times s$), and the Megatron-LM paper's equation 3. Expanding Megatron's no-recompute form $72bsLh^2\left(1 + \frac{s}{6h} + \frac{V}{12Lh}\right)$ gives exactly $6 \cdot 12Lh^2 + 12Lsh + 6hV$ per token for a 4h-MLP, MHA model (the symbolic check is below). With activation recomputation the paper uses 96 instead of 72 and $\frac{V}{16Lh}$, which keeps the logit term at $6hV$, i.e. the LM head is not recomputed.
+- **6**: Kaplan et al. (arXiv:2001.08361), table 1, gives $C_\text{forward} = 2N + 2 n_\text{layer} n_\text{ctx} d_\text{attn}$, which is $6Lsh$ for training. Numerically this equals "both attention matmuls with a causal discount". The table labels the row as the masking operation, so I am not certain this was the authors' reasoning.
 
 ```python
 # megatron_check.py
@@ -258,15 +263,15 @@ ratio: 1
 recompute head term per token: 6*h
 ```
 
-The 12 convention describes the math of full attention. The 6 convention is closer to what a causal FlashAttention kernel actually executes. If you use 12 with a causal kernel, your "MFU" includes about `6*L*s*h` per token of work that was never done. At 8k context on the 8B model that is 11% of the claimed FLOPs.
+The 12 convention describes the math of full attention. The 6 convention is closer to what a causal FlashAttention kernel actually executes. If you use 12 with a causal kernel, your "MFU" includes about $6Lsh$ per token of work that was never done. At 8k context on the 8B model that is 11% of the claimed FLOPs.
 
 ### Do kernels skip the causal half?
 
-- FlashAttention-2 and -3 skip every key/value tile that lies entirely above the diagonal and apply the mask only on diagonal tiles. Executed work is therefore `~0.5*s^2` plus one diagonal band of tiles. The FlashAttention repository's own benchmark script counts causal FLOPs as `4*b*s^2*a*d / 2`.
+- FlashAttention-2 and -3 skip every key/value tile that lies entirely above the diagonal and apply the mask only on diagonal tiles. Executed work is therefore $\approx 0.5 s^2$ plus one diagonal band of tiles. The FlashAttention repository's own benchmark script counts causal FLOPs as $4bs^2ad / 2$.
 - PyTorch SDPA with `is_causal=True` skips the masked tiles when it dispatches to the flash, cuDNN or memory-efficient backends.
 - FlexAttention (PyTorch's `torch.nn.attention.flex_attention`, which compiles an attention kernel from a user-written Python mask/score function) skips the blocks that its `BlockMask` marks as empty.
-- The eager "materialize `S`, add `-inf` mask, softmax" path does the full `s^2` work.
-- Document masking for packed sequences, where each packed document attends only to itself, cuts executed attention FLOPs further: to `sum_i(s_i^2)/2` instead of `s^2/2`. A 128k window packed with 2k-token documents executes 64x fewer attention FLOPs than the causal estimate. Use the masked count if you want MFU to reflect real work.
+- The eager "materialize $S$, add $-\infty$ mask, softmax" path does the full $s^2$ work.
+- Document masking for packed sequences, where each packed document attends only to itself, cuts executed attention FLOPs further: to $\sum_i s_i^2 / 2$ instead of $s^2/2$. A 128k window packed with 2k-token documents executes 64x fewer attention FLOPs than the causal estimate. Use the masked count if you want MFU to reflect real work.
 
 You can see the skipping as wall-clock time even on a CPU. The causal call should take roughly half as long as the non-causal one at long sequence length, if the backend skips tiles:
 
@@ -307,7 +312,7 @@ causal 8.590e+09  doc-masked 1.342e+08  ratio 64x
 
 ### GQA
 
-GQA (grouped-query attention: several query heads share one K/V head) shrinks only the K and V projections, from `4*h*h` to `4*g*h*h`. The attention core is unchanged. Each of the `a` query heads still takes a dot product against `s` keys of dimension `d`, so scores plus `attn*V` remain `4*s*a*d = 4*s*h` regardless of `k`. GQA is a memory and KV-bandwidth optimization, not a FLOP optimization: it shrinks the [KV cache](../models/architectures.md#the-kv-cache), the stored keys and values that text generation re-reads for every new token (sized for serving in [Inference arithmetic](../inference/arithmetic.md#kv-cache-sizing)). For Llama-3-8B, going from MHA to `k=8` removes 0.050 GFLOP of forward work per token per layer: 8.1% of the MHA layer's forward FLOPs at `s = 8192`, or 8.8% measured against the GQA layer (the `breakdown.py` output above).
+GQA (grouped-query attention: several query heads share one K/V head) shrinks only the K and V projections, from $4h^2$ to $4gh^2$. The attention core is unchanged. Each of the $a$ query heads still takes a dot product against $s$ keys of dimension $d$, so scores plus $\text{attn} \cdot V$ remain $4sad = 4sh$ regardless of $k$. GQA is a memory and KV-bandwidth optimization, not a FLOP optimization: it shrinks the [KV cache](../models/architectures.md#the-kv-cache), the stored keys and values that text generation re-reads for every new token (sized for serving in [Inference arithmetic](../inference/arithmetic.md#kv-cache-sizing)). For Llama-3-8B, going from MHA to $k=8$ removes 0.050 GFLOP of forward work per token per layer: 8.1% of the MHA layer's forward FLOPs at $s = 8192$, or 8.8% measured against the GQA layer (the `breakdown.py` output above).
 
 The same thing measured with `FlopCounterMode` on the tiny model, plus the cost of full activation recomputation (re-running every block's forward during backward, [explained below](#what-recomputation-adds)):
 
@@ -343,15 +348,15 @@ MHA k=8: 5,795,479,552   GQA k=2: 5,191,499,776   saved 10.4%
 full recompute: 6,399,459,328   ratio to no-recompute 1.233
 ```
 
-The tiny model has `h = 256`, so attention and K/V are a larger share than at Llama scale and the GQA saving looks bigger. The recompute ratio of 1.23 sits below the textbook 4/3 because the head (which is not inside a checkpointed block) is not re-run, and because attention backward is 2.5x forward rather than 2x.
+The tiny model has $h = 256$, so attention and K/V are a larger share than at Llama scale and the GQA saving looks bigger. The recompute ratio of 1.23 sits below the textbook 4/3 because the head (which is not inside a checkpointed block) is not re-run, and because attention backward is 2.5x forward rather than 2x.
 
 ### MoE: active FLOPs
 
-For a mixture-of-experts layer with `E` experts and top-`r` routing, each token passes through `r` expert MLPs plus a router matmul costing `2*h*E`. The FLOP count uses the active parameters (the ones a single token actually multiplies against):
+For a mixture-of-experts layer with $E$ experts and top-$r$ routing, each token passes through $r$ expert MLPs plus a router matmul costing $2hE$. The FLOP count uses the active parameters (the ones a single token actually multiplies against); the last term is the router, usually under 0.1%:
 
-```
-FLOP/token = 6*N_active' + attention term + 6*h*E*L_moe   (router, usually <0.1%)
-```
+$$
+\text{FLOP/token} = 6N'_\text{active} + \text{attention term} + 6hEL_\text{moe}
+$$
 
 | Model | total params | active params | source |
 | :---- | -----------: | ------------: | :----- |
@@ -373,16 +378,16 @@ router 3.7 MFLOP, experts 705 MFLOP, router share 0.52%
 
 The router share at these shapes is 0.5% of the MoE MLP, smaller still once attention and the shared expert are included.
 
-The gap between MFU and HFU (hardware FLOPs utilization: everything the GPU actually executed, defined properly [in the next section](#mfu-and-hfu-properly)) is larger for MoE than for dense models. Capacity-factor padding (with `C > 1` each expert's buffer is padded to `C * tokens/E`) executes FLOPs on padding. Dropped tokens execute fewer FLOPs than the model math implies. Grouped GEMMs (one kernel launch that runs many small matmuls of different sizes) on small, uneven per-expert batches run well below the dense matmul peak. Only `6*N_active` belongs in the MFU numerator.
+The gap between MFU and HFU (hardware FLOPs utilization: everything the GPU actually executed, defined properly [in the next section](#mfu-and-hfu-properly)) is larger for MoE than for dense models. Capacity-factor padding (with $C > 1$ each expert's buffer is padded to $C \cdot \text{tokens}/E$) executes FLOPs on padding. Dropped tokens execute fewer FLOPs than the model math implies. Grouped GEMMs (one kernel launch that runs many small matmuls of different sizes) on small, uneven per-expert batches run well below the dense matmul peak. Only $6N_\text{active}$ belongs in the MFU numerator.
 
 ### Worked numbers at `s = 8192`
 
 | | Llama-3-8B | Llama-3-70B |
 | :-- | --: | --: |
-| `N` (all params) | 8.030B | 70.554B |
-| `N'` (non-embedding + head) | 7.505B | 69.502B |
-| `6*N` (naive) | 48.18 GF | 423.32 GF |
-| `6*N'` | 45.03 GF | 417.01 GF |
+| $N$ (all params) | 8.030B | 70.554B |
+| $N'$ (non-embedding + head) | 7.505B | 69.502B |
+| $6N$ (naive) | 48.18 GF | 423.32 GF |
+| $6N'$ | 45.03 GF | 417.01 GF |
 | attention, 12 convention | 12.88 GF | 64.42 GF |
 | attention, 6 convention (causal) | 6.44 GF | 32.21 GF |
 | **total, 12 convention** | **57.91 GF** | **481.43 GF** |
@@ -391,7 +396,7 @@ The gap between MFU and HFU (hardware FLOPs utilization: everything the GPU actu
 
 (GF = GFLOP per token, training, forward plus backward.)
 
-Attention's share depends on `s/h`, not on `N`. The 70B model has twice the `h`, so the same 8k context costs it half the relative attention share.
+Attention's share depends on $s/h$, not on $N$. The 70B model has twice the $h$, so the same 8k context costs it half the relative attention share.
 
 The script that produces the table (it reuses `flops_per_token` from `tinylm.py` and also prints the executed-FLOP numbers used in the next section):
 
@@ -427,12 +432,15 @@ Llama-3-70B: N=70.554B N'=69.502B 6N=423.32 6N'=417.01 attn12=64.42 attn6=32.21 
 
 MFU (model FLOPs utilization) is the fraction of the hardware's peak arithmetic rate that went into the FLOPs the model mathematically needs. HFU (hardware FLOPs utilization) counts everything the hardware executed, including recomputation. [MFU vs HFU](performance/README.md#mfu-vs-hfu) gives the definitions. The precise version is:
 
-```
-MFU = (tokens/s/GPU) * model_FLOP_per_token    / peak_FLOP/s
-HFU = (tokens/s/GPU) * executed_FLOP_per_token / peak_FLOP/s
-```
+$$
+\text{MFU} = \frac{\text{tokens/s/GPU} \times \text{model FLOP per token}}{\text{peak FLOP/s}}
+$$
 
-`model_FLOP_per_token` comes from the table above. You have to choose the attention convention and say which one you chose. `executed_FLOP_per_token` adds everything the implementation actually runs.
+$$
+\text{HFU} = \frac{\text{tokens/s/GPU} \times \text{executed FLOP per token}}{\text{peak FLOP/s}}
+$$
+
+Model FLOP per token comes from the table above. You have to choose the attention convention and say which one you chose. Executed FLOP per token adds everything the implementation actually runs.
 
 ### What recomputation adds
 
@@ -440,31 +448,31 @@ Activation recomputation (also called activation checkpointing) means throwing a
 
 | Scheme | Executed FLOP per token (per layer, excluding head) |
 | :----- | :------------------------------------------- |
-| none | `6*n_layer + 12*s*h` (math) |
+| none | $6 n_\text{layer} + 12sh$ (math) |
 | FlashAttention backward | attention backward is **2.5x** forward, not 2x |
-| selective recompute (Korthikanti; attention core only) | `+ 4*s*h` (one more attention-core forward) |
-| full recompute (every layer's forward re-run) | `+ 2*n_layer + 4*s*h`, i.e. ~4/3 of the matmul work |
+| selective recompute (Korthikanti; attention core only) | $+\,4sh$ (one more attention-core forward) |
+| full recompute (every layer's forward re-run) | $+\,2 n_\text{layer} + 4sh$, i.e. ~4/3 of the matmul work |
 
-The 2.5x for FlashAttention has a simple cause. The forward pass runs 2 matmuls (`S = QK^T`, `O = PV`). The backward pass runs 5: it recomputes `S`, then computes `dV = P^T dO`, `dP = dO V^T`, `dQ = dS K` and `dK = dS^T Q`. That is 5/2 = 2.5x the forward attention matmul work, and FlashAttention's own benchmark uses exactly this factor (so does `FlopCounterMode`, as measured above). So **FlashAttention is selective recomputation built into the kernel**. Korthikanti's selective scheme recomputes the attention core because storing `s^2` tensors is expensive. FlashAttention never stores them. With FlashAttention, "selective recompute" in the Megatron sense is already happening and should not be counted twice.
+The 2.5x for FlashAttention has a simple cause. The forward pass runs 2 matmuls ($S = QK^\top$, $O = PV$). The backward pass runs 5: it recomputes $S$, then computes $dV = P^\top dO$, $dP = dO\,V^\top$, $dQ = dS\,K$ and $dK = dS^\top Q$. That is 5/2 = 2.5x the forward attention matmul work, and FlashAttention's own benchmark uses exactly this factor (so does `FlopCounterMode`, as measured above). So **FlashAttention is selective recomputation built into the kernel**. Korthikanti's selective scheme recomputes the attention core because storing $s^2$ tensors is expensive. FlashAttention never stores them. With FlashAttention, "selective recompute" in the Megatron sense is already happening and should not be counted twice.
 
-For causal attention, all of these attention terms are halved. Executed FLOPs per token with full recompute, causal FlashAttention, and the head not recomputed:
+For causal attention, all of these attention terms are halved. Executed FLOPs per token with full recompute, causal FlashAttention, and the head not recomputed (the attention terms are forward, re-forward and backward, each causal-halved; the head runs once):
 
-```
-8*N' - 2*h*V + 2*L*s*h*(1 + 1 + 2.5)      # fwd, re-fwd, bwd of attention, each causal-halved; head run once
-```
+$$
+8N' - 2hV + 2Lsh\,(1 + 1 + 2.5)
+$$
 
 | | Llama-3-8B | Llama-3-70B |
 | :-- | --: | --: |
 | executed, full recompute + causal FA | 68.65 GF | 602.23 GF |
 | ratio to 12-convention model FLOPs | 1.185 | 1.251 |
 
-(Output of `worked.py` above. An earlier version of this chapter wrote `8*N'` here, which silently recomputes the head and gives 69.70 / 604.33 GF.)
+(Output of `worked.py` above. An earlier version of this chapter wrote $8N'$ here, which silently recomputes the head and gives 69.70 / 604.33 GF.)
 
-So with full recompute, `HFU ~ 1.19-1.25 x MFU (12 convention)`. The ratio is lower than the textbook 4/3 because the 12 convention counts causal attention FLOPs that the kernel does not execute, while HFU adds the recompute FLOPs that it does.
+So with full recompute, $\text{HFU} \approx (1.19\text{-}1.25) \times \text{MFU}$ (12 convention). The ratio is lower than the textbook 4/3 because the 12 convention counts causal attention FLOPs that the kernel does not execute, while HFU adds the recompute FLOPs that it does.
 
 ### MFU from a measured tokens/s
 
-Inverting the formula gives the throughput a target MFU requires. With H100 SXM dense bf16 peak = 989.4 TFLOP/s (derivation in [How To Calculate Theoretical TFLOPS](../compute/accelerator/README.md#how-to-calculate-theoretical-tflops)) and the 12 convention at `s = 8192`:
+Inverting the formula gives the throughput a target MFU requires. With H100 SXM dense bf16 peak = 989.4 TFLOP/s (derivation in [How To Calculate Theoretical TFLOPS](../compute/accelerator/README.md#how-to-calculate-theoretical-tflops)) and the 12 convention at $s = 8192$:
 
 ```python
 # mfu.py
@@ -550,12 +558,12 @@ DeepSeek-V3: bf16 peak 34.6%, fp8 peak 17.3%
 ```
 
 
-- **Llama 2 7B** (arXiv:2307.09288): 184,320 A100-80GB GPU-hours for 2T tokens, `N = 6.74B`, `s = 4096`. `6*N*D / (hours * 3600 * 312e12) = 39.1%`. With the 12-convention attention term the figure is 45.3%. That is the same run quoted at two MFUs depending only on convention.
-- **DeepSeek-V3** (arXiv:2412.19437): 2.664M H800 GPU-hours (the H800 is the export variant of the H100: same compute, reduced NVLink bandwidth) for pre-training on 14.8T tokens, 37B active. `6 * 37e9 * 14.8e12 = 3.29e24` FLOP, which is 34.6% of a 989 TF bf16 peak or 17.3% of the 1979 TF FP8 peak. The attention FLOPs (MLA, 61 layers) are excluded, which understates the figure. Also, the H800's reduced interconnect bandwidth makes communication a different bottleneck than on an H100. Treat this as a lower bound with roughly ±20% uncertainty that comes from the convention alone.
+- **Llama 2 7B** (arXiv:2307.09288): 184,320 A100-80GB GPU-hours for 2T tokens, $N = 6.74\text{B}$, $s = 4096$. $\frac{6ND}{\text{hours} \times 3600 \times 312 \times 10^{12}} = 39.1\%$. With the 12-convention attention term the figure is 45.3%. That is the same run quoted at two MFUs depending only on convention.
+- **DeepSeek-V3** (arXiv:2412.19437): 2.664M H800 GPU-hours (the H800 is the export variant of the H100: same compute, reduced NVLink bandwidth) for pre-training on 14.8T tokens, 37B active. $6 \times 37 \times 10^9 \times 14.8 \times 10^{12} = 3.29 \times 10^{24}$ FLOP, which is 34.6% of a 989 TF bf16 peak or 17.3% of the 1979 TF FP8 peak. The attention FLOPs (MLA, 61 layers) are excluded, which understates the figure. Also, the H800's reduced interconnect bandwidth makes communication a different bottleneck than on an H100. Treat this as a lower bound with roughly ±20% uncertainty that comes from the convention alone.
 
 ## Activation memory
 
-During the forward pass, autograd keeps some intermediate tensors alive because the backward pass needs them (for example, `dW = X.T @ dY` needs the layer's input `X`). Those saved tensors are the *activations*, and at long context they are usually the largest thing in GPU memory.
+During the forward pass, autograd keeps some intermediate tensors alive because the backward pass needs them (for example, $dW = X^\top dY$ needs the layer's input $X$). Those saved tensors are the *activations*, and at long context they are usually the largest thing in GPU memory.
 
 [Anatomy of Model's Memory Usage](performance/README.md#anatomy-of-models-memory-usage) measures "copies of `hidden_states`" empirically. This section derives what autograd actually saves for backward, term by term, and then measures it. The two quantities differ. The measured coefficient in that chapter is peak working memory inside one layer's forward, temporaries included. The coefficient below is what stays resident after the forward pass until backward runs.
 
@@ -571,41 +579,41 @@ Why activations dominate at scale - memory per GPU split into parameters+optimiz
 
 | Saved tensor | Bytes |
 | :----------- | ----: |
-| QKV projection input | `2sbh` |
-| Q and K (for `QK^T`) | `4sbh` |
-| softmax output (for its backward) | `2as^2b` |
-| attention dropout mask | `as^2b` |
-| attention dropout output (for `PV`) | `2as^2b` |
-| V | `2sbh` |
-| out-proj input | `2sbh` |
-| out-proj dropout mask | `sbh` |
-| **attention subtotal** | **`11sbh + 5as^2b`** |
-| fc1 input | `2sbh` |
-| GeLU input | `8sbh` |
-| GeLU output (fc2 input) | `8sbh` |
-| MLP dropout mask | `sbh` |
-| **MLP subtotal** | **`19sbh`** |
-| 2 x LayerNorm input | `4sbh` |
-| **total** | **`sbh*(34 + 5as/h)`** |
+| QKV projection input | $2sbh$ |
+| Q and K (for $QK^\top$) | $4sbh$ |
+| softmax output (for its backward) | $2as^2b$ |
+| attention dropout mask | $as^2b$ |
+| attention dropout output (for $PV$) | $2as^2b$ |
+| V | $2sbh$ |
+| out-proj input | $2sbh$ |
+| out-proj dropout mask | $sbh$ |
+| **attention subtotal** | $\mathbf{11sbh + 5as^2b}$ |
+| fc1 input | $2sbh$ |
+| GeLU input | $8sbh$ |
+| GeLU output (fc2 input) | $8sbh$ |
+| MLP dropout mask | $sbh$ |
+| **MLP subtotal** | $\mathbf{19sbh}$ |
+| 2 x LayerNorm input | $4sbh$ |
+| **total** | $\mathbf{sbh\,(34 + 5as/h)}$ |
 
-The self-attention block; the red dashed region is what selective recompute drops (the `5as/h` term):
+The self-attention block; the red dashed region is what selective recompute drops (the $5as/h$ term):
 
 ![self-attention block with selective recompute region](images/korthikanti-self-attention-recompute.jpg)
 
 ([source](https://arxiv.org/abs/2205.05198))
 
-Under parallelism, with `t` the tensor-parallel degree (TP: each layer's weight matrices are split across `t` GPUs, which then exchange partial results):
+Under parallelism, with $t$ the tensor-parallel degree (TP: each layer's weight matrices are split across $t$ GPUs, which then exchange partial results):
 
-```
-TP only:                      sbh*(10 + 24/t + 5as/(h*t))   # norms, dropout, linear inputs replicated
-TP + sequence parallel (SP):  sbh*(34/t + 5as/(h*t))        # SP shards the replicated regions along s
-TP + SP + selective recompute: sbh*34/t                     # attention core recomputed
-full recompute:               2sbh                          # only the layer input is kept
-```
+| Scheme | Bytes per layer | Note |
+| :----- | :-------------- | :--- |
+| TP only | $sbh\left(10 + \frac{24}{t} + \frac{5as}{ht}\right)$ | norms, dropout, linear inputs replicated |
+| TP + sequence parallel (SP) | $sbh\left(\frac{34}{t} + \frac{5as}{ht}\right)$ | SP shards the replicated regions along $s$ |
+| TP + SP + selective recompute | $\frac{34\,sbh}{t}$ | attention core recomputed |
+| full recompute | $2sbh$ | only the layer input is kept |
 
-In SP, the inputs to the column-parallel linears are stored sharded and re-gathered across the TP group in backward (Korthikanti section 4.2.2). That is why the whole formula divides by `t`. The communication cost is covered in [Model Parallelism: Derivations](model-parallelism/derivations.md).
+In SP, the inputs to the column-parallel linears are stored sharded and re-gathered across the TP group in backward (Korthikanti section 4.2.2). That is why the whole formula divides by $t$. The communication cost is covered in [Model Parallelism: Derivations](model-parallelism/derivations.md).
 
-The quadratic term is the one that hurts. At `s = 8192`, `a = 32`, `h = 4096`, the value of `5as/h` is 320, nearly 10x the linear coefficient 34. Llama-3-8B under the literal Korthikanti formula at `b = 1`, `s = 8192` would need 11.06 GiB per layer and 354 GiB in total.
+The quadratic term is the one that hurts. At $s = 8192$, $a = 32$, $h = 4096$, the value of $5as/h$ is 320, nearly 10x the linear coefficient 34. Llama-3-8B under the literal Korthikanti formula at $b = 1$, $s = 8192$ would need 11.06 GiB per layer and 354 GiB in total.
 
 ```python
 # korthikanti.py
@@ -621,24 +629,33 @@ $ python korthikanti.py
 
 ### What FlashAttention, no-dropout, SwiGLU, GQA and RMSNorm change
 
-- **FlashAttention** never stores `P`. It saves Q, K, V, O and the per-row log-sum-exp (`4*b*a*s` bytes in fp32, which is `4a/h ~ 0.03 sbh`). Q, K and V are already counted above, and O is the out-proj input. So all of `5as^2b` disappears and the layer becomes linear in `s`.
-- **Dropout = 0** (standard for LLM pre-training) removes both `sbh` masks. A GPT block with FlashAttention and no dropout therefore needs `32sbh`.
-- **GQA** shrinks K and V from `4sbh` to `4g*sbh`.
-- **SwiGLU** with eager PyTorch saves the gate pre-activation (for SiLU backward), `silu(gate)` and `up` (for the multiply's backward), and the product (for `down`'s weight gradient). That is four tensors of shape `(b, s, f)`, or `8sbf` bytes. A fused SwiGLU that recomputes `silu` saves `6sbf`. One that also recomputes the product from gate and up saves `4sbf`.
-- **RMSNorm**, fused: input only (`2sbh`) plus a `(b, s)` fp32 `rstd`. Unfused implementations save much more; the measurement below gives exact numbers.
+- **FlashAttention** never stores $P$. It saves Q, K, V, O and the per-row log-sum-exp ($4bas$ bytes in fp32, which is $\frac{4a}{h} \approx 0.03\,sbh$). Q, K and V are already counted above, and O is the out-proj input. So all of $5as^2b$ disappears and the layer becomes linear in $s$.
+- **Dropout = 0** (standard for LLM pre-training) removes both $sbh$ masks. A GPT block with FlashAttention and no dropout therefore needs $32sbh$.
+- **GQA** shrinks K and V from $4sbh$ to $4g\,sbh$.
+- **SwiGLU** with eager PyTorch saves the gate pre-activation (for SiLU backward), `silu(gate)` and `up` (for the multiply's backward), and the product (for `down`'s weight gradient). That is four tensors of shape $(b, s, f)$, or $8sbf$ bytes. A fused SwiGLU that recomputes `silu` saves $6sbf$. One that also recomputes the product from gate and up saves $4sbf$.
+- **RMSNorm**, fused: input only ($2sbh$) plus a $(b, s)$ fp32 `rstd`. Unfused implementations save much more; the measurement below gives exact numbers.
 
 For a Llama block (fused norms, FlashAttention, no dropout):
 
-```
-attn:  2 (qkv input) + 2 (Q) + 4g (K,V) + 2 (O)      = 6 + 4g
-norms: 2 + 2                                         = 4
-mlp:   2 (gate/up input) + {8, 6, 4} * f/h           (eager / fused-silu / fully fused)
-total = sbh * (12 + 4g + c*f/h),  c in {8, 6, 4}
-```
+$$
+\text{attn} = \underbrace{2}_{\text{qkv input}} + \underbrace{2}_{Q} + \underbrace{4g}_{K,V} + \underbrace{2}_{O} = 6 + 4g
+$$
+
+$$
+\text{norms} = 2 + 2 = 4
+$$
+
+$$
+\text{mlp} = \underbrace{2}_{\text{gate/up input}} + c \cdot \frac{f}{h}, \quad c \in \lbrace 8, 6, 4 \rbrace \ \text{(eager / fused-silu / fully fused)}
+$$
+
+$$
+\text{total} = sbh\left(12 + 4g + c\,\frac{f}{h}\right)
+$$
 
 ### Measuring saved activations on a tiny model
 
-`torch.autograd.graph.saved_tensors_hooks` lets you intercept every tensor autograd saves for backward. Counting the unique storages it sees (a *storage* is the underlying memory buffer; several tensor views can share one), minus the parameters, gives the exact resident activation bytes. Here it is on one bf16 Llama-shaped block with `g = 1/4` and `f/h = 3.5`, the same ratios as Llama-3-8B, with three RMSNorm implementations:
+`torch.autograd.graph.saved_tensors_hooks` lets you intercept every tensor autograd saves for backward. Counting the unique storages it sees (a *storage* is the underlying memory buffer; several tensor views can share one), minus the parameters, gives the exact resident activation bytes. Here it is on one bf16 Llama-shaped block with $g = 1/4$ and $f/h = 3.5$, the same ratios as Llama-3-8B, with three RMSNorm implementations:
 
 ```python
 # actmem.py
@@ -734,7 +751,7 @@ chapter formula (fused norms, eager SwiGLU): 12 + 4g + 8f/h = 41.00 sbh
 
 What the measurement says:
 
-- With a norm that saves only its input, the block saves **41.06 sbh**, matching the formula's 41.00 plus the 0.06 sbh fp32 log-sum-exp that SDPA keeps. The per-tensor listing confirms every term: 7 sbh tensors are the `(b, s, f)` SwiGLU intermediates, 0.5 sbh are the GQA K and V, and the attention output is counted once because the CPU SDPA writes it in a layout where `transpose(1, 2).reshape(...)` is a free view.
+- With a norm that saves only its input, the block saves **41.06 sbh**, matching the formula's 41.00 plus the 0.06 sbh fp32 log-sum-exp that SDPA keeps. The per-tensor listing confirms every term: 7 sbh tensors are the $(b, s, f)$ SwiGLU intermediates, 0.5 sbh are the GQA K and V, and the attention output is counted once because the CPU SDPA writes it in a layout where `transpose(1, 2).reshape(...)` is a free view.
 - `nn.RMSNorm` on CPU in torch 2.15 is not fused. It upcasts to fp32 and saves the fp32 input (4 sbh) and the fp32 normalized tensor (4 sbh): 8 sbh per norm instead of 2, +12 sbh per block. Whether CUDA dispatches to a fused kernel depends on your PyTorch version; run this script on your GPU before trusting either number (untested here).
 - The HuggingFace-style eager norm saves fp32 input (4 sbh) plus the bf16 normalized tensor (2 sbh, for the weight gradient): 6 sbh per norm, +8 sbh per block. An earlier version of this chapter guessed ~10 sbh per norm; the measured number is 6.
 
@@ -742,10 +759,10 @@ What the measurement says:
 
 | | coef | per layer | all layers | TP=8 + SP, per GPU |
 | :-- | --: | --: | --: | --: |
-| 8B eager SwiGLU (`g = 1/4`, `f/h = 3.5`) | 41.0 | 1.28 GiB | 41.0 GiB | 5.1 GiB |
+| 8B eager SwiGLU ($g = 1/4$, $f/h = 3.5$) | 41.0 | 1.28 GiB | 41.0 GiB | 5.1 GiB |
 | 8B fused-silu | 34.0 | 1.06 GiB | 34.0 GiB | 4.25 GiB |
 | 8B fully fused | 27.0 | 0.84 GiB | 27.0 GiB | 3.4 GiB |
-| 70B eager (`g = 1/8`, `f/h = 3.5`) | 40.5 | 2.53 GiB | 202.5 GiB | 25.3 GiB |
+| 70B eager ($g = 1/8$, $f/h = 3.5$) | 40.5 | 2.53 GiB | 202.5 GiB | 25.3 GiB |
 | 70B fused-silu | 33.5 | 2.09 GiB | 167.5 GiB | 20.9 GiB |
 | 70B Korthikanti literal, TP=8 + SP | - | 2.77 GiB | 221.2 GiB | - |
 
@@ -785,11 +802,11 @@ $ python act_calc.py
 logits bf16 + fp32 upcast: 5.87 GiB
 ```
 
-With full recompute, the resident cost is `2sbh*L`: 2.0 GiB for the 8B model and 10.0 GiB for the 70B model, plus one layer's working set during recompute.
+With full recompute, the resident cost is $2sbhL$: 2.0 GiB for the 8B model and 10.0 GiB for the 70B model, plus one layer's working set during recompute.
 
-The LM head adds `s*V*(2 + 4)` bytes for bf16 logits plus their fp32 upcast: 5.87 GiB at `s = 8192`, for both models. That is independent of `h` and larger than the entire checkpointed residual stream of the 8B model. Chunked or fused cross-entropy (Liger kernel; "Cut Your Losses in Large-Vocabulary Language Models", arXiv:2411.09009) never materializes the full `(s, V)` tensor.
+The LM head adds $sV(2 + 4)$ bytes for bf16 logits plus their fp32 upcast: 5.87 GiB at $s = 8192$, for both models. That is independent of $h$ and larger than the entire checkpointed residual stream of the 8B model. Chunked or fused cross-entropy (Liger kernel; "Cut Your Losses in Large-Vocabulary Language Models", arXiv:2411.09009) never materializes the full $(s, V)$ tensor.
 
-With pipeline parallelism (PP: consecutive groups of layers live on different GPUs and micro-batches flow through them like an assembly line) under the 1F1B schedule (one-forward-one-backward: once the pipeline is full, each stage alternates one micro-batch's forward with another's backward), stage 1 of `p` pipeline stages holds activations for `p` in-flight micro-batches of `L/p` layers each, i.e. about one full model's worth. The derivation, and a simulator that prints the in-flight count, are in [Model Parallelism: Derivations](model-parallelism/derivations.md#pipeline-parallelism).
+With pipeline parallelism (PP: consecutive groups of layers live on different GPUs and micro-batches flow through them like an assembly line) under the 1F1B schedule (one-forward-one-backward: once the pipeline is full, each stage alternates one micro-batch's forward with another's backward), stage 1 of $p$ pipeline stages holds activations for $p$ in-flight micro-batches of $L/p$ layers each, i.e. about one full model's worth. The derivation, and a simulator that prints the in-flight count, are in [Model Parallelism: Derivations](model-parallelism/derivations.md#pipeline-parallelism).
 
 FP8 linears in Transformer Engine (TE: NVIDIA's library of drop-in PyTorch layers that run their matmuls in FP8; [mechanics below](#transformer-engine-mechanics)) save their inputs in FP8, which halves the "linear input" terms (QKV input, out-proj input, gate/up input, down input). DeepSeek-V3 goes further: it caches some activations in FP8 and recomputes SwiGLU.
 
@@ -804,10 +821,10 @@ FP8 linears in Transformer Engine (TE: NVIDIA's library of drop-in PyTorch layer
 | fp32 master weights | 4 | |
 | bf16 working weights | 2 | often only the current layer, under FSDP/ZeRO-3 |
 | gradients | 4 (fp32) or 2 (bf16) | fp32 if accumulated in fp32 |
-| Adam `m`, `v` | 8 | fp32 |
+| Adam $m$, $v$ | 8 | fp32 |
 | **total** | **16-18** | |
 
-ZeRO and FSDP are data parallelism that shards these per-parameter states across the `DP` replicas instead of replicating them. ZeRO-1 shards optimizer states, ZeRO-2 also shards gradients, and ZeRO-3/FSDP also shards weights, gathering each layer just before it runs. Llama-3-8B at 16-18 B/param is 128.5-144.5 GB, so it does not fit on one 80 GB H100. FSDP-sharded over 8 GPUs it is `16 * 8.03 / 8 = 16.1 GB/GPU` static, plus the unsharded bf16 weights and gradients of the layers currently in flight. Llama-3-70B is 1129-1270 GB before sharding.
+ZeRO and FSDP are data parallelism that shards these per-parameter states across the $\text{DP}$ replicas instead of replicating them. ZeRO-1 shards optimizer states, ZeRO-2 also shards gradients, and ZeRO-3/FSDP also shards weights, gathering each layer just before it runs. Llama-3-8B at 16-18 B/param is 128.5-144.5 GB, so it does not fit on one 80 GB H100. FSDP-sharded over 8 GPUs it is $16 \times 8.03 / 8 = 16.1\ \text{GB/GPU}$ static, plus the unsharded bf16 weights and gradients of the layers currently in flight. Llama-3-70B is 1129-1270 GB before sharding.
 
 ```python
 # static_mem.py
@@ -949,7 +966,7 @@ Take the snapshot at peak, i.e. inside the step, by calling it from a hook just 
 
 ### `C ~ 6ND`
 
-Total training compute is `C ~ 6*N*D`: the per-token count from above, with the attention term dropped, times `D` tokens. The attention term is 15% of `6N` for a 7B model at `s = 4096` under the 12 convention, so this approximation is not free at long context.
+Total training compute is $C \approx 6ND$: the per-token count from above, with the attention term dropped, times $D$ tokens. The attention term is 15% of $6N$ for a 7B model at $s = 4096$ under the 12 convention, so this approximation is not free at long context.
 
 Chinchilla's Approach 3 fit - loss contours and the efficient frontier:
 
@@ -957,9 +974,21 @@ Chinchilla's Approach 3 fit - loss contours and the efficient frontier:
 
 ([source](https://arxiv.org/abs/2203.15556))
 
-**Chinchilla** (Hoffmann et al., arXiv:2203.15556) fit three different ways and concluded that `N_opt ∝ C^~0.5` and `D_opt ∝ C^~0.5`, with roughly 20 tokens per parameter (approaches 1 and 2). Substituting `D = 20N` gives `N_opt = sqrt(C/120)`.
+**Chinchilla** (Hoffmann et al., arXiv:2203.15556) fit three different ways and concluded that $N_\text{opt} \propto C^{\sim 0.5}$ and $D_\text{opt} \propto C^{\sim 0.5}$, with roughly 20 tokens per parameter (approaches 1 and 2). Substituting $D = 20N$ gives $N_\text{opt} = \sqrt{C/120}$.
 
-The paper's approach 3 fits `L(N, D) = E + A/N^α + B/D^β` with published `E=1.69, A=406.4, B=410.7, α=0.34, β=0.28`. Plugging these into the closed form `N_opt = (αA/(βB))^(1/(α+β)) * (C/6)^(β/(α+β))` at `C = 8.4e22` gives **N = 13.5B, D = 1.04T, about 77 tokens/param**. The same budget under the 20x rule gives N = 26.5B, D = 0.53T. Besiroglu et al. ("Chinchilla Scaling: A replication attempt", arXiv:2404.10102) traced this inconsistency to the approach 3 fit itself; their refit is consistent with ~20. The lesson is that "20 tokens/param" is a coarse, data-mix-dependent ratio, not a constant of nature. The loss surface is flat near the optimum, so a factor of 2 in `N` at fixed `C` costs little loss:
+The paper's approach 3 fits
+
+$$
+L(N, D) = E + \frac{A}{N^\alpha} + \frac{B}{D^\beta}
+$$
+
+with published $E=1.69$, $A=406.4$, $B=410.7$, $\alpha=0.34$, $\beta=0.28$. Plugging these into the closed form
+
+$$
+N_\text{opt} = \left(\frac{\alpha A}{\beta B}\right)^{\frac{1}{\alpha+\beta}} \left(\frac{C}{6}\right)^{\frac{\beta}{\alpha+\beta}}
+$$
+
+at $C = 8.4 \times 10^{22}$ gives **N = 13.5B, D = 1.04T, about 77 tokens/param**. The same budget under the 20x rule gives N = 26.5B, D = 0.53T. Besiroglu et al. ("Chinchilla Scaling: A replication attempt", arXiv:2404.10102) traced this inconsistency to the approach 3 fit itself; their refit is consistent with ~20. The lesson is that "20 tokens/param" is a coarse, data-mix-dependent ratio, not a constant of nature. The loss surface is flat near the optimum, so a factor of 2 in $N$ at fixed $C$ costs little loss:
 
 ```python
 # chinchilla.py
@@ -995,7 +1024,7 @@ Under the approach-3 fit, being 2x off in either direction costs 0.007 nats, and
 
 ### Why everyone overtrains
 
-Chinchilla minimizes training compute for a target loss. *Serving* (or *inference*) means running the trained model to answer requests: a forward pass only, no backward. A deployed model therefore spends `2*N` FLOP per token it serves. Total lifetime cost is `6*N*D_train + 2*N*D_serve`. Once `D_serve` is comparable to `D_train`, the minimum shifts to a smaller `N` trained on more tokens (Sardana and Frankle, "Beyond Chinchilla-Optimal", arXiv:2401.00448). Serving 1T tokens costs 1.4e22 FLOP on a 7B model and 5.3e22 on a 26.5B model (output above). That difference alone, 3.9e22, is 46% of the 8.4e22 training budget. Llama-3-8B was trained on ~15T tokens, about 1,870 tokens per parameter, over 90x past Chinchilla. Loss keeps improving log-linearly far past 20x, just less per FLOP.
+Chinchilla minimizes training compute for a target loss. *Serving* (or *inference*) means running the trained model to answer requests: a forward pass only, no backward. A deployed model therefore spends $2N$ FLOP per token it serves. Total lifetime cost is $6ND_\text{train} + 2ND_\text{serve}$. Once $D_\text{serve}$ is comparable to $D_\text{train}$, the minimum shifts to a smaller $N$ trained on more tokens (Sardana and Frankle, "Beyond Chinchilla-Optimal", arXiv:2401.00448). Serving 1T tokens costs 1.4e22 FLOP on a 7B model and 5.3e22 on a 26.5B model (output above). That difference alone, 3.9e22, is 46% of the 8.4e22 training budget. Llama-3-8B was trained on ~15T tokens, about 1,870 tokens per parameter, over 90x past Chinchilla. Loss keeps improving log-linearly far past 20x, just less per FLOP.
 
 The trade-off, computed on the Chinchilla approach-3 fit: hold the loss fixed at the compute-optimal value from above and search over model sizes for the cheapest total of training plus serving FLOPs:
 
@@ -1044,19 +1073,19 @@ $ python gpuhours.py
 attention adds 15.3%
 ```
 
-This is pure compute time. Checkpointing, restarts and evaluation reduce goodput (the fraction of wall-clock time spent on useful training), so budget for them separately. The Llama 2 cross-check above (39% implied MFU on A100 for the same `N*D`) shows that 40% is a realistic, not optimistic, planning number for a dense model of this size.
+This is pure compute time. Checkpointing, restarts and evaluation reduce goodput (the fraction of wall-clock time spent on useful training), so budget for them separately. The Llama 2 cross-check above (39% implied MFU on A100 for the same $ND$) shows that 40% is a realistic, not optimistic, planning number for a dense model of this size.
 
 ## Mixed precision internals
 
-"Mixed precision" means doing most arithmetic in a 16-bit (or 8-bit) floating-point format, which is 2-4x faster and smaller, while keeping the few operations that need it in 32-bit. A floating-point number is `sign * mantissa * 2^exponent`: the exponent bits decide the range (how big and how small), the mantissa bits decide the precision (how many distinct values between two powers of two).
+"Mixed precision" means doing most arithmetic in a 16-bit (or 8-bit) floating-point format, which is 2-4x faster and smaller, while keeping the few operations that need it in 32-bit. A floating-point number is $\text{sign} \times \text{mantissa} \times 2^\text{exponent}$: the exponent bits decide the range (how big and how small), the mantissa bits decide the precision (how many distinct values between two powers of two).
 
 ### Bits
 
 | | sign | exp | mantissa | max | min normal | spacing at 1.0 |
 | :-- | --: | --: | --: | --: | --: | --: |
 | fp32 | 1 | 8 | 23 | 3.4e38 | 1.18e-38 | 1.2e-7 |
-| bf16 | 1 | 8 | 7 | 3.39e38 | 1.18e-38 | 2^-7 = 0.0078 |
-| fp16 | 1 | 5 | 10 | 65504 | 6.1e-5 (subnormal 6e-8) | 2^-10 = 0.00098 |
+| bf16 | 1 | 8 | 7 | 3.39e38 | 1.18e-38 | $2^{-7} = 0.0078$ |
+| fp16 | 1 | 5 | 10 | 65504 | 6.1e-5 (subnormal 6e-8) | $2^{-10} = 0.00098$ |
 
 The bit layouts:
 
@@ -1118,13 +1147,13 @@ RoPE angle max abs error in bf16: 41.7 rad (position error of bf16 ids: 16)
 bf16(0.999) = 1.0   0.999*bf16(1.0) in bf16 = 1.0
 ```
 
-- **fp16 underflows in backward.** A gradient element below 6e-8 flushes to zero, and gradients of ~1e-8 are routine in large models. Squaring is worse: any `g < 2^-12 = 2.4e-4` has `g^2` below the smallest fp16 subnormal. That is why fp16 Adam states are unusable without scaling.
-- **bf16 loses integers above 256.** The spacing is 2 at 256, 32 at 4096 and 64 at 8192. `bf16(8191) = 8192` and `bf16(4097) = 4096`. Position ids stored in bf16 are therefore wrong by up to 16 positions below 8192 (half the spacing of 32), and RoPE angles computed as `position * inv_freq` in bf16 are off by tens of radians for the highest frequencies, i.e. meaningless. Compute positions and angles in fp32 and cast `cos`/`sin` afterwards.
-- **bf16 cannot represent typical Adam `β2`.** `bf16(0.999) = 1.0`. Even with an fp32 multiplier, `0.999 * v` rounds back to `v`, because a 0.1% change is below bf16's half-spacing there (just under 1.0 the spacing is 2^-8 ≈ 0.39%, so half a spacing is about 0.2%).
+- **fp16 underflows in backward.** A gradient element below 6e-8 flushes to zero, and gradients of ~1e-8 are routine in large models. Squaring is worse: any $g < 2^{-12} = 2.4 \times 10^{-4}$ has $g^2$ below the smallest fp16 subnormal. That is why fp16 Adam states are unusable without scaling.
+- **bf16 loses integers above 256.** The spacing is 2 at 256, 32 at 4096 and 64 at 8192. `bf16(8191) = 8192` and `bf16(4097) = 4096`. Position ids stored in bf16 are therefore wrong by up to 16 positions below 8192 (half the spacing of 32), and RoPE angles computed as $\text{position} \times \text{inv\_freq}$ in bf16 are off by tens of radians for the highest frequencies, i.e. meaningless. Compute positions and angles in fp32 and cast `cos`/`sin` afterwards.
+- **bf16 cannot represent typical Adam $\beta_2$.** `bf16(0.999) = 1.0`. Even with an fp32 multiplier, $0.999\,v$ rounds back to $v$, because a 0.1% change is below bf16's half-spacing there (just under 1.0 the spacing is $2^{-8} \approx 0.39\%$, so half a spacing is about 0.2%).
 
 ### Loss scaling (fp16 only)
 
-Multiply the loss by `S` so that the gradients `S*g` land in fp16's normal range, then unscale in fp32 before the optimizer step. Dynamic scaling (`torch.amp.GradScaler` defaults: `init_scale=2**16`, `growth_factor=2`, `backoff_factor=0.5`, `growth_interval=2000`) halves `S` and skips the step on any inf/NaN, and doubles `S` after 2000 clean steps. bf16 needs none of this, because its range equals fp32's. Loss scaling with bf16 does nothing useful. If your bf16 run "needs" it, the problem is elsewhere.
+Multiply the loss by $S$ so that the gradients $Sg$ land in fp16's normal range, then unscale in fp32 before the optimizer step. Dynamic scaling (`torch.amp.GradScaler` defaults: `init_scale=2**16`, `growth_factor=2`, `backoff_factor=0.5`, `growth_interval=2000`) halves $S$ and skips the step on any inf/NaN, and doubles $S$ after 2000 clean steps. bf16 needs none of this, because its range equals fp32's. Loss scaling with bf16 does nothing useful. If your bf16 run "needs" it, the problem is elsewhere.
 
 Both halves, demonstrated: a small loss whose fp16 gradients underflow entirely without scaling, and `GradScaler` skipping a step that produced `inf` (here with `growth_interval=2` so the regrowth is visible):
 
@@ -1171,7 +1200,7 @@ Step 1 produced an infinite gradient: the parameter did not move (0.90 stays 0.9
 Tensor cores are the dedicated matrix-multiply units on the GPU. With bf16 or fp16 inputs, they multiply in full precision and accumulate in fp32 when cuBLAS is asked for `CUBLAS_COMPUTE_32F`, which is PyTorch's default. Two caveats:
 
 - `torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction` and the fp16 equivalent permit cuBLAS to use reduced-precision intermediate reductions in split-K kernels (kernels that split the inner dimension across several partial sums and add them at the end). I believe both default to `True` in current PyTorch, but I am not certain of the bf16 default. Set them explicitly if you are chasing bitwise differences.
-- The output is rounded to bf16 when written. Summing `K` products in fp32 and rounding once is fine. The danger is repeated accumulation into a bf16 buffer: gradient accumulation across micro-batches in bf16, or all-reduce of bf16 gradients. An all-reduce is the collective that sums a tensor across all GPUs and leaves the full sum on each of them, and a ring all-reduce adds partial sums `DP-1` times, each rounded to bf16.
+- The output is rounded to bf16 when written. Summing $K$ products in fp32 and rounding once is fine. The danger is repeated accumulation into a bf16 buffer: gradient accumulation across micro-batches in bf16, or all-reduce of bf16 gradients. An all-reduce is the collective that sums a tensor across all GPUs and leaves the full sum on each of them, and a ring all-reduce adds partial sums $\text{DP}-1$ times, each rounded to bf16.
 
 The difference between "round once" and "round every add", measured:
 
@@ -1225,8 +1254,8 @@ The fp32-accumulated dot product is off only by the rounding of its bf16 inputs;
 | Op | Why |
 | :-- | :-- |
 | softmax (attention and output) | `exp` amplifies relative error, and the normalizer is a long reduction |
-| norm statistics (mean, variance, rms) | long reduction over `h`; variance has catastrophic cancellation |
-| cross-entropy / log-softmax over `V` | 128k-term log-sum-exp |
+| norm statistics (mean, variance, rms) | long reduction over $h$; variance has catastrophic cancellation |
+| cross-entropy / log-softmax over $V$ | 128k-term log-sum-exp |
 | loss and its scalar reductions | |
 | gradient accumulation and reduction | repeated rounding of partial sums |
 | master weights and optimizer states | see the update-size analysis below |
@@ -1271,7 +1300,7 @@ float32   var by E[x^2]-E[x]^2 =  9.155e-05   (true 1.035e-04)
 bfloat16  var by E[x^2]-E[x]^2 =  0.000e+00   (true 1.035e-04)
 ```
 
-A bf16 running sum stops growing at 256, because `256 + 1` rounds back to 256. That is the mechanism behind every "long reduction must be fp32" rule. The variance computed as `E[x^2] - E[x]^2` in bf16 is exactly zero (catastrophic cancellation: two nearly equal large numbers subtracted), and even fp32 is 12% off, which is why norm kernels use Welford's algorithm (a one-pass update of the running mean and of the running sum of squared deviations from it, which never subtracts two large numbers) or subtract the mean first.
+A bf16 running sum stops growing at 256, because $256 + 1$ rounds back to 256. That is the mechanism behind every "long reduction must be fp32" rule. The variance computed as $E[x^2] - E[x]^2$ in bf16 is exactly zero (catastrophic cancellation: two nearly equal large numbers subtracted), and even fp32 is 12% off, which is why norm kernels use Welford's algorithm (a one-pass update of the running mean and of the running sum of squared deviations from it, which never subtracts two large numbers) or subtract the mean first.
 
 `torch.autocast` encodes most of this on CUDA: `matmul`, `linear`, `conv` and `bmm` run in bf16, while `softmax`, `log_softmax`, `layer_norm`, `exp`, `pow`, `sum` and the losses are on the CUDA "autocast to float32" list in the [autocast docs](https://docs.pytorch.org/docs/stable/amp.html#cuda-ops-that-can-autocast-to-float32). **The CPU list is different.** Measured on CPU with torch 2.15:
 
@@ -1299,7 +1328,7 @@ On CPU only `cross_entropy` was upcast; softmax, layer_norm, exp, pow and sum st
 
 ### Stochastic rounding
 
-Round-to-nearest is biased whenever the increment is smaller than half the spacing: the update is always rounded away. Stochastic rounding (SR) rounds up with probability equal to the fractional distance, so `E[SR(x)] = x`. For fp32 to bf16 it is a single integer add: bf16 is exactly the top 16 bits of fp32, so adding uniform noise to the low 16 bits and truncating rounds up with the right probability.
+Round-to-nearest is biased whenever the increment is smaller than half the spacing: the update is always rounded away. Stochastic rounding (SR) rounds up with probability equal to the fractional distance, so $E[\operatorname{SR}(x)] = x$. For fp32 to bf16 it is a single integer add: bf16 is exactly the top 16 bits of fp32, so adding uniform noise to the low 16 bits and truncating rounds up with the right probability.
 
 ```python
 # sr.py
@@ -1335,7 +1364,7 @@ x = 1.0009766  RNE -> 1.0000000  mean SR -> 1.0009735
  3e-06   0.0230    0.0200   0.0229
 ```
 
-The first line checks unbiasedness: `1 + 2^-10` lies between bf16 neighbours 1.0 and 1.0078; round-to-nearest always gives 1.0, while the mean of a million stochastic roundings recovers the true value to 3e-6. The table is a bf16 weight at 0.02 receiving 1000 constant updates of size `lr`. Round-to-nearest stalls as soon as `lr` drops below about half the spacing at the weight's magnitude, which is exactly what happens during LR decay. SR tracks fp32 in expectation, with variance about `ulp^2/4` per step (ulp, "unit in the last place", is the spacing between adjacent representable values at that magnitude). That is why pure-bf16 training (no fp32 master weights) needs SR or Kahan summation (keeping a second low-precision variable that holds the rounding error of each add and feeds it back into the next one) ("Revisiting BFloat16 Training", arXiv:2010.06192). NVIDIA tensor cores do not stochastically round matmul outputs. Recent PTX ISA versions expose an `.rs` rounding mode for some down-conversions on Blackwell, which NVFP4 training recipes use for gradients (NVFP4 is NVIDIA's 4-bit floating-point format on Blackwell: E2M1 values with an FP8 scale per block of 16 elements). I have not verified which conversions support it on which architectures.
+The first line checks unbiasedness: $1 + 2^{-10}$ lies between bf16 neighbours 1.0 and 1.0078; round-to-nearest always gives 1.0, while the mean of a million stochastic roundings recovers the true value to 3e-6. The table is a bf16 weight at 0.02 receiving 1000 constant updates of size $\text{lr}$. Round-to-nearest stalls as soon as $\text{lr}$ drops below about half the spacing at the weight's magnitude, which is exactly what happens during LR decay. SR tracks fp32 in expectation, with variance about $\text{ulp}^2/4$ per step (ulp, "unit in the last place", is the spacing between adjacent representable values at that magnitude). That is why pure-bf16 training (no fp32 master weights) needs SR or Kahan summation (keeping a second low-precision variable that holds the rounding error of each add and feeds it back into the next one) ("Revisiting BFloat16 Training", arXiv:2010.06192). NVIDIA tensor cores do not stochastically round matmul outputs. Recent PTX ISA versions expose an `.rs` rounding mode for some down-conversions on Blackwell, which NVFP4 training recipes use for gradients (NVFP4 is NVIDIA's 4-bit floating-point format on Blackwell: E2M1 values with an FP8 scale per block of 16 elements). I have not verified which conversions support it on which architectures.
 
 ## FP8 training
 
@@ -1345,8 +1374,8 @@ FP8 halves bytes and doubles tensor-core throughput again relative to bf16 on Ho
 
 | | max | min normal | min subnormal | mantissa bits | inf/NaN |
 | :-- | --: | --: | --: | --: | :-- |
-| E4M3 (`e4m3fn`) | 448 | 2^-6 | 2^-9 | 3 | NaN only |
-| E5M2 | 57344 | 2^-14 | 2^-16 | 2 | yes |
+| E4M3 (`e4m3fn`) | 448 | $2^{-6}$ | $2^{-9}$ | 3 | NaN only |
+| E5M2 | 57344 | $2^{-14}$ | $2^{-16}$ | 2 | yes |
 
 (`bits.py` above prints these values from `torch.finfo`.) With only 256 bit patterns, you can list every value each format can hold:
 
@@ -1377,11 +1406,11 @@ The two FP8 formats as introduced with Hopper:
 
 The original recipe ("FP8 Formats for Deep Learning", arXiv:2209.05433) uses E4M3 for forward tensors (weights, activations) and E5M2 for gradients, which need range more than precision. Transformer Engine calls this `Format.HYBRID`. DeepSeek-V3 uses E4M3 everywhere and gets its range from finer-grained scales instead.
 
-With 3 mantissa bits, E4M3's relative spacing is 12.5%. FP8 is only usable when a scale maps each tensor's actual range onto the format's: `x_fp8 = cast(x * scale)` and `y = (A_fp8 @ B_fp8) * (1 / (scale_A * scale_B))`.
+With 3 mantissa bits, E4M3's relative spacing is 12.5%. FP8 is only usable when a scale maps each tensor's actual range onto the format's: $x_\text{fp8} = \operatorname{cast}(x \cdot \text{scale})$ and $y = (A_\text{fp8} B_\text{fp8}) \cdot \frac{1}{\text{scale}_A \cdot \text{scale}_B}$.
 
 ### Delayed vs current scaling
 
-- **Delayed scaling** (TE `DelayedScaling`) computes the scale for step `t` from a history of absolute maxima (amax) from previous steps: `scale = fp8_max / max(amax_history) / 2^margin`. In TE the history length defaults to 1024 and the reduction to `max`; check your version. It costs no extra pass over the data, but it lags: a sudden outlier at step `t` overflows and saturates, because the scale was set for step `t-1`'s range. In a distributed run, amaxes must be all-reduced across the TP group (and for weights across DP or FSDP shards) so that all ranks quantize identically.
+- **Delayed scaling** (TE `DelayedScaling`) computes the scale for step $t$ from a history of absolute maxima (amax) from previous steps: $\text{scale} = \frac{\text{fp8\_max}}{\max(\text{amax\_history}) \cdot 2^\text{margin}}$. In TE the history length defaults to 1024 and the reduction to `max`; check your version. It costs no extra pass over the data, but it lags: a sudden outlier at step $t$ overflows and saturates, because the scale was set for step $t-1$'s range. In a distributed run, amaxes must be all-reduced across the TP group (and for weights across DP or FSDP shards) so that all ranks quantize identically.
 - **Current (just-in-time) scaling** (TE `Float8CurrentScaling`) computes the amax of the tensor about to be quantized. That costs one extra read of the tensor (bandwidth-bound) before the cast, but it never lags. For per-tensor scaling, the trend since 2024 has been toward current scaling, because delayed scaling's failure mode (overflow exactly on the outlier step) coincides with instability.
 
 ```python
@@ -1407,15 +1436,15 @@ delayed  scale  149.33: outlier 50.0 -> 3.00, rel err 0.582
 current  scale    8.96: outlier 50.0 -> 50.00, rel err 0.021
 ```
 
-Delayed scaling set its scale for last step's amax of 3.0. The outlier of 50.0 saturates to 448/149.3 = 3.0 and the tensor's relative error jumps to 58%. Current scaling represents it exactly.
+Delayed scaling set its scale for last step's amax of 3.0. The outlier of 50.0 saturates to $448/149.3 = 3.0$ and the tensor's relative error jumps to 58%. Current scaling represents it exactly.
 
 ### Per-tensor vs blockwise
 
 One scale per tensor means a single outlier channel sets the scale for millions of elements and pushes everything else into the subnormal range. Finer granularity fixes this:
 
-- **DeepSeek-V3** (arXiv:2412.19437): activations get one scale per `1x128` tile (per token, per 128 channels), and weights get one scale per `128x128` block, all computed online (current scaling). Because scales vary along the contraction dimension `K`, the GEMM cannot apply them in a single epilogue (the post-processing step a matmul kernel runs on its output tile). Partial sums are dequantized every 128 elements of `K`. The paper also notes that Hopper's FP8 tensor core accumulation keeps only ~14 bits of precision, so DeepSeek promotes partial sums to fp32 on the CUDA cores (the GPU's general-purpose arithmetic units) at that same 128-element interval. This both corrects the accumulation and applies the scales.
-- **Transposes**: backward needs `dW = X^T dY` and `dX = dY W^T`, which contract over different dimensions than forward. A `1x128` activation tiling along channels becomes the wrong axis for `X^T`, so the activation has to be re-quantized along tokens (`128x1`). Blockwise and MX recipes therefore keep two quantized copies, row-wise and column-wise, or re-quantize in backward.
-- **MXFP8** (OCP Microscaling, a block-scaled format family standardized by the Open Compute Project; native on Blackwell tensor cores): an E8M0 scale (a pure power of two) per block of 32 elements along `K`. The scale is applied inside the tensor core, so there is no promotion trick and no epilogue cost. The overhead is 8 bits per 32 elements, 0.25 bits per element. Because E8M0 can only represent powers of two, rounding the scale up or down decides whether the block maximum saturates. NVIDIA's MXFP8 pre-training study ("Recipes for Pre-training LLMs with MXFP8", arXiv:2506.08027 reports rounding the scale up and using E4M3 for all tensors, gradients included. I have not verified the details.
+- **DeepSeek-V3** (arXiv:2412.19437): activations get one scale per $1 \times 128$ tile (per token, per 128 channels), and weights get one scale per $128 \times 128$ block, all computed online (current scaling). Because scales vary along the contraction dimension $K$, the GEMM cannot apply them in a single epilogue (the post-processing step a matmul kernel runs on its output tile). Partial sums are dequantized every 128 elements of $K$. The paper also notes that Hopper's FP8 tensor core accumulation keeps only ~14 bits of precision, so DeepSeek promotes partial sums to fp32 on the CUDA cores (the GPU's general-purpose arithmetic units) at that same 128-element interval. This both corrects the accumulation and applies the scales.
+- **Transposes**: backward needs $dW = X^\top dY$ and $dX = dY\,W^\top$, which contract over different dimensions than forward. A $1 \times 128$ activation tiling along channels becomes the wrong axis for $X^\top$, so the activation has to be re-quantized along tokens ($128 \times 1$). Blockwise and MX recipes therefore keep two quantized copies, row-wise and column-wise, or re-quantize in backward.
+- **MXFP8** (OCP Microscaling, a block-scaled format family standardized by the Open Compute Project; native on Blackwell tensor cores): an E8M0 scale (a pure power of two) per block of 32 elements along $K$. The scale is applied inside the tensor core, so there is no promotion trick and no epilogue cost. The overhead is 8 bits per 32 elements, 0.25 bits per element. Because E8M0 can only represent powers of two, rounding the scale up or down decides whether the block maximum saturates. NVIDIA's MXFP8 pre-training study ("Recipes for Pre-training LLMs with MXFP8", arXiv:2506.08027 reports rounding the scale up and using E4M3 for all tensors, gradients included. I have not verified the details.
 
 All three granularities, emulated with PyTorch's real `float8_e4m3fn` dtype (casts run on CPU):
 
@@ -1478,7 +1507,7 @@ DeepSeek-V3's 1x128 activation tiles and 128x128 weight blocks (a), and promotin
 | Granularity | scale dtype | where applied | extra memory |
 | :---------- | :---------- | :------------ | :----------- |
 | per-tensor | fp32 | GEMM epilogue | negligible |
-| 1x128 / 128x128 (DeepSeek) | fp32 | CUDA-core promotion every 128 `K` | 0.25 bits/elem for activations |
+| 1x128 / 128x128 (DeepSeek) | fp32 | CUDA-core promotion every 128 $K$ | 0.25 bits/elem for activations |
 | MXFP8 1x32 | E8M0 | inside the tensor core | 0.25 bits/elem |
 
 ### What stays in bf16/fp32
@@ -1522,7 +1551,7 @@ DeepSeek-V3's FP8 framework for a linear layer - which tensors are FP8, BF16 and
 
 ([source](https://arxiv.org/abs/2412.19437))
 
-The upper bound on end-to-end speedup is Amdahl's law over the GEMM fraction of step time `φ`: `1 / ((1 - φ) + φ/2)`. That is 1.43x at `φ = 0.6`, 1.54x at 0.7 and 1.67x at 0.8, before quantization overhead:
+The upper bound on end-to-end speedup is Amdahl's law over the GEMM fraction of step time $\varphi$: $\frac{1}{(1 - \varphi) + \varphi/2}$. That is 1.43x at $\varphi = 0.6$, 1.54x at 0.7 and 1.67x at 0.8, before quantization overhead:
 
 ```python
 # amdahl.py
@@ -1537,7 +1566,7 @@ GEMM fraction 0.7: max FP8 speedup 1.54x
 GEMM fraction 0.8: max FP8 speedup 1.67x
 ```
 
- Measure `φ` with a profiler before promising anything; [Profiling and optimization](profiling-and-optimization.md) shows how.
+ Measure $\varphi$ with a profiler before promising anything; [Profiling and optimization](profiling-and-optimization.md) shows how.
 
 ### Transformer Engine mechanics
 
@@ -1603,9 +1632,15 @@ The recipe classes in TE 2.x are `DelayedScaling`, `Float8CurrentScaling`, `Floa
 
 ### Adam's epsilon
 
-The update is `Δ = -lr * m̂ / (sqrt(v̂) + ε)`. For a parameter whose gradient is steady, `m̂ ≈ g` and `sqrt(v̂) ≈ |g|`, so the step is `lr` in size regardless of how big the gradient is. That normalization is the whole point of Adam. When `sqrt(v̂)` is comparable to `ε`, the denominator stops normalizing: the step becomes `lr * g/ε`, i.e. momentum SGD with learning rate `lr/ε`, and parameters with tiny gradients take steps far smaller than `lr`. This hits exactly the parameters with the smallest gradients: rare-token embedding rows, and late in training, everything. Wortsman et al. ("Small-scale proxies for large-scale Transformer training instabilities", arXiv:2309.14322) show that gradient RMS falls with model scale until the default `ε = 1e-8` dominates, and recommend about `1e-15`. The time-domain correlation theory linked from [Instabilities](instabilities/README.md#time-domain-correlation-divergence-in-adam) is a related failure mode through the same term.
+The update is
 
-The effect in steady state, where `m̂ = g` and `v̂ = g^2`:
+$$
+\Delta = -\text{lr} \cdot \frac{\hat m}{\sqrt{\hat v} + \varepsilon}
+$$
+
+For a parameter whose gradient is steady, $\hat m \approx g$ and $\sqrt{\hat v} \approx \lvert g \rvert$, so the step is $\text{lr}$ in size regardless of how big the gradient is. That normalization is the whole point of Adam. When $\sqrt{\hat v}$ is comparable to $\varepsilon$, the denominator stops normalizing: the step becomes $\text{lr} \cdot g/\varepsilon$, i.e. momentum SGD with learning rate $\text{lr}/\varepsilon$, and parameters with tiny gradients take steps far smaller than $\text{lr}$. This hits exactly the parameters with the smallest gradients: rare-token embedding rows, and late in training, everything. Wortsman et al. ("Small-scale proxies for large-scale Transformer training instabilities", arXiv:2309.14322) show that gradient RMS falls with model scale until the default $\varepsilon = 10^{-8}$ dominates, and recommend about $10^{-15}$. The time-domain correlation theory linked from [Instabilities](instabilities/README.md#time-domain-correlation-divergence-in-adam) is a related failure mode through the same term.
+
+The effect in steady state, where $\hat m = g$ and $\hat v = g^2$:
 
 ```python
 # adam_eps.py
@@ -1628,7 +1663,7 @@ $ python adam_eps.py
 |g|=1e-10  eps=1e-08  step/lr = 0.010   |g|=1e-10  eps=1e-15  step/lr = 1.000   
 ```
 
-With `ε = 1e-8`, a parameter with `|g| = 1e-10` moves at 1% of the intended step; with `1e-15` the normalization holds down to tiny gradients.
+With $\varepsilon = 10^{-8}$, a parameter with $\lvert g \rvert = 10^{-10}$ moves at 1% of the intended step; with $10^{-15}$ the normalization holds down to tiny gradients.
 
 ### bf16 optimizer states
 
@@ -1660,18 +1695,24 @@ beta2=0.999: fp32 5.92e-08  bf16 RNE 9.98e-07  bf16 SR 5.80e-08
 beta2=0.95: fp32 1.00e-08  bf16 RNE 1.05e-08  bf16 SR 1.00e-08
 ```
 
-The script initializes `v` at 1e-6 and feeds a constant `g^2 = 1e-8` for 3000 steps:
+The script initializes $v$ at 1e-6 and feeds a constant $g^2 = 10^{-8}$ for 3000 steps:
 
-| β2 | fp32 `v` | bf16 round-nearest `v` | bf16 SR `v` |
+| $\beta_2$ | fp32 $v$ | bf16 round-nearest $v$ | bf16 SR $v$ |
 | --: | --: | --: | --: |
 | 0.999 | 5.9e-8 (true) | **9.98e-7 (stuck)** | 5.8e-8 |
 | 0.95 | 1.0e-8 | 1.05e-8 | 1.0e-8 |
 
-With β2 = 0.999 the per-step change is 0.1% of `v`, which is below bf16's half-spacing, so `v` never decays. When gradients shrink, the second moment stays at its old, larger value and updates are silently too small, possibly by orders of magnitude. With β2 = 0.95 the step is 5%, which bf16 can represent. DeepSeek-V3 stores BF16 moments with β2 = 0.95. That is consistent with this analysis, but I have not seen them state it as the reason. Rule: bf16 moments require β2 ≤ ~0.99 or stochastic rounding. Keep master weights in fp32 regardless; see the stochastic-rounding table above.
+With $\beta_2 = 0.999$ the per-step change is 0.1% of $v$, which is below bf16's half-spacing, so $v$ never decays. When gradients shrink, the second moment stays at its old, larger value and updates are silently too small, possibly by orders of magnitude. With $\beta_2 = 0.95$ the step is 5%, which bf16 can represent. DeepSeek-V3 stores BF16 moments with $\beta_2 = 0.95$. That is consistent with this analysis, but I have not seen them state it as the reason. Rule: bf16 moments require $\beta_2 \lesssim 0.99$ or stochastic rounding. Keep master weights in fp32 regardless; see the stochastic-rounding table above.
 
 ### Decoupled weight decay
 
-AdamW (Loshchilov and Hutter, arXiv:1711.05101) applies decay outside the adaptive normalization: `θ ← θ - η_t*(α * m̂/(sqrt(v̂)+ε) + λθ)`, where `η_t` is the schedule multiplier. L2 regularization inside Adam gets divided by `sqrt(v̂)`, so high-variance parameters are barely regularized. Decoupled decay shrinks every parameter at the same rate. PyTorch's `AdamW` multiplies `λ` by the full `lr` (`θ *= 1 - lr*λ`), so its `λ` is not the paper's `λ`. The decay timescale is `τ = 1/(lr*λ)` steps. At `lr = 3e-4`, `λ = 0.1` that is ~33k steps. Checked against PyTorch's AdamW: after 33,333 zero-gradient steps it has shrunk the weight to `e^-1`:
+AdamW (Loshchilov and Hutter, arXiv:1711.05101) applies decay outside the adaptive normalization:
+
+$$
+\theta \leftarrow \theta - \eta_t \left(\alpha \frac{\hat m}{\sqrt{\hat v} + \varepsilon} + \lambda\theta\right)
+$$
+
+where $\eta_t$ is the schedule multiplier. L2 regularization inside Adam gets divided by $\sqrt{\hat v}$, so high-variance parameters are barely regularized. Decoupled decay shrinks every parameter at the same rate. PyTorch's `AdamW` multiplies $\lambda$ by the full $\text{lr}$ ($\theta \leftarrow \theta\,(1 - \text{lr} \cdot \lambda)$), so its $\lambda$ is not the paper's $\lambda$. The decay timescale is $\tau = \frac{1}{\text{lr} \cdot \lambda}$ steps. At $\text{lr} = 3 \times 10^{-4}$, $\lambda = 0.1$ that is ~33k steps. Checked against PyTorch's AdamW: after 33,333 zero-gradient steps it has shrunk the weight to $e^{-1}$:
 
 ```python
 # adamw_decay.py
@@ -1693,7 +1734,7 @@ after 1/(lr*wd) = 33,333 steps with zero grad: w = 0.3681 (e^-1 = 0.3679)
 
 ### Muon
 
-Muon (Keller Jordan, 2024; scaled up in Moonlight, arXiv:2502.16982) applies to 2D hidden weight matrices only. It takes the momentum `M` and replaces it with its nearest semi-orthogonal matrix. If `M = U Σ V^T` (the singular value decomposition), the update is `U V^T`: same "directions", all singular values set to 1. Computing an SVD is too slow, so Muon uses 5 Newton-Schulz iterations in bf16, which push every singular value toward 1:
+Muon (Keller Jordan, 2024; scaled up in Moonlight, arXiv:2502.16982) applies to 2D hidden weight matrices only. It takes the momentum $M$ and replaces it with its nearest semi-orthogonal matrix. If $M = U \Sigma V^\top$ (the singular value decomposition), the update is $UV^\top$: same "directions", all singular values set to 1. Computing an SVD is too slow, so Muon uses 5 Newton-Schulz iterations in bf16, which push every singular value toward 1:
 
 ```python
 # muon.py
@@ -1740,15 +1781,15 @@ NS5 overhead m=4096, T=4M tokens: 30m^3 / (6 m^2 T) = 5m/T = 0.51%
 NS5 overhead m=8192, T=16M tokens: 30m^3 / (6 m^2 T) = 5m/T = 0.26%
 ```
 
-On a momentum matrix with condition number 159, five bf16 iterations bring all singular values into [0.58, 1.20], and the result points the same way as the exact `U V^T` (cosine 0.98). The coefficients `(3.4445, -4.7750, 2.0315)` are tuned to converge fast rather than exactly, so "approximately 1" is by design. The script also checks the Shampoo identity at the end of this section numerically.
+On a momentum matrix with condition number 159, five bf16 iterations bring all singular values into [0.58, 1.20], and the result points the same way as the exact $UV^\top$ (cosine 0.98). The coefficients $(3.4445, -4.7750, 2.0315)$ are tuned to converge fast rather than exactly, so "approximately 1" is by design. The script also checks the Shampoo identity at the end of this section numerically.
 
-Cost per step for a square `m x m` matrix is `5 * (4m^3 + 2m^3) = 30*m^3` FLOP, which is `30m` per parameter. The forward-plus-backward pass costs `6*T` per parameter per step, where `T` is tokens per step. The overhead ratio is `5m/T`: 0.51% for `m = 4096` with a 4M-token batch, and 0.26% for `m = 8192` with 16M tokens. The FLOPs are cheap. The communication is not: NS needs the full matrix, so under ZeRO or FSDP sharding each matrix has to be gathered onto one rank (or the work spread across ranks round-robin). Embeddings, the LM head, norms and biases stay on AdamW. Moonlight scales the update by `0.2*sqrt(max(m, n))` so its RMS matches AdamW's, which lets AdamW's LR and weight decay transfer.
+Cost per step for a square $m \times m$ matrix is $5\,(4m^3 + 2m^3) = 30m^3$ FLOP, which is $30m$ per parameter. The forward-plus-backward pass costs $6T$ per parameter per step, where $T$ is tokens per step. The overhead ratio is $5m/T$: 0.51% for $m = 4096$ with a 4M-token batch, and 0.26% for $m = 8192$ with 16M tokens. The FLOPs are cheap. The communication is not: NS needs the full matrix, so under ZeRO or FSDP sharding each matrix has to be gathered onto one rank (or the work spread across ranks round-robin). Embeddings, the LM head, norms and biases stay on AdamW. Moonlight scales the update by $0.2\sqrt{\max(m, n)}$ so its RMS matches AdamW's, which lets AdamW's LR and weight decay transfer.
 
-Muon is Shampoo without accumulation. For `G = UΣV^T`, `(GG^T)^(-1/4) G (G^TG)^(-1/4) = U V^T` (checked above to 5e-14). This observation appears in Bernstein and Newhouse, "Old Optimizer, New Norm" (arXiv:2409.20325.
+Muon is Shampoo without accumulation. For $G = U\Sigma V^\top$, $(GG^\top)^{-1/4}\, G\, (G^\top G)^{-1/4} = UV^\top$ (checked above to 5e-14). This observation appears in Bernstein and Newhouse, "Old Optimizer, New Norm" (arXiv:2409.20325.
 
 ### Shampoo
 
-Shampoo (Gupta et al., arXiv:1802.09568) keeps `L = Σ G G^T` (`m x m`) and `R = Σ G^T G` (`n x n`) and updates with `L^(-1/4) G R^(-1/4)`. The inverse 4th roots require an eigendecomposition, `O(m^3 + n^3)`, which is amortized by recomputing only every `k` steps. Production versions such as Distributed Shampoo (arXiv:2309.06497) block large matrices into `B x B` tiles and graft the step size onto Adam's (grafting: take the update's direction from Shampoo but rescale it to the norm Adam's update would have had, so Adam's LR schedule carries over). Per `B x B` block they store `L`, `R` and their two inverse roots, 4 fp32 matrices of `B^2` each, which is **16 bytes per parameter** on top of the grafting state.
+Shampoo (Gupta et al., arXiv:1802.09568) keeps $L = \sum GG^\top$ ($m \times m$) and $R = \sum G^\top G$ ($n \times n$) and updates with $L^{-1/4}\, G\, R^{-1/4}$. The inverse 4th roots require an eigendecomposition, $O(m^3 + n^3)$, which is amortized by recomputing only every $k$ steps. Production versions such as Distributed Shampoo (arXiv:2309.06497) block large matrices into $B \times B$ tiles and graft the step size onto Adam's (grafting: take the update's direction from Shampoo but rescale it to the norm Adam's update would have had, so Adam's LR schedule carries over). Per $B \times B$ block they store $L$, $R$ and their two inverse roots, 4 fp32 matrices of $B^2$ each, which is **16 bytes per parameter** on top of the grafting state.
 
 ```python
 # shampoo_step.py
@@ -1778,23 +1819,23 @@ update singular values: [0.606, 1.037] (single step = U V^T)
 state per block: L, R, L^-1/4, R^-1/4 in fp32 = 16 bytes/param
 ```
 
-The roots cost 30x more than applying them at this block size, which is why they are recomputed only every `k` steps. A single step without accumulation gives singular values near 1 (`U V^T`, the Muon update); the smallest are pulled below 1 by the damping epsilon.
+The roots cost 30x more than applying them at this block size, which is why they are recomputed only every $k$ steps. A single step without accumulation gives singular values near 1 ($UV^\top$, the Muon update); the smallest are pulled below 1 by the damping epsilon.
 
 ### Optimizer-state memory
 
-Two optimizers in the table are not covered elsewhere in this chapter. *8-bit Adam* (from the `bitsandbytes` library, "bnb") stores Adam's `m` and `v` as 8-bit integers with one fp32 scale per block of elements. *Adafactor* stores the second moment of an `m x n` matrix as a row vector and a column vector (`m + n` numbers) whose outer product approximates `v`, and optionally drops momentum (`β1 = 0`).
+Two optimizers in the table are not covered elsewhere in this chapter. *8-bit Adam* (from the `bitsandbytes` library, "bnb") stores Adam's $m$ and $v$ as 8-bit integers with one fp32 scale per block of elements. *Adafactor* stores the second moment of an $m \times n$ matrix as a row vector and a column vector ($m + n$ numbers) whose outer product approximates $v$, and optionally drops momentum ($\beta_1 = 0$).
 
 | Optimizer | bytes/param (states only) | Llama-3-8B | Llama-3-70B |
 | :-------- | ------------------------: | ---------: | ----------: |
 | AdamW fp32 | 8 | 64.2 GB | 564.4 GB |
 | AdamW bf16 moments | 4 | 32.1 GB | 282.2 GB |
 | 8-bit Adam (bnb, blockwise, block 2048) | 2 + ~0.004 | 16.1 GB | 141.4 GB |
-| Adafactor, β1 = 0 | ~`(m+n)/(mn)*4` ≈ 0 for matrices | <0.1 GB | <0.5 GB |
+| Adafactor, $\beta_1 = 0$ | $\approx 4\,\frac{m+n}{mn} \approx 0$ for matrices | <0.1 GB | <0.5 GB |
 | Adafactor, with momentum | 4 | 32.1 GB | 282.2 GB |
 | Muon (fp32 momentum) + AdamW on emb/head | 4 on matrices, 8 on emb/head | 36.3 GB | 290.6 GB |
 | Shampoo (blocked) + Adam grafting | ~16 + 8 | ~193 GB | ~1.7 TB |
 
-The 8-bit Adam overhead is one fp32 absmax per 2048-element block per state: `2*4/2048` B/param. The Muon row uses the 1.05B (8B) and 2.10B (70B) embedding-plus-head parameters at 8 B/param.
+The 8-bit Adam overhead is one fp32 absmax per 2048-element block per state: $2 \times 4/2048$ B/param. The Muon row uses the 1.05B (8B) and 2.10B (70B) embedding-plus-head parameters at 8 B/param.
 
 ```python
 # optmem.py
@@ -1827,17 +1868,25 @@ Shampoo blocked + Adam            192.7 GB     1693.3 GB
 
 ### Critical batch size
 
-McCandlish et al. ("An Empirical Model of Large-Batch Training", arXiv:1812.06162) model a step at batch `B` as reducing the loss by an amount that saturates once `B` exceeds the *noise scale*:
+McCandlish et al. ("An Empirical Model of Large-Batch Training", arXiv:1812.06162) model a step at batch $B$ as reducing the loss by an amount that saturates once $B$ exceeds the *noise scale*, where $\Sigma$ is the per-example gradient covariance and $G$ the true gradient:
 
-```
-B_noise  = tr(Σ) / |G|^2          # Σ = per-example gradient covariance, G = true gradient
-(S/S_min - 1) * (E/E_min - 1) = 1    # steps vs examples trade-off
-B_crit   = E_min / S_min ≈ B_noise
-```
+$$
+B_\text{noise} = \frac{\operatorname{tr}(\Sigma)}{\lVert G \rVert^2}
+$$
 
-Intuitively, `B_noise` is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below `B_crit`, doubling `B` halves the number of steps at constant data (perfect data parallelism). Above it, doubling `B` doubles the data needed for almost no reduction in steps. `B_crit` grows as the loss falls, which is the justification for batch-size ramps ([Global Batch Size Ramp Up](hparams.md#global-batch-size-ramp-up)). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit `B_crit(L) ≈ B*/L^(1/α_B)` with `B* ≈ 2e8` tokens and `α_B ≈ 0.21`. That fit is specific to their data and tokenizer. More recent work ("How Does Critical Batch Size Scale in Pre-training?", arXiv:2410.21676 finds `B_crit` tracks data size more than model size.
+The trade-off between steps $S$ and examples $E$:
 
-You can measure it for free using two batch sizes you already have, the per-micro-batch gradient and the accumulated or all-reduced one, because `E|G_B|^2 = |G|^2 + tr(Σ)/B` (McCandlish appendix A). Here it is on a linear regression where the true noise scale can be computed exactly from all per-example gradients:
+$$
+\left(\frac{S}{S_\text{min}} - 1\right)\left(\frac{E}{E_\text{min}} - 1\right) = 1
+$$
+
+$$
+B_\text{crit} = \frac{E_\text{min}}{S_\text{min}} \approx B_\text{noise}
+$$
+
+Intuitively, $B_\text{noise}$ is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below $B_\text{crit}$, doubling $B$ halves the number of steps at constant data (perfect data parallelism). Above it, doubling $B$ doubles the data needed for almost no reduction in steps. $B_\text{crit}$ grows as the loss falls, which is the justification for batch-size ramps ([Global Batch Size Ramp Up](hparams.md#global-batch-size-ramp-up)). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit $B_\text{crit}(L) \approx B_* / L^{1/\alpha_B}$ with $B_* \approx 2 \times 10^8$ tokens and $\alpha_B \approx 0.21$. That fit is specific to their data and tokenizer. More recent work ("How Does Critical Batch Size Scale in Pre-training?", arXiv:2410.21676 finds $B_\text{crit}$ tracks data size more than model size.
+
+You can measure it for free using two batch sizes you already have, the per-micro-batch gradient and the accumulated or all-reduced one, because $E\lVert G_B \rVert^2 = \lVert G \rVert^2 + \operatorname{tr}(\Sigma)/B$ (McCandlish appendix A). Here it is on a linear regression where the true noise scale can be computed exactly from all per-example gradients:
 
 ```python
 # noise_scale.py
@@ -1871,14 +1920,14 @@ $ python noise_scale.py
 true B_noise 51.56   estimated 54.98
 ```
 
-Both estimators are unbiased but very noisy, so smooth the numerator and denominator separately before dividing, as the script does. Here the estimate is 7% off after 300 steps (one seed; expect run-to-run spread of the same order). `B` must be in the unit you care about (sequences or tokens). Packed sequences are not independent examples at the token level, so the token-level estimate is biased low.
+Both estimators are unbiased but very noisy, so smooth the numerator and denominator separately before dividing, as the script does. Here the estimate is 7% off after 300 steps (one seed; expect run-to-run spread of the same order). $B$ must be in the unit you care about (sequences or tokens). Packed sequences are not independent examples at the token level, so the token-level estimate is biased low.
 
 ### WSD schedules
 
-Warmup-Stable-Decay holds the LR constant after warmup and decays only over the final ~10-20% of steps (MiniCPM, arXiv:2404.06395; Hägele et al., "Scaling Laws and Compute-Optimal Training Beyond Fixed Training Durations", arXiv:2405.18392, which also finds that a `1 - sqrt` decay shape outperforms linear). The practical value:
+Warmup-Stable-Decay holds the LR constant after warmup and decays only over the final ~10-20% of steps (MiniCPM, arXiv:2404.06395; Hägele et al., "Scaling Laws and Compute-Optimal Training Beyond Fixed Training Durations", arXiv:2405.18392, which also finds that a $1 - \sqrt{\cdot}$ decay shape outperforms linear). The practical value:
 
-- The run length does not have to be fixed in advance. You can branch a decay from any stable-phase checkpoint, which gives a whole family of `D` values from one run. That is what makes scaling-law sweeps cheap.
-- Cosine decay to 10% at a fixed `D` and WSD with a 20% cooldown reach similar final loss in those papers, so you lose nothing.
+- The run length does not have to be fixed in advance. You can branch a decay from any stable-phase checkpoint, which gives a whole family of $D$ values from one run. That is what makes scaling-law sweeps cheap.
+- Cosine decay to 10% at a fixed $D$ and WSD with a 20% cooldown reach similar final loss in those papers, so you lose nothing.
 - The loss drops sharply during the cooldown. Do not compare stable-phase loss to a cosine run's loss at the same step.
 
 ```python
@@ -1925,12 +1974,12 @@ Under standard parametrization, the optimal LR shrinks as width grows, so small-
 
 | Layer type | init variance | Adam LR |
 | :--------- | :------------ | :------ |
-| input embedding, biases, norm gains | `1/fan_in` (`fan_in = V`, constant in width) | constant |
-| hidden matrices (QKV, O, MLP) | `1/fan_in` | `∝ 1/fan_in` |
-| output / unembedding | `1/fan_in^2` (or multiply logits by `1/width`; zero init is common) | `∝ 1/fan_in` |
-| attention logits | scale by `1/d` instead of `1/sqrt(d)` | - |
+| input embedding, biases, norm gains | $1/\text{fan\_in}$ ($\text{fan\_in} = V$, constant in width) | constant |
+| hidden matrices (QKV, O, MLP) | $1/\text{fan\_in}$ | $\propto 1/\text{fan\_in}$ |
+| output / unembedding | $1/\text{fan\_in}^2$ (or multiply logits by $1/\text{width}$; zero init is common) | $\propto 1/\text{fan\_in}$ |
+| attention logits | scale by $1/d$ instead of $1/\sqrt{d}$ | - |
 
-Why hidden matrices get `1/fan_in`: Adam's update is entry-wise `O(lr)`, and a rank-1-ish update to an `n x n` matrix changes its output by `O(n*lr)`, so `lr ∝ 1/n` keeps the output change `O(1)`. Depth transfer needs separate residual-branch scaling (Tensor Programs VI, arXiv:2310.02244; CompleteP, arXiv:2505.01618. μP transfers LR, init and some other hyperparameters across width at fixed data and batch size. It does not transfer the batch size or schedule length.
+Why hidden matrices get $1/\text{fan\_in}$: Adam's update is entry-wise $O(\text{lr})$, and a rank-1-ish update to an $n \times n$ matrix changes its output by $O(n \cdot \text{lr})$, so $\text{lr} \propto 1/n$ keeps the output change $O(1)$. Depth transfer needs separate residual-branch scaling (Tensor Programs VI, arXiv:2310.02244; CompleteP, arXiv:2505.01618. μP transfers LR, init and some other hyperparameters across width at fixed data and batch size. It does not transfer the batch size or schedule length.
 
 The table as a function: tune at `base_width`, then read off per-layer settings for any width. In PyTorch you implement the LR column with one optimizer parameter group per row.
 
@@ -1962,13 +2011,19 @@ Each fix below targets a specific mechanism. Diagnose the mechanism before apply
 
 ### Output-logit growth → z-loss
 
-Cross-entropy is invariant to adding a constant to all logits, so nothing in the loss anchors `log Z = logsumexp(z)`, and it drifts. Large logits cost precision in bf16: at |z| ≈ 256 the spacing is 2.0, so logit differences that decide the top-1 token get quantized, and the fp32 softmax only helps if the logits were produced in fp32. PaLM (arXiv:2204.02311) adds:
+Cross-entropy is invariant to adding a constant to all logits, so nothing in the loss anchors $\log Z = \operatorname{logsumexp}(z)$, and it drifts. Large logits cost precision in bf16: at $\lvert z \rvert \approx 256$ the spacing is 2.0, so logit differences that decide the top-1 token get quantized, and the fp32 softmax only helps if the logits were produced in fp32. PaLM (arXiv:2204.02311) adds:
 
-```
-L_z = 1e-4 * (log Z)^2          # gradient wrt z_i: 2e-4 * log Z * softmax(z)_i
-```
+$$
+L_z = 10^{-4} \cdot (\log Z)^2
+$$
 
-This is a quadratic well on the one direction CE leaves flat. It pulls `log Z → 0` without changing the relative logits. Checked with autograd: CE's gradient sums to zero over the vocabulary (it cannot move all logits together), while z-loss's gradient sums to exactly `2e-4 * log Z` per token:
+with gradient with respect to $z_i$:
+
+$$
+\frac{\partial L_z}{\partial z_i} = 2 \times 10^{-4} \cdot \log Z \cdot \operatorname{softmax}(z)_i
+$$
+
+This is a quadratic well on the one direction CE leaves flat. It pulls $\log Z \to 0$ without changing the relative logits. Checked with autograd: CE's gradient sums to zero over the vocabulary (it cannot move all logits together), while z-loss's gradient sums to exactly $2 \times 10^{-4} \cdot \log Z$ per token:
 
 ```python
 # zloss.py
@@ -1993,11 +2048,11 @@ sum of z-loss grad over vocab 9.35e-04 = 2e-4*logZ/B = 9.35e-04
 bf16 spacing at logit 256: 2.0
 ```
 
-Wortsman et al. (arXiv:2309.14322) identify output-logit divergence as an LR-sensitivity failure that z-loss (or weight decay) removes. Monitor `log Z` mean and max per step. A steady upward trend is the signature.
+Wortsman et al. (arXiv:2309.14322) identify output-logit divergence as an LR-sensitivity failure that z-loss (or weight decay) removes. Monitor $\log Z$ mean and max per step. A steady upward trend is the signature.
 
 ### Attention-logit growth and entropy collapse → QK-norm
 
-The attention logits are `q·k/sqrt(d)`, with `q = W_q x` and `k = W_k x`. Their scale grows with `|W_q| |W_k|`, and nothing in the loss bounds it. As logits grow, softmax saturates toward one-hot. The effect, computed on standard-normal logits over 4096 keys multiplied by a scale (max entropy 8.32 nats):
+The attention logits are $q \cdot k/\sqrt{d}$, with $q = W_q x$ and $k = W_k x$. Their scale grows with $\lVert W_q \rVert \lVert W_k \rVert$, and nothing in the loss bounds it. As logits grow, softmax saturates toward one-hot. The effect, computed on standard-normal logits over 4096 keys multiplied by a scale (max entropy 8.32 nats):
 
 ```python
 # entropy_table.py
@@ -2032,9 +2087,9 @@ logit scale  64: entropy 0.00 nats, max prob 1.000
 
 (An earlier version of this table had milder numbers from an unrecorded logit distribution; these are reproducible from the script.)
 
-The softmax Jacobian is `diag(p) - p p^T`, which goes to 0 as `p` becomes one-hot. Gradients into `W_q` and `W_k` vanish, the head freezes, and small parameter changes near the saturated regime flip the argmax and produce loss spikes. Zhai et al. ("Stabilizing Transformer Training by Preventing Attention Entropy Collapse", arXiv:2303.06296) correlate collapse with divergence and fix it with σReparam (`W ← γ W / σ(W)`, with `σ` the spectral norm estimated by power iteration).
+The softmax Jacobian is $\operatorname{diag}(p) - pp^\top$, which goes to 0 as $p$ becomes one-hot. Gradients into $W_q$ and $W_k$ vanish, the head freezes, and small parameter changes near the saturated regime flip the argmax and produce loss spikes. Zhai et al. ("Stabilizing Transformer Training by Preventing Attention Entropy Collapse", arXiv:2303.06296) correlate collapse with divergence and fix it with σReparam ($W \leftarrow \gamma W / \sigma(W)$, with $\sigma$ the spectral norm estimated by power iteration).
 
-QK-norm (ViT-22B, Dehghani et al., arXiv:2302.05442; used by OLMo 2, arXiv:2501.00656) applies LayerNorm or RMSNorm to `q` and `k` per head before the dot product. With RMSNorm, `|q| = |k| = sqrt(d)` times the gain, so `|q·k|/sqrt(d) ≤ sqrt(d) * γ_q * γ_k`. The logit scale is now controlled by two small learnable gain vectors instead of the product of two unbounded matrix norms. The gains can still grow, but slowly and visibly. Wortsman et al. show that QK-norm widens the stable LR range by orders of magnitude at small scale.
+QK-norm (ViT-22B, Dehghani et al., arXiv:2302.05442; used by OLMo 2, arXiv:2501.00656) applies LayerNorm or RMSNorm to $q$ and $k$ per head before the dot product. With RMSNorm, $\lVert q \rVert = \lVert k \rVert = \sqrt{d}$ times the gain, so $\lvert q \cdot k \rvert / \sqrt{d} \le \sqrt{d}\,\gamma_q \gamma_k$. The logit scale is now controlled by two small learnable gain vectors instead of the product of two unbounded matrix norms. The gains can still grow, but slowly and visibly. Wortsman et al. show that QK-norm widens the stable LR range by orders of magnitude at small scale.
 
 The bound, checked: grow both projection matrices and the raw logits grow quadratically, while the QK-normed logits do not move at all (with unit gains):
 
@@ -2061,11 +2116,11 @@ weight growth 16x: max |logit| raw   1562.7 | with QK-norm  4.22 (bound sqrt(d) 
 ```
 
 
-Alternatives: logit soft-capping, `cap * tanh(z/cap)` (Gemma 2, arXiv:2408.00118, with caps of 50 on attention logits and 30 on final logits, as I recall). It bounds the logits but saturates their gradient, and needs kernel support (FlashAttention-2 added it). QK-clip (Kimi K2, arXiv:2507.20534 rescales `W_q` and `W_k` after the optimizer step whenever a head's max logit exceeds a threshold. It was motivated by Muon's tendency to grow these weights faster than AdamW does.
+Alternatives: logit soft-capping, $\text{cap} \cdot \tanh(z/\text{cap})$ (Gemma 2, arXiv:2408.00118, with caps of 50 on attention logits and 30 on final logits, as I recall). It bounds the logits but saturates their gradient, and needs kernel support (FlashAttention-2 added it). QK-clip (Kimi K2, arXiv:2507.20534 rescales $W_q$ and $W_k$ after the optimizer step whenever a head's max logit exceeds a threshold. It was motivated by Muon's tendency to grow these weights faster than AdamW does.
 
 ### Monitoring them cheaply
 
-FlashAttention does not expose `P`, so probe a sampled batch with an eager computation on a few layers. Here is the probe run on four heads, one of which has `|W_q||W_k|` grown 64x:
+FlashAttention does not expose $P$, so probe a sampled batch with an eager computation on a few layers. Here is the probe run on four heads, one of which has $\lVert W_q \rVert \lVert W_k \rVert$ grown 64x:
 
 ```python
 # entropy.py
@@ -2092,14 +2147,14 @@ $ python entropy.py
 max logit per head: [4.8, 4.7, 4.8, 309.8]  mean entropy: [4.76, 4.77, 4.76, 0.07]
 ```
 
-The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output `log Z`, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near `lr`. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see [Instabilities](instabilities/README.md) and [Numerical instabilities](instabilities/README.md#numerical-instabilities).
+The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output $\log Z$, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near $\text{lr}$. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see [Instabilities](instabilities/README.md) and [Numerical instabilities](instabilities/README.md#numerical-instabilities).
 
 ## You can now read
 
 - [Model Parallelism: Derivations](model-parallelism/derivations.md) - how the FLOPs and bytes computed here are split across GPUs, with runnable collective demos.
 - [Profiling and optimization](profiling-and-optimization.md) - measuring where the step time goes, to compare against the MFU arithmetic here.
 - [Inference arithmetic](../inference/arithmetic.md) - the same counting applied to prefill and decode.
-- [Decentralized training](decentralized-training.md) - what changes when `β`, the per-byte link cost of the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model), is a WAN link instead of InfiniBand.
+- [Decentralized training](decentralized-training.md) - what changes when $\beta$, the per-byte link cost of the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model), is a WAN link instead of InfiniBand.
 
 ## Further reading
 

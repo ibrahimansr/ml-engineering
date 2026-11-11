@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine Learning Engineering - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../../compute/README.html">Compute (Stas)</a></li><li><a href="../../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../../training/README.html">Training (Stas)</a></li><li><a href="../../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../../inference/README.html">Inference (Stas)</a></li><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../../resources/README.html">Resources (Stas)</a></li><li><a href="../../contributors.html">Contributors (Stas)</a></li><li><a href="../../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details open><summary>Other pages: skills</summary><ul><li><a href="../../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../../skills/ml-engineering/SKILL.html" class="current">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<pre class="front-matter"><code>name: ml-engineering
+description: &gt;-
+  Field-tested methodology and concrete recipes for training and operating
+  large-scale LLM/VLM/multi-modal models end to end - choosing and benchmarking
+  accelerators, storage and network; SLURM/Kubernetes orchestration; maximizing
+  training throughput and fitting models in memory; diagnosing and surviving
+  training instabilities, NaN/Inf, and hardware/job failures; checkpointing and
+  fault tolerance; inference performance and memory; debugging multi-node/
+  multi-GPU hangs; and writing/running tests. Use when the user is training or
+  fine-tuning large models, hits low TFLOPS/MFU, OOM, slow dataloading, a
+  loss spike/divergence, a NCCL/InfiniBand or multi-node hang, node/GPU
+  failures, checkpoint or preemption problems, storage/network bottlenecks, or
+  needs to pick GPUs/cloud/file-systems or size inference latency/throughput.
+  Distilled from &quot;Machine Learning Engineering&quot;, the latest version of which can
+  be found at https://github.com/stas00/ml-engineering
+
+  The latest SKILL.md version can be found at https://github.com/stas00/ml-engineering/blob/master/skills/ml-engineering/SKILL.md</code></pre>
+<h1 id="machine-learning-engineering">Machine Learning Engineering</h1>
+<p>Distilled from <strong>Machine Learning Engineering Open Book</strong> by Stas Bekman - source: https://github.com/stas00/ml-engineering (CC BY-SA 4.0). Know-how from training BLOOM-176B, IDEFICS-80B and production RAG and RL training and inference systems. This skill is a condensed index; each section links back to the full chapter for depth, scripts, and benchmarks.</p>
+<p>A field-tested, end-to-end guide to <strong>training and serving large models</strong> (LLMs, VLMs, multi-modal, RAG) on real hardware at scale - distilled from actually training BLOOM-176B and IDEFICS-80B and building production inference/RAG systems. It is a practitioner's brain dump: opinionated guidance backed by copy-paste scripts, benchmark tools, and comparison tables, written for the engineers and operators who have to make expensive clusters actually deliver a finished model.</p>
+<p>It spans the entire stack that decides whether a run succeeds and how much it costs: selecting and <em>benchmarking</em> accelerators, storage, and network so the fast compute is never starved; orchestrating jobs with SLURM/Kubernetes; maximizing throughput (MFU) and fitting models in memory via parallelism (DP/TP/PP/ZeRO), activation recomputation, and offload; keeping training numerically stable through loss spikes and NaN/Inf; and surviving the <em>inevitable</em> hardware and job failures with frequent checkpointing, spare capacity, and automatic restarts. On the serving side it covers inference latency/throughput/cost trade-offs, KV-cache and memory sizing, and framework selection - plus diagnosing multi-node/multi-GPU hangs and testing the whole thing.</p>
+<p>Use it as an operator's runbook: figure out which resource is <em>actually</em> the bottleneck (compute? memory? network? storage? dataloader?), then jump to the targeted recipe. For pure debugging technique (gdb/strace/py-spy/CUDA), pair this with <a href="https://github.com/stas00/the-art-of-debugging/blob/master/SKILL.md">The Art of Debugging</a>.</p>
+<h2 id="core-principles">Core principles</h2>
+<ul>
+<li><strong>Measure, don't assume.</strong> Vendor/theoretical TFLOPS are marketing; benchmark <em>your</em> hardware and software stack before optimizing or buying. Track MFU/throughput, not vibes.</li>
+<li><strong>Find the actual bottleneck.</strong> A training step is gated by the slowest of: accelerator compute, memory bandwidth/capacity, inter/intra-node network, storage IO, or CPU dataloading. Optimizing anything else is wasted effort.</li>
+<li><strong>At scale, failure is the steady state.</strong> With hundreds/thousands of accelerators, hardware <em>will</em> fail mid-run. Design for frequent checkpoints, automatic restarts, spare nodes, and kill/save switches from day one.</li>
+<li><strong>Reproduce small and fast.</strong> Debug on a tiny model / few layers / one node before burning cluster time - see <a href="https://github.com/stas00/the-art-of-debugging/blob/master/SKILL.md">The Art of Debugging</a>.</li>
+<li><strong>Watch the logbooks.</strong> Others have already hit your instability; training chronicles document the loss spikes and the fixes. See <a href="https://github.com/stas00/ml-engineering/tree/master/resources#publicly-available-training-llmvlm-logbooks">LLM/VLM chronicles</a>.</li>
+</ul>
+<h2 id="compute--accelerators">Compute / accelerators</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/tree/master/compute">Compute</a> · <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md">Accelerators</a>.</p>
+<ul>
+<li><strong>The number that matters is achievable, not theoretical.</strong> Real matmul FLOPS are well below spec. Measure Maximum Achievable Matmul FLOPS with <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/benchmarks/mamf-finder.py"><code>mamf-finder.py</code></a>; compute <strong>MFU</strong> (model FLOPS utilization) to compare setups. See <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#the-most-important-thing-to-understand">the most important thing to understand</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#what-accelerator-characteristics-do-we-care-for">what accelerator characteristics we care for</a>. For a full trial-node loop (compute + network + storage → markdown report) see <a href="https://github.com/stas00/ml-engineering/blob/master/insights/how-to-choose-cloud-provider.md#how-to-evaluate-the-cluster">How to evaluate the cluster</a> and the <a href="https://github.com/stas00/ml-engineering/blob/master/skills/evaluate-cluster/SKILL.md">evaluate-cluster skill</a>.</li>
+<li><strong>Memory capacity + bandwidth often bind before FLOPS.</strong> Check the <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#accelerator-memory-size-and-speed">accelerator memory size and speed table</a> and the <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#tflops-comparison-table">TFLOPS comparison table</a> when choosing hardware.</li>
+<li><strong>Don't forget power and cooling</strong> - throttling silently caps sustained throughput. See <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#power-and-cooling">power and cooling</a>.</li>
+<li><strong>CPU and CPU memory matter too</strong> (dataloading, offload, pinned memory). See <a href="https://github.com/stas00/ml-engineering/tree/master/compute/cpu">CPU</a> and <a href="https://github.com/stas00/ml-engineering/tree/master/compute/cpu-memory">CPU memory</a>.</li>
+</ul>
+<h2 id="storage-io">Storage (IO)</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/storage/README.md">Storage</a>.</p>
+<ul>
+<li><strong>Pick the file system for the job:</strong> distributed/parallel FS for shared checkpoints and datasets; fast <strong>local</strong> NVMe beats network storage for scratch/hot data. See <a href="https://github.com/stas00/ml-engineering/blob/master/storage/README.md#which-file-system-to-choose">which file system to choose</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/storage/README.md#local-storage-beats-cloud-storage">local storage beats cloud storage</a>.</li>
+<li><strong>Benchmark IO before you trust it</strong> (checkpoint save/load and dataset streaming are common stalls). See <a href="https://github.com/stas00/ml-engineering/blob/master/storage/README.md#benchmarks">storage benchmarks</a>. Pair with the <a href="https://github.com/stas00/ml-engineering/blob/master/skills/evaluate-cluster/SKILL.md">cluster evaluation</a> loop (<code>fio-scan</code> on local NVMe <em>and</em> shared FS).</li>
+<li><strong>Gotchas that bite at scale:</strong> you often get less usable capacity than sold; some clouds put backups on the same partition; always keep <a href="https://github.com/stas00/ml-engineering/blob/master/storage/README.md#dont-forget-the-checksums">checksums</a>. Clean up instead of overpaying - see <a href="https://github.com/stas00/ml-engineering/blob/master/storage/README.md#why-pay-for-more-storage-when-you-can-easily-clean-it-up-instead">why pay for more storage</a>.</li>
+</ul>
+<h2 id="network">Network</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md">Network</a>.</p>
+<ul>
+<li><strong>Inter-node speed can dominate the whole training's speed.</strong> For sharded/parallel training, slow inter-node links stall everyone. Understand why before scaling out: <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#understanding-why-inter-node-network-speed-is-of-a-huge-importance">why inter-node speed is hugely important</a>.</li>
+<li><strong>Know the two speeds:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#intra-node-networking">intra-node</a> (NVLink/PCIe) vs <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#inter-node-networking">inter-node</a> (InfiniBand/RoCE/Ethernet), and <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#rdma-networking">RDMA</a>.</li>
+<li><strong>Benchmark real collective throughput,</strong> not marketing numbers, with <a href="https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a> (far simpler than nccl-tests). Mind the <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#important-nuances">important nuances</a> (e.g. unidirectional vs bidirectional, payload size, busbw vs algbw). Intra-node plus ≥4-node inter-node is part of <a href="https://github.com/stas00/ml-engineering/blob/master/insights/how-to-choose-cloud-provider.md#how-to-evaluate-the-cluster">How to evaluate the cluster</a>.</li>
+<li><strong>When collectives hang or crawl:</strong> see <a href="https://github.com/stas00/ml-engineering/tree/master/network/debug">network debug</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/debug/nccl-performance-debug.md">NCCL performance debug</a>.</li>
+</ul>
+<h2 id="orchestration--slurm">Orchestration &amp; SLURM</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/tree/master/orchestration">Orchestration</a> · <a href="https://github.com/stas00/ml-engineering/tree/master/orchestration/slurm">SLURM</a> · <a href="https://github.com/stas00/ml-engineering/tree/master/orchestration/kubernetes">Kubernetes</a>.</p>
+<ul>
+<li><strong>Verify the cluster before the big run:</strong> every GPU on every node must talk to every other. Run <a href="https://github.com/stas00/ml-engineering/blob/master/debug/torch-distributed-gpu-test.py"><code>torch-distributed-gpu-test.py</code></a> across all nodes first.</li>
+<li><strong>SLURM day-to-day:</strong> the <a href="https://github.com/stas00/ml-engineering/blob/master/orchestration/slurm/users.md">users cheatsheet</a> covers <code>sbatch</code>/<code>srun</code>/<code>salloc</code>, job arrays, dependencies, and inspecting the queue; keep the allocation and re-<code>srun</code> for fast debug iterations.</li>
+<li><strong>Launchers</strong> (torchrun/accelerate/deepspeed under SLURM): see <a href="https://github.com/stas00/ml-engineering/tree/master/orchestration/slurm/launchers/README.md">launchers</a>.</li>
+</ul>
+<h2 id="training-performance--memory">Training: performance &amp; memory</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md">Performance</a>.</p>
+<ul>
+<li><strong>Start from the checklist:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#how-to-improve-speed-and-save-memory">how to improve speed and save memory</a> enumerates the high-impact levers (parallelism choice, activation checkpointing/recomputation, offload, fused kernels, mixed precision).</li>
+<li><strong>Fit the model:</strong> know the <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#anatomy-of-models-memory-usage">anatomy of memory usage</a> (weights + grads + optimizer states + activations) and profile with <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#memory-profiler-tools">memory profiler tools</a>.</li>
+<li><strong>Free throughput wins:</strong> keep tensor dims <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#vector-and-matrix-size-divisibility">divisible/aligned</a> for Tensor Cores, set <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#numa-affinity">NUMA affinity</a>, stop the <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#dataloader">DataLoader</a> from starving the GPUs, try <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#torchcompile"><code>torch.compile</code></a>, and tame <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#automatic-garbage-collection">automatic garbage collection</a> jitter in synchronized runs.</li>
+<li><strong>Model parallelism</strong> (DP/TP/PP/sequence/ZeRO) concepts and trade-offs: <a href="https://github.com/stas00/ml-engineering/tree/master/training/model-parallelism">model parallelism</a>.</li>
+</ul>
+<h2 id="training-stability-instabilities--naninf">Training: stability (instabilities &amp; NaN/Inf)</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/training/instabilities/README.md">Instabilities</a>.</p>
+<ul>
+<li><strong>Loss spikes/divergence are expected at scale.</strong> Compare against public <a href="https://github.com/stas00/ml-engineering/blob/master/training/instabilities/README.md#learning-from-training-logbooks">training logbooks</a> - your symptom is probably documented with a known mitigation.</li>
+<li><strong>Numerical hygiene:</strong> sane <a href="https://github.com/stas00/ml-engineering/blob/master/training/instabilities/README.md#std-init">weight init / STD</a>, watch for <a href="https://github.com/stas00/ml-engineering/blob/master/training/instabilities/README.md#numerical-instabilities">numerical instabilities</a>, and bad <a href="https://github.com/stas00/ml-engineering/blob/master/training/instabilities/README.md#bad-combination-of-data-batch-and-model-parameter-state">data-batch × parameter-state combinations</a>.</li>
+<li><strong>Catch NaN/Inf early:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/debug/underflow_overflow.md">underflow/overflow detection</a> and PyTorch <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md#debugging-tensors">tensor debugging</a> (fp16/bf16 range issues, per-tensor min/max/NaN scans).</li>
+<li><strong>Reproducibility</strong> for isolating a divergence: <a href="https://github.com/stas00/ml-engineering/tree/master/training/reproducibility">reproducibility</a>.</li>
+</ul>
+<h2 id="training-fault-tolerance--checkpoints">Training: fault tolerance &amp; checkpoints</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md">Fault tolerance</a> · <a href="https://github.com/stas00/ml-engineering/tree/master/training/checkpoints">Checkpoints</a>.</p>
+<ul>
+<li><strong>Provision slack:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#always-plan-to-have-more-nodes-than-needed">always plan for more nodes than needed</a> so a dead node doesn't stop the run; <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#queue-up-multiple-training-jobs">queue up multiple jobs</a> for auto-continuation.</li>
+<li><strong>Checkpoint often enough</strong> that a crash costs minutes, not hours - see <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#frequent-checkpoint-saving">frequent checkpoint saving</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#prevention">prevention</a>.</li>
+<li><strong>Operator controls:</strong> a <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#kill-switch">kill switch</a> to stop a doomed run cleanly and a <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#save-switch">save switch</a> to force a checkpoint on demand.</li>
+<li><strong>Survive the cluster:</strong> handle <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#dealing-with-forced-job-preemption">forced job preemption</a> and prefer <a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#preferring-fixed-accelerator-allocations-to-dynamic-ones">fixed over dynamic allocations</a>.</li>
+</ul>
+<h2 id="inference">Inference</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md">Inference</a>.</p>
+<ul>
+<li><strong>Speak the metrics:</strong> TTFT, TPOT/ITL, throughput vs latency, and how batching trades them off. See <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#key-inference-performance-metrics">key inference performance metrics</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#concepts">concepts</a>.</li>
+<li><strong>Size the memory:</strong> weights + KV cache + activations - see <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#anatomy-of-models-memory-usage">anatomy of model's memory usage</a>.</li>
+<li><strong>Cut cold starts:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#speeding-up-model-loading-time">speeding up model loading time</a>; pick a serving stack from <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#inference-frameworks">inference frameworks</a> and validate with <a href="https://github.com/stas00/ml-engineering/blob/master/inference/README.md#benchmarks">benchmarks</a>.</li>
+</ul>
+<h2 id="debugging-distributed--pytorch-at-scale">Debugging distributed / PyTorch at scale</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/tree/master/debug">Debugging</a> · <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md">PyTorch</a>.</p>
+<ul>
+<li><strong>Iterate cheaply:</strong> shrink to tiny models/tokenizers/datasets and <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md#faster-debug-and-development-with-tiny-models-tokenizers-and-datasets">fast debug of PyTorch models</a>.</li>
+<li><strong>Multi-node/multi-GPU hang or deadlock</strong> (the classic scale bug):
+<ol>
+<li>Rule out comms with <a href="https://github.com/stas00/ml-engineering/blob/master/debug/torch-distributed-gpu-test.py"><code>torch-distributed-gpu-test.py</code></a>.</li>
+<li>Dump every rank's Python stack at once with <code>py-spy</code>; ranks stuck at <em>different</em> collectives reveal the desync. See <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md#diagnosing-crashes-hangs-and-tracing-execution">diagnosing crashes, hangs and tracing execution</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/debug/torch-distributed-hanging-solutions.md">hanging solutions</a>.</li>
+<li>Set <code>NCCL_DEBUG=INFO</code>; escalate to <a href="https://github.com/stas00/ml-engineering/blob/master/debug/nccl-performance-debug.md">NCCL performance debug</a>.</li>
+</ol>
+</li>
+<li><strong>Cryptic CUDA errors:</strong> <code>CUDA_LAUNCH_BLOCKING=1</code> for a real traceback (CUDA is async). See <a href="https://github.com/stas00/the-art-of-debugging/tree/master/pytorch#dealing-with-async-cuda-bugs">The Art of Debugging - PyTorch</a>.</li>
+<li><strong>OOM / memory:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md#memory-usage">memory usage</a>; fragmentation via <code>PYTORCH_ALLOC_CONF</code>.</li>
+<li><strong>NaN/Inf:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md#underflow-and-overflow-detection">underflow and overflow detection</a> and <a href="https://github.com/stas00/ml-engineering/blob/master/debug/pytorch.md#debugging-tensors">debugging tensors</a>.</li>
+<li><strong>GPU-specific faults:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/nvidia/debug.md">troubleshooting NVIDIA GPUs</a>.</li>
+</ul>
+<h2 id="testing">Testing</h2>
+<p>Full chapter: <a href="https://github.com/stas00/ml-engineering/blob/master/testing/README.md">Testing</a>.</p>
+<ul>
+<li><strong>Run tests surgically</strong> (select, parametrize, repeat, control output/parallelism): <a href="https://github.com/stas00/ml-engineering/blob/master/testing/README.md#running-tests">running tests</a>.</li>
+<li><strong>Write robust tests</strong> (fixtures, temp dirs, RNG control for reproducibility, distributed tests): <a href="https://github.com/stas00/ml-engineering/blob/master/testing/README.md#writing-tests">writing tests</a>.</li>
+<li><strong>When a test misbehaves:</strong> <a href="https://github.com/stas00/ml-engineering/blob/master/testing/README.md#debugging-tests">debugging tests</a>.</li>
+</ul>
+<h2 id="key-tools">Key tools</h2>
+<table>
+<thead>
+<tr>
+<th>Need</th>
+<th>Tool</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Verify all GPUs/nodes can talk &amp; allocate</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/debug/torch-distributed-gpu-test.py"><code>torch-distributed-gpu-test.py</code></a></td>
+</tr>
+<tr>
+<td>Real network throughput (all-reduce busbw)</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a></td>
+</tr>
+<tr>
+<td>Actual achievable matmul FLOPS of an accelerator</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/benchmarks/mamf-finder.py"><code>mamf-finder.py</code></a></td>
+</tr>
+<tr>
+<td>Tiny models/tokenizers/datasets for fast iteration</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/debug/make-tiny-models-tokenizers-datasets.md">make-tiny guide</a></td>
+</tr>
+<tr>
+<td>Better <code>trace</code> for distributed hangs</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/debug/tools.md">NicerTrace</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="pick-the-fix-by-symptom">Pick the fix by symptom</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Reach for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Low TFLOPS / MFU, &quot;GPUs feel idle&quot;</td>
+<td>Find the bottleneck: <code>mamf-finder</code>, <a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#how-to-improve-speed-and-save-memory">performance checklist</a>, DataLoader, NUMA, dim divisibility</td>
+</tr>
+<tr>
+<td>Training OOM</td>
+<td>Memory anatomy → activation checkpointing/offload/parallelism; profile; <code>PYTORCH_ALLOC_CONF</code></td>
+</tr>
+<tr>
+<td>Slow steps but GPUs busy on comms</td>
+<td>Benchmark network (<code>torch-dist-bench</code>), check intra/inter-node, NCCL settings</td>
+</tr>
+<tr>
+<td>Slow dataloading / GPU starvation</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/training/performance/README.md#dataloader">DataLoader</a>, local NVMe, prefetch/workers</td>
+</tr>
+<tr>
+<td>Loss spike / divergence / NaN</td>
+<td>Logbooks, init/STD, underflow-overflow detection, tensor scans</td>
+</tr>
+<tr>
+<td>Multi-node/GPU hang or deadlock</td>
+<td><code>torch-distributed-gpu-test.py</code> → <code>py-spy</code> all ranks → <code>NCCL_DEBUG=INFO</code></td>
+</tr>
+<tr>
+<td>Node/GPU dies mid-run</td>
+<td>Spare nodes, frequent checkpoints, auto-restart, kill/save switch</td>
+</tr>
+<tr>
+<td>Job keeps getting preempted</td>
+<td><a href="https://github.com/stas00/ml-engineering/blob/master/training/fault-tolerance/README.md#dealing-with-forced-job-preemption">forced preemption</a>, queue chained jobs</td>
+</tr>
+<tr>
+<td>Checkpoint save/load is slow</td>
+<td>Benchmark storage, choose FS, local vs shared</td>
+</tr>
+<tr>
+<td>Choosing GPUs / cloud / storage</td>
+<td>Comparison tables, MAMF, <a href="https://github.com/stas00/ml-engineering/blob/master/insights/how-to-choose-cloud-provider.md">choose a cloud provider</a></td>
+</tr>
+<tr>
+<td>Inference too slow / won't fit</td>
+<td>Metrics (TTFT/TPOT), KV-cache memory, framework choice, model-load speedups</td>
+</tr>
+</tbody>
+</table>
+<h2 id="notes-for-ai-agents">Notes for AI agents</h2>
+<ul>
+<li><strong>Diagnose before optimizing.</strong> Identify which resource (compute/memory/network/storage/dataloader) is the actual bottleneck with a measurement; don't tune blindly.</li>
+<li><strong>Prefer measured numbers over spec sheets.</strong> Use the provided benchmark scripts on the target hardware/software stack before recommending changes or purchases.</li>
+<li><strong>Assume failures at scale.</strong> For any long/large run, verify checkpointing, restart, spare capacity, and a kill switch exist before worrying about peak speed.</li>
+<li><strong>Verify the cluster first.</strong> Run the distributed connectivity test before blaming model code for a multi-node problem.</li>
+<li><strong>Reuse the community's hard-won lessons.</strong> Check the training logbooks for known instabilities and fixes before re-deriving them.</li>
+<li><strong>Read the linked chapter section</strong> before applying a recipe - each has worked examples, exact commands, caveats, and scripts.</li>
+<li>For deep single-process/tool debugging (gdb, strace, py-spy, cProfile, core files), use the companion skill: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/SKILL.md">The Art of Debugging</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../../skills/evaluate-cluster/SKILL.html">&larr; Evaluate a GPU cluster</a><a class="next" href="../../stabs/README.html">Stabs &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

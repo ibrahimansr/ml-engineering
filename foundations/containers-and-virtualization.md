@@ -201,7 +201,7 @@ throttled_usec 977083
 
 How to read this:
 
-- **Memory.** The process was SIGKILLed. Exit status 137 = 128 + 9, the signal number. `memory.peak` sat exactly at the 64 MiB limit (64 × 2^20 = 67,108,864). An exit code 137 with no Python traceback is almost always a cgroup OOM kill. Kubernetes shows it as `OOMKilled`. `dmesg` on the host shows `Memory cgroup out of memory: Killed process ...`. Note that host RAM was plentiful. The *cgroup* ran out.
+- **Memory.** The process was SIGKILLed. Exit status $137 = 128 + 9$, the signal number. `memory.peak` sat exactly at the 64 MiB limit ($64 \times 2^{20} = 67{,}108{,}864$). An exit code 137 with no Python traceback is almost always a cgroup OOM kill. Kubernetes shows it as `OOMKilled`. `dmesg` on the host shows `Memory cgroup out of memory: Killed process ...`. Note that host RAM was plentiful. The *cgroup* ran out.
 - **pids.** Forks failed with `EAGAIN` once 32 tasks existed, and the shell survived. Threads count too, so a PyTorch process with 64 OpenMP threads plus DataLoader workers can hit a small `pids.max`. Kubernetes and Docker `--pids-limit` set this value.
 - **CPU.** Over 2 s of wall time the loop got 1.06 s of CPU: 1059508 / 2e6 = 0.53 cores against a quota of 0.5. It was throttled 20 times, once per 100 ms period. CPU quotas don't make code fail. They make it *slow* in bursts, which shows up as a periodic stall. A container with `--cpus=4` running a 32-thread BLAS, or a DataLoader with 16 workers, burns its quota in the first few ms of each 100 ms period and then sits frozen. Size thread pools to the quota, not to `os.cpu_count()`.
 
@@ -572,7 +572,7 @@ $ docker image inspect python:3.12-slim --format '{{len .RootFS.Layers}} layers,
 
 **Tags and digests.** `python:3.12-slim` is a *tag*: a mutable pointer that moves when the maintainers rebuild, which happened 13 hours before this run. `python@sha256:4840d5...` is a *digest*: the SHA-256 (a cryptographic hash: any change to the input changes the output, and nobody can construct two inputs with the same hash) of the manifest, the small JSON file that lists the image's config and layers (fetched by hand under [Registries](#registries-and-pull-time) below). A digest is immutable. Always pin by digest for anything you need to reproduce. A tag pinned last month can silently give you a different libc tomorrow.
 
-Layers are shared. Sixty-four images built on the same 10 GB CUDA+PyTorch base, each adding 200 MB of code, occupy 10 + 64 × 0.2 = 22.8 GB on a node and in the registry, instead of 652.8 GB if nothing were shared (computed). This is why a team should standardize on a small number of base images.
+Layers are shared. Sixty-four images built on the same 10 GB CUDA+PyTorch base, each adding 200 MB of code, occupy $10 + 64 \times 0.2 = 22.8$ GB on a node and in the registry, instead of 652.8 GB if nothing were shared (computed). This is why a team should standardize on a small number of base images.
 
 ### The Dockerfile
 
@@ -1269,7 +1269,7 @@ Early x86 couldn't do this cleanly. Some privileged instructions failed silently
 
 - The guest runs in **non-root mode** (VMX non-root on Intel) at full speed, rings 0-3 included. Ordinary instructions, including most kernel code, execute natively.
 - Sensitive events cause a **VM exit**: a hardware switch to the hypervisor in root mode. Examples are I/O port access, some MSR (model-specific register: CPU configuration registers) and CPUID (the instruction that reports CPU features) reads, external interrupts, and accesses to unmapped "device" memory (MMIO). The hypervisor emulates the event and does a **VM entry** back. An exit-plus-entry round trip costs on the order of a microsecond (it varies by CPU generation and exit reason). Hypervisor performance work is mostly about *avoiding exits*.
-- **Second-level address translation** (Intel EPT, AMD NPT) lets the guest manage its own page tables (guest-virtual to guest-physical) while hardware applies a second table owned by the hypervisor (guest-physical to host-physical). Before EPT/NPT, the hypervisor had to maintain "shadow page tables", which was slow. The remaining cost is TLB misses: a full two-dimensional page walk with 4-level tables on both sides touches up to (4+1) × (4+1) - 1 = **24** memory references instead of 4, and with 5-level tables it is 35 (computed). Huge pages on *both* the guest and host side cut this sharply, which is one reason GPU cloud VMs back guest memory with 1 GiB host huge pages.
+- **Second-level address translation** (Intel EPT, AMD NPT) lets the guest manage its own page tables (guest-virtual to guest-physical) while hardware applies a second table owned by the hypervisor (guest-physical to host-physical). Before EPT/NPT, the hypervisor had to maintain "shadow page tables", which was slow. The remaining cost is TLB misses: a full two-dimensional page walk with 4-level tables on both sides touches up to $(4+1) \times (4+1) - 1 =$ **24** memory references instead of 4, and with 5-level tables it is 35 (computed). Huge pages on *both* the guest and host side cut this sharply, which is one reason GPU cloud VMs back guest memory with 1 GiB host huge pages.
 
 ### KVM and QEMU
 
@@ -1775,7 +1775,7 @@ sysctl -w net.ipv4.ip_forward=1                               # once per host
 # other common way to hand the guest its config and per-VM secrets; see the Firecracker MMDS docs.
 ```
 
-Address budgeting (computed): a /16 holds 2^(30-16) = **16,384** /30 subnets, so one /30 per VM is plenty per node. It wastes 3 of every 4 addresses, which is why some agents use /31 point-to-point links (32,768 per /16) or per-VM namespaces with identical guest IPs.
+Address budgeting (computed): a /16 holds $2^{30-16} =$ **16,384** /30 subnets, so one /30 per VM is plenty per node. It wastes 3 of every 4 addresses, which is why some agents use /31 point-to-point links (32,768 per /16) or per-VM namespaces with identical guest IPs.
 
 The **egress policy** is the security-critical part. A single nftables table, with a set the node agent adds taps to and removes them from (untested; standard nftables syntax, adapt the addresses to your node). nftables was introduced in [Networking](networking.md#firewalls-and-why-master_port-gets-blocked). New pieces here: a `set` is a named list the rules can match against (`@allowed_taps`); each `chain` attaches to a kernel hook (`input` = packets addressed to this host, `forward` = packets routed through it, `postrouting` = just before they leave); `ct state established,related accept` lets through replies to connections that were already allowed; and `masquerade` is NAT, rewriting the sandbox's source address to the node's own:
 
@@ -1872,7 +1872,7 @@ done
 
 Pin when you need predictable performance, such as timing-sensitive evaluations or noisy-neighbour complaints. Leave it unpinned, with `cpu.max` quotas, when you want density. Turn SMT off in the guest (`"smt": false`) and avoid putting mutually untrusted VMs on sibling hyperthreads if side channels are in your threat model.
 
-**Memory overcommit and ballooning.** Guest memory is lazily backed, so configuring 2,000 VMs × 1 GiB on a node with 960 GiB usable is a 2.08x overcommit (computed). It is safe only if the *touched* memory stays below what the host has: at a mean of 50% touched that's 1,000 GiB, which is already over. Overcommit is therefore a statistical bet that needs telemetry and a reclaim path. The **balloon device** is that path. The host asks the guest to "inflate" a balloon, and the guest kernel hands those pages back (untested; Firecracker balloon API):
+**Memory overcommit and ballooning.** Guest memory is lazily backed, so configuring $2{,}000\ \text{VMs} \times 1\ \text{GiB}$ on a node with 960 GiB usable is a 2.08x overcommit (computed). It is safe only if the *touched* memory stays below what the host has: at a mean of 50% touched that's 1,000 GiB, which is already over. Overcommit is therefore a statistical bet that needs telemetry and a reclaim path. The **balloon device** is that path. The host asks the guest to "inflate" a balloon, and the guest kernel hands those pages back (untested; Firecracker balloon API):
 
 ```bash
 fc PUT   /balloon '{"amount_mib": 0, "deflate_on_oom": true, "stats_polling_interval_s": 1}'   # before boot
@@ -1882,7 +1882,7 @@ fc GET   /balloon/statistics                     # guest-reported free/available
 
 Huge pages for guest memory (a `huge_pages` machine-config option in recent Firecracker versions) reduce TLB cost, as explained in section 7, but make lazy faulting and ballooning coarser. Decide based on whether you need performance or density.
 
-CPU overcommit is gentler, because idle vCPUs cost nothing. 2,000 VMs × 2 vCPUs on 192 cores is 20.8x (computed), which is fine for sandboxes that mostly wait on an LLM, and terrible for sandboxes that all run test suites at once. The metric to watch is vCPU run-queue delay, which `/proc/<tid>/schedstat` exposes per thread.
+CPU overcommit is gentler, because idle vCPUs cost nothing. $2{,}000\ \text{VMs} \times 2\ \text{vCPUs}$ on 192 cores is 20.8x (computed), which is fine for sandboxes that mostly wait on an LLM, and terrible for sandboxes that all run test suites at once. The metric to watch is vCPU run-queue delay, which `/proc/<tid>/schedstat` exposes per thread.
 
 ### Performance numbers that matter
 

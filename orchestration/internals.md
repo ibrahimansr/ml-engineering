@@ -88,7 +88,7 @@ An NVLink domain is a set of GPUs connected by NVLink, NVIDIA's direct GPU-to-GP
 - pipeline stages and data-parallel groups, which should stay under as few leaf or spine switches as possible
 - on rail-optimized fabrics (networks where each GPU in a node has its own NIC and the same-numbered NICs of all nodes share a switch), where GPU `i` on every node connects to leaf `i`, keeping the job within one scalable unit (a fixed block of nodes cabled to the same set of leaf switches) so that same-rail traffic stays one hop
 
-The cost of placement is **fragmentation**: free GPUs scattered in pieces that are too small or in the wrong place for the jobs waiting in the queue. A GB200 NVL72 rack has 18 compute trays (a tray is one server board) with 4 GPUs each. If you place a 16-tray job (64 GPUs) inside one rack, 2 trays (8 GPUs) are left over, and only jobs that need 2 trays or fewer can use them. That is `2/18 = 11%` of the rack stranded unless backfill finds small jobs to fill it. The stranded fraction depends entirely on whether the job size divides the domain size **[ran]**:
+The cost of placement is **fragmentation**: free GPUs scattered in pieces that are too small or in the wrong place for the jobs waiting in the queue. A GB200 NVL72 rack has 18 compute trays (a tray is one server board) with 4 GPUs each. If you place a 16-tray job (64 GPUs) inside one rack, 2 trays (8 GPUs) are left over, and only jobs that need 2 trays or fewer can use them. That is $2/18 = 11\%$ of the rack stranded unless backfill finds small jobs to fill it. The stranded fraction depends entirely on whether the job size divides the domain size **[ran]**:
 
 ```python
 # frag.py -- NVL72 rack = 18 trays x 4 GPUs; what a topology-pinned job strands
@@ -378,9 +378,9 @@ PriorityWeightJobSize=2000
 PriorityFavorSmall=NO              # bigger jobs get a bigger job-size factor
 ```
 
-The fair-share factor in its classic form is `F = 2^(-U/S)`, where `U` is the association's normalized usage, decayed with `PriorityDecayHalfLife` (default 7 days), and `S` is its normalized share. Here is a worked example for a team entitled to 25% of the cluster:
+The fair-share factor in its classic form is $F = 2^{-U/S}$, where $U$ is the association's normalized usage, decayed with `PriorityDecayHalfLife` (default 7 days), and $S$ is its normalized share. Here is a worked example for a team entitled to 25% of the cluster:
 
-| Recent usage U | U/S | F = 2^(-U/S) |
+| Recent usage $U$ | $U/S$ | $F = 2^{-U/S}$ |
 |---|---|---|
 | 12.5% | 0.5 | 0.707 |
 | 25% (exactly its share) | 1.0 | 0.5 |
@@ -1482,7 +1482,7 @@ $ echo $?
 0
 ```
 
-The two lines starting `W1105` and `E1105` are the agent's own log messages, in the glog format PyTorch uses: severity letter (`W` warning, `E` error), month and day (`1105` = November 5), time, process ID, then source file and line. The agent saw rank 1 exit with code 1, sent SIGTERM to the healthy rank 0, started attempt 1, and both new workers resumed from the step-2 checkpoint. Step 3's work was lost and redone, which is the "rework" term in the [checkpoint arithmetic](#optimal-checkpoint-interval-youngdaly). The final `w[0] = -0.9` equals 6 steps of `0.1 * (1 + 2) / 2 = 0.15`, the same as a run that never crashed, so the resume is correct.
+The two lines starting `W1105` and `E1105` are the agent's own log messages, in the glog format PyTorch uses: severity letter (`W` warning, `E` error), month and day (`1105` = November 5), time, process ID, then source file and line. The agent saw rank 1 exit with code 1, sent SIGTERM to the healthy rank 0, started attempt 1, and both new workers resumed from the step-2 checkpoint. Step 3's work was lost and redone, which is the "rework" term in the [checkpoint arithmetic](#optimal-checkpoint-interval-youngdaly). The final `w[0] = -0.9` equals 6 steps of $0.1 \cdot (1 + 2) / 2 = 0.15$, the same as a run that never crashed, so the resume is correct.
 
 A finding from writing this, which I have not root-caused: with a plain `dist.init_process_group("gloo")` (letting it read the env vars), attempt 1 **hung** in `init_process_group` on this Mac with PyTorch 2.15. One rank got through init and the other never did, with both `--standalone` and an explicit c10d endpoint, three runs out of three. Namespacing the store keys per attempt with `PrefixStore`, as above, fixed it every time, which suggests the new attempt was reading keys left in the agent's store by the crashed attempt. It may be macOS- or version-specific. The lesson that does generalize: **test your restart path**, not just your training loop, before you depend on `--max-restarts`. On macOS, `--standalone` without `--local-addr=127.0.0.1` also failed to rendezvous at all (repeated IPv6 reverse-lookup warnings), which is a laptop quirk, not something you'll see on Linux clusters.
 
@@ -1507,7 +1507,7 @@ dist.init_process_group("nccl", timeout=datetime.timedelta(minutes=3))
 
 ### Failure-rate arithmetic
 
-**MTBF** (mean time between failures) is the average time a component runs before failing. For a synchronous job, any single component failure is a job failure. With `N` independent components that each have a mean time between failures of `MTBF_1`, the job's MTBF is roughly `MTBF_1 / N`. ([Distributed systems: failure arithmetic](../foundations/distributed-systems.md#failure-arithmetic) derives this from the exponential model; here we use it.)
+**MTBF** (mean time between failures) is the average time a component runs before failing. For a synchronous job, any single component failure is a job failure. With $N$ independent components that each have a mean time between failures of $\text{MTBF}_1$, the job's MTBF is roughly $\text{MTBF}_1 / N$. ([Distributed systems: failure arithmetic](../foundations/distributed-systems.md#failure-arithmetic) derives this from the exponential model; here we use it.)
 
 The Llama 3 paper ([arXiv:2407.21783](https://arxiv.org/abs/2407.21783), section 3.3.4) gives the best public numbers for a run at this scale:
 
@@ -1517,7 +1517,7 @@ The Llama 3 paper ([arXiv:2407.21783](https://arxiv.org/abs/2407.21783), section
 - Top root causes in Table 5: faulty GPU 148, GPU HBM3 memory 72 (HBM is the high-bandwidth memory stacked next to the GPU die), software bug 54, network switch/cable 35, host maintenance 32, GPU SRAM 19, GPU system processor 17
 - Effective training time above 90%; only 3 cases needed significant manual intervention
 
-footnote: Table 5's counts sum to 419, but the percentage given for the first row (30.1%) doesn't match `148/419 = 35.3%`. I use the counts here.
+footnote: Table 5's counts sum to 419, but the percentage given for the first row (30.1%) doesn't match $148/419 = 35.3\%$. I use the counts here.
 
 Here is what that implies **[ran]**:
 
@@ -1533,12 +1533,12 @@ print(mtbi_h * 16384 / 8760)       # ~5.8 years implied MTBF per GPU "slot" (GPU
 
 The same arithmetic run forwards: if each GPU together with its share of host and network has an MTBF of 50,000 hours, then
 
-- a 16,384-GPU job has a job-level MTBF of `50000 / 16384 = 3.05 h`, which means `24 * 16384 / 50000 = 7.9` interruptions per day
-- a 1,024-GPU job has a job-level MTBF of `50000 / 1024 = 48.8 h`, about one interruption every 2 days
+- a 16,384-GPU job has a job-level MTBF of $50000 / 16384 = 3.05\ \text{h}$, which means $24 \cdot 16384 / 50000 = 7.9$ interruptions per day
+- a 1,024-GPU job has a job-level MTBF of $50000 / 1024 = 48.8\ \text{h}$, about one interruption every 2 days
 
 The per-GPU number looks very reliable, and the job-level number is still a failure every few hours. At 16k GPUs, **restart cost** and **checkpoint cost** matter as much as model FLOPs utilization.
 
-The same arithmetic applies to starting a job: if a node passes your pre-flight checks but still has a 0.5% chance of being bad, the probability that a 256-node job starts on all-good nodes is `0.995^256 = 0.28`. At 0.1% it is `0.999^256 = 0.77`, and for 2048 nodes `0.999^2048 = 0.13`. This is why health checks need to run **before** a large job starts, and why they have to find the bad node rather than just report that the job failed. **[ran]**:
+The same arithmetic applies to starting a job: if a node passes your pre-flight checks but still has a 0.5% chance of being bad, the probability that a 256-node job starts on all-good nodes is $0.995^{256} = 0.28$. At 0.1% it is $0.999^{256} = 0.77$, and for 2048 nodes $0.999^{2048} = 0.13$. This is why health checks need to run **before** a large job starts, and why they have to find the bad node rather than just report that the job failed. **[ran]**:
 
 ```python
 for p_bad, n in ((0.005, 256), (0.001, 256), (0.001, 2048)):
@@ -1553,25 +1553,31 @@ P(all 2048 nodes good | p_bad=0.001) = 0.13
 
 ### Optimal checkpoint interval (Young/Daly)
 
-With a blocking checkpoint cost `C` (the time training is stalled per checkpoint) and job-level MTBF `M`, Young's first-order optimum for the interval between checkpoints is:
+With a blocking checkpoint cost $C$ (the time training is stalled per checkpoint) and job-level MTBF $M$, Young's first-order optimum for the interval between checkpoints is:
 
-```
-tau_opt = sqrt(2 * C * M)
-```
+$$
+\tau_{\text{opt}} = \sqrt{2 C M}
+$$
 
-Where it comes from: the time lost to checkpointing plus rework is about `C/tau + tau/(2M)` per unit time. The first term is the checkpoint stall paid once per interval. The second is rework: failures arrive at rate `1/M`, and on average each one lands halfway through an interval, so half an interval is redone. The first term falls with `tau` and the second rises, so setting the derivative `-C/tau^2 + 1/(2M)` to zero gives `tau = sqrt(2CM)`. At the optimum the two terms are equal, so the total is about `sqrt(2C/M)`. You also pay a fixed restart cost `R/M` per unit time (rescheduling, process startup, loading the checkpoint, NCCL init, warm-up), which no checkpoint interval reduces.
+Where it comes from: the time lost to checkpointing plus rework is about $C/\tau + \tau/(2M)$ per unit time. The first term is the checkpoint stall paid once per interval. The second is rework: failures arrive at rate $1/M$, and on average each one lands halfway through an interval, so half an interval is redone. The first term falls with $\tau$ and the second rises, so setting the derivative $-C/\tau^2 + 1/(2M)$ to zero gives $\tau = \sqrt{2CM}$. At the optimum the two terms are equal, so the total is about $\sqrt{2C/M}$. You also pay a fixed restart cost $R/M$ per unit time (rescheduling, process startup, loading the checkpoint, NCCL init, warm-up), which no checkpoint interval reduces.
 
-Worked example using the Llama 3 rate, `M = 3.09 h = 11,135 s`:
+Worked example using the Llama 3 rate, $M = 3.09\ \text{h} = 11{,}135\ \text{s}$:
 
-| Blocking checkpoint cost C | tau_opt = sqrt(2CM) | Checkpoint overhead C/tau | Expected rework tau/2M | Total |
+| Blocking checkpoint cost $C$ | Optimum $\tau_{\text{opt}} = \sqrt{2CM}$ | Checkpoint overhead $C/\tau$ | Expected rework $\tau/2M$ | Total |
 |---|---|---|---|---|
 | 300 s (sync write to slow storage) | 2585 s (43 min) | 11.6% | 11.6% | 23.2% |
 | 60 s (sync write to a fast parallel filesystem, i.e. shared storage striped across many servers, such as GPFS or Lustre) | 1156 s (19 min) | 5.2% | 5.2% | 10.4% |
 | 5 s (async: only the device-to-host copy blocks) | 334 s (5.6 min) | 1.5% | 1.5% | 3.0% |
 
-Add the restart cost. With `R = 10 min`, `R/M = 600/11135 = 5.4%`. So even with async checkpointing, a 16k-GPU job at this failure rate loses about `3.0 + 5.4 = 8.4%` before counting stragglers or planned maintenance. That's consistent with Llama 3's ">90% effective training time", and it shows why Meta spent effort on reducing job startup time as well as checkpoint time.
+Add the restart cost. With $R = 10\ \text{min}$, $R/M = 600/11135 = 5.4\%$. So even with async checkpointing, a 16k-GPU job at this failure rate loses about $3.0 + 5.4 = 8.4\%$ before counting stragglers or planned maintenance. That's consistent with Llama 3's ">90% effective training time", and it shows why Meta spent effort on reducing job startup time as well as checkpoint time.
 
-Young's formula assumes `C << M`. Daly's higher-order correction, `tau = sqrt(2CM) * [1 + (1/3)sqrt(C/2M) + (1/9)(C/2M)] - C`, gives 2389 s instead of 2585 s for `C = 300`, and 1116 s instead of 1156 s for `C = 60`. The first-order formula is good enough when C is a minute or less. The total-loss curve is flat around the optimum, so being off by a factor of 1.5 costs little. The overhead depends on `sqrt(C)`, so the way to cut it is to reduce C.
+Young's formula assumes $C \ll M$. Daly's higher-order correction,
+
+$$
+\tau = \sqrt{2CM} \left[1 + \tfrac{1}{3}\sqrt{\tfrac{C}{2M}} + \tfrac{1}{9}\,\tfrac{C}{2M}\right] - C
+$$
+
+gives 2389 s instead of 2585 s for $C = 300$, and 1116 s instead of 1156 s for $C = 60$. The first-order formula is good enough when $C$ is a minute or less. The total-loss curve is flat around the optimum, so being off by a factor of 1.5 costs little. The overhead depends on $\sqrt{C}$, so the way to cut it is to reduce $C$.
 
 A calculator that reproduces the table and extends it to other cluster sizes. `goodput` here means the fraction of wall-clock time spent on useful (not redone) training. `goodput_exact` is Daly's closed form for exponentially distributed failures, which also charges for failures that land during checkpoints and restarts **[ran]**:
 
@@ -1640,12 +1646,12 @@ per-GPU MTBF 50,000 h, R = 600 s restart, tau = Daly optimum
 Three things the bigger table shows:
 
 - Up to a few thousand GPUs, the first-order and exact formulas agree to within a fraction of a percent, and goodput is above 93% even with a 60 s checkpoint.
-- At 64k-128k GPUs with the same per-GPU reliability, the job MTBF drops below an hour, the first-order formula breaks down (it assumes `R, C << M`), and a 10-minute restart costs more than everything else combined: at 131k GPUs, even a 5 s checkpoint only gets you to 59%. At that scale the levers are `R` (fast restart, hot spares, in-memory checkpoints) and per-component MTBF (better burn-in), not the checkpoint interval.
+- At 64k-128k GPUs with the same per-GPU reliability, the job MTBF drops below an hour, the first-order formula breaks down (it assumes $R, C \ll M$), and a 10-minute restart costs more than everything else combined: at 131k GPUs, even a 5 s checkpoint only gets you to 59%. At that scale the levers are `R` (fast restart, hot spares, in-memory checkpoints) and per-component MTBF (better burn-in), not the checkpoint interval.
 - The 50,000 h per-GPU figure is an assumption chosen to match Llama 3's rate. If your fleet is better or worse, the table shifts left or right; rerun it with your own number.
 
 ### Simulating goodput
 
-Formulas like Daly's rest on assumptions (exponential failures, failures independent across nodes, failures possible during restart). A Monte Carlo simulation, which estimates an average by running a random process many times, lets you check the formula and later change the assumptions it can't handle (correlated rack failures, a restart time that depends on spare availability). This one draws each node's failure time separately, so you can see that the job-level MTBF really is `node_MTBF / N`, and asserts that it agrees with the closed form **[ran]**:
+Formulas like Daly's rest on assumptions (exponential failures, failures independent across nodes, failures possible during restart). A Monte Carlo simulation, which estimates an average by running a random process many times, lets you check the formula and later change the assumptions it can't handle (correlated rack failures, a restart time that depends on spare availability). This one draws each node's failure time separately, so you can see that the job-level MTBF really is $\text{MTBF}_{\text{node}} / N$, and asserts that it agrees with the closed form **[ran]**:
 
 ```python
 # goodput_sim.py -- Monte Carlo of a synchronous job on N nodes, checked against Daly's formula
@@ -1718,7 +1724,7 @@ The simulation (seed 0, 40 runs per row, 10 s on the laptop) matches the exact f
 
 ### Async and in-memory checkpointing
 
-What is `C` for a large model? Take a 405B model with bf16 weights, fp32 master weights and two fp32 Adam moments, which is `2 + 4 + 4 + 4 = 14` bytes per parameter **[ran]**:
+What is `C` for a large model? Take a 405B model with bf16 weights, fp32 master weights and two fp32 Adam moments, which is $2 + 4 + 4 + 4 = 14$ bytes per parameter **[ran]**:
 
 ```python
 B = 405e9 * 14          # 5.67e12 bytes = 5.67 TB of checkpoint
@@ -1730,7 +1736,7 @@ print(B / 16384 / 25e9 * 1e3)  # ~14 ms device-to-host per GPU at an assumed 25 
 
 The storage write is seconds to minutes. The per-GPU device-to-host copy (GPU memory to CPU RAM over PCIe, into pinned host memory, which is memory locked in place so the GPU can copy into it directly) is milliseconds. **Async checkpointing** makes `C` equal to the copy time. The training step continues while a background thread or process writes the host copy to storage. PyTorch's `torch.distributed.checkpoint.async_save` (DCP) does this. The constraints are:
 
-- Host memory: `346 MB * 8 = 2.8 GB` per 8-GPU node in this example, which is fine. When the data-parallel degree (the number of model replicas the optimizer state is sharded across) is small, each GPU holds tens of GB of optimizer state, and pinned host buffers can become the limit.
+- Host memory: $346\ \text{MB} \times 8 = 2.8\ \text{GB}$ per 8-GPU node in this example, which is fine. When the data-parallel degree (the number of model replicas the optimizer state is sharded across) is small, each GPU holds tens of GB of optimizer state, and pinned host buffers can become the limit.
 - The next checkpoint can't start until the previous upload has finished, so `tau` has to be longer than the time to write one checkpoint to storage.
 - The write is not durable until the upload finishes. A failure during the upload means you fall back to the checkpoint before it. Keep at least 2 checkpoints (see [Frequent checkpoint saving](../training/fault-tolerance/README.md#frequent-checkpoint-saving)).
 
@@ -1798,9 +1804,9 @@ print({k: buddy[k] for k in list(buddy)[:5]})
 
 ### Hot spares
 
-A spare is only useful if it is **already healthy, imaged and inside the allocation**. If you have to wait for the scheduler to get one, it isn't hot. How many do you need? Suppose a node failure takes `T_repair` to fix (reboot, diagnose, RMA, i.e. return to the vendor), and nodes fail independently, each at rate `1/MTBF_node`. Then the number of nodes out of service at any time is roughly Poisson-distributed (the distribution of the number of independent random events in a fixed time) with mean `N * T_repair / MTBF_node`.
+A spare is only useful if it is **already healthy, imaged and inside the allocation**. If you have to wait for the scheduler to get one, it isn't hot. How many do you need? Suppose a node failure takes $T_{\text{repair}}$ to fix (reboot, diagnose, RMA, i.e. return to the vendor), and nodes fail independently, each at rate $1/\text{MTBF}_{\text{node}}$. Then the number of nodes out of service at any time is roughly Poisson-distributed (the distribution of the number of independent random events in a fixed time) with mean $N \cdot T_{\text{repair}} / \text{MTBF}_{\text{node}}$.
 
-Example: 2048 nodes, an 8-GPU node MTBF of `50000/8 = 6250 h`, and a 24-hour turnaround from failure to returned to service **[ran]**:
+Example: 2048 nodes, an 8-GPU node MTBF of $50000/8 = 6250\ \text{h}$, and a 24-hour turnaround from failure to returned to service **[ran]**:
 
 ```python
 import math
@@ -1997,18 +2003,18 @@ Routing matters as much as replica count. Round-robin load balancing ignores pre
 
 ### Cold-start budget arithmetic
 
-A **cold start** is the time from "the autoscaler asked for a replica" to "the replica serves its first request". Scale-up latency is a sum of stages that run one after another. Here is an example for a 70B model in bf16 (`70e9 * 2 = 140 GB` of weights), TP=8 on one node:
+A **cold start** is the time from "the autoscaler asked for a replica" to "the replica serves its first request". Scale-up latency is a sum of stages that run one after another. Here is an example for a 70B model in bf16 ($70 \times 10^9 \times 2 = 140\ \text{GB}$ of weights), TP=8 on one node:
 
 | Stage | Assumption | Time |
 |---|---|---|
 | Node provisioning (if the cluster autoscaler has to add a node) | Cloud VM plus GPU driver and operator readiness | Minutes. Highly variable, and the main reason to keep warm capacity |
 | Image pull | 10 GB image at 1 GB/s (registry or local mirror) | 10 s; avoid this with pre-pulled or lazily loaded images |
-| Weight load from object storage | 1 GB/s per node | `140 / 1 = 140 s` |
-| Weight load from a shared parallel filesystem | 2 GB/s per client | `140 / 2 = 70 s` |
-| Weight load from local NVMe | ~25 GB/s (a 4-drive Gen4 array, assumed) | `140 / 25 = 5.6 s` |
+| Weight load from object storage | 1 GB/s per node | $140 / 1 = 140\ \text{s}$ |
+| Weight load from a shared parallel filesystem | 2 GB/s per client | $140 / 2 = 70\ \text{s}$ |
+| Weight load from local NVMe | ~25 GB/s (a 4-drive Gen4 array, assumed) | $140 / 25 = 5.6\ \text{s}$ |
 | Engine init: CUDA graph capture (recording a sequence of kernel launches so it can be replayed cheaply), `torch.compile`, KV allocation | Depends on engine and flags | Seconds to minutes; measure it |
 
-The arithmetic is just `bytes / min(storage bandwidth, NIC bandwidth, PCIe bandwidth)`, done per node, and you have to measure the real bandwidth. To turn it into a capacity requirement: if load can grow by `g` fraction within one cold-start time `T_cold`, keep at least `g` spare capacity warm. If traffic can rise 10% in 5 minutes and cold start is 5 minutes, you need about 10% headroom. If cold start is 30 s, you need much less. Cutting cold start lets you run at higher utilization.
+The arithmetic is just $\text{bytes} / \min(\text{storage bandwidth}, \text{NIC bandwidth}, \text{PCIe bandwidth})$, done per node, and you have to measure the real bandwidth. To turn it into a capacity requirement: if load can grow by $g$ fraction within one cold-start time $T_{\text{cold}}$, keep at least $g$ spare capacity warm. If traffic can rise 10% in 5 minutes and cold start is 5 minutes, you need about 10% headroom. If cold start is 30 s, you need much less. Cutting cold start lets you run at higher utilization.
 
 As a script you can rerun with your own measured bandwidths **[ran]**:
 
@@ -2046,10 +2052,10 @@ The [model loading section of the inference chapter](../inference/README.md#spee
 
 ### Model weight distribution
 
-Scaling out by many replicas at once multiplies the storage load: `200 replicas * 140 GB = 28 TB`. At 50 GB/s of aggregate storage egress that takes `28000 / 50 = 560 s`, no matter how fast each node is (the last block above). Some options:
+Scaling out by many replicas at once multiplies the storage load: $200\ \text{replicas} \times 140\ \text{GB} = 28\ \text{TB}$. At 50 GB/s of aggregate storage egress that takes $28000 / 50 = 560\ \text{s}$, no matter how fast each node is (the last block above). Some options:
 
 - **Node-local cache.** A DaemonSet or init container that pre-stages the weights for the current model version onto local NVMe (hostPath or a local PV). New replicas on a warm node load at NVMe speed.
-- **Peer-to-peer fan-out.** Each node that already has the weights serves them to others, BitTorrent-style or as a tree. Total time then grows with `log(N)` rather than `N`: 8 doubling rounds, about 45 s, for the 200 replicas above. Container-registry P2P tools (e.g. Dragonfly, Spegel) and OCI-packaged weights (OCI is the standard container image format) make this usable on k8s. I haven't benchmarked them.
+- **Peer-to-peer fan-out.** Each node that already has the weights serves them to others, BitTorrent-style or as a tree. Total time then grows with $\log N$ rather than $N$: 8 doubling rounds, about 45 s, for the 200 replicas above. Container-registry P2P tools (e.g. Dragonfly, Spegel) and OCI-packaged weights (OCI is the standard container image format) make this usable on k8s. I haven't benchmarked them.
 - **Image volumes / OCI artifacts.** Weights shipped as OCI artifacts and mounted with k8s image volumes (alpha in 1.31, beta later; I haven't verified the current status). This gets registry caching and P2P for free.
 - **Don't bake weights into the application image.** A 140 GB layer makes every code change a 140 GB pull.
 
@@ -2284,7 +2290,7 @@ Use `min by` instead of `max by` to catch a single stuck rank while the others s
 
 ### Alerting on stragglers
 
-A **straggler** is a rank that is alive and working but slower than the others. In synchronous training the step time is the **maximum** over ranks. One GPU running at `1/1.1` of normal speed, for example because of thermal throttling, takes 10% longer per step, so the whole job's step time goes up 10% and its throughput drops to `1/1.1 = 91%`. At 16,384 GPUs that 9% throughput loss is like losing `0.091 * 16384 = 1489` GPUs. The Llama 3 paper notes stragglers "often appearing as functioning but slow communications". The slow rank finishes compute late, and everyone else's time shows up as waiting in the collective. Two consequences:
+A **straggler** is a rank that is alive and working but slower than the others. In synchronous training the step time is the **maximum** over ranks. One GPU running at $1/1.1$ of normal speed, for example because of thermal throttling, takes 10% longer per step, so the whole job's step time goes up 10% and its throughput drops to $1/1.1 = 91\%$. At 16,384 GPUs that 9% throughput loss is like losing $0.091 \times 16384 = 1489$ GPUs. The Llama 3 paper notes stragglers "often appearing as functioning but slow communications". The slow rank finishes compute late, and everyone else's time shows up as waiting in the collective. Two consequences:
 
 - **Collective wait time points at the wrong ranks.** The healthy ranks wait the longest. Look for the rank with the **least** time waiting in collectives, or the longest compute time per step.
 - A practical detector: for each step, compute each rank's compute time (excluding collective wait), compare it with the median across ranks, and flag a rank that is more than X% above the median for M consecutive steps. Cross-check against that node's DCGM clocks and throttle reasons and against its NIC error counters. X and M need to be tuned per job. Start from the run-to-run noise you observe on a healthy run, not from a fixed number.

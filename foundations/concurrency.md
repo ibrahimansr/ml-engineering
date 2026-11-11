@@ -627,7 +627,7 @@ if __name__ == "__main__":
 
 Batch `k` comes from worker `k % 4`, each worker is a different PID, and the 4-worker version takes roughly a quarter of the time *plus worker startup*. With `spawn` (the macOS default) that startup can dominate a toy example like this one - try `multiprocessing_context="fork"` to see the difference, and remember that the same startup is paid every epoch unless `persistent_workers=True`.
 
-How many workers? The arithmetic: if one worker needs `t_load` seconds to produce a batch and the GPU consumes one every `t_step` seconds, you need at least `ceil(t_load / t_step)` workers to keep up, plus headroom for variance. E.g. 25 ms of decode per sample × batch 32 = 0.8 s per batch per worker; at a 0.2 s training step, 4 workers is the bare minimum. More workers beyond that buys nothing but RAM. And mind the memory of the prefetch buffer: a batch of 256 × 3×224×224 fp32 images is 154 MB; 8 workers × prefetch_factor 2 = 16 batches ≈ 2.5 GB in shared memory, per training process.
+How many workers? The arithmetic: if one worker needs $t_\text{load}$ seconds to produce a batch and the GPU consumes one every $t_\text{step}$ seconds, you need at least $\lceil t_\text{load} / t_\text{step} \rceil$ workers to keep up, plus headroom for variance. E.g. 25 ms of decode per sample × batch 32 = 0.8 s per batch per worker; at a 0.2 s training step, 4 workers is the bare minimum. More workers beyond that buys nothing but RAM. And mind the memory of the prefetch buffer: a batch of 256 × 3×224×224 fp32 images is 154 MB; 8 workers × prefetch_factor 2 = 16 batches ≈ 2.5 GB in shared memory, per training process.
 
 ### The copy-on-write refcount problem
 
@@ -718,43 +718,43 @@ The sentinel value is the standard way to tell a consumer "no more items"; with 
 
 ### Amdahl's law
 
-If a fraction `p` of a program's work can be parallelized and the rest `(1 - p)` is serial, then with `N` workers the best possible speedup is:
+If a fraction $p$ of a program's work can be parallelized and the rest $(1 - p)$ is serial, then with $N$ workers the best possible speedup is:
 
-```
-S(N) = 1 / ((1 - p) + p / N)
-```
+$$
+S(N) = \frac{1}{(1 - p) + p / N}
+$$
 
-Speedup vs number of processors for different parallel fractions - the curves flatten at `1 / (1 - p)`:
+Speedup vs number of processors for different parallel fractions - the curves flatten at $1 / (1 - p)$:
 
 ![Amdahl's law speedup curves](images/amdahls-law.png)
 
 ([source](https://commons.wikimedia.org/wiki/File:AmdahlsLaw.svg))
 
-As `N` goes to infinity, `S` approaches `1 / (1 - p)`. The serial part caps you.
+As $N \to \infty$, $S$ approaches $1 / (1 - p)$. The serial part caps you.
 
-Worked numbers with `p = 0.95` (95% parallel):
+Worked numbers with $p = 0.95$ (95% parallel):
 
 | N | Speedup |
 |---|---|
 | 1 | 1.00 |
-| 8 | 1 / (0.05 + 0.11875) = 5.93 |
-| 64 | 1 / (0.05 + 0.01484) = 15.42 |
-| 1024 | 1 / (0.05 + 0.00093) = 19.64 |
-| ∞ | 20.00 |
+| 8 | $1 / (0.05 + 0.11875) = 5.93$ |
+| 64 | $1 / (0.05 + 0.01484) = 15.42$ |
+| 1024 | $1 / (0.05 + 0.00093) = 19.64$ |
+| $\infty$ | 20.00 |
 
 At 64 workers you're at 24% efficiency (15.4 / 64). A 5% serial section is not a rounding error at scale. An ML example of Amdahl's law at work: a training job that blocks for 60 s to save a checkpoint every 30 minutes of compute spends 60 / 1860 = 3.2% of its wall-clock time not training, regardless of how many GPUs it has. Making the save asynchronous so only a 5 s snapshot blocks brings that to 5 / 1805 = 0.28% (illustrative numbers; see Part 8). Per-step serial pieces matter similarly: Python overhead in the main loop, logging that calls `.item()`, the rank-0-only evaluation others wait for.
 
 ### Gustafson's law
 
-Amdahl assumes a fixed problem. In practice, when you get more hardware you grow the problem - a bigger global batch, a bigger model, more data. Gustafson's law measures the speedup when the problem scales with `N` and the serial part stays fixed in *time*:
+Amdahl assumes a fixed problem. In practice, when you get more hardware you grow the problem - a bigger global batch, a bigger model, more data. Gustafson's law measures the speedup when the problem scales with $N$ and the serial part stays fixed in *time*:
 
-```
-S(N) = (1 - p) + p * N
-```
+$$
+S(N) = (1 - p) + p N
+$$
 
-where `p` is now the parallel fraction of time *on the scaled run*. With `p = 0.95`: `N = 8` gives `0.05 + 7.6 = 7.65`; `N = 64` gives `0.05 + 60.8 = 60.85`.
+where $p$ is now the parallel fraction of time *on the scaled run*. With $p = 0.95$: $N = 8$ gives $0.05 + 7.6 = 7.65$; $N = 64$ gives $0.05 + 60.8 = 60.85$.
 
-The two laws don't contradict each other; they answer different questions. Amdahl: "how much faster does *this* job get?" (strong scaling). Gustafson: "how much more work can I do in the same time?" (weak scaling). Data-parallel training with a fixed per-GPU batch is weak scaling, which is why it scales well until the communication cost - which grows with `N` - becomes the "serial" part. See [Model parallelism](../training/model-parallelism/README.md) for how that plays out.
+The two laws don't contradict each other; they answer different questions. Amdahl: "how much faster does *this* job get?" (strong scaling). Gustafson: "how much more work can I do in the same time?" (weak scaling). Data-parallel training with a fixed per-GPU batch is weak scaling, which is why it scales well until the communication cost - which grows with $N$ - becomes the "serial" part. See [Model parallelism](../training/model-parallelism/README.md) for how that plays out.
 
 
 
@@ -818,7 +818,7 @@ y = x @ x
 print(f"{(time.perf_counter() - t0) * 1e3:.3f} ms")   # tiny: only the launch was timed
 ```
 
-Divide 2·8192³ ≈ 1.1 TFLOP by that "time" and you'll get a physically impossible FLOP/s figure. The opposite mistake happens too: a later, unrelated `.item()` absorbs all the queued work, and the profiler blames the wrong line. And the first call also includes one-off costs (CUDA context creation; creating a handle for cuBLAS, NVIDIA's matmul library; kernel selection; memory allocation).
+Divide $2 \cdot 8192^3 \approx 1.1$ TFLOP by that "time" and you'll get a physically impossible FLOP/s figure. The opposite mistake happens too: a later, unrelated `.item()` absorbs all the queued work, and the profiler blames the wrong line. And the first call also includes one-off costs (CUDA context creation; creating a handle for cuBLAS, NVIDIA's matmul library; kernel selection; memory allocation).
 
 The correct pattern: warm up, synchronize, record CUDA events *in the stream*, synchronize again, read the elapsed time between events.
 

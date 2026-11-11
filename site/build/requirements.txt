@@ -1,0 +1,6 @@
+codespell
+linkchecker
+markdown-it-py
+mdit-py-plugins
+pandoc
+latex2mathml

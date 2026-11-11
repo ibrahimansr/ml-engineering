@@ -51,7 +51,7 @@ In `console` blocks, a line starting with `$` is a command typed at a terminal p
 
 A computer stores and moves information as voltages on wires and charges in capacitors. Distinguishing two levels (high/low) reliably at billions of transitions per second is much easier than distinguishing ten, so the unit of information is the **bit**: 0 or 1.
 
-Eight bits make a **byte**, the smallest unit most hardware can address. A byte holds `2**8 = 256` distinct patterns. What those patterns *mean* is entirely a matter of convention - the same 8 bits `11111111` are 255 as an unsigned integer, -1 as a signed integer, and a NaN-ish garbage value if you reinterpret them as part of a float. The hardware doesn't know; the instruction you execute decides.
+Eight bits make a **byte**, the smallest unit most hardware can address. A byte holds $2^8 = 256$ distinct patterns. What those patterns *mean* is entirely a matter of convention - the same 8 bits `11111111` are 255 as an unsigned integer, -1 as a signed integer, and a NaN-ish garbage value if you reinterpret them as part of a float. The hardware doesn't know; the instruction you execute decides.
 
 Bit patterns are usually written in **hexadecimal** (base 16), because one hex digit is exactly 4 bits: `0xFF = 1111 1111 = 255`, `0x3F80_0000` is a 32-bit pattern you'll meet below.
 
@@ -102,7 +102,7 @@ bit weight:  -128  64  32  16   8   4   2   1
   1111 1111 = -128 + 127                         ->   -1
 ```
 
-Why this odd scheme? Because addition is the *same circuit* for signed and unsigned numbers: you add the bits and throw away the carry out of the top. `-1 + 1 = 1111 1111 + 0000 0001 = 1 0000 0000`, drop the carry, get `0`. No special cases, no "negative zero". To negate: flip all bits and add 1.
+Why this odd scheme? Because addition is the *same circuit* for signed and unsigned numbers: you add the bits and throw away the carry out of the top. $-1 + 1 = 1111\,1111 + 0000\,0001 = 1\,0000\,0000$, drop the carry, get $0$. No special cases, no "negative zero". To negate: flip all bits and add 1.
 
 The consequence you'll actually hit is **overflow wraps around** silently:
 
@@ -119,15 +119,15 @@ The ML-relevant integer limits:
 | int32  | -2,147,483,648 .. 2,147,483,647 | tensor indexing: a tensor with more than `2**31` elements breaks kernels that index with int32 |
 | int64  | about +-9.2e18                 | PyTorch's default index type (`torch.long`), token ids           |
 
-The int32 row is not hypothetical: a single `(B, T, V)` logits tensor of `8 x 8192 x 131072 = 8.6e9` elements is past `2**31 = 2.1e9`, and kernels that compute offsets in 32-bit arithmetic have historically produced wrong results or crashes on such tensors.
+The int32 row is not hypothetical: a single `(B, T, V)` logits tensor of $8 \times 8192 \times 131072 = 8.6 \times 10^9$ elements is past $2^{31} = 2.1 \times 10^9$, and kernels that compute offsets in 32-bit arithmetic have historically produced wrong results or crashes on such tensors.
 
 ### Floating point: IEEE 754
 
 Integers have uniform spacing. ML needs numbers from `1e-8` (small gradients) to `1e4` (unnormalized logits) with roughly constant *relative* precision. Floating point is scientific notation in binary:
 
-```
-value = (-1)**sign * 1.mantissa * 2**(exponent - bias)
-```
+$$
+\text{value} = (-1)^{\text{sign}} \cdot 1.\text{mantissa} \cdot 2^{\text{exponent} - \text{bias}}
+$$
 
 A float32 laid out as sign, exponent and mantissa:
 
@@ -214,8 +214,8 @@ Read that output carefully, because each line is an ML failure mode:
 - `0.1` is not representable in any binary float. Every format stores a nearby value.
 - `70000` overflows fp16 to `inf`. One overflowed activation or gradient and the loss is NaN.
 - `1e-8` underflows fp16 to `0`. Small gradients silently vanish.
-- `1 + 1e-3` in bf16 is `1.0`. bf16 can't see a 0.1% update to a value of magnitude 1. This is why optimizer states and master weights are kept in fp32 even in "bf16 training": `w += lr * g` with `lr * g ~ 1e-5` and `w ~ 1` is a no-op in bf16.
-- `256 + 1` in bf16 is `256`. bf16 can't count past 256 exactly. fp32 can't count past `2**24 = 16,777,216` exactly - never accumulate a token counter or a long sum in a low-precision float.
+- `1 + 1e-3` in bf16 is `1.0`. bf16 can't see a 0.1% update to a value of magnitude 1. This is why optimizer states and master weights are kept in fp32 even in "bf16 training": `w += lr * g` with $\text{lr} \cdot g \sim 10^{-5}$ and $w \sim 1$ is a no-op in bf16.
+- `256 + 1` in bf16 is `256`. bf16 can't count past 256 exactly. fp32 can't count past $2^{24} = 16{,}777{,}216$ exactly - never accumulate a token counter or a long sum in a low-precision float.
 
 ### Why range vs precision is *the* ML tradeoff
 
@@ -278,8 +278,8 @@ fp32 w + 1e-4: 1.000100016593933
 
 What to notice:
 
-- `1e-5` and `1e-7` survive in raw fp16 even though they're below fp16's smallest *normal* number (`6.1e-5`): they're stored as **subnormals**, with fewer significant bits (`1e-7` came back as `1.19e-7`, a 19% error). `1e-9` is below even the smallest subnormal (`2**-24 = 6e-8`) and becomes exactly 0. That's a gradient that silently stopped existing.
-- Multiplying by `S = 1024` before the cast moves every value into fp16's comfortable range; dividing afterwards (in fp32) recovers them to ~3 significant digits. That's all loss scaling is. PyTorch's `torch.amp.GradScaler` does the same thing, picking `S` dynamically: it grows `S` until a step overflows to inf, then skips that step and halves `S`.
+- `1e-5` and `1e-7` survive in raw fp16 even though they're below fp16's smallest *normal* number (`6.1e-5`): they're stored as **subnormals**, with fewer significant bits (`1e-7` came back as `1.19e-7`, a 19% error). `1e-9` is below even the smallest subnormal ($2^{-24} = 6 \times 10^{-8}$) and becomes exactly 0. That's a gradient that silently stopped existing.
+- Multiplying by $S = 1024$ before the cast moves every value into fp16's comfortable range; dividing afterwards (in fp32) recovers them to ~3 significant digits. That's all loss scaling is. PyTorch's `torch.amp.GradScaler` does the same thing, picking `S` dynamically: it grows `S` until a step overflows to inf, then skips that step and halves `S`.
 - bf16 keeps `1e-9` (fp32's range), but `1.0 + 1e-4` in bf16 is still `1.0` (bf16's precision). Range and precision fail in different places, and you need both answers before choosing a format.
 
 ### Try this
@@ -309,17 +309,17 @@ The gap grows with each prefix: 2.4% at kilo, 10% at tera.
 
 Who uses what, in practice:
 
-- **Disks** are sold in decimal. A "1 TB" NVMe (a fast SSD; see [Storage devices](#storage-devices)) is `10**12 / 2**30 = 931 GiB`, which is what `df -h` (the disk-space command) will show you (it prints binary units but labels them `G`, not `Gi`).
-- **DRAM (the computer's ordinary main memory, its RAM) and HBM capacity** is physically binary (DRAM dies come in power-of-two-ish densities) but often *printed* as GB. An "80GB" H100 has about 80GiB physically; `nvidia-smi` (NVIDIA's command-line GPU status tool) reports 81559MiB available, which is `81559 * 2**20 / 10**9 = 85.5` decimal GB. See the [accelerator memory section](../compute/accelerator/README.md#accelerator-memory-size-and-speed) for how messy this gets.
-- **Bandwidth** (memory, PCIe, NVLink, network) is almost always decimal: 1 GBps = `10**9` bytes/s.
+- **Disks** are sold in decimal. A "1 TB" NVMe (a fast SSD; see [Storage devices](#storage-devices)) is $10^{12} / 2^{30} = 931\ \text{GiB}$, which is what `df -h` (the disk-space command) will show you (it prints binary units but labels them `G`, not `Gi`).
+- **DRAM (the computer's ordinary main memory, its RAM) and HBM capacity** is physically binary (DRAM dies come in power-of-two-ish densities) but often *printed* as GB. An "80GB" H100 has about 80GiB physically; `nvidia-smi` (NVIDIA's command-line GPU status tool) reports 81559MiB available, which is $81559 \cdot 2^{20} / 10^9 = 85.5$ decimal GB. See the [accelerator memory section](../compute/accelerator/README.md#accelerator-memory-size-and-speed) for how messy this gets.
+- **Bandwidth** (memory, PCIe, NVLink, network) is almost always decimal: 1 GBps = $10^9$ bytes/s.
 - **Software tools** are inconsistent. (`df` reports disk space, `free` reports RAM, `ls -lh` lists files with sizes; all are terminal commands.) Python's `torch.cuda.memory_allocated()` returns bytes; you choose. `free -g` is GiB. `ls -lh` is binary with a misleading `G`.
 
 **Bits vs bytes per second.** Network and serial-link speeds are quoted in **bits** per second (lowercase b): Gbps or Gb/s. Memory and storage are in **bytes** per second (uppercase B): GBps or GB/s. Divide bits by 8:
 
-- a 400 Gbps NIC moves at most `400 / 8 = 50` GBps
-- 8 such NICs per node is `8 * 50 = 400` GBps - which is less than the 450 GBps unidirectional NVLink bandwidth of a single H100. That one comparison explains a great deal of [model parallelism](../model-parallelism/) design.
+- a 400 Gbps NIC moves at most $400 / 8 = 50$ GBps
+- 8 such NICs per node is $8 \cdot 50 = 400$ GBps - which is less than the 450 GBps unidirectional NVLink bandwidth of a single H100. That one comparison explains a great deal of [model parallelism](../model-parallelism/) design.
 
-**Transfers vs bytes.** Serial links (PCIe, DRAM pins) are quoted in **GT/s** (gigatransfers per second) per lane or per pin. One transfer is one bit per lane, minus **encoding overhead**: PCIe 3-5 use 128b/130b encoding (1.5% overhead), PCIe 6 uses a FLIT scheme (fixed-size packets with built-in error correction) with about 5.5% overhead. So "PCIe 5 is 32 GT/s" means `32 * 128/130 / 8 = 3.94` GBps per lane per direction. The [buses section](#buses-and-interconnects) does the full table.
+**Transfers vs bytes.** Serial links (PCIe, DRAM pins) are quoted in **GT/s** (gigatransfers per second) per lane or per pin. One transfer is one bit per lane, minus **encoding overhead**: PCIe 3-5 use 128b/130b encoding (1.5% overhead), PCIe 6 uses a FLIT scheme (fixed-size packets with built-in error correction) with about 5.5% overhead. So "PCIe 5 is 32 GT/s" means $32 \cdot \frac{128}{130} / 8 = 3.94$ GBps per lane per direction. The [buses section](#buses-and-interconnects) does the full table.
 
 **Unidirectional vs bidirectional.** Many links are full-duplex: they carry the full rate in each direction at once. Marketing often quotes the sum of both directions. NVLink 4 is "900 GBps" bidirectional, 450 GBps each way. If you're sending a tensor from GPU A to GPU B, the number that matters is 450. See [Unidirectional vs Bidirectional](../network/README.md#unidirectional-vs-bidirectional-duplex).
 
@@ -362,7 +362,7 @@ KiB/KB 1.024  MiB/MB 1.049  GiB/GB 1.074  TiB/TB 1.100
 ### Try this
 
 1. On your laptop, compare `df -h /` with `df -H /` (macOS and GNU coreutils both support `-H` for powers of 1000). Which one matches the number on the box your disk came in?
-2. A spec sheet says a NIC is "800G". A colleague estimates a 140 GB checkpoint takes `140 / 800 = 0.18 s` to send. Find all the mistakes (there are at least two) and compute a realistic lower bound.
+2. A spec sheet says a NIC is "800G". A colleague estimates a 140 GB checkpoint takes $140 / 800 = 0.18\ \text{s}$ to send. Find all the mistakes (there are at least two) and compute a realistic lower bound.
 3. Look up the HBM bandwidth and the "with sparsity" bf16 TFLOPS of any recent accelerator. Convert both to dense, per-direction, decimal units and compute the ratio `FLOPS / bandwidth`. You'll use that ratio in the [roofline section](#arithmetic-intensity-and-the-roofline-model).
 
 
@@ -375,9 +375,9 @@ A CPU executes a stream of **instructions**: tiny operations like "load 8 bytes 
 
 **Registers** are a few dozen named storage slots inside the core, each 64 bits wide (plus wider vector registers, below). All arithmetic happens on registers; memory is only reached via load and store instructions.
 
-The CPU is driven by a **clock**: an oscillator ticking at, say, 3 GHz, i.e. one **cycle** every `1 / 3e9 = 0.33` ns. In 0.33 ns light travels about 10 cm. This is not a trivia point: it's why signals can't cross a large chip, let alone reach memory centimeters away, in one cycle, and why everything far from the core costs many cycles.
+The CPU is driven by a **clock**: an oscillator ticking at, say, 3 GHz, i.e. one **cycle** every $1 / (3 \times 10^9) = 0.33$ ns. In 0.33 ns light travels about 10 cm. This is not a trivia point: it's why signals can't cross a large chip, let alone reach memory centimeters away, in one cycle, and why everything far from the core costs many cycles.
 
-Why not just raise the clock? Dynamic power scales roughly with `capacitance * voltage**2 * frequency`, and higher frequency needs higher voltage, so power grows much faster than linearly with clock. Clocks hit a power/heat wall around 2005 at 3-5 GHz and have barely moved since. Every performance gain after that came from doing *more per cycle* and from *more cores* - which is the story of the rest of this section, and ultimately why GPUs won ML.
+Why not just raise the clock? Dynamic power scales roughly with $P \propto C V^2 f$ (capacitance, voltage squared, frequency), and higher frequency needs higher voltage, so power grows much faster than linearly with clock. Clocks hit a power/heat wall around 2005 at 3-5 GHz and have barely moved since. Every performance gain after that came from doing *more per cycle* and from *more cores* - which is the story of the rest of this section, and ultimately why GPUs won ML.
 
 You can see real instructions in two minutes. Here is a C function compiled for this ARM64 laptop, next to the Python bytecode for the same addition. (C refresher: `long` is a 64-bit integer, `const float *x` is a pointer to the first of several floats, and `x[1]` reads the float one element after it - see the reading-C part of [the toolkit](toolkit.md#reading-c). `clang -O2 -S -o - add.c` means "compile with optimizations, stop at assembly, print it to the screen" instead of producing a program.)
 
@@ -482,7 +482,7 @@ $ clang -O2 -o ilp ilp.c && ./ilp
 Three things to take away:
 
 - **3-4x faster with identical arithmetic**, purely from exposing independent work. The compiler won't do this for you for floats (without `-ffast-math`, a compiler flag that permits such reordering), because reordering float additions changes the result.
-- **It does change the result**: 15.4037 vs 16.4197. The exact sum of `1/i` for `i` up to `2**24` is 17.2127 (computed in Python with fp64). Both fp32 answers are wrong, because once the running sum is around 15, adding terms smaller than ~1e-6 rounds to no change at all (fp32's epsilon at 15 is ~1e-6). Four partial sums each stay smaller, so they lose less. This is the same reason [reductions in fp32 across GPUs aren't bitwise reproducible](distributed-systems.md) when the reduction order changes.
+- **It does change the result**: 15.4037 vs 16.4197. The exact sum of $1/i$ for $i$ up to $2^{24}$ is 17.2127 (computed in Python with fp64). Both fp32 answers are wrong, because once the running sum is around 15, adding terms smaller than ~1e-6 rounds to no change at all (fp32's epsilon at 15 is ~1e-6). Four partial sums each stay smaller, so they lose less. This is the same reason [reductions in fp32 across GPUs aren't bitwise reproducible](distributed-systems.md) when the reduction order changes.
 - GPUs and BLAS libraries (the standard linear-algebra libraries that numpy and PyTorch call for matmuls) apply the same trick at massive scale: a matmul kernel keeps many independent accumulators in registers per thread.
 
 ### Branch prediction
@@ -542,13 +542,19 @@ A scalar `add` adds two 64-bit numbers. A **SIMD** (single instruction, multiple
 | ARM NEON       | 128 bits       | 4          | 8          | baseline ARM64                                 |
 | ARM SVE/SVE2   | 128-2048 bits (implementation-defined) | varies | varies | Grace's Neoverse V2 implements 128-bit SVE2 |
 
-A **fused multiply-add** (FMA) instruction computes `a * b + c` per lane, which counts as 2 FLOPs. Peak per-core FLOPS is therefore:
+A **fused multiply-add** (FMA) instruction computes $a \cdot b + c$ per lane, which counts as 2 FLOPs. Peak per-core FLOPS is therefore:
 
-```
-FLOPs/cycle/core = lanes * 2 (FMA) * number_of_FMA_units
-AVX-512 fp32, 2 FMA units:  16 * 2 * 2 = 64 FLOPs/cycle
-56 cores at 2.0 GHz:        64 * 2.0e9 * 56 = 7.2 TFLOPS fp32 (theoretical)
-```
+$$
+\text{FLOPs/cycle/core} = \text{lanes} \times 2\ (\text{FMA}) \times \text{number of FMA units}
+$$
+
+$$
+\text{AVX-512 fp32, 2 FMA units:}\quad 16 \times 2 \times 2 = 64\ \text{FLOPs/cycle}
+$$
+
+$$
+\text{56 cores at 2.0 GHz:}\quad 64 \times 2.0 \times 10^9 \times 56 = 7.2\ \text{TFLOPS fp32 (theoretical)}
+$$
 
 That 7.2 TFLOPS is an upper bound that real code rarely approaches - and some Intel generations lower the clock when heavy AVX-512 code runs.
 
@@ -865,40 +871,46 @@ These are two different properties and confusing them is the root of many wrong 
 
 The water-pipe intuition: latency is the length of the pipe - how long a drop takes to get from one end to the other. Bandwidth is the pipe's width - how much water per second comes out once it's flowing. A very long, very wide pipe (a transcontinental fiber, or HBM) has high latency and high bandwidth. A short narrow pipe has the opposite. Widening a pipe doesn't make the first drop arrive sooner.
 
-The first-order model of moving `n` bytes is:
+The first-order model of moving $n$ bytes is:
 
-```
-time = latency + n / bandwidth
-```
+$$
+\text{time} = \text{latency} + \frac{n}{\text{bandwidth}}
+$$
 
 and so the **effective** bandwidth you observe is:
 
-```
-effective_bandwidth = n / time = n / (latency + n / bandwidth)
-```
+$$
+\text{effective bandwidth} = \frac{n}{\text{time}} = \frac{n}{\text{latency} + n / \text{bandwidth}}
+$$
 
 Worked example: a host-to-device copy over PCIe 5 x16. Take ~55 GBps as the measured bandwidth (see [PCIe](../network/README.md#pcie), where an 8x H200 node measured 55.4 GBps) and assume ~10 us fixed overhead per copy (an illustrative round number in the range of the latency table above; measure your own):
 
-| Bytes copied | time = 10 us + n / 55 GBps | Effective bandwidth | % of link |
+| Bytes copied | time = $10\ \mu\text{s} + n / 55\ \text{GBps}$ | Effective bandwidth | % of link |
 | -----------: | -------------------------: | ------------------: | --------: |
 | 4 B          | 10.0 us                    | 0.0004 GBps         | ~0%       |
 | 4 KiB        | 10.1 us                    | 0.41 GBps           | 0.7%      |
 | 1 MiB        | 29.1 us                    | 36 GBps             | 66%       |
 | 1 GiB        | 19.5 ms                    | 55.0 GBps           | ~100%     |
 
-The size at which you get half the peak bandwidth is `latency * bandwidth = 10e-6 * 55e9 = 550 KB`. Below that you're latency-bound and the link width is irrelevant; above it you're bandwidth-bound. Every link in the system - DRAM, PCIe, NVLink, InfiniBand, NVMe - has its own version of this crossover, and it's why:
+The size at which you get half the peak bandwidth is $\text{latency} \times \text{bandwidth} = 10^{-5} \times 55 \times 10^9 = 550\ \text{KB}$. Below that you're latency-bound and the link width is irrelevant; above it you're bandwidth-bound. Every link in the system - DRAM, PCIe, NVLink, InfiniBand, NVMe - has its own version of this crossover, and it's why:
 
 - many small copies are catastrophically slower than one big copy,
 - collective communication libraries bucket small gradients into large messages,
 - [network benchmarks](../network/README.md#real-network-throughput) report bandwidth as a function of message size and small messages never reach the headline number.
 
-**Little's law** ties the two together. To sustain bandwidth B over a path with latency L, you need `B * L` bytes **in flight** at all times (DDR5 below is the current generation of DRAM, detailed in [NUMA](#numa)):
+**Little's law** ties the two together. To sustain bandwidth $B$ over a path with latency $L$, you need $B \cdot L$ bytes **in flight** at all times (DDR5 below is the current generation of DRAM, detailed in [NUMA](#numa)):
 
-```
-DDR5 socket:   300 GBps  * 100 ns = 30 KB in flight  = ~470 outstanding 64-byte cache lines
-H100 HBM3:    3.35 TBps * ~500 ns = ~1.7 MB in flight
-NVMe:     QD = IOPS * latency  (more on this in the storage section)
-```
+$$
+\text{DDR5 socket:}\quad 300\ \text{GBps} \times 100\ \text{ns} = 30\ \text{KB in flight} \approx 470\ \text{outstanding 64-byte cache lines}
+$$
+
+$$
+\text{H100 HBM3:}\quad 3.35\ \text{TBps} \times {\sim}500\ \text{ns} \approx 1.7\ \text{MB in flight}
+$$
+
+$$
+\text{NVMe:}\quad \text{QD} = \text{IOPS} \times \text{latency}\quad \text{(more on this in the storage section)}
+$$
 
 A single CPU core can only track a limited number of outstanding cache misses (on the order of tens), which is why one thread can't saturate a socket's memory bandwidth and why memory-bound CPU code needs many threads. A GPU needs megabytes in flight, which is why it needs tens of thousands of threads. Same law, different scale.
 
@@ -1009,10 +1021,13 @@ second pass (already mapped): 0.1 ms
 
 A TLB has a limited number of entries - on the order of 64 in the first-level data TLB and 1-2 thousand in the second level, depending on the core. The amount of memory the TLB can cover without misses is its **reach**:
 
-```
-2048 entries * 4 KiB pages = 8 MiB
-2048 entries * 2 MiB pages = 4 GiB
-```
+$$
+2048\ \text{entries} \times 4\ \text{KiB pages} = 8\ \text{MiB}
+$$
+
+$$
+2048\ \text{entries} \times 2\ \text{MiB pages} = 4\ \text{GiB}
+$$
 
 (Real TLBs have separate, differently-sized entry pools for each page size, so treat this as illustrative.)
 
@@ -1092,7 +1107,7 @@ This is **NUMA** (non-uniform memory access): latency and bandwidth depend on *w
 
 Even a single socket can be split into several NUMA nodes - Intel's sub-NUMA clustering (SNC) and AMD's NPS (nodes-per-socket) BIOS settings expose the chip's internal topology the same way.
 
-How much bandwidth does a socket's memory have? DDR channel arithmetic: a DDR5 channel is 64 bits (8 bytes) wide, so at 4800 MT/s it moves `4800e6 * 8 = 38.4` GBps.
+How much bandwidth does a socket's memory have? DDR channel arithmetic: a DDR5 channel is 64 bits (8 bytes) wide, so at 4800 MT/s it moves $4800 \times 10^6 \times 8 = 38.4$ GBps.
 
 | Configuration                    | Arithmetic             | Peak per socket |
 | :------------------------------- | :--------------------- | --------------: |
@@ -1154,7 +1169,7 @@ Each generation roughly doubles the per-lane rate:
 | PCIe 5     | 32 GT/s       | 128b/130b  | 3.94                        | 15.8             | 63.0              |
 | PCIe 6     | 64 GT/s       | PAM4 (4 voltage levels, 2 bits per signal symbol) + FLIT (242/256) | 7.56             | 30.3             | 121               |
 
-Arithmetic for PCIe 5 x16: `32e9 transfers/s * 128/130 * 16 lanes / 8 bits = 63.0` GBps in each direction, 126 GBps both ways combined. These are raw link rates after line encoding; packet headers and protocol overhead take more, so measured throughput is lower - the [PCIe section of the network chapter](../network/README.md#pcie) reports 55.4 GBps measured host-to-device on PCIe 5 x16, i.e. 88% of the spec.
+Arithmetic for PCIe 5 x16: $32 \times 10^9\ \text{transfers/s} \times \frac{128}{130} \times 16\ \text{lanes} / 8\ \text{bits} = 63.0$ GBps in each direction, 126 GBps both ways combined. These are raw link rates after line encoding; packet headers and protocol overhead take more, so measured throughput is lower - the [PCIe section of the network chapter](../network/README.md#pcie) reports 55.4 GBps measured host-to-device on PCIe 5 x16, i.e. 88% of the spec.
 
 A PCIe link runs at the *lowest* common generation and width of the two ends. A Gen5 GPU in a slot wired for x8, or behind a Gen4 switch, silently gets half. Check what was actually negotiated:
 
@@ -1280,8 +1295,8 @@ SATA and SAS are the older cable interfaces designed for hard disks; NVMe drives
 
 Derivations worth knowing:
 
-- **HDD IOPS**: a 7200 RPM disk takes `60 / 7200 = 8.3` ms per rotation, so on average 4.2 ms waiting for the right sector to come around, plus ~4 ms to move the head. `1 / (4.2 ms + 4 ms) = ~120` random IOPS. Mechanical physics, which no software will fix. HDDs are for cold storage and archives in ML, never for training data that's read randomly.
-- **SATA SSD throughput**: SATA III signals at 6 Gbps with 8b/10b encoding: `6e9 * 8/10 / 8 = 600` MBps ceiling. The flash is faster than the interface; the protocol is the bottleneck.
+- **HDD IOPS**: a 7200 RPM disk takes $60 / 7200 = 8.3$ ms per rotation, so on average 4.2 ms waiting for the right sector to come around, plus ~4 ms to move the head. $1 / (4.2\ \text{ms} + 4\ \text{ms}) \approx 120$ random IOPS. Mechanical physics, which no software will fix. HDDs are for cold storage and archives in ML, never for training data that's read randomly.
+- **SATA SSD throughput**: SATA III signals at 6 Gbps with 8b/10b encoding: $6 \times 10^9 \times \frac{8}{10} / 8 = 600$ MBps ceiling. The flash is faster than the interface; the protocol is the bottleneck.
 - **NVMe**: the drive sits directly on PCIe (x4 Gen4 = 7.9 GBps spec, Gen5 = 15.8). NVMe was designed for flash: up to 64K command queues, each up to 64K deep, versus SATA/AHCI's single queue of 32 commands, so many cores can submit I/O in parallel without locking.
 
 ### IOPS vs throughput
@@ -1290,7 +1305,7 @@ Two separate metrics, the storage version of [latency vs bandwidth](#bandwidth-v
 
 - **IOPS**: I/O operations per second - matters for many small reads (individual small files, random samples, metadata).
 - **Throughput**: bytes per second - matters for big sequential reads (a large shard, a checkpoint).
-- They're related by block size: `throughput = IOPS * block_size`. 1M IOPS of 4 KiB blocks is `1e6 * 4096 = 4.1` GBps. A drive can be IOPS-limited for small blocks and throughput-limited for large ones.
+- They're related by block size: $\text{throughput} = \text{IOPS} \times \text{block size}$. 1M IOPS of 4 KiB blocks is $10^6 \times 4096 = 4.1$ GBps. A drive can be IOPS-limited for small blocks and throughput-limited for large ones.
 
 Measured on this laptop's internal SSD, single-threaded (queue depth 1), with the OS page cache (the operating system's in-RAM copy of recently read file data; [Linux and the OS](linux-and-os.md#the-page-cache-why-the-second-read-is-fast) covers it) bypassed so we see the drive and not RAM:
 
@@ -1337,11 +1352,17 @@ random  1024 KiB x   1000:     1,501 IOPS    1.57 GBps    666.3 us/op
 
 **Queue depth** (QD) is how many I/O requests are outstanding at once. Flash drives are internally massively parallel (many NAND dies and channels), but a single request only uses one of them. Little's law again:
 
-```
-IOPS = queue_depth / latency
-QD 1 at 80 us latency:  1 / 80e-6     = 12,500 IOPS
-to reach 1M IOPS:       1e6 * 80e-6   = QD 80
-```
+$$
+\text{IOPS} = \frac{\text{queue depth}}{\text{latency}}
+$$
+
+$$
+\text{QD 1 at 80 us latency:}\quad 1 / (80 \times 10^{-6}) = 12{,}500\ \text{IOPS}
+$$
+
+$$
+\text{to reach 1M IOPS:}\quad 10^6 \times 80 \times 10^{-6} = \text{QD } 80
+$$
 
 So a drive rated at 1M IOPS delivers ~1% of that to a single-threaded program that reads one file at a time and waits for each read. This is why dataloaders need many workers or async I/O, and why benchmarks must specify queue depth. See [Queue Depth](../storage/README.md#queue-depth) and [fio](../storage/README.md#fio) for measuring it.
 
@@ -1507,7 +1528,7 @@ print(p.name, p.multi_processor_count, "SMs,", p.total_memory / 2**30, "GiB, com
 # NVIDIA H100 80GB HBM3 132 SMs, 79.6 GiB, compute capability 9 0   <- expected shape, not a captured run
 ```
 
-**HBM** (high bandwidth memory) is DRAM stacked vertically into towers and placed right next to the GPU die on a silicon interposer, with a very wide connection: 1024 bits per stack. The H100 has 5 active stacks, a 5120-bit bus; `3.35e12 * 8 / 5120 = 5.2` Gbps per pin. Compare with a DDR5 channel's 64 bits. HBM's bandwidth comes from width and proximity, not from lower latency - per access it's no faster than ordinary DRAM. The tradeoff is capacity and cost: HBM is expensive and capacity-limited (80-288 GB per GPU), which is why "will it fit in GPU memory" is the first question in every training plan. Details in [Accelerator memory size and speed](../compute/accelerator/README.md#accelerator-memory-size-and-speed).
+**HBM** (high bandwidth memory) is DRAM stacked vertically into towers and placed right next to the GPU die on a silicon interposer, with a very wide connection: 1024 bits per stack. The H100 has 5 active stacks, a 5120-bit bus; $3.35 \times 10^{12} \times 8 / 5120 = 5.2$ Gbps per pin. Compare with a DDR5 channel's 64 bits. HBM's bandwidth comes from width and proximity, not from lower latency - per access it's no faster than ordinary DRAM. The tradeoff is capacity and cost: HBM is expensive and capacity-limited (80-288 GB per GPU), which is why "will it fit in GPU memory" is the first question in every training plan. Details in [Accelerator memory size and speed](../compute/accelerator/README.md#accelerator-memory-size-and-speed).
 
 ### The host/device split
 
@@ -1551,28 +1572,33 @@ The [execution model chapter](../compute/accelerator/execution-model.md) takes a
 
 Every operation needs two resources: arithmetic (FLOPs) and memory traffic (bytes moved between HBM and the chip). A kernel can't run faster than either allows:
 
-```
-time >= max( FLOPs / peak_FLOPS ,  bytes / peak_bandwidth )
-```
+$$
+\text{time} \ge \max\left(\frac{\text{FLOPs}}{\text{peak FLOPS}},\ \frac{\text{bytes}}{\text{peak bandwidth}}\right)
+$$
 
 The ratio that decides which one wins is the **arithmetic intensity** of the operation:
 
-```
-arithmetic_intensity = FLOPs / bytes_moved          (FLOP per byte)
-```
+$$
+\text{arithmetic intensity} = \frac{\text{FLOPs}}{\text{bytes moved}}\quad \text{(FLOP per byte)}
+$$
 
 and the hardware has a matching ratio, the **ridge point** (or machine balance):
 
-```
-ridge = peak_FLOPS / peak_bandwidth
-H100 SXM, dense bf16:  989e12 / 3.35e12 = 295 FLOP/byte
-```
+$$
+\text{ridge} = \frac{\text{peak FLOPS}}{\text{peak bandwidth}}
+$$
+
+$$
+\text{H100 SXM, dense bf16:}\quad \frac{989 \times 10^{12}}{3.35 \times 10^{12}} = 295\ \text{FLOP/byte}
+$$
 
 If an operation does fewer than ~295 FLOPs per byte it moves, the H100 will spend its time waiting on HBM: **memory-bound**. More than that: **compute-bound**. Plotting attainable FLOPS against arithmetic intensity gives the **roofline**:
 
-```
-attainable = min(peak_FLOPS, arithmetic_intensity * peak_bandwidth)
+$$
+\text{attainable} = \min(\text{peak FLOPS},\ \text{arithmetic intensity} \times \text{peak bandwidth})
+$$
 
+```
 TFLOPS (log)
   989 |                         ___________________________  compute roof
       |                       /
@@ -1623,29 +1649,32 @@ decode 8B batch 1: 4.8 ms/token -> 209 tok/s
 
 ### Worked example 1: a big square matmul
 
-`C = A @ B`, all `n x n` bf16 matrices, n = 4096.
+$C = AB$, all $n \times n$ bf16 matrices, $n = 4096$.
 
-```
-FLOPs = 2 * n**3                 = 2 * 4096**3   = 1.37e11      (multiply + add per term)
-bytes = 3 * n**2 * 2 bytes       = 3 * 4096**2*2 = 1.01e8 = 100.7 MB  (read A, B; write C - the minimum)
-intensity = 1.37e11 / 1.01e8     = 1365 FLOP/byte   > 295  -> compute-bound
+$$
+\begin{aligned}
+\text{FLOPs} &= 2n^3 = 2 \cdot 4096^3 = 1.37 \times 10^{11} && \text{(multiply + add per term)} \\
+\text{bytes} &= 3n^2 \cdot 2\ \text{bytes} = 3 \cdot 4096^2 \cdot 2 = 1.01 \times 10^8 = 100.7\ \text{MB} && \text{(read A, B; write C - the minimum)} \\
+\text{intensity} &= 1.37 \times 10^{11} / (1.01 \times 10^8) = 1365\ \text{FLOP/byte} > 295 && \Rightarrow \text{compute-bound} \\
+\text{compute time} &= 1.37 \times 10^{11} / (989 \times 10^{12}) = 139\ \mu\text{s} \\
+\text{memory time} &= 1.01 \times 10^8 / (3.35 \times 10^{12}) = 30\ \mu\text{s} \\
+\text{lower bound} &= \max(139, 30) = 139\ \mu\text{s}
+\end{aligned}
+$$
 
-compute time = 1.37e11 / 989e12  = 139 us
-memory time  = 1.01e8 / 3.35e12  =  30 us
-lower bound  = max(139, 30)      = 139 us
-```
-
-In general for an `n x n x n` bf16 matmul the intensity is `2n**3 / (6n**2) = n / 3`, so it crosses the H100's ridge at about `n = 3 * 295 = 885`. Big matmuls are compute-bound and can approach peak; that's why training with large batch x sequence dimensions gets high [MFU](../training/performance/README.md#mfu-vs-hfu) (model FLOPs utilization: achieved FLOPS as a fraction of the hardware peak). (The "minimum bytes" assumes perfect on-chip reuse; real kernels re-read some tiles, but well-tuned ones get close - that reuse is exactly what tiling into shared memory (the per-SM scratchpad from [The pieces](#the-pieces)) and registers achieves.)
+In general for an $n \times n \times n$ bf16 matmul the intensity is $2n^3 / (6n^2) = n / 3$, so it crosses the H100's ridge at about $n = 3 \cdot 295 = 885$. Big matmuls are compute-bound and can approach peak; that's why training with large batch x sequence dimensions gets high [MFU](../training/performance/README.md#mfu-vs-hfu) (model FLOPs utilization: achieved FLOPS as a fraction of the hardware peak). (The "minimum bytes" assumes perfect on-chip reuse; real kernels re-read some tiles, but well-tuned ones get close - that reuse is exactly what tiling into shared memory (the per-SM scratchpad from [The pieces](#the-pieces)) and registers achieves.)
 
 ### Worked example 2: an elementwise op
 
 `y = a + b`, bf16, n elements. Each element: read 2 bytes + 2 bytes, write 2 bytes, 1 FLOP.
 
-```
-intensity = 1 / 6 = 0.17 FLOP/byte    -- 1700x below the ridge
-for n = 1e9:  bytes = 6e9, time = 6e9 / 3.35e12 = 1.8 ms
-              FLOPs at that speed = 1e9 / 1.8e-3 = 0.56 TFLOPS = 0.06% of peak
-```
+$$
+\begin{aligned}
+\text{intensity} &= 1 / 6 = 0.17\ \text{FLOP/byte} && \text{(1700x below the ridge)} \\
+\text{for } n = 10^9:\quad \text{bytes} &= 6 \times 10^9,\quad \text{time} = 6 \times 10^9 / (3.35 \times 10^{12}) = 1.8\ \text{ms} \\
+\text{FLOPS at that speed} &= 10^9 / (1.8 \times 10^{-3}) = 0.56\ \text{TFLOPS} = 0.06\%\ \text{of peak}
+\end{aligned}
+$$
 
 No amount of tensor cores helps; only fewer bytes do. This is the hardware argument for **kernel fusion**: `gelu(x @ W + b)` as three separate kernels writes the matmul output to HBM, reads it back to add bias, writes it, reads it back for GeLU. A fused kernel does the bias and GeLU while the result is still in registers. It's also the argument for FlashAttention, which avoids materializing the `(B, H, T, T)` attention matrix in HBM.
 
@@ -1653,10 +1682,13 @@ No amount of tensor cores helps; only fewer bytes do. This is the hardware argum
 
 At batch size 1, generating one token multiplies each weight matrix by a single vector (a GEMV). Each bf16 weight (2 bytes) is read once and used in one multiply-add (2 FLOPs): intensity ~1 FLOP/byte, ~300x below the ridge. So decode speed is set by how fast you can stream the weights from HBM:
 
-```
-8B-parameter model in bf16: 8e9 * 2 = 16 GB of weights
-time per token >= 16e9 / 3.35e12 = 4.8 ms   ->  at most ~209 tokens/s on one H100
-```
+$$
+\text{8B-parameter model in bf16:}\quad 8 \times 10^9 \times 2 = 16\ \text{GB of weights}
+$$
+
+$$
+\text{time per token} \ge 16 \times 10^9 / (3.35 \times 10^{12}) = 4.8\ \text{ms} \;\Rightarrow\; \text{at most} \approx 209\ \text{tokens/s on one H100}
+$$
 
 (ignoring the KV cache, which adds more bytes; the **KV cache** is the attention keys and values of all previous tokens, stored so they aren't recomputed, and read again at every decode step). Batching B requests reuses each weight B times, raising intensity ~B-fold, which is why inference servers batch aggressively and why decode throughput scales with batch size until the KV cache memory runs out. Quantizing weights to 8 or 4 bits speeds up decode almost proportionally for the same reason - fewer bytes - even if the arithmetic is done in bf16.
 
@@ -1703,7 +1735,7 @@ Achieved FLOPS climb 100x from `n = 64` to `n = 4096` and flatten around 2-3 TFL
 
 1. Using `roofline.py`, find the decode batch size at which an 8B bf16 model becomes compute-bound on an H100 (ignoring KV cache). Then redo it for int4 weights (0.5 bytes/param) with bf16 compute.
 2. Compute the arithmetic intensity of a LayerNorm over a `(B, T, C)` bf16 tensor (read once, write once, ~8 FLOPs per element). Memory- or compute-bound?
-3. Compute the intensity of a `(B*T, C) @ (C, 4C)` MLP matmul for `C = 4096` as a function of `B*T`. At what token count per micro-batch does it cross the H100 ridge? (Bytes: read both inputs and write the output once.)
+3. Compute the intensity of a $(B \cdot T, C) \times (C, 4C)$ MLP matmul for $C = 4096$ as a function of $B \cdot T$. At what token count per micro-batch does it cross the H100 ridge? (Bytes: read both inputs and write the output once.)
 4. Run `roofline_measure.py` in float16 (on MPS/CUDA): add `dtype=torch.float16` to both `torch.randn` calls and change the `4` in `byts` to `2`. How much does the ceiling move?
 5. Add a memory-bound op to the measurement (`a + b` on `(n, n)` tensors) and plot both on log-log axes. Where does each sit relative to the ridge?
 
@@ -1801,7 +1833,7 @@ Things that go wrong along this path, each of which you can now name:
 - Step 5 is skipped (pageable memory), so step 6 becomes a synchronous double copy.
 - Step 6 is many small copies instead of one big one ([latency-bound](#bandwidth-vs-latency)), or the GPU negotiated x8 or Gen4.
 
-For scale: copying a 1 GB batch at the measured ~55 GBps takes `1e9 / 55e9 = 18` ms. If the training step takes 500 ms and the copy overlaps with compute, that's free; if it's synchronous and the step takes 50 ms, it's a 36% overhead. Arithmetic first, then the profiler.
+For scale: copying a 1 GB batch at the measured ~55 GBps takes $10^9 / (55 \times 10^9) = 18$ ms. If the training step takes 500 ms and the copy overlaps with compute, that's free; if it's synchronous and the step takes 50 ms, it's a 36% overhead. Arithmetic first, then the profiler.
 
 You can time the host-side hops of this path with nothing but `time.perf_counter`. A toy version with pre-tokenized `int32` data, batch `(64, 2048)`: **[torch]**
 

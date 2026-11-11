@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluate a GPU cluster - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../../compute/README.html">Compute (Stas)</a></li><li><a href="../../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../../training/README.html">Training (Stas)</a></li><li><a href="../../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../../inference/README.html">Inference (Stas)</a></li><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../../resources/README.html">Resources (Stas)</a></li><li><a href="../../contributors.html">Contributors (Stas)</a></li><li><a href="../../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details open><summary>Other pages: skills</summary><ul><li><a href="../../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../../skills/evaluate-cluster/SKILL.html" class="current">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<pre class="front-matter"><code>name: evaluate-cluster
+description: &gt;-
+  Evaluates an ML GPU cluster for a cloud trial or acceptance test: environment
+  dump, isolated newest PyTorch, matmul FLOPS (MAMF/MSMF) on every GPU while the
+  others compute, intra-node all-reduce bandwidth and per-call latency of every collective,
+  the same inter-node on every node you were given (omit those sections if there is only
+  one node), fio on local disk and shared FS,
+  dated markdown report. Use when the user asks to evaluate a cluster, kick the
+  tires on trial nodes, run cluster acceptance, or measure GPU/network/storage.
+
+  Canonical copy: https://github.com/stas00/ml-engineering/blob/master/skills/evaluate-cluster/SKILL.md</code></pre>
+<h1 id="evaluate-a-gpu-cluster">Evaluate a GPU cluster</h1>
+<p><strong>Always use the GitHub copy if it differs from this file.</strong> People pass around downloads that can be months or years old.</p>
+<ul>
+<li>This skill: https://github.com/stas00/ml-engineering/blob/master/skills/evaluate-cluster/SKILL.md</li>
+<li>Raw: https://raw.githubusercontent.com/stas00/ml-engineering/master/skills/evaluate-cluster/SKILL.md</li>
+</ul>
+<p>Before doing any eval work, <code>curl</code> the raw URL. If it is not byte-identical to the file you are reading, <strong>stop following this copy</strong> and follow the GitHub file instead (fetch it, then continue from that text). If GitHub is unreachable, say so and continue with this file.</p>
+<p>This file is the whole runbook. You do not need any other document from the author's books. Scripts and spec tables are on GitHub; fetch them (commands below). Optional background: <a href="https://github.com/stas00/ml-engineering/blob/master/insights/how-to-choose-cloud-provider.md#how-to-evaluate-the-cluster">How to evaluate the cluster</a>.</p>
+<h2 id="keep-this-skill-up-to-date">Keep this skill up to date</h2>
+<p><strong>Every correction the user makes to a report is a correction to this skill.</strong> When they rename a heading, reject a phrase, ask for a different TOC label, or point out an assumption, fix the report <strong>and</strong> edit this file in the same turn so the next eval starts from the corrected rule. A fix that lives only in one report is a fix you will be asked for again.</p>
+<ul>
+<li>Write the rule where the next agent will hit it — the section that produces that text, not a footnote.</li>
+<li>Encode the <strong>general principle</strong>, not just the one string. &quot;Don't write <code>Skip reasons: none</code>&quot; became &quot;never assert an absence&quot;.</li>
+<li>When the correction changes a heading, update the heading rule, the TOC example, <strong>and</strong> every cross-reference to the old name in this file.</li>
+<li>Do not report the edit as done until you have grepped this file for the old wording.</li>
+</ul>
+<p>Reports under <code>reports/</code> other than the one you are writing are historical. Leave them alone.</p>
+<p>Refuse to invent access, GPU counts, filesystem paths, or peer IPs. <strong>Preflight first</strong>: list what you have, <strong>ask for every missing item, and wait</strong>. Do not start DCGM, MAMF, <code>fio-scan</code>, or <code>torch-dist-bench.py</code> until the checklist is complete and — when <strong>≥2 nodes</strong> — inter-node reachability has passed. Eval <strong>all nodes the user gave</strong> (1, 2, 4, 16, …). Inter-node all-reduce uses <strong>every</strong> one of those nodes (<code>NNODES × GPUs_per_node</code> ranks). <strong>One node:</strong> do not write an Inter-node section at all (no “Skipped”). If ≥2 nodes but inter-node still cannot run after the user has answered, omit the section and put the reason in <strong>### Gaps</strong> — never invent busbw.</p>
+<h2 id="terms">Terms</h2>
+<table>
+<thead>
+<tr>
+<th>term</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MAMF</strong></td>
+<td>Maximum Achievable Matmul FLOPS: the highest any <strong>matmul shape</strong> (M×N×K) reaches on that GPU. The winning shapes are short bursts — the clock sits at boost and the board stays far below its power limit — so this is a ceiling, not a rate any sustained workload holds.</td>
+</tr>
+<tr>
+<td><strong>MSMF</strong></td>
+<td>Maximum Sustainable Matmul FLOPS: what is left once the matmul shape is big enough to pin the board at its power limit and the clock settles below boost. This is what back-to-back dense matmuls actually get, provided the other GPUs of the node compute at the same time: they share the board's power and cooling budget, so measured next to idle GPUs it reads high. Both come from <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/benchmarks/mamf-finder.py"><code>mamf-finder.py</code></a>, which times on the order of 1500–2200 matmul shapes per GPU (the <code>auto</code> search adapts, so the count differs per run) and reports the W and MHz behind each winner. <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/benchmarks/mamf-finder-all-gpus.py"><code>mamf-finder-all-gpus.py</code></a> runs it on every GPU of a node, one at a time, while all the other GPUs run a continuous matmul.</td>
+</tr>
+<tr>
+<td><strong>DCGM</strong></td>
+<td>NVIDIA Data Center GPU Manager. <code>dcgmi diag -r 2</code> checks GPU memory, bandwidth, PCIe — not FLOPS.</td>
+</tr>
+<tr>
+<td><strong>lemon GEMM</strong></td>
+<td>A one-off inline <code>torch.matmul</code> (not a published script) on every GPU with the same large shape, to catch a dead, slow, or throttled card.</td>
+</tr>
+<tr>
+<td><strong>all-reduce</strong></td>
+<td>Collective: every rank ends up with the sum of all ranks' tensors. Used to stress NVLink and the network.</td>
+</tr>
+<tr>
+<td><strong>busbw / algbw</strong></td>
+<td>Printed by <a href="https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a>. <strong>busbw</strong> = unidirectional bus bandwidth (what the fabric moves). <strong>algbw</strong> = algorithm bandwidth (what the caller sees). busbw is already unidirectional (<a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#unidirectional-vs-bidirectional-duplex">why</a>).</td>
+</tr>
+<tr>
+<td><strong>NVLS</strong></td>
+<td>NVLink SHARP: the NVSwitch does the all-reduce in the switch. Typical gain vs ring busbw ~30% intra-node / ~25% inter-node. Does <strong>not</strong> speed up all-gather or reduce-scatter. Different from InfiniBand switch SHARP.</td>
+</tr>
+<tr>
+<td><strong>NCCL</strong></td>
+<td>NVIDIA Collective Communications Library (the GPU collective stack torch uses).</td>
+</tr>
+<tr>
+<td><strong>rdzv</strong></td>
+<td>torch.distributed <strong>rendezvous</strong>: a TCP store so ranks find <code>MASTER_ADDR:PORT</code> before NCCL starts.</td>
+</tr>
+<tr>
+<td><strong>hostfile</strong></td>
+<td>Text file, one peer address per line (<code>10.0.0.1</code> or <code>10.0.0.1 slots=8</code>). DeepSpeed <code>-H</code> and <code>pdsh -w</code> read it.</td>
+</tr>
+<tr>
+<td><strong>pdsh</strong></td>
+<td>Parallel SSH: run one command on many hosts.</td>
+</tr>
+<tr>
+<td><strong>fio-scan</strong></td>
+<td>Wrapper around <code>fio</code> (<a href="https://github.com/stas00/ml-engineering/blob/master/storage/fio-scan">script</a>): six timed runs (16 KiB / 1 MiB / 1 GiB × read/write). Needs <a href="https://github.com/stas00/ml-engineering/blob/master/storage/fio-json-extract.py"><code>fio-json-extract.py</code></a> in the <strong>same directory</strong>.</td>
+</tr>
+<tr>
+<td><strong><code>local/shared ×</code></strong></td>
+<td>local-disk bandwidth ÷ same-row shared-FS bandwidth — how many times slower the shared filesystem is. One column is enough: with a fixed block size the IOPS ratio is identical. Never a percentage, never <code>%local</code>.</td>
+</tr>
+<tr>
+<td><strong>SM</strong></td>
+<td>GPU streaming multiprocessor. Count from <code>torch.cuda.get_device_properties(0).multi_processor_count</code>.</td>
+</tr>
+<tr>
+<td><strong>HBM</strong></td>
+<td>GPU high-bandwidth memory. Report <code>nvidia-smi</code> <code>memory.total</code> in <strong>GiB</strong>.</td>
+</tr>
+<tr>
+<td><strong>TDP</strong></td>
+<td>Thermal design power: the GPU’s advertised watt limit (<code>power.limit</code>).</td>
+</tr>
+<tr>
+<td><strong>EFA</strong></td>
+<td>AWS Elastic Fabric Adapter (RDMA NICs named <code>rdmap*</code>). <code>ibstat</code> is often <strong>empty</strong>; use <code>rdma link</code>.</td>
+</tr>
+<tr>
+<td><strong>overlay</strong></td>
+<td>Container union filesystem. <code>df -T /</code> may say <code>overlay</code>; the <strong>backing</strong> FS (xfs, ext4) is the partition type to report.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="scripts-fetch-do-not-invent">Scripts (fetch, do not invent)</h2>
+<pre><code class="language-bash">RAW=https://raw.githubusercontent.com/stas00/ml-engineering/master
+curl -fsSL &quot;$RAW/compute/accelerator/benchmarks/mamf-finder.py&quot; -o mamf-finder.py
+curl -fsSL &quot;$RAW/compute/accelerator/benchmarks/mamf-finder-all-gpus.py&quot; -o mamf-finder-all-gpus.py
+# mamf-finder-all-gpus.py runs ./mamf-finder.py from its own directory — keep both in one directory.
+curl -fsSL &quot;$RAW/network/benchmarks/torch-dist-bench.py&quot; -o torch-dist-bench.py
+curl -fsSL &quot;$RAW/debug/torch-distributed-gpu-test.py&quot; -o torch-distributed-gpu-test.py
+curl -fsSL &quot;$RAW/storage/fio-scan&quot; -o fio-scan
+curl -fsSL &quot;$RAW/storage/fio-json-extract.py&quot; -o fio-json-extract.py
+chmod +x fio-scan
+# fio-scan calls `python ./fio-json-extract.py` — keep both in one directory.
+</code></pre>
+<p>Official BF16 peaks: <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#tflops-comparison-table">TFLOPS comparison table</a>. NVLink gens: <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#nvlink">NVLink</a>. Intra-node all-to-all: <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#all-to-all-bandwidth">bandwidth</a>. Inter-node adapters: <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#inter-node-networking">networking</a>.</p>
+<p>Copy artifacts <strong>off the cluster immediately</strong> into <code>reports/raw-&lt;name&gt;/</code> <strong>next to this skill</strong> (or the working directory you chose). Inline every plot: <code>![alt](raw-&lt;name&gt;/file.png)</code> — never link-only. Cluster access and <code>/tmp</code> disappear.</p>
+<p><strong>Links in the report</strong> to those scripts and tables are absolute GitHub URLs (<code>https://github.com/stas00/ml-engineering/blob/master/…</code>). Never <code>../</code> relatives — the report may be copied elsewhere. Sibling <code>raw-&lt;name&gt;/</code> stays relative. External vendor/kernel docs stay as-is.</p>
+<p><strong>Every GitHub-hosted tool the run used</strong> is introduced and linked in that section's <code>### Introduction</code> — one clause on what it does, then later mentions are bare <code>code</code>. The reader of the report must not meet a tool they cannot click. Do not write “the book” or “MLE” in the report; the GitHub URL is the source.</p>
+<p><strong>Every section <code>### Introduction</code>:</strong> numbered list (<code>1.</code> <code>2.</code> …) of passes that ran, <code>tool — what it does / where</code>. Same shape in A, B, and C.</p>
+<p>Tools not in the fetch list: <code>dcgmi diag</code> is NVIDIA's; the lemon GEMM is an inline script — say so.</p>
+<p><strong>Do not leak eval-process shorthand into the report.</strong> The report reader was not in your session. Avoid “kept”, “as configured”, “we left it”, “platform value”, “the fix”, “rerun”. Name the actor and the state: <em>“the container image presets <code>NCCL_NVLS_ENABLE=1</code>, and every benchmark ran with it unchanged.”</em></p>
+<h2 id="preflight-hard-gate">Preflight (hard gate)</h2>
+<p><strong>Goal:</strong> be able to run the rest of the eval without blocking on the user. Slow work (PyTorch wheels, DCGM <code>-r 2</code>, MAMF/MSMF, shared-FS <code>fio-scan</code>, GPU all-reduce) starts only after this gate.</p>
+<h3 id="ask-now-not-later">Ask now, not later</h3>
+<p>Collect and <strong>write down</strong> every row. Missing → message the user with the exact list, then <strong>stop</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>need</th>
+<th>why</th>
+<th>typical answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>How to exec on a node</td>
+<td>every command</td>
+<td><code>kubectl</code> (ask for context, namespace, pod/job), <code>ssh</code>, <code>srun</code>, or whatever CLI the user names</td>
+</tr>
+<tr>
+<td><strong>All</strong> node identities</td>
+<td>lemon GEMM + inter-node</td>
+<td>every pod/hostname, not only rank 0</td>
+</tr>
+<tr>
+<td><strong>Hostfile (or equivalent) with peer IPs</strong></td>
+<td>inter-node SSH / rdzv / <code>pdsh</code></td>
+<td>path or pasted contents: one IP per line. Required when <strong>≥2 nodes</strong>. SLURM: <code>scontrol show hostnames</code> plus IPs.</td>
+</tr>
+<tr>
+<td>SSH / launcher details</td>
+<td><code>pdsh</code> / DeepSpeed</td>
+<td>port; passwordless SSH <strong>between</strong> nodes (not only laptop → rank 0)</td>
+</tr>
+<tr>
+<td>GPUs per node</td>
+<td>default 8</td>
+<td><code>nvidia-smi -L</code> if unknown</td>
+</tr>
+<tr>
+<td>Local disk path + shared-FS path</td>
+<td><code>fio-scan</code></td>
+<td>discover with <code>df -hT</code>; ask if unclear</td>
+</tr>
+<tr>
+<td>Advertised uni bandwidth / official TFLOPS</td>
+<td>optional</td>
+<td>else <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md">accelerator tables</a> + <code>nvidia-smi</code></td>
+</tr>
+</tbody>
+</table>
+<p>NCCL env is <strong>not</strong> a user question if you can exec: dump <code>env | grep -E '^NCCL_|^FI_|^AWS_OFI'</code> on rank 0 in this same preflight. Keep whatever the platform already sets for the fast path (<code>NCCL_IB_HCA</code>, <code>NCCL_NET_PLUGIN=ofi</code>, <code>NCCL_TUNER_PLUGIN=ofi</code>, EFA/OFI tunables, <code>NCCL_NVLS_ENABLE</code>, …). Do <strong>not</strong> overwrite a live platform value with the eval default. If NCCL is unset, <strong>preset <code>NCCL_NVLS_ENABLE=2</code></strong>. Record the <strong>final</strong> env in the report (Environment + Network Introduction).</p>
+<h3 id="inter-node-reachability-now-not-a-benchmark">Inter-node reachability (now, not a benchmark)</h3>
+<p>As soon as you have the hostfile/IPs, prove the nodes can see each other. <strong>Do not</strong> run <code>torch-dist-bench.py</code> or any GPU collective yet. This is seconds of TCP/SSH.</p>
+<pre><code class="language-bash"># 1. Launch node → every peer (BatchMode: fail fast if keys/port are wrong)
+while read -r ip rest; do
+  [[ &quot;$ip&quot; =~ ^# ]] || [[ -z &quot;$ip&quot; ]] &amp;&amp; continue
+  ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new &quot;$ip&quot; hostname
+done &lt; &quot;$HOSTFILE&quot;
+
+# 2. Same via pdsh if that is the launcher
+HOSTS=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | cut -d' ' -f1 | tr '\n' ',' | sed 's/,*$//g')
+PDSH_RCMD_TYPE=ssh pdsh -w &quot;$HOSTS&quot; hostname
+
+# 3. Peer → peer TCP (rdzv will need this). From node 1, hit node 0's IP:22 or the container sshd port.
+MASTER_ADDR=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | head -1 | cut -d' ' -f1)
+timeout 5 bash -c &quot;echo &gt;/dev/tcp/$MASTER_ADDR/${SSH_PORT:-22}&quot; &amp;&amp; echo OPEN
+</code></pre>
+<p>On Kubernetes, <code>ssh</code> may be <code>kubectl exec</code> per pod — still loop <strong>every</strong> sibling, not only the first (<code>-0</code>). Probe <code>sshd</code> listen port (<code>ss -ltnp | grep sshd</code>) and <code>ssh -p &lt;port&gt; &lt;ip&gt; hostname</code>. Do <strong>not</strong> assume port 22 or 2222. If PATH has a cluster SSH wrapper, use it; otherwise <code>ssh</code> / <code>pdsh</code>.</p>
+<p><strong>Pass:</strong> every hostname comes back, TCP to <code>MASTER_ADDR</code> is OPEN. <strong>Fail:</strong> ask the user (hostfile IPs, SSH port, keys, <code>pdsh</code> args) and wait. Do not start MAMF “in the meantime.”</p>
+<p>After the eval venv exists (loop step 2), add one more cheap check <strong>before</strong> GPU inter-node all-reduce: CPU-only, 1-process-per-node PyTorch <code>gloo</code> backend, <code>init_process_group</code> + <code>all_reduce</code> (see Network). Still not <code>torch-dist-bench.py</code>.</p>
+<h2 id="loop">Loop</h2>
+<ol start="0">
+<li><strong>Preflight.</strong> Fill the checklist. Ask for what’s missing (hostfile with peer IPs is required for <strong>≥2 nodes</strong>; 1 node needs no hostfile). <strong>Stop until the user answers.</strong> Then, if ≥2 nodes, run the SSH/TCP reachability probes. Do not start the isolated install or any long bench until that passes (1-node evals skip the probes and skip inter-node entirely).</li>
+<li>Dump environment (below) into the report draft.</li>
+<li>Isolated venv on the <strong>newest</strong> released torch (do <strong>not</strong> mutate or benchmark the node’s preinstalled Python).</li>
+<li>If ≥2 nodes: CPU gloo 1-process-per-node across the hostfile (connectivity + rdzv). Fix <code>is_host</code> / <code>local_addr</code> here if needed. <strong>Skip this step on 1 node.</strong></li>
+<li>Connectivity: <code>torch-distributed-gpu-test.py</code> — one process per GPU; ranks must see each other and complete a collective. <strong>The scope is whatever you launch it on</strong>: across all nodes it is an inter-node check, on a single node it is only intra-node. With <strong>≥2 nodes, run it across all of them</strong> — a 1-node run does not test the fabric and must never be labelled inter-node.</li>
+<li><strong>Compute:</strong> <code>dcgmi diag -r 2</code> (hardware health), then <code>mamf-finder-all-gpus.py</code> (one GPU at a time while every other GPU runs a continuous matmul). Lemon GEMM on <strong>every GPU of every given node</strong>.</li>
+<li><strong>Network:</strong> intra-node <code>torch-dist-bench.py --collectives all --separate-tables</code> — all-reduce bandwidth plus the per-call latency of every collective, in one run. Then, if <strong>≥2 nodes</strong>, the same on <strong>all</strong> of them (not a fixed 4). If <strong>1 node</strong>, stop after intra-node — no Inter-node heading.</li>
+<li><strong>Storage:</strong> <code>fio-scan</code> on local disk and on shared FS. Concurrent write poke uses every given node when ≥2; skip that poke on 1 node.</li>
+<li>Write <code>reports/&lt;cluster&gt;-&lt;YYYY-MM-DD-HHMMZ&gt;.md</code> next to this skill (or in the working directory), with <code>reports/raw-&lt;name&gt;/</code> beside it and <strong>plots inlined</strong>. Write it for a reader who knows nothing you learned on the node: every tool and term gets defined where it is first used. End with <strong>## Findings</strong>, split into <strong>### Healthy subsystems</strong>, <strong>### Underperforming subsystems</strong>, and <strong>### Needs operator input</strong> — the last for subsystems measured cleanly but with no known target to judge them against; keep only the headings that have bullets. Compute may use % of official TFLOPS. Intra-node all-reduce may use % of NVLink spec (note NVLS). Latency has no vendor target, so it goes under <strong>Needs operator input</strong> (see <strong>Latency</strong>). Storage: measured vs vendor advertised. <strong>Never</strong> flag multi-node all-reduce as “X% of NIC / rail spec.” Do not repeat the tables.</li>
+<li><strong>Clear the scratch you created</strong> (see <strong>Leave the filesystems as you found them</strong>) — before the summary, not after the user notices.</li>
+<li><strong>Close-out:</strong> <strong>ask the user</strong> to address each one, including every <strong>Needs operator input</strong> bullet — those are open questions addressed to them, and the eval stays unfinished until they supply the figures or say to drop it. For every gap: quote it, then give a <strong>proposed plan of action</strong> (commands, launcher, package, node count, or “accept and leave as-is”). Do not treat the eval as finished until they pick a plan, you execute it, or they explicitly accept the gap. If there are no Gaps sections, say the eval is complete.</li>
+</ol>
+<p>Start the GPU performance pass and the lemon GEMM only on a node with no other compute processes in <code>nvidia-smi</code>; abort if one appears. During <code>mamf-finder-all-gpus.py</code>, a python process on every GPU is the script's own matmul and is expected.</p>
+<h2 id="leave-the-filesystems-as-you-found-them">Leave the filesystems as you found them</h2>
+<p>A storage eval writes enormous scratch files onto shared filesystems that belong to other people. <strong>Clearing them is part of the eval, not an optional courtesy</strong> — an eval that hands back a report and leaves 165 GiB across five production mounts has cost the cluster more than it measured. The user should never be the one to discover the leftovers.</p>
+<p>What this eval creates, all of which has to go:</p>
+<table>
+<thead>
+<tr>
+<th>what</th>
+<th>where</th>
+<th>size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fio</code> work files</td>
+<td><code>&lt;scan path&gt;/fio-test/</code> on <strong>every</strong> mount scanned</td>
+<td>~33 GiB per mount per six-run scan</td>
+</tr>
+<tr>
+<td>concurrent-write poke files</td>
+<td>the share you wrote to, one per node</td>
+<td>1 GiB × nodes</td>
+</tr>
+<tr>
+<td><code>mamf-finder</code> / bench outputs, job logs</td>
+<td>wherever you pointed them</td>
+<td>small, but still yours</td>
+</tr>
+<tr>
+<td>the isolated venv, cloned repos</td>
+<td><code>/tmp</code> or a share</td>
+<td>leave only if under node-local <code>/tmp</code></td>
+</tr>
+</tbody>
+</table>
+<p>Rules:</p>
+<ul>
+<li><strong>Confine scratch to one timestamped directory per mount</strong> — <code>&lt;mount&gt;/users/&lt;user&gt;/cluster-eval-&lt;name&gt;-&lt;TS&gt;/</code> — so clearing it is one move per mount and nothing of the user's sits inside the blast radius.</li>
+<li><strong>Keep the results, clear the data.</strong> The JSON / summary files are the deliverable; copy them off first (see the raw-artifact rule), then handle the multi-GiB work files.</li>
+<li><strong>Move, never <code>rm</code>.</strong> On the node: <code>mkdir -p &lt;mount&gt;/users/&lt;user&gt;/trash/&lt;YYYYMMDD&gt;-&lt;topic&gt; &amp;&amp; mv &lt;scratch&gt; &lt;that dir&gt;/</code>. Node-local <code>/tmp</code> is the exception — it evaporates with the pod.</li>
+<li><strong>A move within one Lustre mount is a rename, but a move across mounts copies every byte.</strong> Keep the trash directory <strong>on the same mount</strong> as the scratch, or a &quot;cleanup&quot; will take longer than the benchmark did.</li>
+<li>Moving to trash on the same filesystem <strong>does not free the space</strong>. Say so, give the exact paths, and let the user purge — they are the only one who may destroy data.</li>
+<li><strong>Report the cleanup in your summary</strong>: what you moved, where to, and how much. Then the user can empty it in one command.</li>
+</ul>
+<h2 id="isolated-install">Isolated install</h2>
+<p><strong>Always build a fresh venv on the newest released PyTorch.</strong> Never benchmark the node’s preinstalled env (conda, the image <code>python3</code>, a <code>dev</code> environment) — it is usually months behind. Torch version decides matmul kernels and NCCL version, so it changes MAMF and every <code>busbw</code> number. &quot;It imports and the CUDA major matches&quot; is <strong>not</strong> a reason to reuse it.</p>
+<p>Find the newest, do not assume a version from memory:</p>
+<pre><code class="language-bash">python3 -m venv &quot;$EVAL_VENV&quot;   # $HOME/venvs/cluster-eval, or shared FS so every node sees it
+&quot;$EVAL_VENV/bin/pip&quot; install -U pip
+&quot;$EVAL_VENV/bin/pip&quot; index versions torch --index-url https://download.pytorch.org/whl/cu130   # -&gt; LATEST: x.y.z
+&quot;$EVAL_VENV/bin/pip&quot; install torch numpy packaging nvidia-ml-py matplotlib \
+  --index-url https://download.pytorch.org/whl/cu130
+</code></pre>
+<p>Pick the <code>cuNNN</code> index matching the driver (<code>nvidia-smi</code>); try the highest one the driver supports and fall back if it 404s. Record in the report the installed version <strong>and</strong> that it was the latest on that index at eval time. If the newest wheel cannot be used (driver too old, no matching index), say so in Gaps with the version you settled for — do not quietly benchmark an old torch.</p>
+<p><strong>Verify each phase actually ran on it.</strong> Every bench prints its stack (<code>- software: torch=…, nccl=…</code>); MAMF logs it too. A launcher can silently substitute its own interpreter — <code>deepspeed</code>/<code>srun</code> run whatever <code>python3</code> is on the remote PATH, so a run can come back on the node’s old torch even with the venv sourced. Grep the log before you copy a number into the report.</p>
+<p><strong><code>nvidia-ml-py</code> is required</strong> (<code>import pynvml</code>) — <code>mamf-finder.py</code> refuses to start without it, because it needs the SM clock to confirm MAMF was a boost burst and the power draw to rank the scouted shapes. Do not pass <code>--telemetry off</code> to get around it; install the package. The pip name is <code>nvidia-ml-py</code>; the import is <code>pynvml</code>.</p>
+<p>Host packages — install before the env dump, on <strong>every</strong> node you will measure. Prefix with <code>sudo</code> if the eval user is not root. Empty <code>ibstat</code> on EFA is OK; still install <code>infiniband-diags</code> and confirm fabric with <code>rdma link</code> / <code>/sys/class/infiniband</code>.</p>
+<p>Debian/Ubuntu:</p>
+<pre><code class="language-bash">sudo apt-get update
+sudo apt-get install -y infiniband-diags fio iproute2 rdma-core pdsh
+# DCGM is not in Ubuntu — NVIDIA CUDA repo (after cuda-keyring). Match CUDA major from nvidia-smi:
+#   CUDA_VERSION=$(nvidia-smi | sed -E -n 's/.*CUDA Version: ([0-9]+)[.].*/\1/p')
+#   apt-get install -y --install-recommends datacenter-gpu-manager-4-cuda${CUDA_VERSION}
+</code></pre>
+<p>RHEL/Rocky:</p>
+<pre><code class="language-bash">sudo dnf install -y infiniband-diags fio iproute rdma-core pdsh
+# DCGM: NVIDIA CUDA repo, then datacenter-gpu-manager-4-cuda${CUDA_VERSION} (CUDA major from nvidia-smi).
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>binary</th>
+<th>package</th>
+<th>why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ibstat</code></td>
+<td><code>infiniband-diags</code></td>
+<td>InfiniBand/RoCE NIC (channel adapter) state, rate, LID. <strong>Empty on EFA is OK</strong> — then <code>rdma link</code> + sysfs rate</td>
+</tr>
+<tr>
+<td><code>fio</code></td>
+<td><code>fio</code></td>
+<td><code>fio-scan</code></td>
+</tr>
+<tr>
+<td><code>rdma</code></td>
+<td><code>iproute2</code> (+ <code>rdma-core</code>)</td>
+<td><code>rdma link</code></td>
+</tr>
+<tr>
+<td><code>pdsh</code></td>
+<td><code>pdsh</code></td>
+<td>DeepSpeed multi-node launcher / torchrun helper</td>
+</tr>
+<tr>
+<td><code>dcgmi</code></td>
+<td><code>datacenter-gpu-manager-4-cudaN</code> (NVIDIA CUDA repo, not distro)</td>
+<td><code>dcgmi diag -r 2</code> hardware health</td>
+</tr>
+</tbody>
+</table>
+<p>If apt/dnf is blocked, record that in Gaps and fall back to <code>/sys/class/infiniband/*/ports/*/rate</code> + <code>nvidia-smi topo</code> — that is a last resort, not the default.</p>
+<p>The five scripts from <strong>Scripts (fetch)</strong> must sit in <strong>one directory</strong> on a filesystem every node can read (shared FS), so <code>fio-scan</code> can call <code>./fio-json-extract.py</code>.</p>
+<h2 id="environment-dump">Environment dump</h2>
+<p>Capture into the report (UTC datetime, hostnames):</p>
+<pre><code class="language-bash">date -u +%FT%TZ
+hostname -s; uname -a
+nproc; grep MemTotal /proc/meminfo
+. /etc/os-release; echo &quot;$PRETTY_NAME&quot;
+&quot;$PY&quot; -V
+&quot;$PY&quot; -c &quot;import torch; print(torch.__version__, torch.version.cuda); print(torch.cuda.nccl.version())&quot;
+nvidia-smi --query-gpu=index,name,uuid,driver_version,memory.total,power.limit,power.max_limit,clocks.max.sm,clocks.sm,power.draw,pcie.link.gen.current,pcie.link.gen.max --format=csv
+nvidia-smi topo -m
+# fabric (install infiniband-diags / iproute2 first — see Isolated install):
+ibstat
+rdma link
+ls /sys/class/infiniband
+cat /sys/class/infiniband/*/ports/1/rate
+nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv
+sha256sum mamf-finder.py mamf-finder-all-gpus.py torch-dist-bench.py
+</code></pre>
+<p>Classify intra-node (NVLink vs PCIe from <code>topo</code>) and inter-node (InfiniBand / RoCE / EFA / Ethernet). HBM = <code>memory.total</code> reported in <strong>GiB</strong> (not MiB). SM clocks in the Environment GPU table: <strong>boost</strong> = <code>clocks.max.sm</code> (spec / short burst); <strong>saturated</strong> = SM clock at ~TDP under a dense GEMM (a range is fine; not a single nvidia-smi field); <strong>parked idle</strong> = <code>clocks.sm</code> when no compute. Do not label boost as “loaded” — a power-saturated GEMM sits well below boost. Do <strong>not</strong> name MAMF/MSMF in Environment — those terms start in Compute. Write the dump as <strong>five tables</strong> in the report: Host / GPU / Fabric / Filesystems / Software. Never one mega-table. <strong>Software:</strong> OS is <strong>not</strong> here — it is Host row 1. Python version + torch/NCCL. <strong>Never</strong> the eval venv path (temporal artifact). Tool versions (<code>mamf-finder</code>, …) belong under Compute.</p>
+<h2 id="compute">Compute</h2>
+<h3 id="introduction">Introduction</h3>
+<p>Open Compute with the <strong>GPUs that are here</strong> (name, count per node, SM count, HBM GiB, TDP, official BF16 TFLOPS + <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#tflops-comparison-table">table</a>). Do not start with DCGM or a FLOPS table. Then introduce the three passes as a <strong>numbered list</strong> (<code>1.</code> <code>2.</code> <code>3.</code>), each with the tool: <code>dcgmi diag -r 2</code> (NVIDIA's health check), <a href="https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/benchmarks/mamf-finder.py"><code>mamf-finder.py</code></a> (shape search → <strong>MAMF</strong> burst <em>and</em> <strong>MSMF</strong> sustainable TFLOPS, both vs spec — do not describe it as burst-only), lemon GEMM (inline script). Headings below are <strong>Hardware health</strong>, <strong>GPU performance benchmarks</strong>, <strong>Find underperforming GPUs</strong> — not the tool nicknames.</p>
+<h3 id="hardware-health">Hardware health</h3>
+<p>Hardware health, not a FLOPS number. <code>-r 1</code> is seconds of software/deployment only — skip it as a named step. <strong><code>-r 2</code></strong> is the light hardware suite (GPU memory, memory bandwidth, PCIe/NVLink; NVIDIA: ≲10.5 min on 8 GPUs). <code>-r 3</code> is a longer stress test, optional.</p>
+<p>Needs <code>nv-hostengine</code> and usually <code>CAP_SYS_ADMIN</code> (these trial pods are typically root with it). If install or diag fails, <strong>Gaps</strong> and continue with MAMF — do not skip the lemon pass.</p>
+<pre><code class="language-bash">nv-hostengine 2&gt;/dev/null || true
+dcgmi discovery -l
+dcgmi diag -r 2 | tee dcgm-diag-r2.txt
+</code></pre>
+<p>One node is the minimum; extra nodes in parallel if you already have them. Report <strong>Pass</strong> or <strong>Fail</strong> per plugin and per GPU. If everything passed, write <strong>Pass</strong> — do not add <strong>No Fail</strong>. Copy the log off immediately.</p>
+<h3 id="gpu-performance-benchmarks">GPU performance benchmarks</h3>
+<p><code>mamf-finder-all-gpus.py</code> — one GPU at a time, while every other GPU of the node runs a continuous bf16 matmul that holds it at its power limit, as in a real workload:</p>
+<pre><code class="language-bash">OUT_DIR=mamf &quot;$PY&quot; mamf-finder-all-gpus.py --dtype bfloat16 &gt; mamf-all.console 2&gt;&amp;1
+</code></pre>
+<p>On 8 H200s it took about 4.5 minutes.</p>
+<ol>
+<li>GPU0 runs the full <code>--search auto</code>: MAMF, MSMF and the MSMF shape (<code>mamf/gpu0.txt</code>).</li>
+<li>Each other GPU in turn measures GPU0's MSMF shape only (<code>mamf/gpu&lt;N&gt;.txt</code>); that is much shorter than a search. Their logs also print a MAMF line, which is a burst on that one shape, not a search result — ignore it.</li>
+<li><code>mamf/summary.txt</code> lists each GPU's MAMF and MSMF with shapes, W and MHz, then for each headline the node figure (the median GPU), the slowest GPU, which synchronous work runs at, and the spread across GPUs.</li>
+</ol>
+<p>Every GPU's MSMF is the same shape at full-node power, so the numbers compare directly. MAMF exists for GPU0 only; never present it as a per-GPU number. Compare MAMF and MSMF to official BF16 TFLOPS.</p>
+<p><strong>One pass cannot call a GPU slow, and a few percent is not slow.</strong> Healthy GPUs differ from chip to chip: on healthy 8x H200 and 8x B200 nodes the slowest GPU's MSMF sat 0.9–1.7% below its node median, and a single GPU's MSMF moves by up to 2.2% between passes on top of that, so a healthy GPU can read about 4% below the median in one pass. A GPU is a candidate only if it is more than 5% below the node median MSMF, well beyond that spread. Then rerun the pass twice with the shape pinned — <code>--m M --n N --k K</code> from the summary's MSMF shape, <code>OUT_DIR=mamf-rep2</code> and <code>mamf-rep3</code>, about 3.5 minutes each on 8 H200s. A GPU is under-performing only if it is more than 5% below its node median in <strong>all three</strong> passes; report it in <strong>Findings</strong> as described there. If the dip did not repeat, say so in one sentence with the three numbers, so the reader does not wonder about the first table.</p>
+<ul>
+<li>A non-zero exit means a GPU's run failed: read <code>mamf/gpu&lt;N&gt;.err</code>, rerun or put it in <strong>Gaps</strong>.</li>
+<li>A <code>saw idle siblings</code> warning in <code>summary.txt</code> means a sibling's matmul stopped during that GPU's measurement, so its MSMF reads high. Rerun; if it repeats, put it in <strong>Gaps</strong>.</li>
+<li>Do not substitute plain <code>mamf-finder.py</code> per GPU with the others idle: that MSMF is a single-GPU upper bound, and its log ends with a note saying so.</li>
+</ul>
+<h3 id="find-underperforming-gpus">Find underperforming GPUs</h3>
+<p>Cheap check for a slow, throttled, or dead card — <strong>not</strong> MAMF. Open with <strong>TLDR: no under-performing or dead GPUs</strong> or <strong>TLDR: under-performing: <code>&lt;host&gt;(node&lt;I&gt;):gpu&lt;N&gt;</code></strong>. One sentence: an under-performing GPU is slow or throttled, dead is the extreme case; same large <code>matmul</code> on every GPU, siblings idle. Run it on 1 node or 16 — the table has one row per node you have.</p>
+<p>Fixed <strong>16384³ bf16</strong>. Compute SM coverage from <strong>this</strong> GPU’s SM count (<code>torch.cuda.get_device_properties(0).multi_processor_count</code>) — never reuse an SM count from another GPU family. At 128×256 output tiles that is <strong>8192</strong> CTAs (<code>16384/128 × 16384/256</code>; a CTA is one CUDA thread block). Full waves = <code>8192 // SMs</code>, tail = <code>8192 % SMs</code>, wave efficiency = <code>1 - tail/8192</code>. Example only: 132 SMs → 62 waves + 8 CTA tail (<strong>99.9%</strong>).</p>
+<p>Show <strong>every GPU’s TFLOPS</strong>, not only min/max. <strong>min</strong> is the slowest score; <strong>worst GPU</strong> is which index hit that min (same number). <strong>max</strong> is the fastest sibling — the spread, not a substitute for the other scores. A card is under-performing when it lands well below its node median (the GPU performance pass uses &gt;5%); the min of a tight pack is noise.</p>
+<h2 id="network">Network</h2>
+<p>Ask which NCCL/platform env vars to set. <strong>Dump first</strong> (<code>env | grep -E '^NCCL_|^FI_|^AWS_OFI'</code>). Keep platform values. Default <strong>only if unset</strong>: <code>NCCL_NVLS_ENABLE=2</code>. If <code>NCCL_TUNER_PLUGIN=ofi</code> (or similar), a <strong>platform tuner</strong> — not NCCL’s built-in <code>tuning.cc</code> — picks the algorithm; confirm with <code>NCCL_DEBUG</code>. <code>pdsh</code> does <strong>not</strong> copy the launcher’s environment — put overrides in <code>~/.deepspeed_env</code> <strong>and</strong> <code>source</code> them in the remote command, or embed <code>VAR=val</code> in the pdsh <code>cmd</code>. <code>--venv_script run-env.sh</code> is the DeepSpeed equivalent. DeepSpeed can drop exports from <code>--venv_script</code>; <code>~/.deepspeed_env</code> (one <code>KEY=VALUE</code> per line, in the launch cwd) is the reliable file. <strong><code>--venv_script</code> does not switch the Python interpreter</strong> — DeepSpeed still launches whatever <code>python3</code> is on the runner PATH (often the node’s old install). Put the eval venv <strong>first</strong> on <code>PATH</code> inside <code>run-env.sh</code> <em>and</em> invoke <code>deepspeed</code> from that venv (<code>$EVAL_VENV/bin/deepspeed</code> or <code>PATH=$EVAL_VENV/bin:$PATH deepspeed …</code>). Confirm the table’s <code>torch=</code> / <code>nccl=</code> line matches the isolated install.</p>
+<p>Connectivity first (<code>torch-distributed-gpu-test.py</code> — ranks must init NCCL and finish a collective). <strong>The heading and TOC label must match the ranks you actually launched</strong>: <code>Inter-node connectivity</code> only when it ran across every node, <code>Intra-node connectivity</code> for a single-node run. On ≥2 nodes use the same launcher as inter-node all-reduce (<code>deepspeed -H</code>, <code>pdsh</code>, …) with one rank per GPU; the snippet below is the 1-node form.</p>
+<pre><code class="language-bash">&quot;$PY&quot; -m torch.distributed.run --nproc_per_node=&quot;$NGPU&quot; --rdzv_endpoint localhost:6000 --rdzv_backend c10d \
+  torch-distributed-gpu-test.py
+</code></pre>
+<p>Intra-node (header of <a href="https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a>):</p>
+<pre><code class="language-bash">&quot;$PY&quot; -u -m torch.distributed.run --nproc_per_node=&quot;$NGPU&quot; --rdzv_endpoint localhost:6000 --rdzv_backend c10d \
+  torch-dist-bench.py --collectives all --separate-tables
+</code></pre>
+<p><code>--collectives all</code> times all nine collectives (<code>all_reduce</code> first), each from 8 B to 16 GiB; on one 8x B200 node they take under 2 minutes. The <code>all_reduce</code> table is the all-reduce benchmark below; the per-call latency of all nine is the latency benchmark (see <strong>Latency</strong>).</p>
+<p>Inter-node (<strong>≥2 nodes</strong>, <strong>all</strong> of them). Let <code>NNODES</code> = hostfile length, <code>NGPU</code> = GPUs per node, ranks = <code>NNODES * NGPU</code>. <strong>1 node: omit this whole subsection</strong> — no heading, no “Skipped: 1 node”. <strong>Do not discover a missing hostfile here</strong> — that was the preflight gate. Use whatever launcher this cluster already has (<code>deepspeed -H &lt;hostfile&gt;</code>, <code>pdsh</code>, <code>srun</code>, or a site SSH wrapper). Reachability (SSH/TCP) already passed; this section is the GPU <code>torch-dist-bench.py --collectives all --separate-tables</code> sweep only. Headings: <code>### Inter-node all-reduce benchmark</code> and <code>### Inter-node latency benchmark</code> (ranks go in the TOC annotation, not the heading).</p>
+<p>Hostfile: skip <code>#</code> comments. <code>MASTER_ADDR</code> = first <strong>data</strong> line, not a comment. If the platform already ships a hostfile, <strong>read it, never edit it</strong>.</p>
+<p><strong>1. DeepSpeed</strong> (from the shared cwd that contains the bench):</p>
+<pre><code class="language-bash"># run-env.sh: source the eval venv; re-export the NCCL values you dumped (do not invent 2 if the platform set 1)
+time deepspeed -H &quot;$HOSTFILE&quot; --venv_script run-env.sh torch-dist-bench.py --collectives all --separate-tables \
+  |&amp; tee torch-dist-bench-deepspeed.log
+</code></pre>
+<p>Requires passwordless SSH from the launch node to every hostfile IP. Port is cluster-specific (a wrapper on PATH may already add <code>-p</code>). If <code>ssh</code> hits the <strong>machine</strong> sshd (not the container), start <code>sshd</code> in the container on an unused port, put the launch key in each container <code>authorized_keys</code>, and set <code>PDSH_SSH_ARGS_APPEND=&quot;-p &lt;port&gt; -o StrictHostKeyChecking=accept-new&quot;</code>. Ubuntu <code>pdsh</code> (used by DeepSpeed) may refuse to load modules when <code>/usr/lib</code> is not root-owned on overlay — <code>sudo chown root:root /usr/lib</code> on the launch node if you are not root.</p>
+<p><code>pip install matplotlib</code> in the eval venv on <strong>shared FS</strong> so <strong>every</strong> node can plot; otherwise only the intra-node (single-node) plot appears.</p>
+<p><strong>2. pdsh + torch.distributed.run</strong> (pdsh does not forward env):</p>
+<pre><code class="language-bash">GPUS_PER_NODE=8
+NNODES=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -vc '^$')
+MASTER_ADDR=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | head -1 | cut -d' ' -f1)
+MASTER_PORT=6002
+HOSTS=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | cut -d' ' -f1 | tr '\n' ',' | sed 's/,*$//g')
+cwd=$(pwd)
+
+# If getent hostname is 127.0.1.1, add to the remote cmd:
+#   MYIP=\$(hostname -I | awk '{print \$1}');
+#   IS_HOST=\$([ \&quot;\$MYIP\&quot; = \&quot;$MASTER_ADDR\&quot; ] &amp;&amp; echo 1 || echo 0);
+#   --rdzv_conf is_host=\$IS_HOST --local_addr \$MYIP
+cmd=&quot;source $cwd/run-env.sh; \
+python -u -m torch.distributed.run \
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
+    --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT \
+    --rdzv_backend c10d \
+    --max_restarts 0 \
+    --role \$(hostname -s): \
+    --tee 3 \
+    $cwd/torch-dist-bench.py --collectives all --separate-tables&quot;
+
+PDSH_RCMD_TYPE=ssh PDSH_SSH_ARGS_APPEND=&quot;-o StrictHostKeyChecking=accept-new -o BatchMode=yes&quot; \
+  pdsh -w $HOSTS $cmd |&amp; tee torch-dist-bench-torchrun.log
+</code></pre>
+<p><code>--role \$(hostname -s)</code> must expand <strong>on the remote</strong>, not on the launch node. <code>MASTER_ADDR</code> must be an IP other nodes can <strong>TCP</strong> to (rdzv).</p>
+<h4 id="is_host--local_addr-only-when-hostname--routable-ip"><code>is_host</code> / <code>local_addr</code>: only when hostname ≠ routable IP</h4>
+<p>Probe first: <code>getent hosts &quot;$(hostname)&quot;</code> and <code>_matches_machine_hostname(MASTER_ADDR)</code> on the endpoint node. If hostname already maps to the pod/node IP, <strong>omit</strong> <code>--rdzv_conf is_host</code> and <code>--local_addr</code>. Add them only when hostname is <code>127.0.0.1</code> / <code>127.0.1.1</code> or <code>_matches_machine_hostname</code> is False on the node that owns the endpoint.</p>
+<p>When needed, two independent failures look like a <code>TCPStore</code> timeout:</p>
+<ol>
+<li><strong>Nobody hosts the store.</strong> With no <code>is_host</code>, each agent calls <code>_matches_machine_hostname(endpoint_host)</code> (<a href="https://github.com/pytorch/pytorch/blob/main/torch/distributed/elastic/rendezvous/utils.py"><code>elastic/rendezvous/utils.py</code></a>), which only compares the endpoint against IPs from resolving <code>socket.gethostname()</code>. When the hostname maps to <code>127.0.1.1</code>, that is <strong>False on the node that owns the endpoint IP</strong>, so every agent starts as a <em>client</em>, nothing ever listens, and all nodes — the master included — time out. <code>is_host=1</code> on the endpoint node forces the <code>TCPStore</code> server (it binds <code>*:PORT</code>).</li>
+<li><strong>Workers get an unresolvable master.</strong> Rendezvous then advertises the host agent's <em>hostname</em> as <code>MASTER_ADDR</code>. Workers that cannot resolve it retry forever with <code>[c10d] The IPv6 network addresses of (&lt;hostname&gt;, &lt;port&gt;) cannot be retrieved (gai error: -2 - Name or service not known)</code>. <code>--local_addr $MYIP</code> makes each agent advertise its IP instead.</li>
+</ol>
+<p>Diagnose in this order, do <strong>not</strong> guess at the fabric — TCP already works if DeepSpeed runs:</p>
+<pre><code class="language-bash"># 1. does the endpoint node think it is the host?
+python -c &quot;from torch.distributed.elastic.rendezvous.utils import _matches_machine_hostname as m; print(m('$MASTER_ADDR'))&quot;
+# 2. with is_host=1, does the store bind?           -&gt; expect *:PORT
+ss -ltnp | grep &quot;$MASTER_PORT&quot;
+# 3. can a worker reach it?                          -&gt; expect OPEN
+timeout 5 bash -c &quot;echo &gt; /dev/tcp/$MASTER_ADDR/$MASTER_PORT&quot; &amp;&amp; echo OPEN
+# 4. is the advertised master resolvable everywhere?
+getent hosts &quot;$(hostname)&quot;      # 127.0.1.1 =&gt; you need --local_addr
+</code></pre>
+<p>Verify with a <strong>CPU-only, 1-proc-per-node</strong> <code>gloo</code> script (<code>init_process_group</code> + <code>all_reduce</code>) before spending GPUs; it isolates rendezvous from NCCL. <code>--rdzv_conf timeout=60</code> keeps a failed attempt short instead of the 600 s default. Symptom cheat sheet: <em>nothing listening anywhere</em> → problem 1; <em>store listening, workers log <code>gai error: -2</code></em> → problem 2.</p>
+<h3 id="transport-detection">Transport detection</h3>
+<p>Do this <strong>before</strong> quoting any all-reduce number. <code>busbw</code> is already unidirectional (<a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#unidirectional-vs-bidirectional-duplex">directionality</a>). Tables: <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#all-to-all-bandwidth">intra-node</a>, <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#nvlink">NVLink gens</a>, <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#inter-node-networking">inter-node / adapters</a>.</p>
+<p><strong>Intra-node</strong> — the only place “% of spec” is a wire comparison (NVLink/PCIe). NVLS can push ring-formula <code>busbw</code> past 100% of that spec; say so.</p>
+<pre><code class="language-bash">nvidia-smi topo -m          # NV18 = 18 NVLink bonds; PHB = PCIe host bridge (no NVLink)
+nvidia-smi nvlink -s        # per-link GBps; ×0.94 ≈ advertised (encoding)
+</code></pre>
+<p>Map NVLink gen from per-link payload rate (or GPU family): ~53 GBps/link → <strong>NVLink 5</strong> (900 GBps unidirectional, B200-class); ~26.5 → <strong>NVLink 4</strong> (450, H100/H200-class); slower ~12.5-class is older NVLink (<a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#nvlink">table</a>). <code>NV#</code> in topo is bonded link count. No NV* → PCIe; use <code>pcie.link.gen.max</code> (Gen5 x16 ≈ 63 GBps uni). Intra-node all-reduce % = <code>peak_busbw / spec_uni * 100</code> (NVLS can exceed 100% of the wire formula — note that).</p>
+<p><strong>Inter-node</strong></p>
+<pre><code class="language-bash">ls /sys/class/infiniband/                 # mlx5_* IB/RoCE; rdmap* EFA
+cat /sys/class/infiniband/*/ports/1/rate  # e.g. 200 Gb/sec (EFA) or 800 Gb/sec (CX-8)
+rdma link
+ibstat   # may print **nothing** on EFA — that is not “no fabric”; use rdma link + sysfs
+nvidia-smi topo -m                        # NIC legend when present
+</code></pre>
+<p>Identify adapter (AWS EFA + <code>fi_info -p efa</code>, NVIDIA ConnectX-7 NDR, ConnectX-8 XDR, …) from rate + name. Rail-optimized fabrics often put <strong>one NIC per GPU</strong>; count <code>ls /sys/class/infiniband | wc -l</code> / GPU count and record as <strong>inventory</strong>, not a busbw denominator. “Rail” here means one NIC lane per GPU, not a score.</p>
+<p><strong>Do not score multi-node all-reduce against the NIC spec — not in the Network section, not in Findings.</strong></p>
+<p><code>NNODES ≥ 2</code> <code>torch-dist-bench.py</code> <code>busbw</code> is <strong>always</strong> mixed: intra-node NVLink + inter-node NIC + (usually) NVLS/SHARP. Advertised per-GPU IB/RoCE/EFA GBps is <strong>inventory</strong>. It cannot be measured in isolation with this collective, NVLS on or off. NVLS is in-network all-reduce on the NVSwitch (~30% intra / ~25% inter vs ring <code>busbw</code>) and does <strong>not</strong> help other collectives.</p>
+<p>Forbidden (do not score multi-node all-reduce as a fraction of NIC rate — that mixed NVLink+NIC+NVLS number is not “% of rail”):</p>
+<ul>
+<li><code>busbw / 100 GBps</code> (or any NIC uni rate)</li>
+<li><code>busbw * (k-1)/(n-1)</code> as “GBps on the wire” or “% of rail” — that factor is ring-traffic bookkeeping in <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#real-network-throughput">why inter-node busbw is not the wire</a>, not an eval score, and it is wrong with NVLS (the default preset)</li>
+</ul>
+<p>Quote instead: peak <strong>busbw</strong>, NCCL path (IB vs Socket; NVLS yes/no), NIC inventory on the Environment / transport line, and optionally multi-node busbw vs <strong>1-node</strong> all-reduce at the <strong>same payload</strong> (scale-out tax). Record <code>NCCL_NVLS_ENABLE</code> and other NCCL env.</p>
+<p>Report template must include: transport + version, NIC inventory GBps, measured peak busbw, NCCL path — <strong>not</strong> “% of NIC spec.”</p>
+<h3 id="latency">Latency</h3>
+<p>The same <code>--collectives all --separate-tables</code> run gives the per-call latency of every collective: one table per collective with the latency median, p99 (99th percentile) and mean per payload, each call's time being the slowest rank's; then a summary table and <code>latency-collectives-&lt;host&gt;-&lt;ranks&gt;.png</code>, which plots all nine. Copy that plot off with the others.</p>
+<p><strong>Do not let all-reduce stand for latency.</strong> Its small-payload latency is the best of all collectives: NCCL gives only all-reduce its tree algorithm, whose latency grows with the log of the node count while the rings of the other collectives grow linearly, and with NVLS or InfiniBand SHARP a small all-reduce is reduced inside the switch. So report all nine, and say in the report what the main ones show — <a href="https://github.com/stas00/ml-engineering/blob/master/network/README.md#which-collective-to-measure-latency-with">which collective to measure latency with</a>:</p>
+<ul>
+<li><code>batch_isend_irecv</code> — point-to-point, how much latency the NIC and switches add without a collective algorithm in the way (pipeline parallelism, KV-cache transfer).</li>
+<li><code>all_to_all</code> — every GPU sends to every other at once, which exposes oversubscription and incast (MoE expert-parallel dispatch and combine).</li>
+<li><code>all_reduce</code> — the best case (tensor-parallel inference within a node, where it really is the workload).</li>
+<li><code>all_gather</code> / <code>reduce_scatter</code> — ring latency, growing linearly with the rank count (FSDP/ZeRO training at scale).</li>
+</ul>
+<p>PyTorch runs <code>batch_isend_irecv</code> through its point-to-point path and <code>scatter</code> as separate NCCL sends, while <code>nccl-tests</code> makes one NCCL call for each, so these two can read higher than <code>nccl-tests</code> would on the same cluster. Say so next to their numbers.</p>
+<p>Per scope, one table: <code>| collective | 8 B&lt;br&gt;median&lt;br&gt;(µs) | 8 B&lt;br&gt;p99&lt;br&gt;(µs) | 64 KiB&lt;br&gt;median&lt;br&gt;(µs) | 64 KiB&lt;br&gt;p99&lt;br&gt;(µs) |</code> — <code>&lt;br&gt;</code> inside the single header row keeps it narrow enough for PDF, which can't scroll sideways. At both payloads a call's time is nearly all latency: on 8x H200 every all-reduce up to 512 KiB took 15–23 µs. The inter-node table appends <strong><code>inter/intra ×</code></strong> per payload: the inter-node median ÷ the intra-node median of the same collective at the same payload — how many times longer a call takes once it leaves the node. Inline the <code>latency-collectives-…</code> plot of each scope.</p>
+<p><strong>Latency has no target.</strong> No vendor publishes collective latency figures, so never write &quot;% of spec&quot; and never call latency healthy or underperforming. It goes under <strong>Findings → Needs operator input</strong>: the 8 B medians of all nine collectives on one line per scope, with the <code>inter/intra ×</code> when ≥2 nodes, and what to obtain — the provider's expected latency for this fabric at this node count, or a reference run of the same fabric. On 1 node there is no ratio; report the intra-node figures alone.</p>
+<h2 id="storage">Storage</h2>
+<h3 id="introduction-1">Introduction</h3>
+<p>Open Storage with <strong><code>### Existing Partitions</code> first</strong>, then <strong><code>### Introduction</code></strong>. They are sibling headings, not nested. Never open with a fio table.</p>
+<ul>
+<li><strong><code>### Existing Partitions</code>:</strong> inventory only, as a <strong>table</strong> — <code>| mount | size | type | device / server |</code>. Deduplicate by <strong>backing volume</strong>, not by <code>df</code> line. Same RAID/device, same Lustre <code>nid@net:/fsname</code>, same CSI/PVC, or a bind-mount of another path = <strong>one row</strong>. Listing both <code>/</code> and <code>/tmp</code> (or two bind points of one share) looks like twice the disk. <strong>Always include <code>/</code></strong> as the on-node-disk row, even when the local <code>fio-scan</code> ran under <code>/tmp</code> — <code>/tmp</code> is a scan path, not a second volume. <strong><code>type</code> is the backing filesystem</strong> (<code>xfs</code>, <code>ext4</code>, <code>lustre</code>, …), not the container layer: <code>df -T /</code> often says <code>overlay</code> inside a pod — look through with <code>findmnt</code> / <code>lsblk -f</code> / the same-device <code>/tmp</code> mount and put that FS in the type column. Overlay is not a partition type. Order: <code>/</code> first, then one row per distinct shared volume, using the mount the cluster actually uses for work. Never loose paragraphs, never an “Also mounted” bucket. No <code>fio-scan</code>, no “this is the ceiling”, no “we poked this path”; nothing about what the eval did. Facts that apply to several rows (all one product, separate servers, a protocol shim to look behind) go in a sentence <strong>after</strong> the table. Do not bring in filesystem names from other clusters or past jobs.</li>
+<li><strong><code>### Introduction</code>:</strong> same convention as Compute and Network: a <strong>numbered list of passes that ran</strong>, each named by tool + path, not a list of mounts. GitHub-link <a href="https://github.com/stas00/ml-engineering/blob/master/storage/fio-scan"><code>fio-scan</code></a> on the first item and say what it does there (six <code>fio</code> runs over 16 KiB / 1 MiB / 1 GiB × read/write; 16 jobs, 4 KiB blocks, <code>libaio</code>, <code>O_DIRECT</code>; 3 min each). Later <code>fio-scan</code> mentions are bare <code>code</code>. Typical items: local <code>fio-scan</code> on <code>/tmp</code> (the baseline for the shared table's <strong>local/shared ×</strong> columns), shared <code>fio-scan</code> on the work FS, and — if <strong>≥2 nodes</strong> — concurrent 1 GiB write on a different share, <strong>one writer per given node</strong> (tool is <code>dd</code> unless you used something else). Omit the concurrent poke on 1 node.</li>
+</ul>
+<p><strong>Report what you did, not what you didn't.</strong> A mount you list for inventory needs its path, type and size — not &quot;not fio-scanned&quot;, &quot;not benchmarked&quot;, &quot;not tested&quot;. The reader assumes anything without a measurement wasn't measured; spelling it out adds a negative to every line and buries the results. Same for tests that were never part of the plan. <strong>Never assert an absence</strong> — no <code>Skip reasons: none</code>, no <code>### Gaps</code> / <code>None</code>, no <code>N/A</code> rows, no &quot;nothing was skipped&quot;. If it isn't there, it isn't there; the reader can see that. When a required phase genuinely could not run, the reason goes in <strong>### Gaps</strong> and nowhere else.</p>
+<p><strong>Never report how full a partition is</strong> — no <code>Use%</code>, no &quot;X% full&quot;, no &quot;N T free&quot;, nowhere in the report (not the Storage table, not the intro paragraphs, not Findings). It is a snapshot of what other tenants happened to be storing that hour, it has nothing to do with whether the hardware performs, and it will be wrong by the time anyone reads it. From <code>df</code> take only <strong>size, type, path, and server/device</strong>.</p>
+<p>Shared network filesystems are many different products. Report <strong>the one this allocation uses</strong>. <code>df -T</code> is the guest-visible type (protocol or native FS); that may or may not be the vendor product. If the type is a share protocol rather than the product (common with virtiofs: <a href="https://virtio-fs.gitlab.io/">project</a>, <a href="https://docs.kernel.org/filesystems/virtiofs.html">kernel</a>), recover the product from mount tag (<code>findmnt</code> SOURCE, <code>/sys/fs/virtiofs/*/tag</code> when it is virtiofs), pod volumes (<code>hostPath</code> vs PVC), node CSI annotations, and vendor docs — then link those docs. Advertised bandwidth may sit in the intro as product inventory. <strong>Measured vs advertised</strong> belongs in <strong>Findings → Underperforming subsystems</strong>, not here — or in <strong>Findings → Needs operator input</strong> when no advertised figure is known.</p>
+<p><strong>Decide which shared mounts to scan by grouping them, and scope every claim to the mount it came from.</strong> Managed parallel filesystems are usually provisioned per TiB of capacity, so a 2 TiB share and a 25 TiB share are not the same product at a different size — they have different expected rates, and a result from one does not transfer to the other. Group the rows of your inventory by <strong>(backing type, size)</strong>:</p>
+<ul>
+<li>Same type and same size → assume they perform alike. Scan <strong>one</strong>, say in the intro that the others are the same type and size so the numbers stand for the group.</li>
+<li>Different size or different type → a separate <code>fio-scan</code> each, or the group is unmeasured. At ~19 min per mount this is the cost of a real answer; ten distinct mounts is a long pass, not an excuse to generalize from one.</li>
+<li>Short on time? Scan the one the workload will actually hammer (checkpoints go to the big share, not the code share) and say plainly that the figures describe <strong>that</strong> mount, naming its size. Then the ask in <strong>Needs operator input</strong> covers that mount alone.</li>
+</ul>
+<p>After scanning, group tables by <strong>measured equivalence</strong>, not by impression: two mounts are equivalent only if <strong>every corresponding bandwidth and IOPS cell</strong> (16 KiB / 1 MiB / 1 GiB × read/write) differs by at most <strong>5%</strong>. Use <code>abs(a-b) / min(a,b) × 100</code> so the test is symmetric. Equivalent mounts share one table whose heading lists every mount and size; mounts that fail even one cell get separate tables. State the rule and whether any mounts grouped. Never average across mounts, never present one mount's table as &quot;the shared FS&quot;, and never ask the operator for expected figures for mounts you did not measure.</p>
+<p><strong>On a parallel FS, capture the layout while you are on the node — it is the difference between a number and an explanation.</strong> A single-client <code>fio-scan</code> result is capped by how many storage targets the file is spread over, so collect it in the same pass as the scan and keep it in <code>raw/</code>: on Lustre <code>lfs df -h &lt;mount&gt;</code> (how many OSTs and their sizes) and <code>lfs getstripe -d &lt;scan dir&gt;</code> (default stripe count and size); the equivalents are <code>mmlsdisk</code> / <code>mmlsfs</code> on GPFS, <code>beegfs-ctl --getentryinfo</code> on BeeGFS, <code>nfsstat -m</code> for NFS mount options. Stripe count 1 with a fast fabric and a slow result is the finding, not a mystery. Without it you can only ask the user to explain their own numbers.</p>
+<p>Published recipe is 3 min runtime (<code>fio-scan</code> default, ~18 min/mount). First-pass trial may pass <code>FIO_RUNTIME=60</code> only if you edit a <strong>copy</strong> of <code>fio-scan</code> — never silently change the published script. Run twice: NVMe path, then shared path. <code>--unlink=1</code> is already in the script; do not reuse leftover fio files.</p>
+<p><strong>Every hand-rolled <code>fio</code> command needs <code>--unlink=1</code>, and every scan leaves scratch behind if it doesn't.</strong> <code>--numjobs=16 --filesize=1g</code> writes <strong>16 GiB per run</strong>, so one six-run scan is ~33 GiB <strong>per mount</strong> — five mounts is 165 GiB of other people's storage, on filesystems that are often nearly full. <code>fio-scan</code> passes <code>--unlink=1</code> for exactly this reason; the moment you inline your own <code>fio</code> loop (to sweep several mounts, to add a size) that flag is the first thing to carry over. Verify with <code>du -sh &lt;scan dir&gt;</code> after the first run rather than at the end of a 90-minute sweep.</p>
+<pre><code class="language-bash">./fio-scan &quot;$NVME_PATH&quot;
+./fio-scan &quot;$SHARED_PATH&quot;
+</code></pre>
+<p>Need <code>python</code> on PATH for <code>fio-json-extract.py</code>, or patch the copy to <code>python3</code>.</p>
+<p><strong>Always format the report tables the same way</strong> for the shared core columns (local NVMe and every shared FS group). They must be comparable at a glance:</p>
+<ul>
+<li>Column names: <strong><code>latency (msec)</code></strong>, <strong><code>bw (MiBps)</code></strong>, <strong><code>IOPS (M)</code></strong>. Units live in parentheses in the header, not the cells. Never <code>lat msec</code> — write <strong>latency</strong>, and put <strong>msec</strong> in <code>()</code> like the other unit columns.</li>
+<li><strong>bw</strong> stays MiBps in both tables. Never write <code>k</code>/<code>M</code> on a MiBps value. Fast/local table: <code>_</code> thousands (<code>12_029.1</code>). Shared/slow: ungrouped is fine (<code>631.8</code>).</li>
+<li><strong>IOPS</strong> is millions (10⁶) in <strong>both</strong> tables (<code>3.08</code> vs <code>0.157</code>). Do not mix <code>k</code> in one table and <code>M</code> in the other. Do not put <code>M</code> in the cells.</li>
+<li>Shared tables only: append <strong><code>local/shared ×</code> at the end</strong> (local bandwidth ÷ shared bandwidth, one decimal) — <strong>how many times slower</strong>, not a percentage. A fraction-of-local percentage (12.4%) makes the reader do the reciprocal in their head; 8.0× is the number they want. Never <code>%local</code>. Core columns stay the same order as local: <code>size | rw | latency (msec) | bw (MiBps) | IOPS (M)</code> then the <code>×</code> column. 1 = as fast as the local table’s same row. Do not put it on the local table. With a fixed block size the IOPS ratio is identical, so a second IOPS-ratio column repeats the same information.</li>
+<li>Full-precision unscaled numbers stay in <code>raw/</code> (<code>fio-nvme-summary.md</code>, <code>fio-shared-summary.md</code>).</li>
+</ul>
+<h2 id="report-template">Report template</h2>
+<p><strong>Assume the reader knows nothing you learned during the eval.</strong> Before any number, say what the tool literally did — what it ran, how many times, what it varied. Never let a term appear that the report has not defined, and <strong>expand every acronym at its first use</strong> (MAMF, MSMF, DCGM, NVLS, GEMM, busbw, algbw): &quot;any shape&quot; is meaningless until the reader has been told the tool searches <strong>matmul shapes</strong> (M×N×K); the same goes for <code>O_DIRECT</code>, CTA/wave, <code>local/shared ×</code>. Write the definition where it is first used, not in a glossary the reader has to hunt for. If a sentence only parses because you watched the run, rewrite it.</p>
+<p><strong>Cut phrases that carry no information.</strong> &quot;and collects the results into one table&quot;, &quot;the results are shown below&quot;, &quot;for reference&quot;, &quot;as expected&quot;, &quot;it is worth noting&quot;, &quot;this section covers…&quot; — the reader can see the table; saying it exists adds nothing. Every sentence must add a fact, a definition, or a consequence. If deleting it loses nothing, delete it.</p>
+<p><code>reports/&lt;cluster&gt;-&lt;YYYY-MM-DD-HHMMZ&gt;.md</code> plus <code>reports/raw-&lt;name&gt;/</code> (consoles, txt, fio json, plots), next to this skill or in the working directory. Example: <code>h200-2026-09-17-1938Z.md</code>.</p>
+<p><strong><code>### Gaps</code> under Compute, Network, or Storage:</strong> omit the subsection entirely when that phase is complete. Never write <code>### Gaps</code> / <code>None</code>. Only include it when something is actually missing or incomparable (busy siblings, lemon GPU, DCGM <code>-r 2</code> failed/unprivileged, rdzv failed on ≥2 nodes, fio missing, …). <strong>1 node is not a gap</strong> — inter-node is omitted, not missing. When the rest of the report is written, <strong>ask the user to address every remaining Gaps item</strong>, each with a <strong>proposed plan of action</strong> (loop step 9).</p>
+<pre><code class="language-markdown"># Cluster eval: &lt;name&gt; (&lt;N&gt; nodes of &lt;G&gt;× &lt;GPU&gt;)
+
+Example titles: `4 nodes of 8× H200`, `1 node of 8× B200`, `16 nodes of 8× H100`. Always include **node count and GPUs per node**, not only the GPU name.
+
+- Datetime (UTC):
+- Access:
+- Nodes / GPUs:
+
+Then a one-line pointer to the raw logs directory: `Raw logs: [\`raw-&lt;name&gt;/\`](raw-&lt;name&gt;/).`
+
+## Table of Contents
+Numbered list **before Environment**. Each item is **topic — tool/test that ran**, linking to that heading (GitHub-style `#anchor`: lowercase, punctuation stripped, spaces to `-`). Duplicate titles (`### Introduction`) get `-1`, `-2` suffixes; prefer linking the unique bench heading, not the intro. Only list tests that actually ran (plus inventory).
+
+Compute TOC links are **purpose**, tools after the dash. Do **not** use DCGM / MAMF / Lemon GEMM as the TOC link text; those names live in the annotation or the section body. The `###` headings must match the TOC labels so the anchors agree.
+
+The connectivity test has no section of its own — its result is item 1 of the Network `### Introduction`, so that TOC line links to `#introduction-1` (the second `### Introduction` in the document). Label it by the ranks it actually ran on: **Inter-node connectivity** only if it spanned every node, otherwise **Intra-node connectivity** with the rank count.
+
+Network TOC: **Intra-node all-reduce benchmark**, **Inter-node all-reduce benchmark**, **Intra-node latency benchmark** and **Inter-node latency benchmark** — `torch-dist-bench.py`, then the rank count (and &quot;every collective&quot; for the latency ones). Do not drop the word **benchmark**. Omit the inter-node lines if 1 node.
+
+Storage TOC: **Existing Partitions** — mount inventory. Then **Local disk IO benchmark** — `fio-scan` on `&lt;local path&gt;` and **Shared &lt;product&gt; IO benchmark** — `fio-scan` on `&lt;shared path&gt;` (same shape; path after `on`, never inside the link). Concurrent poke when ≥2 nodes: **Concurrent write shared fs benchmark** — `&lt;N&gt;-node 1 GiB O_DIRECT dd`.
+
+Example:
+
+```markdown
+## Table of Contents
+
+1. [Environment](#environment) — host, GPU, fabric, mounts, software (inventory, not a bench)
+2. [Compute](#compute)
+   1. [Hardware health](#hardware-health) — `dcgmi diag -r 2`
+   2. [GPU performance benchmarks](#gpu-performance-benchmarks) — `mamf-finder-all-gpus.py`, one GPU at a time while the others run a matmul
+   3. [Find underperforming GPUs](#find-underperforming-gpus) — fixed 16384³ `matmul` on every GPU
+3. [Network](#network)
+   1. [Inter-node connectivity](#…) — `torch-distributed-gpu-test.py`, R ranks (label it **Intra-node connectivity** if it only ran on one node)
+   2. [Intra-node all-reduce benchmark](#intra-node-all-reduce-benchmark) — `torch-dist-bench.py`, 8 ranks
+   3. [Inter-node all-reduce benchmark](#inter-node-all-reduce-benchmark) — `torch-dist-bench.py`, 32 ranks (omit this TOC line and the section if 1 node)
+   4. [Intra-node latency benchmark](#intra-node-latency-benchmark) — `torch-dist-bench.py`, 8 ranks, every collective
+   5. [Inter-node latency benchmark](#inter-node-latency-benchmark) — `torch-dist-bench.py`, 32 ranks, every collective (omit this TOC line and the section if 1 node)
+4. [Storage](#storage)
+   1. [Existing Partitions](#existing-partitions) — mount inventory
+   2. [Local disk IO benchmark](#local-disk-io-benchmark) — `fio-scan` on `/tmp`
+   3. [Shared Lustre IO benchmark](#shared-lustre-io-benchmark) — `fio-scan` on `/code`
+   4. [Concurrent write shared fs benchmark](#concurrent-write-shared-fs-benchmark) — 4-node 1 GiB `O_DIRECT` `dd` (omit if 1 node)
+5. [Findings](#findings)
+   1. [Healthy subsystems](#healthy-subsystems)
+   2. [Underperforming subsystems](#underperforming-subsystems) (omit if nothing underperformed)
+   3. [Needs operator input](#needs-operator-input) (omit if every target was known)
+```
+
+Rebuild the anchors from the headings you actually wrote. Omit TOC lines for phases that did not run — no placeholder line saying they are missing.
+
+## Environment
+Five small tables — **Host / GPU / Fabric / Filesystems / Software**. Do not pile every field into one table. The third and fourth are **Fabric** and **Filesystems**, never “Network” / “Storage”: those would take the `#network` / `#storage` anchors the top-level sections need.
+
+### Host
+**First row: Ubuntu** (`PRETTY_NAME`, e.g. 24.04.2 LTS). Then hostname, kernel (`uname`), CPU cores/NUMA, host RAM, PCIe gen×width (`pcie.link.gen` / `width` from nvidia-smi — board/host path, not a GPU property). Not Python.
+
+### GPU
+name × count, SM arch / SM count, HBM in **GiB only** (not `275040 MiB (268 GiB)`), driver / CUDA, **three** SM clocks — boost (`clocks.max.sm`), saturated (~TDP under dense GEMM), parked idle — power limit / idle draw. Do not merge boost and “loaded”; a dense GEMM is not at boost. No MAMF/MSMF names here. PCIe does **not** go here.
+
+### Fabric
+intra-node fabric + spec uni GBps; inter-node adapter + rate as **inventory** (`ibstat` / `rdma link`).
+
+### Filesystems
+Left column **Local** / **Shared network FS** — do not repeat “local” or “ceiling” in the value. Local value: mount + size; if the backing device is Linux md, write `md127 RAID` (or whatever `mdN`), not a bare `md127`. Shared: guest-visible type + path + size; add the vendor product name when it is not the same as `df -T`. **Capacity only — never how much is used or free.**
+
+### Software
+Python version, torch, NCCL (`torch.cuda.nccl.version()`). Note that torch was the newest release at eval time. **No eval venv path.** Isolated venv is how you run, not a report field.
+
+
+## Compute
+
+### Introduction
+Name × count, SM count, HBM GiB, TDP, official BF16 TFLOPS. Not a benchmark dump. Then a **numbered list of the passes that follow**, each saying what the tool literally does:
+
+1. `dcgmi diag -r 2` — NVIDIA's own health check (software, memory, PCIe).
+2. `mamf-finder-all-gpus.py` — times many **matmul shapes** (M×N×K) on GPU0 to find the fastest, then measures the sustainable winner on every other GPU, each while all the others run a matmul; reports **MAMF** and **MSMF**, both vs the official spec.
+3. Lemon GEMM — a throwaway inline script: one fixed matmul shape (M=N=K=16384) on every GPU, to catch a dead, slow, or throttled card.
+
+### Hardware health
+**Pass** (or **Fail** on named plugins/GPUs; or Gaps: no hostengine / unprivileged). Never **Pass** and **No Fail** together.
+
+### GPU performance benchmarks
+Official TFLOPS source = [TFLOPS comparison table](https://github.com/stas00/ml-engineering/blob/master/compute/accelerator/README.md#tflops-comparison-table), not a relative path. Open that section by explaining the measurement before any number: compute is measured by timing matrix multiplication; how fast a `matmul` runs depends on its **matmul shape** (the M×N×K dimensions), so the tool searches. State how many matmul shapes GPU0's search timed (the `Tried N shapes` line in `mamf/gpu0.txt`), and that every other GPU then measured GPU0's two winning shapes while all the rest of the node ran a continuous matmul. Then `Two numbers vs official BF16 &lt;N&gt; TFLOPS on &lt;GPU&gt;:` (name the GPU; do not leave the spec floating), then two bullets, each with the measured W/MHz the script printed:
+
+- **MAMF** (Maximum Achievable Matmul FLOPS) — highest TFLOPS a short burst at boost reaches, with the board far under its power limit, measured on every GPU at GPU0's MAMF shape; the node figure is the median GPU. A ceiling, not a rate any sustained workload holds. One number, with its shape and % spec.
+- **MSMF** (Maximum Sustainable Matmul FLOPS) — best that survives once the matmul shape is large enough to pin the board at the power limit and the clock settles, measured on every GPU while all the others compute. The node figure is the median GPU, so one weak or strong chip doesn't set it; synchronous work runs at the slowest GPU, which the summary also gives. Compare a sustained workload to the median, and a synchronous job's ceiling to the slowest.
+
+Then the per-GPU table from `mamf/summary.txt`, and below it the node MAMF and MSMF (median GPU), the slowest GPU and the spread:
+
+| GPU | MAMF | MSMF | MSMF shape | W / MHz | MSMF % spec |
+
+TFLOPS are integers, as the script prints them; compute % spec from the integer. On a 1-GPU box there is no &quot;while the others compute&quot; and no median or spread; say it is the only GPU.
+
+**Expand every acronym at first use in the report** — MAMF, MSMF, DCGM, NVLS, GEMM, busbw/algbw, MFU. The Terms table in this skill is for the agent; the reader of the report only sees the report.
+
+**The eval does not know what the cluster is for.** Never assume training — the same allocation may be bought for inference, fine-tuning, or batch jobs. Write &quot;sustained workload&quot;, not &quot;training step&quot;; say &quot;training or inference&quot; when you need an example.
+
+After the bullets, say what the table's shape and `W/MHz` columns are: the M×N×K that won each regime, and the board power / SM clock measured while it ran.
+
+### Find underperforming GPUs
+**TLDR:** `no under-performing or dead GPUs` — name both outcomes, since a dead card and a slow one are different findings. If something is wrong, say which: `under-performing: &lt;host&gt;(node&lt;I&gt;):gpu&lt;N&gt;` or `dead: &lt;host&gt;(node&lt;I&gt;):gpu&lt;N&gt;`. Then define an under-performing GPU (slow or throttled; dead is the extreme case) and the pass: the **same** matmul shape (M=N=K=16384) on every GPU, siblings idle, flag a card well below its node's median — explicitly **not** MAMF (no search over matmul shapes, no boost/sustain split). Then 16384³ SM coverage. Table: all GPU scores per node you have, min (gpu), max. Do **not** prefix the heading with node count — ranks belong in the TOC annotation, not the heading.
+
+## Network
+
+### Introduction
+Open with a **numbered list of tools** (same shape as Compute and Storage), each explained before any number: GitHub-link [`torch-distributed-gpu-test.py`](https://github.com/stas00/ml-engineering/blob/master/debug/torch-distributed-gpu-test.py) (connectivity — one process per GPU; ranks see each other and complete a collective; say how many ranks and over how many nodes it ran, and do not call a 1-node run inter-node) and [`torch-dist-bench.py`](https://github.com/stas00/ml-engineering/blob/master/network/benchmarks/torch-dist-bench.py) — say what it sweeps (all nine collectives, payloads from 8 B to 16 GiB) and define `busbw` (bus bandwidth, what the fabric moves), `algbw` (algorithm bandwidth, what the caller sees) and the latency median and p99 (the time of one call, the slowest rank's, over up to 1000 calls) **there**, plus which rank counts it ran at. Do not write “the book” or “MLE”. Then NVLS (see Terms): in-network **all-reduce** on the NVSwitch (~30% intra / ~25% inter vs ring `busbw`); does **not** help other collectives. InfiniBand switch SHARP is a different feature. Record `NCCL_NVLS_ENABLE`: **2** = auto — the eval default if unset; **0** = force off; **1** = require NVLS (can abort if unavailable). State whether NVLS was available for intra and for inter (`NCCL_DEBUG` when you have it). Name who set the env (container image / cluster), not that you “kept” it.
+
+### Intra-node all-reduce benchmark
+Intra-node: transport (e.g. NVLink 5, NV18), spec uni GBps, busbw table, peak % spec (note NVLS if on).
+**Inline** `![Intra-node all-reduce](raw/&lt;cluster&gt;/busbw-mean-all_reduce-…-8.png)` next to that section.
+### Inter-node all-reduce benchmark
+Inter-node **only if ≥2 nodes**: transport, NIC inventory GBps, table, peak busbw vs 1-node at the same payload, NCCL path (not % of NIC spec). Do not name the launcher. Rank/node counts go in the TOC annotation. **1 node: delete this subsection and its TOC entry.**
+**Inline** `![Inter-node all-reduce](raw/&lt;cluster&gt;/busbw-mean-all_reduce-…-R.png)` when the plot exists.
+### Intra-node latency benchmark
+Why all-reduce alone would flatter, and what `batch_isend_irecv`, `all_to_all`, `all_reduce` and `all_gather`/`reduce_scatter` each show (see **Latency**), then the latency table of all nine collectives at 8 B and 64 KiB, median and p99, with the PyTorch caveat next to `batch_isend_irecv` and `scatter`.
+**Inline** `![Intra-node latency](raw/&lt;cluster&gt;/latency-collectives-…-8.png)`.
+### Inter-node latency benchmark
+**Only if ≥2 nodes**: the same table with the `inter/intra ×` columns. No verdict here or in Findings beyond **Needs operator input**. **1 node: delete this subsection and its TOC entry.**
+**Inline** `![Inter-node latency](raw/&lt;cluster&gt;/latency-collectives-…-R.png)` when the plot exists.
+### Gaps
+(only if needed, e.g. rdzv failed on ≥2 nodes — not “only 1 node”)
+
+## Storage
+
+### Existing Partitions
+Inventory table: **always a `/` row**, then one row per **distinct** volume. Same backing store mounted twice (`/tmp` on `/`, bind-mount aliases) is still one row. No benchmarking comments. Do not name a network FS this allocation does not use. Shared facts go after the table.
+
+| mount | size | type | device / server |
+| --- | ---: | --- | --- |
+| `/` | 28T | xfs | md127 RAID0 (8× ~3.5T NVMe) |
+| `/code` | 2.3T | Lustre | `10.4.138.63@tcp:/xmym3bev` |
+
+### Introduction
+Same shape as Compute / Network: **numbered list of passes** (tool + path), not a mount inventory. GitHub-link `fio-scan` on the first item and explain what it literally does **there** — six `fio` runs against one directory — file sizes **16 KiB, 1 MiB and 1 GiB (correspondingly small, medium and large)**, each read and write — 16 parallel jobs, 4 KiB blocks, `libaio`, `O_DIRECT` (and say what `O_DIRECT` buys: bypasses the page cache so the numbers are the filesystem's, not RAM's), 3 min of timed IO each.
+
+**Write IEC units, never `fio`'s shorthand.** The script prints `16k` / `1m` / `1g`; the report says **16 KiB** / **1 MiB** / **1 GiB**, in the `size` column of both tables and in every sentence that cites a row. `16k` is not a valid unit. Later mentions are bare. Then the table units note. All “we scanned X” comments live here.
+
+Two tables, **same columns and same IOPS scale**:
+
+| size | rw | latency (msec) | bw (MiBps) | IOPS (M) |
+| ---: | --- | ---: | ---: | ---: |
+| 16 KiB | read | … | 12_029.1 | 3.08 |
+| … | … | … | 631.8 | 0.157 |
+
+### Local disk IO benchmark
+…
+### Shared &lt;product&gt; IO benchmark
+| size | rw | latency (msec) | bw (MiBps) | IOPS (M) | local/shared × |
+
+Heading is **Shared &lt;product&gt; IO benchmark** (e.g. Shared Lustre IO benchmark), not a bare “Shared”. Optional extra when ≥2 nodes: **Concurrent write shared fs benchmark**. Omit on 1 node.
+
+Local NVMe vs shared network FS (16 KiB / 1 MiB / 1 GiB, read+write). bw = MiBps (`_` on the fast table). IOPS = 10⁶ in every table. **`size` is right-aligned** (`---:`), like every other numeric column; only `rw` is left-aligned. Each shared table appends **`local/shared ×`** at the **end** (local bandwidth ÷ shared bandwidth) so the first five columns match local. Explain the column in a **sentence**, not a chain of equations: what it divides and what 1 would mean. Do not add an IOPS ratio: fixed 4 KiB blocks make it identical to the bandwidth ratio. **Quote table values verbatim** in prose — if the column says `26.5`, write `26.5×`, never `27×`. Do not express the comparison as a percentage, do not call it `%local`, and say &quot;the local disk table above&quot;, not a device name. Raw unscaled numbers in `raw/`.
+(omit Gaps unless something is missing)
+
+## Findings
+
+Up to three headings, in this order — **### Healthy subsystems**, **### Underperforming subsystems**, **### Needs operator input** (the noun is required; never a bare `### Healthy`). Include only the ones that have bullets. Bullet labels are the subsystem (GPUs, fabric, local disk, shared network FS, torchrun) — **never prefix with A./B./C.** (the report sections are Compute, Network, Storage). Split mixed areas (e.g. local disk vs shared FS). Do not put an underperforming item in Healthy with a caveat, and do not hide it in a Flags list that looks like the healthy bullets.
+
+Healthy subsystems: fabric and GPUs that met spec. Network headline is **fabric** (intra vs NVLink spec + NVLS; inter busbw + path + vs 1-node all-reduce) — **never** “X% of NIC/rail,” and **not** a launcher. Do not credit DeepSpeed / torchrun / srun in busbw or Findings.
+
+**Under-performing and dead GPUs** get one bullet each under Underperforming subsystems, from either GPU pass. Name each as `&lt;host&gt;(node&lt;I&gt;):gpu&lt;N&gt;`, e.g. `blah-176(node0):gpu7`: `&lt;host&gt;` is the hostname the Environment Host table uses, which an operator needs to drain or replace the card; `node&lt;I&gt;` is the node's 0-based position in the hostfile (the order the user gave the nodes), which stays readable when hostnames are cryptic; `&lt;N&gt;` is the GPU index `nvidia-smi` shows. Follow it with the pass that found it and its numbers against its node's median, e.g. &quot;`blah-176(node0):gpu7` — MSMF 701 / 698 / 704 TFLOPS in three passes, 6.8–7.2% below the node median each time&quot;. List every one; never summarize as &quot;two slow GPUs&quot;.
+
+Underperforming subsystems: measured vs **vendor advertised** for **this** product; not good enough for code (16 KiB) / checkpoint (1 GiB → 1 TiB) / dataloader; torchrun/rdzv if it failed; leftover Gaps. A broken launcher is **not** “the network is unhealthy.” Do not name a network FS this allocation does not use.
+
+**Needs operator input: a verdict requires a target, so a measurement without one goes here, not under Underperforming.** Calling a subsystem slow when you have nothing to compare it against is an opinion dressed as a finding — the reader cannot act on it and the operator can dismiss it. This heading is for a subsystem that was measured cleanly but whose expected figures only the operator has: a shared FS with no published provisioned throughput, a fabric whose purchased tier is unknown, any device whose spec sheet does not exist publicly. Open with one sentence saying these cannot be called healthy or underperforming until those figures arrive. Each bullet gives the measurements in full, then **what to obtain**.
+
+**Write targets in the plural — a filesystem never has one.** Every file size and operation has its own rate, reads and writes differ, so it is &quot;the figures they are supposed to hit&quot; and &quot;no published performance figures&quot;, never the singular. The singular quietly promises the reader one number to compare against, which is the mistake the whole category exists to avoid.
+
+**Ask only about the mount you measured, and name its size.** Expected rates are per filesystem, so asking for &quot;`/code` and `/data`&quot; when six numbers came from `/code` alone invites an answer you cannot use. State which mount the figures describe, and if sibling mounts differ in size, say that each has its own target and needs its own scan — pointing at the one the workload will lean on hardest.
+
+**Ask for the targets in the same shape as your measurement, or they will not settle anything.** &quot;The provisioned throughput&quot; is not askable — a parallel FS has no single rate, and a per-TiB headline number cannot be checked against a row of the table. Ask for **one expected value per measured cell, in the units you measured, under the conditions you measured**: for `fio-scan` that is bandwidth in MiB/s **or** IOPS at 16 KiB, 1 MiB and 1 GiB, read and write, from one client with 16 jobs, 4 KiB blocks and `O_DIRECT`. Either unit is enough because the fixed block size makes one derivable from the other. Say those conditions in the ask, because the same filesystem answers differently per client and in aggregate, and because small-file and large-file rates come from different limits — one headline figure hides both. Then add the conditions that would invalidate a comparison if the operator's figures assume something else: per-client vs per-filesystem, and stripe count. A comparison against another subsystem you did measure (shared FS vs local disk, `26.5×` slower) is a fact and belongs in the bullet; it is not a substitute for the target, because local NVMe was never what the shared FS was sold to match.
+
+Judge before you place a bullet: is there a number this is supposed to hit? Official TFLOPS, NVLink spec GBps and a vendor-advertised FS figure are targets, so those bullets can be Healthy or Underperforming. If the answer is &quot;the operator would have to tell me&quot;, the bullet goes in **Needs operator input** even when the measurement looks disappointing.
+
+**Quote the whole measurement, compactly, not one cherry-picked row.** A storage bullet has six numbers behind it, so give all six in one line — `read / write: 16 KiB **a MiB/s / b MiB/s**, 1 MiB **c MiB/s / d MiB/s**, 1 GiB **e MiB/s / f MiB/s**` — instead of a single size, which leaves the reader asking what the others were. Same for any bench that swept a parameter. Compact, not partial.
+
+**Every number outside a table carries its unit.** Putting `MiB/s` once in the lead-in and then listing bare `1_646.1 / 1_658.3` is a table habit; in prose each value needs its abbreviation — `1_646.1 MiB/s / 1_658.3 MiB/s`. `read / write` once is fine. Same for GBps, TFLOPS, msec, ×. The table header is the one place a unit may appear only once.
+
+**When vendor figures are missing, say the targets are unknown, say why none are published, and ask for them — but do not narrate the search.** Three things, because a measurement with no target cannot be called a shortfall, and a reader who knows the filesystem's name will reasonably assume a spec sheet exists: (1) state plainly that the provisioned figures are unknown and the measured numbers therefore have nothing to be judged against; (2) explain in a sentence why — for a parallel FS, **the software publishes no performance figures**; Lustre, GPFS/Storage Scale, BeeGFS and NFS are filesystem software, and throughput is a property of the deployment (count of object storage targets / servers, their backing devices, the network to them, per-file stripe count), so the number that exists is the **service tier the operator purchased**, typically sold per TiB of capacity (managed Lustre commonly 125–1000 MB/s per TiB); (3) ask the user for that tier **and** the default stripe layout, since a single-stripe file is served by one storage target regardless of filesystem size and is the usual explanation for a single client seeing a few hundred MiB/s. What to leave out is the search: where you looked, what `df` or the mount table did not contain. A mount was never going to state IO speed, so ruling it out tells the reader nothing and reads as an excuse.
+
+**Say who is slowed and by how much, in literal terms.** Hardware and files do not &quot;feel&quot;, &quot;suffer&quot;, &quot;struggle&quot;, &quot;get punished&quot;, or &quot;care&quot;; a filesystem is not &quot;painful&quot;. Name the concrete operation and attach the measured rate to it — &quot;a `git clone` or `pip install` on `/code` runs at the 16 KiB read rate of 204.7 MiB/s&quot; — so the reader can check the claim against the table instead of trusting an adjective.
+
+If nothing underperformed, **omit that heading and its TOC line** — never write `Underperforming subsystems: none`. Same for **Needs operator input** when every target was known. No extra **Flags** section.
+</code></pre>
+<h2 id="final-pass-before-you-show-the-report">Final pass before you show the report</h2>
+<p>Prose rules get skipped. <strong>Run this list against the finished report, line by line, before you tell the user it is ready.</strong> Each item has failed a real review.</p>
+<table>
+<thead>
+<tr>
+<th>check</th>
+<th>fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Every acronym expanded at first use (MAMF, MSMF, DCGM, NVLS, GEMM, busbw, algbw)</td>
+<td><code>Maximum Achievable Matmul FLOPS</code>, …</td>
+</tr>
+<tr>
+<td>Every tool says what it literally does before its first number</td>
+<td>how many shapes / payloads / runs, and what it varied</td>
+</tr>
+<tr>
+<td>No term used before it is defined (&quot;any shape&quot;, <code>local/shared ×</code>, CTA, <code>O_DIRECT</code>)</td>
+<td>define at first use, in a sentence — not as an equation</td>
+</tr>
+<tr>
+<td>Shared-vs-local stated as <strong>times slower</strong>, not percent</td>
+<td><code>8.0×</code>, not <code>12.4%</code></td>
+</tr>
+<tr>
+<td>Prose numbers identical to the table cell they cite</td>
+<td>table <code>26.5</code> → prose <code>26.5×</code>, never <code>27×</code></td>
+</tr>
+<tr>
+<td>Findings bullets carry the full sweep, compactly</td>
+<td>all three sizes × read/write on one line, not just 1 GiB</td>
+</tr>
+<tr>
+<td>Every number outside a table has its unit</td>
+<td><code>1_646.1 MiB/s / 1_658.3 MiB/s</code>, not a lead-in <code>MiB/s:</code> then bare numbers</td>
+</tr>
+<tr>
+<td>Nothing inanimate given feelings</td>
+<td>not &quot;small files will feel that&quot; — name the operation and its measured rate</td>
+</tr>
+<tr>
+<td>Targets in the plural</td>
+<td>&quot;the figures they are supposed to hit&quot;, never &quot;the figure&quot;</td>
+</tr>
+<tr>
+<td>Missing vendor figures: target-unknown admission + why none are published + the ask, no search narrative</td>
+<td>keep &quot;provisioned throughput is unknown, so there is no target to compare against&quot;; drop &quot;the mounts show only the server address and size&quot;</td>
+</tr>
+<tr>
+<td>Latency reported for every collective, never as % of spec or a verdict</td>
+<td>all nine at 8 B and 64 KiB; <code>inter/intra ×</code> when ≥2 nodes; Findings → <strong>Needs operator input</strong> only</td>
+</tr>
+<tr>
+<td>No bullet judged without a target</td>
+<td>no known figure to hit → <strong>### Needs operator input</strong>, not Underperforming</td>
+</tr>
+<tr>
+<td>Shared-FS figures scoped to the mount they came from, with its size</td>
+<td>one mount's table is never &quot;the shared FS&quot;; differently-sized siblings each need their own scan</td>
+</tr>
+<tr>
+<td>Distinct shared mounts grouped only by the 5% rule</td>
+<td>one table only if every corresponding bandwidth and IOPS cell is within 5%; otherwise separate tables</td>
+</tr>
+<tr>
+<td>The ask names one expected value per measured cell, with conditions</td>
+<td>&quot;expected MiB/s or IOPS at 16 KiB / 1 MiB / 1 GiB, read and write, one client, 16 jobs, 4 KiB blocks, <code>O_DIRECT</code>&quot; — not &quot;the provisioned throughput&quot;</td>
+</tr>
+<tr>
+<td>Sizes in IEC units</td>
+<td><code>16 KiB</code> / <code>1 MiB</code> / <code>1 GiB</code>, never <code>16k</code> / <code>1m</code> / <code>1g</code></td>
+</tr>
+<tr>
+<td>Storage table headers carry units in <code>()</code></td>
+<td><code>size</code>, <code>rw</code>, <code>latency (msec)</code>, <code>bw (MiBps)</code>, <code>IOPS (M)</code></td>
+</tr>
+<tr>
+<td>Numeric columns right-aligned, including <code>size</code></td>
+<td><code>---:</code> for all but <code>rw</code></td>
+</tr>
+<tr>
+<td>Every <code>###</code> heading matches its TOC label, and every anchor resolves</td>
+<td>rebuild anchors from the headings you wrote</td>
+</tr>
+<tr>
+<td>Labels match what actually ran</td>
+<td>a 1-node connectivity run is <strong>intra</strong>-node</td>
+</tr>
+<tr>
+<td>Every slow or dead GPU named as <code>&lt;host&gt;(node&lt;I&gt;):gpu&lt;N&gt;</code> in Findings, and a slow one confirmed in three passes</td>
+<td><code>blah-176(node0):gpu7</code>, not &quot;GPU7&quot; or &quot;one slow card&quot;</td>
+</tr>
+<tr>
+<td>No absence asserted</td>
+<td>no <code>Skip reasons: none</code>, <code>### Gaps</code> / <code>None</code>, <code>N/A</code></td>
+</tr>
+<tr>
+<td>No redundant verdicts</td>
+<td><code>Pass</code>, not <code>Pass … No Fail</code></td>
+</tr>
+<tr>
+<td>No filler sentences</td>
+<td>&quot;collects the results into one table&quot;, &quot;as expected&quot;</td>
+</tr>
+<tr>
+<td>No workload assumed</td>
+<td>&quot;sustained workload&quot;, not &quot;training step&quot;</td>
+</tr>
+<tr>
+<td>Scratch cleared from every mount you wrote to</td>
+<td><code>du -sh</code> each scan dir; <code>fio-test/</code> moved to that mount's <code>trash/</code>, paths and sizes named in your summary</td>
+</tr>
+</tbody>
+</table>
+<p>Then fold any correction the user still makes back into this file (see <strong>Keep this skill up to date</strong>).</p>
+<h2 id="training-wheels">Training wheels</h2>
+<p>These are <strong>examples of past jobs</strong>, not defaults and not required knowledge. Discover the next cluster from scratch (how to exec, namespace, launcher, NCCL env, mounts). Skip this section if none of it matches.</p>
+<ul>
+<li>One AWS EFA allocation used <code>kubectl</code> in namespace <code>mltraining-dev</code>, hostfile <code>/data-fast/hostfile</code>, SSH port <strong>7878</strong>, Lustre on <code>/code</code> <code>/data</code> <code>/checkpoint</code>, and image env <code>NCCL_NET_PLUGIN=ofi</code>, <code>NCCL_TUNER_PLUGIN=ofi</code>, <code>NCCL_NVLS_ENABLE=1</code>. <code>ibstat</code> was empty; <code>rdma link</code> showed <code>rdmap*</code>.</li>
+<li>One other trial used virtiofs on <code>/mnt/data</code>, container <code>sshd</code> <strong>2222</strong>, and hostname → <code>127.0.1.1</code> (torchrun needed <code>is_host</code> + <code>local_addr</code>).</li>
+</ul>
+<p>Lessons:</p>
+<ul>
+<li><code>pip install matplotlib</code> in the eval venv on <strong>shared FS</strong> so <strong>every</strong> node can plot. <code>torch-dist-bench.py</code> writes the PNG in the <strong>process cwd</strong> (often <code>$HOME</code> under torchrun), not the eval directory — copy it immediately. If a launcher still uses a different interpreter without matplotlib, regenerate the PNG from the printed table on the laptop.</li>
+<li>Environment is for a reader who has not seen MAMF yet: no MAMF/MSMF, no eval venv path, HBM in GiB, PCIe on Host, OS first Host row, Python on Software, Local cell must not repeat “local”/“ceiling”, md devices as <code>md127 RAID</code>.</li>
+<li>Network opens with <strong>### Introduction</strong> (NVLS + who set <code>NCCL_NVLS_ENABLE</code>), not a bare env-var line.</li>
+<li>Find underperforming GPUs: TLDR first (<strong>no under-performing or dead GPUs</strong>); all GPU scores; 16384³ SM coverage <strong>from this SM count</strong>.</li>
+<li>Install <code>infiniband-diags</code> (<code>ibstat</code>), <code>fio</code>, <code>iproute2</code>/<code>rdma-core</code> (<code>rdma link</code>), <code>pdsh</code>, and DCGM <strong>before</strong> the env dump. Use <code>sudo</code> when not root. Empty <code>ibstat</code> on EFA is OK if <code>rdma link</code> works. If <code>dcgmi diag -r 2</code> cannot run, Gaps — do not skip MAMF.</li>
+<li>Shared-FS <code>fio-scan</code> 1 GiB × 16 jobs × <code>O_DIRECT</code> <strong>can</strong> take hours (file create/unlink on some network FS). A quiet 40 min is not necessarily a hang. Copy logs after the local-disk phase.</li>
+<li>Retry pip/<code>kubectl exec</code> on connection reset; do not treat RST as a failed install until a second probe (<code>import matplotlib</code>, <code>command -v fio</code>, <code>command -v ibstat</code> or <code>rdma</code>).</li>
+<li><code>set -e</code> + <code>grep</code> with no matches aborts scripts (busy-GPU check). Use <code>grep -c … || true</code>.</li>
+<li>Superseded artifacts go to a local <code>trash/&lt;YYYYMMDD&gt;-&lt;topic&gt;/</code> directory, never <code>rm</code> — wait for the user if the skill environment forbids delete.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../../skills/README.html">&larr; Skills</a><a class="next" href="../../skills/ml-engineering/SKILL.html">Machine Learning Engineering &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

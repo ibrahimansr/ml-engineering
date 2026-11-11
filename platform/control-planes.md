@@ -1161,7 +1161,7 @@ Five creates (each retried once, replayed from the idempotency table), nine deli
 
 ### Little's law
 
-Before any queueing design, one formula, already met (with a simulation) in [Inference Internals I](../inference/arithmetic.md#littles-law). **Little's law**: the average number of items in a system `L` equals the arrival rate `λ` times the average time each item spends inside `W`. It holds for any stable system regardless of distributions, which makes it the most useful sanity check in capacity planning:
+Before any queueing design, one formula, already met (with a simulation) in [Inference Internals I](../inference/arithmetic.md#littles-law). **Little's law**: the average number of items in a system $L$ equals the arrival rate $\lambda$ times the average time each item spends inside $W$. It holds for any stable system regardless of distributions, which makes it the most useful sanity check in capacity planning:
 
 ```console
 $ python3 -c "

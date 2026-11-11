@@ -1,0 +1,7 @@
+{
+  "buildCommand": "echo 'site/ is prebuilt: run python build/site/build_site.py locally and commit it'",
+  "installCommand": "echo 'nothing to install'",
+  "outputDirectory": "site",
+  "framework": null,
+  "cleanUrls": false
+}

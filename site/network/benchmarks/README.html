@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Networking Benchmarks - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Insights</summary><ul><li><a href="../../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
+<details open><summary>Part 4. Hardware and Kernels</summary><ul><li><a href="../../compute/README.html">Compute (Stas)</a></li><li><a href="../../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../../network/benchmarks/README.html" class="current">Networking Benchmarks (Stas)</a></li></ul></details>
+<details><summary>Part 5. Orchestration</summary><ul><li><a href="../../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 6. Training</summary><ul><li><a href="../../training/README.html">Training (Stas)</a></li><li><a href="../../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 7. Inference</summary><ul><li><a href="../../inference/README.html">Inference (Stas)</a></li><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 8. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
+<details><summary>Part 9. Development</summary><ul><li><a href="../../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
+<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../../resources/README.html">Resources (Stas)</a></li><li><a href="../../contributors.html">Contributors (Stas)</a></li><li><a href="../../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../../build/README.html">Book Building (Stas)</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
+<details><summary>Other pages: debug</summary><ul><li><a href="../../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
+<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
+<details><summary>Other pages: skills</summary><ul><li><a href="../../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
+<details><summary>Other pages: stabs</summary><ul><li><a href="../../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
+<details><summary>Other pages: top level</summary><ul><li><a href="../../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="networking-benchmarks">Networking Benchmarks</h1>
+<h2 id="tools">Tools</h2>
+<p><a id="all_reduce-benchmark"></a></p>
+<h3 id="torch-dist-bench">torch-dist-bench</h3>
+<p><a href="torch-dist-bench.py">torch-dist-bench.py</a> - a tool to benchmark the real network bandwidth and latency while performing <code>all_reduce</code> and <a href="#other-collectives">other collectives</a>, over a range of payloads. This is useful for finding out what one gets in reality as compared to the advertised spec. Somewhat similar to <code>nccl-tests</code>, but requires just PyTorch to run. You want to use this benchmark if your application uses NCCL collectives via <code>torch.distributed</code>, and <code>nccl-tests</code> if you write CUDA NCCL kernels. This benchmark calls the collectives the way your program does: through PyTorch, which runs some of them with different NCCL calls than <code>nccl-tests</code> does, e.g. <code>scatter</code> and <code>batch_isend_irecv</code> - see <a href="#other-collectives">Other collectives</a> - and with <code>--with-host-overhead</code> it also includes PyTorch's per-call host overhead of some 20-30µs, which at small payloads is about as long as the collective itself.</p>
+<p>footnote: Its previous incarnation was known as <code>all_reduce_bench.py</code> as it measured just the all-reduce collective.</p>
+<p>On 4 8x B200 nodes (<code>torch=2.14.1+cu130</code>, <code>cuda=13.0</code>, <code>nccl=2.30.7</code>, 30 seconds for the whole sweep) it gives us:</p>
+<pre><code>The average bandwidth and the per-call latency of all_reduce over 32 ranks (at least 5 warmups / 20 trials, up to 10 queued calls per trial):
+
+| payload |   busbw    |   algbw    |              latency              | calls |
+|         |            |            |   median  |    p99    |    mean   |       |
+| ------: | ---------: | ---------: | --------: | --------: | --------: | ----: |
+|      8B |            |            |    81.9us |    88.0us |    81.9us |   810 |
+|     16B |            |            |    81.6us |    89.4us |    81.7us |   828 |
+|     32B |            |            |    82.0us |    91.8us |    82.2us |   783 |
+|     64B |            |            |    82.5us |    92.7us |    82.8us |   783 |
+|    128B |            |            |    83.0us |    89.8us |    83.3us |   792 |
+|    256B |            |            |    83.9us |    94.5us |    83.9us |   774 |
+|    512B |            |            |    84.1us |    98.5us |    84.8us |   783 |
+|    1KiB |            |            |    85.4us |    90.1us |    85.6us |   810 |
+|    2KiB |            |            |    89.5us |    95.3us |    89.7us |   738 |
+|    4KiB |            |            |    99.3us |   105.1us |    99.3us |   666 |
+|    8KiB |            |            |   102.3us |   114.8us |   102.4us |   765 |
+|   16KiB |            |            |   102.4us |   118.8us |   103.9us |   711 |
+|   32KiB |   0.64GBps |   0.33GBps |   104.5us |   119.7us |   105.4us |   738 |
+|   64KiB |   1.27GBps |   0.65GBps |   106.5us |   123.8us |   107.2us |   504 |
+|  128KiB |   2.35GBps |   1.21GBps |   114.6us |   130.6us |   115.1us |   252 |
+|  256KiB |   4.20GBps |   2.17GBps |   128.1us |   138.3us |   128.4us |   126 |
+|  512KiB |   6.99GBps |   3.61GBps |   151.7us |   168.2us |   153.2us |   126 |
+|    1MiB |  12.78GBps |   6.60GBps |   165.9us |   187.0us |   167.0us |   153 |
+|    2MiB |  21.84GBps |  11.27GBps |   193.1us |   205.1us |   193.8us |   162 |
+|    4MiB |  31.49GBps |  16.25GBps |   261.3us |   281.2us |   262.9us |   171 |
+|    8MiB |  50.40GBps |  26.01GBps |   331.8us |   344.1us |   332.7us |   144 |
+|   16MiB |  73.17GBps |  37.77GBps |   452.7us |   469.2us |   454.2us |   180 |
+|   32MiB | 142.79GBps |  73.70GBps |   473.2us |   498.5us |   474.8us |   162 |
+|   64MiB | 198.44GBps | 102.42GBps |   686.2us |   709.2us |   688.0us |   180 |
+|  128MiB | 258.60GBps | 133.47GBps |  1027.2us |  1068.6us |  1029.2us |   140 |
+|  256MiB | 279.38GBps | 144.20GBps |  1961.0us |  2112.0us |  1960.1us |    60 |
+|  512MiB | 310.01GBps | 160.00GBps |  3428.2us |  3822.2us |  3452.6us |    20 |
+|    1GiB | 365.47GBps | 188.63GBps |  5801.0us |  5926.7us |  5806.3us |    20 |
+|    2GiB | 371.07GBps | 191.52GBps | 11307.0us | 11423.6us | 11319.9us |    20 |
+|    4GiB | 374.44GBps | 193.26GBps | 22362.0us | 22451.0us | 22376.0us |    20 |
+|    8GiB | 375.75GBps | 193.93GBps | 44532.8us | 44775.3us | 44549.5us |    20 |
+|   16GiB | 376.17GBps | 194.15GBps | 88813.6us | 89220.5us | 88832.0us |    20 |
+</code></pre>
+<p>Read the normalized <code>busbw</code> column rather than <code>algbw</code> - <a href="https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth">PERFORMANCE.md</a> explains why. Like <code>nccl-tests</code>, the benchmark measures a unidirectional bandwidth, so compare it against the advertised unidirectional peak throughput, not the bidirectional (duplex) one.</p>
+<p>And if you have the <code>matplotlib</code> pip package installed, it also creates a plot:</p>
+<p><img src="images/all-reduce-bench-plot-4n.png" alt="all-reduce-bench-plot 4x 8x B200 nodes" /></p>
+<p>Here is the same benchmark on a single 8x H200 node (<code>torch=2.14.0+cu130</code>, <code>cuda=13.0</code>, <code>nccl=2.30.7</code>, 5 warmup and 20 trial iterations per payload, 13 seconds for the whole sweep):</p>
+<p><img src="images/all-reduce-bench-plot-8xh200.png" alt="all-reduce-bench-plot 8x H200" /></p>
+<p>Note the linear y-axis compresses everything below ~100GBps into the bottom of the plot, so the small-payload end - the part that matters for gradient bucketing - is easier to read off the <code>default</code> column of the table in <a href="#how-the-bandwidth-is-measured">How the bandwidth is measured</a>, measured on the same node, than off the curve. That sweep tops out at 482.35GBps, which is <em>above</em> the 450GBps unidirectional <a href="../../network/README.html#nvlink">NVLink 4</a> spec rather than below it; see <a href="../../network/README.html#sharp">SHARP</a> for why, and for what the same node measures with it disabled.</p>
+<p><a href="../../network/README.html#inter-node-speed-depends-on-intra-node-speed">Inter-node speed depends on intra-node speed</a> explains why a 4 node-benchmark (32 ranks) tops out at 376.17GBps when a single node (8 ranks) of the same B200s reaches 839.00GBps, and what the number means for each NIC.</p>
+<p>For launching examples please see the top of <a href="torch-dist-bench.py">torch-dist-bench.py</a>. You can interrupt the benchmark with Ctrl-C, and it'll still report the results it measured up to that point.</p>
+<p>This table should give a good sense for what scores you should expect for all-reduce collective on a well-tuned network (left is intra-node and right is inter-node):</p>
+<p><img src="images/all-reduce-multi-node-bandwidth.png" alt="all-reduce multi node bandwidth" />
+<a href="https://www.nvidia.com/en-us/on-demand/session/gtc24-s62129/">source</a></p>
+<p>If you're benchmarking a different collective the expected bandwidth can be very different from the above all-reduce results. <a href="https://www.nvidia.com/en-us/on-demand/session/gtc24-s62129/">This presentation</a> also gives point-to-point communication bandwidth expectations.</p>
+<p>To check the stability of all-reduce over time, rather than averaging the results, you can profile a single payload size with these 2 flags <code>--profile_stability --payload_size_in_gib 0.5</code> (change the last value to the desired payload size in GiB). Beware that a typical ML workload doesn't call all-reduce back to back non-stop so this approach puts the network through a stress test, which is a somewhat non-typical workload. But it can still show if the network has issues with sustained load. Here is an example of a plot generated on a 8x B200 with a payload of 2GiB:</p>
+<p><img src="images/all-reduce-bench-profile-2gib.png" alt="all-reduce-bench 2GiB profile" /></p>
+<p><a id="how-the-calls-are-timed"></a></p>
+<h4 id="how-the-bandwidth-is-measured">How the bandwidth is measured</h4>
+<p>By default each trial keeps the GPU busy for ~2ms, queues up to 10 back-to-back <code>dist.all_reduce</code> calls behind that, and divides the elapsed time by the number of calls. Payloads up to 64MiB get 10 calls, larger ones fewer, and those from 1GiB up a single call, where one call takes milliseconds anyway. This hides PyTorch's 20-30µs of host overhead per call, as it is hidden in a program whose host stays ahead of the GPU, e.g. a training loop with enough compute queued between its collectives - where the host doesn't stay ahead, such as with small collectives issued back to back or a program waiting on each result, use <code>--with-host-overhead</code>. The multiple calls also average out the ranks reaching the first one at slightly different times.</p>
+<p>These bandwidth trials record a CUDA event only before the first call and after the last. The <a href="#latency">latency</a> is measured by separate trials with an event after every call, because an event recorded between two queued calls slows them down: on an 8x B200 node a 1MiB all-reduce takes 35µs with one and 30µs without, and <code>nccl-tests</code> shows the same difference between its <code>-I 1</code> and its default timing. Timing the bandwidth with the per-call events would cost an all-reduce 9-13% of its bandwidth from 8KiB to 2MiB there, and the <a href="#other-collectives">other collectives</a> up to 35%.</p>
+<p>Here are the measurements on the same 8x H200 node as the plot above, next to <a href="#nccl-tests">nccl-tests</a>' run built against the same NCCL version - it is what code calling NCCL API directly:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:right">default</th>
+<th style="text-align:right">nccl-tests</th>
+<th style="text-align:right">difference</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">32KiB</td>
+<td style="text-align:right">3.15GBps</td>
+<td style="text-align:right">3.20GBps</td>
+<td style="text-align:right">+2%</td>
+</tr>
+<tr>
+<td style="text-align:right">64KiB</td>
+<td style="text-align:right">6.16GBps</td>
+<td style="text-align:right">6.26GBps</td>
+<td style="text-align:right">+2%</td>
+</tr>
+<tr>
+<td style="text-align:right">128KiB</td>
+<td style="text-align:right">12.46GBps</td>
+<td style="text-align:right">12.40GBps</td>
+<td style="text-align:right">-0.5%</td>
+</tr>
+<tr>
+<td style="text-align:right">256KiB</td>
+<td style="text-align:right">24.68GBps</td>
+<td style="text-align:right">24.63GBps</td>
+<td style="text-align:right">-0.2%</td>
+</tr>
+<tr>
+<td style="text-align:right">512KiB</td>
+<td style="text-align:right">48.15GBps</td>
+<td style="text-align:right">48.30GBps</td>
+<td style="text-align:right">+0.3%</td>
+</tr>
+<tr>
+<td style="text-align:right">1MiB</td>
+<td style="text-align:right">74.57GBps</td>
+<td style="text-align:right">72.45GBps</td>
+<td style="text-align:right">-3%</td>
+</tr>
+<tr>
+<td style="text-align:right">2MiB</td>
+<td style="text-align:right">96.26GBps</td>
+<td style="text-align:right">91.48GBps</td>
+<td style="text-align:right">-5%</td>
+</tr>
+<tr>
+<td style="text-align:right">4MiB</td>
+<td style="text-align:right">145.14GBps</td>
+<td style="text-align:right">139.97GBps</td>
+<td style="text-align:right">-4%</td>
+</tr>
+<tr>
+<td style="text-align:right">8MiB</td>
+<td style="text-align:right">196.56GBps</td>
+<td style="text-align:right">182.03GBps</td>
+<td style="text-align:right">-7%</td>
+</tr>
+<tr>
+<td style="text-align:right">16MiB</td>
+<td style="text-align:right">255.90GBps</td>
+<td style="text-align:right">242.45GBps</td>
+<td style="text-align:right">-5%</td>
+</tr>
+<tr>
+<td style="text-align:right">32MiB</td>
+<td style="text-align:right">301.25GBps</td>
+<td style="text-align:right">298.44GBps</td>
+<td style="text-align:right">-0.9%</td>
+</tr>
+<tr>
+<td style="text-align:right">64MiB</td>
+<td style="text-align:right">368.86GBps</td>
+<td style="text-align:right">369.82GBps</td>
+<td style="text-align:right">+0.3%</td>
+</tr>
+<tr>
+<td style="text-align:right">128MiB</td>
+<td style="text-align:right">414.54GBps</td>
+<td style="text-align:right">411.21GBps</td>
+<td style="text-align:right">-0.8%</td>
+</tr>
+<tr>
+<td style="text-align:right">256MiB</td>
+<td style="text-align:right">441.87GBps</td>
+<td style="text-align:right">442.27GBps</td>
+<td style="text-align:right">+0.1%</td>
+</tr>
+<tr>
+<td style="text-align:right">512MiB</td>
+<td style="text-align:right">456.23GBps</td>
+<td style="text-align:right">455.82GBps</td>
+<td style="text-align:right">-0.1%</td>
+</tr>
+<tr>
+<td style="text-align:right">1GiB</td>
+<td style="text-align:right">465.91GBps</td>
+<td style="text-align:right">464.00GBps</td>
+<td style="text-align:right">-0.4%</td>
+</tr>
+<tr>
+<td style="text-align:right">2GiB</td>
+<td style="text-align:right">471.06GBps</td>
+<td style="text-align:right">468.31GBps</td>
+<td style="text-align:right">-0.6%</td>
+</tr>
+<tr>
+<td style="text-align:right">4GiB</td>
+<td style="text-align:right">474.13GBps</td>
+<td style="text-align:right">473.10GBps</td>
+<td style="text-align:right">-0.2%</td>
+</tr>
+<tr>
+<td style="text-align:right">8GiB</td>
+<td style="text-align:right">478.24GBps</td>
+<td style="text-align:right">475.16GBps</td>
+<td style="text-align:right">-0.6%</td>
+</tr>
+<tr>
+<td style="text-align:right">16GiB</td>
+<td style="text-align:right">482.25GBps</td>
+<td style="text-align:right">480.70GBps</td>
+<td style="text-align:right">-0.3%</td>
+</tr>
+</tbody>
+</table>
+<p>The two agree within 2%, except from 1MiB to 16MiB, where <code>nccl-tests</code> reads 3-7% lower. Whether to measure with this benchmark or with <code>nccl-tests</code> depends on whether you are writing a PyTorch program or a NCCL kernel - see <a href="#nccl-tests">nccl-tests</a>.</p>
+<p>If your workload captures its all-reduce calls in a CUDA graph through PyTorch, expect lower <code>busbw</code> at small payloads than this benchmark's default timing reports. Replaying PyTorch-captured all-reduces on B200 left a gap of about 2.5µs between consecutive ones, which cost regular all-reduces up to 9% and symmetric memory ones 12-26% at 2MiB and below, where a call takes only 10-35µs.</p>
+<p>Add <code>--with-host-overhead</code> to time one call per trial on an idle GPU instead. It charges that host overhead to every call - what an all-reduce costs when the program waits for its result before doing anything else. Its latency then also includes the ranks reaching the call at different times, as the latency of OSU's <code>osu_allreduce</code> does.</p>
+<p>Neither mode times a collective that runs concurrently with compute kernels, as it does in a training loop that overlaps them. The kernels compete for the SMs and the memory bandwidth, so an overlapped collective can take longer than reported here if it can't access immediately all the SMs it needs; <code>nccl-tests</code> doesn't time that either.</p>
+<h4 id="latency">Latency</h4>
+<p>Next to the bandwidth, the benchmark reports how long a single call takes - the median, the 99th percentile (p99) and the mean - and plots the median and the p99 against the payload size. For small payloads this is the number that matters, as they move next to nothing: on an 8x H200 node an 8B all-reduce still takes 15µs, and every payload up to 512KiB takes 15-23µs, so a faster link wouldn't help them - fewer calls or cheaper ones would. This adds up fast in inference: a model served with tensor parallelism over 8 accelerators does 2 all-reduces per layer for every generated token, and with a hidden size of 8192 in bf16 a batch of up to 32 tokens makes each a 16-512KiB all-reduce, right in that flat range - so an 80-layer model waits 160 x 15µs = 2.4ms per token on all-reduces alone, however fast its links. Training has small all-reduces too, to sync flags, scalars or loss values across ranks, and MoE pays the same toll on the <a href="#other-collectives">all-to-all</a> of its token routing.</p>
+<p>And all-reduce is the best case: NCCL gives only all-reduce its tree algorithm, and NVLS can reduce it inside the switch, so other collectives can take longer at the same payload - see <a href="../../network/README.html#which-collective-to-measure-latency-with">which collective to measure latency with</a>, and time them with <code>--collectives</code>.</p>
+<p><img src="images/all-reduce-bench-latency-8xh200.png" alt="all-reduce-bench latency 8x H200" /></p>
+<p>On B200s the latency also shows what it costs to leave the node. Here is the all-reduce latency on one 8x B200 node and on 4 of them, from the same run as the table at the top:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:right">8 ranks<br>median</th>
+<th style="text-align:right">8 ranks<br>p99</th>
+<th style="text-align:right">32 ranks<br>median</th>
+<th style="text-align:right">32 ranks<br>p99</th>
+<th style="text-align:right">32 / 8<br>median</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">8B</td>
+<td style="text-align:right">23.0µs</td>
+<td style="text-align:right">25.1µs</td>
+<td style="text-align:right">81.9µs</td>
+<td style="text-align:right">88.0µs</td>
+<td style="text-align:right">3.6x</td>
+</tr>
+<tr>
+<td style="text-align:right">1KiB</td>
+<td style="text-align:right">29.5µs</td>
+<td style="text-align:right">31.8µs</td>
+<td style="text-align:right">85.4µs</td>
+<td style="text-align:right">90.1µs</td>
+<td style="text-align:right">2.9x</td>
+</tr>
+<tr>
+<td style="text-align:right">16KiB</td>
+<td style="text-align:right">30.7µs</td>
+<td style="text-align:right">32.8µs</td>
+<td style="text-align:right">102.4µs</td>
+<td style="text-align:right">118.8µs</td>
+<td style="text-align:right">3.3x</td>
+</tr>
+<tr>
+<td style="text-align:right">128KiB</td>
+<td style="text-align:right">32.8µs</td>
+<td style="text-align:right">34.8µs</td>
+<td style="text-align:right">114.6µs</td>
+<td style="text-align:right">130.6µs</td>
+<td style="text-align:right">3.5x</td>
+</tr>
+<tr>
+<td style="text-align:right">512KiB</td>
+<td style="text-align:right">35.8µs</td>
+<td style="text-align:right">38.0µs</td>
+<td style="text-align:right">151.7µs</td>
+<td style="text-align:right">168.2µs</td>
+<td style="text-align:right">4.2x</td>
+</tr>
+<tr>
+<td style="text-align:right">1MiB</td>
+<td style="text-align:right">35.9µs</td>
+<td style="text-align:right">39.8µs</td>
+<td style="text-align:right">165.9µs</td>
+<td style="text-align:right">187.0µs</td>
+<td style="text-align:right">4.6x</td>
+</tr>
+<tr>
+<td style="text-align:right">4MiB</td>
+<td style="text-align:right">60.4µs</td>
+<td style="text-align:right">62.6µs</td>
+<td style="text-align:right">261.3µs</td>
+<td style="text-align:right">281.2µs</td>
+<td style="text-align:right">4.3x</td>
+</tr>
+<tr>
+<td style="text-align:right">16MiB</td>
+<td style="text-align:right">104.4µs</td>
+<td style="text-align:right">107.2µs</td>
+<td style="text-align:right">452.7µs</td>
+<td style="text-align:right">469.2µs</td>
+<td style="text-align:right">4.3x</td>
+</tr>
+</tbody>
+</table>
+<p>Up to 16MiB a call takes 2.9-4.6 times as long once it crosses the network, and even an 8B all-reduce takes 82µs instead of 23µs.</p>
+<h4 id="how-the-latency-is-measured">How the latency is measured</h4>
+<ul>
+<li>Each call's time is the time from the end of the previous queued call to its own end, as in <code>nccl-tests</code>' per-iteration timing (<code>-I 1</code>), which it reports in its <code>i_*</code> columns, and as the median in its <code>-J</code> JSON output. The first call of a trial is left out, and a 1-element all-reduce after the busy wait lines the ranks up on the GPU before it: otherwise a rank whose busy wait ends first spends the difference waiting in its first calls - in one call for most collectives, but in up to ranks-1 calls for <code>batch_isend_irecv</code>, whose ring passes the wait on one rank per call.</li>
+<li>A call isn't done until it's done on every rank, so each call's time is that of its slowest rank, as in <code>nccl-tests</code>' per-iteration median and p99. Its <code>time</code> column is instead each rank's time per call averaged over the ranks, which is close for an all-reduce, whose ranks finish together, but lower for collectives whose ranks don't, such as <code>broadcast</code>.</li>
+<li>Small payloads get up to 1000 calls each, so that the p99 is the 10th slowest of them, and larger payloads fewer, once 1000 calls would move more than 40MiB - <a href="https://github.com/intel/mpi-benchmarks">Intel MPI Benchmarks</a> counts its repetitions the same way. <code>nccl-tests</code> times 20 calls by default and OSU's <code>osu_allreduce</code> 1000 up to 8KiB and 100 above.</li>
+<li>Median and p99 rather than the mean, because one slow call moves the mean but not the median, and the p99 shows how slow the slow calls get. The mean is printed too.</li>
+<li>A rank's Python thread occasionally pauses for a few milliseconds. When that happens while it queues a trial's calls, its GPU runs out of queued work before the 2ms busy wait is over, and the trial times the pause rather than the all-reduce. Such trials are left out on all ranks, and the report says how many: on the 8x H200 node it was 50-60 of 1904 trials per run. Without this, the p99 at small payloads read anywhere from 19µs to 380µs and changed from run to run.</li>
+</ul>
+<p>On the same 8x H200 node (<code>torch=2.14.0+cu130</code>, <code>nccl=2.30.7</code>), compared with <code>nccl-tests</code> timing 1000 calls per payload one by one (<code>-n 1000 -w 200 -I 1</code>, in-place):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:right">median</th>
+<th style="text-align:right">p99</th>
+<th style="text-align:right">sym-mem<br>median</th>
+<th style="text-align:right">sym-mem<br>p99</th>
+<th style="text-align:right">host<br>overhead<br>median</th>
+<th style="text-align:right">host<br>overhead<br>p99</th>
+<th style="text-align:right">nccl-tests<br><code>time</code></th>
+<th style="text-align:right">nccl-tests<br>p99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">8B</td>
+<td style="text-align:right">15.2µs</td>
+<td style="text-align:right">16.1µs</td>
+<td style="text-align:right">8.1µs</td>
+<td style="text-align:right">9.0µs</td>
+<td style="text-align:right">36.6µs</td>
+<td style="text-align:right">3668µs</td>
+<td style="text-align:right">14.9µs</td>
+<td style="text-align:right">16.1µs</td>
+</tr>
+<tr>
+<td style="text-align:right">64B</td>
+<td style="text-align:right">17.9µs</td>
+<td style="text-align:right">19.0µs</td>
+<td style="text-align:right">8.1µs</td>
+<td style="text-align:right">9.2µs</td>
+<td style="text-align:right">38.0µs</td>
+<td style="text-align:right">5166µs</td>
+<td style="text-align:right">17.0µs</td>
+<td style="text-align:right">19.0µs</td>
+</tr>
+<tr>
+<td style="text-align:right">1KiB</td>
+<td style="text-align:right">18.8µs</td>
+<td style="text-align:right">19.8µs</td>
+<td style="text-align:right">8.4µs</td>
+<td style="text-align:right">9.3µs</td>
+<td style="text-align:right">39.1µs</td>
+<td style="text-align:right">5213µs</td>
+<td style="text-align:right">18.2µs</td>
+<td style="text-align:right">19.7µs</td>
+</tr>
+<tr>
+<td style="text-align:right">32KiB</td>
+<td style="text-align:right">20.9µs</td>
+<td style="text-align:right">21.7µs</td>
+<td style="text-align:right">11.6µs</td>
+<td style="text-align:right">12.4µs</td>
+<td style="text-align:right">41.7µs</td>
+<td style="text-align:right">4877µs</td>
+<td style="text-align:right">20.4µs</td>
+<td style="text-align:right">21.6µs</td>
+</tr>
+<tr>
+<td style="text-align:right">256KiB</td>
+<td style="text-align:right">21.4µs</td>
+<td style="text-align:right">21.9µs</td>
+<td style="text-align:right">12.6µs</td>
+<td style="text-align:right">13.8µs</td>
+<td style="text-align:right">43.5µs</td>
+<td style="text-align:right">3607µs</td>
+<td style="text-align:right">21.0µs</td>
+<td style="text-align:right">21.7µs</td>
+</tr>
+<tr>
+<td style="text-align:right">1MiB</td>
+<td style="text-align:right">27.7µs</td>
+<td style="text-align:right">28.5µs</td>
+<td style="text-align:right">16.3µs</td>
+<td style="text-align:right">17.2µs</td>
+<td style="text-align:right">50.9µs</td>
+<td style="text-align:right">75µs</td>
+<td style="text-align:right">27.8µs</td>
+<td style="text-align:right">28.6µs</td>
+</tr>
+</tbody>
+</table>
+<p>sym-mem: run with <code>--sym-mem</code>; host overhead: run with <code>--with-host-overhead</code>.</p>
+<p>The default timing agrees with <code>nccl-tests</code> within 1µs at the p99, and <a href="#symmetric-memory">symmetric memory</a> roughly halves the latency up to 16KiB. On an 8x B200 node with the same software the two agreed within 1µs as well - an 8B all-reduce took 23.5µs at the median and 24.7µs at the p99, and 11.6µs and 12.5µs with <code>--sym-mem</code> - so a small all-reduce costs more there than on the H200 node. <code>--with-host-overhead</code> keeps the trials in which a host paused, as that's what a program that waits on each all-reduce gets: its median adds the ~20µs of PyTorch's per-call overhead, and its p99 up to 256KiB is 3.6-5.2ms, because more than 1 call in 100 waited for some rank's paused host.</p>
+<p>The report also names the smallest payload that reaches half the peak <code>busbw</code> - 16MiB or 32MiB on the 8x H200 node above, as 16MiB sits right at the half. Payloads below it get less than half the bandwidth the setup can give, and are better judged by their latency.</p>
+<p>By default the latency is measured from 8B to 16GiB and the bandwidth from 32KiB to 16GiB, since below 32KiB a call's time is nearly all latency, so its <code>busbw</code> says little. <code>--min-payload</code> moves where the latency range starts, <code>--min-busbw-payload</code> where the bandwidth range starts, and <code>--max-payload</code> where both end - e.g. <code>--max-payload 16K</code> for a quick latency-only run.</p>
+<h4 id="other-collectives">Other collectives</h4>
+<p>The benchmark times <code>all_reduce</code> by default. To time other collectives, add <code>--collectives</code> with one or more of their names, comma separated, e.g. <code>--collectives all_gather,reduce_scatter</code> or <code>all</code> for all nine of them - <code>all_reduce</code>, <code>all_gather</code>, <code>reduce_scatter</code>, <code>all_to_all</code>, <code>broadcast</code>, <code>reduce</code>, <code>gather</code>, <code>scatter</code> and <code>batch_isend_irecv</code>. Examples:</p>
+<pre><code class="language-bash">python -u -m torch.distributed.run --nproc_per_node=8 torch-dist-bench.py --collectives all_gather,reduce_scatter
+python -u -m torch.distributed.run --nproc_per_node=8 torch-dist-bench.py --collectives all
+</code></pre>
+<p>Each collective gets the same timing and plots as <code>all_reduce</code>, saved as <code>busbw-mean-&lt;collective&gt;-&lt;host&gt;-&lt;ranks&gt;.png</code> and <code>latency-&lt;collective&gt;-&lt;host&gt;-&lt;ranks&gt;.png</code>. When more than one is benchmarked, a <code>busbw</code> table and a latency-median table follow, payloads down the rows and collectives across - add <code>--separate-tables</code> for a table each with <code>algbw</code> and the latency's p99 and mean as well - and a summary table and two plots comparing them follow, saved as <code>busbw-mean-collectives-&lt;host&gt;-&lt;ranks&gt;.png</code> and <code>latency-collectives-&lt;host&gt;-&lt;ranks&gt;.png</code>. All nine from 8B to 16GiB take under 2 minutes on one 8x B200 node.</p>
+<p>The payload, <code>algbw</code> and <code>busbw</code> follow <code>nccl-tests</code>, whose <a href="https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md">PERFORMANCE.md</a> explains them. The payload is the larger of a rank's input and output buffers, and <code>busbw</code> is <code>algbw</code> multiplied by a factor that makes it comparable across collectives and numbers of ranks <code>n</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">collective</th>
+<th style="text-align:left">a rank's input</th>
+<th style="text-align:left">a rank's output</th>
+<th style="text-align:left"><code>busbw</code><br>factor</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>all_reduce</code></td>
+<td style="text-align:left">the payload</td>
+<td style="text-align:left">the payload</td>
+<td style="text-align:left">2(n-1)/n</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>all_gather</code></td>
+<td style="text-align:left">1/n of the payload</td>
+<td style="text-align:left">the payload</td>
+<td style="text-align:left">(n-1)/n</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>reduce_scatter</code></td>
+<td style="text-align:left">the payload</td>
+<td style="text-align:left">1/n of the payload</td>
+<td style="text-align:left">(n-1)/n</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>all_to_all</code></td>
+<td style="text-align:left">the payload, 1/n per rank</td>
+<td style="text-align:left">the payload, 1/n from each rank</td>
+<td style="text-align:left">(n-1)/n</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>broadcast</code></td>
+<td style="text-align:left">the payload, on the root</td>
+<td style="text-align:left">the payload</td>
+<td style="text-align:left">1</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>reduce</code></td>
+<td style="text-align:left">the payload</td>
+<td style="text-align:left">the payload, on the root</td>
+<td style="text-align:left">1</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>gather</code></td>
+<td style="text-align:left">1/n of the payload</td>
+<td style="text-align:left">the payload, on the root</td>
+<td style="text-align:left">(n-1)/n</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>scatter</code></td>
+<td style="text-align:left">the payload, on the root</td>
+<td style="text-align:left">1/n of the payload</td>
+<td style="text-align:left">(n-1)/n</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>batch_isend_irecv</code></td>
+<td style="text-align:left">the payload, to rank+1</td>
+<td style="text-align:left">the payload, from rank-1</td>
+<td style="text-align:left">1</td>
+</tr>
+</tbody>
+</table>
+<p>The root is rank 0, and <code>batch_isend_irecv</code> has each rank send to the next rank and receive from the previous one, as <code>nccl-tests</code> does. The send and the receive are issued together as one batch: unbatched, they'd run one after the other on the same stream, and each rank's send would wait on its neighbour's receive, which is queued behind that neighbour's own send.</p>
+<p>As in <code>nccl-tests</code>, the 1/n pieces are rounded down to a multiple of 16 bytes, so payloads with less than 16 bytes per rank are skipped - those below 128B on 8 ranks - and with a number of ranks that isn't a power of 2, <code>all_gather</code>, <code>gather</code>, <code>reduce_scatter</code>, <code>scatter</code> and <code>all_to_all</code> move a little less than the payload, and the table reports what they did move.</p>
+<p>Here are all nine on an 8x B200 node (<code>torch=2.14.1+cu130</code>, <code>nccl=2.30.7</code>, 2 minutes for the whole sweep), as the benchmark prints them - the <code>busbw</code> and the latency median of each collective at every payload, then the summary:</p>
+<pre><code>The average bandwidth and the per-call latency of 9 collectives over 8 ranks (at least 5 warmups / 20 trials, up to 10 queued calls per trial):
+
+busbw, GBps
+|  pay   |  all_  |  all_  | reduce_ | all_to | broad  | reduce | gather | scatter | batch  |
+|  load  | reduce | gather | scatter |  _all  |  cast  |        |        |         | _isend |
+|        |        |        |         |        |        |        |        |         | _irecv |
+| -----: | -----: | -----: | ------: | -----: | -----: | -----: | -----: | ------: | -----: |
+|  32KiB |   2.17 |   1.64 |    1.70 |   2.45 |   2.78 |   2.97 |   3.68 |    2.67 |   2.34 |
+|  64KiB |   4.18 |   3.12 |    3.22 |   4.59 |   5.28 |   5.24 |   6.84 |    4.97 |   4.22 |
+| 128KiB |   8.13 |   6.12 |    6.29 |   8.33 |  10.40 |  10.40 |  13.04 |    9.92 |   7.69 |
+| 256KiB |  15.91 |  11.90 |   12.31 |  13.11 |  19.00 |  20.45 |  20.78 |   14.58 |  15.11 |
+| 512KiB |  29.50 |  21.65 |   22.25 |  23.85 |  36.08 |  36.36 |  37.16 |   27.18 |  25.00 |
+|   1MiB |  58.93 |  43.53 |   44.73 |  42.67 |  71.98 |  72.89 |  65.03 |   48.68 |  38.80 |
+|   2MiB | 106.27 |  76.21 |   80.68 |  82.44 | 108.21 | 112.18 | 129.13 |   92.42 |  54.07 |
+|   4MiB | 131.71 | 116.90 |  126.13 | 137.51 | 143.11 | 151.16 | 232.74 |  164.62 |  69.05 |
+|   8MiB | 201.12 | 156.61 |  169.33 | 209.13 | 225.24 | 237.76 | 354.29 |  259.37 |  77.06 |
+|  16MiB | 296.16 | 294.05 |  285.91 | 284.06 | 315.35 | 329.76 | 469.87 |  372.69 |  81.14 |
+|  32MiB | 364.90 | 252.67 |  264.12 | 360.63 | 385.89 | 402.28 | 556.43 |  494.93 |  83.57 |
+|  64MiB | 421.74 | 418.71 |  419.83 | 434.48 | 474.91 | 486.08 | 630.14 |  572.21 |  84.83 |
+| 128MiB | 591.12 | 556.63 |  560.30 | 491.21 | 537.97 | 550.18 | 668.70 |  595.42 | 167.76 |
+| 256MiB | 659.60 | 582.00 |  591.78 | 531.85 | 557.36 | 570.34 | 692.03 |  632.65 | 332.74 |
+| 512MiB | 703.05 | 597.64 |  612.24 | 555.99 | 561.76 | 582.73 | 702.41 |  667.78 | 624.07 |
+|   1GiB | 726.53 | 609.48 |  624.93 | 606.00 | 560.04 | 589.18 | 763.36 |  706.41 | 640.10 |
+|   2GiB | 741.30 | 629.10 |  656.15 | 608.20 | 602.80 | 638.31 | 711.24 |  700.79 | 649.89 |
+|   4GiB | 749.77 | 644.07 |  676.61 | 645.36 | 637.73 | 667.94 | 713.73 |  712.37 | 654.43 |
+|   8GiB | 833.39 | 655.67 |  685.19 | 654.13 | 664.05 | 686.42 | 716.57 |  715.36 | 657.03 |
+|  16GiB | 840.18 | 661.74 |  689.72 | 658.62 | 674.19 | 688.60 | 718.37 |  717.23 | 658.47 |
+
+latency median, us
+|  pay   |   all_  |   all_  | reduce_ |  all_to |  broad  |  reduce |  gather | scatter |  batch  |
+|  load  |  reduce |  gather | scatter |   _all  |   cast  |         |         |         |  _isend |
+|        |         |         |         |         |         |         |         |         |  _irecv |
+| -----: | ------: | ------: | ------: | ------: | ------: | ------: | ------: | ------: | ------: |
+|     8B |    23.6 |         |         |         |    12.3 |    11.6 |         |         |    16.4 |
+|    16B |    23.5 |         |         |         |    12.3 |    11.6 |         |         |    16.4 |
+|    32B |    23.6 |         |         |         |    12.3 |    11.6 |         |         |    16.4 |
+|    64B |    27.6 |         |         |         |    12.3 |    11.6 |         |         |    16.5 |
+|   128B |    28.7 |    19.8 |    19.7 |    16.4 |    12.3 |    11.6 |    12.3 |    15.4 |    16.4 |
+|   256B |    28.7 |    20.4 |    19.8 |    16.4 |    12.3 |    11.6 |    12.2 |    15.4 |    16.4 |
+|   512B |    28.7 |    20.5 |    20.4 |    16.4 |    12.3 |    11.6 |    12.3 |    15.4 |    16.4 |
+|   1KiB |    29.7 |    20.5 |    20.5 |    16.4 |    12.3 |    12.3 |    12.3 |    15.4 |    16.5 |
+|   2KiB |    29.9 |    20.5 |    20.5 |    16.4 |    12.4 |    12.3 |    12.3 |    15.4 |    17.5 |
+|   4KiB |    30.0 |    20.5 |    20.5 |    16.4 |    14.3 |    14.3 |    12.3 |    15.4 |    18.4 |
+|   8KiB |    30.7 |    20.6 |    20.5 |    16.4 |    14.4 |    15.4 |    12.3 |    15.4 |    19.5 |
+|  16KiB |    30.7 |    21.5 |    20.6 |    16.4 |    14.4 |    15.4 |    12.3 |    15.4 |    20.5 |
+|  32KiB |    30.8 |    21.8 |    21.5 |    17.4 |    16.4 |    15.5 |    12.3 |    15.4 |    23.6 |
+|  64KiB |    31.8 |    22.6 |    22.5 |    17.5 |    16.5 |    16.5 |    12.3 |    16.4 |    24.7 |
+| 128KiB |    32.8 |    23.6 |    22.6 |    19.4 |    17.4 |    16.5 |    13.5 |    16.4 |    26.6 |
+| 256KiB |    34.0 |    24.6 |    23.8 |    22.7 |    19.4 |    18.4 |    15.5 |    20.7 |    28.7 |
+| 512KiB |    36.4 |    26.6 |    25.6 |    24.6 |    19.5 |    18.6 |    16.4 |    21.5 |    31.7 |
+|   1MiB |    36.8 |    26.6 |    25.7 |    26.7 |    19.6 |    19.3 |    18.4 |    24.5 |    38.9 |
+|   2MiB |    38.9 |    28.7 |    27.6 |    27.9 |    24.7 |    23.7 |    18.4 |    24.7 |    51.2 |
+|   4MiB |    60.4 |    36.8 |    33.9 |    32.8 |    32.8 |    30.9 |    20.5 |    27.7 |    71.7 |
+|   8MiB |    77.8 |    51.3 |    48.2 |    41.0 |    38.1 |    36.8 |    24.7 |    33.9 |   122.8 |
+|  16MiB |   103.8 |    55.3 |    56.3 |    57.3 |    51.1 |    49.0 |    35.6 |    44.0 |   229.4 |
+|  32MiB |   166.0 |   122.9 |   118.1 |    88.1 |    78.8 |    75.9 |    57.3 |    64.5 |   438.4 |
+|  64MiB |   284.7 |   145.4 |   144.4 |   142.4 |   131.1 |   133.1 |    98.3 |   109.6 |   833.8 |
+| 128MiB |   402.8 |   216.1 |   215.1 |   248.9 |   233.5 |   235.6 |   179.3 |   204.8 |   838.9 |
+| 256MiB |   718.9 |   408.6 |   404.5 |   451.6 |   441.4 |   446.3 |   341.6 |   390.1 |   839.4 |
+| 512MiB |  1345.5 |   795.5 |   775.2 |   859.1 |   860.9 |   845.6 |   671.1 |   754.7 |   880.6 |
+|   1GiB |  2595.8 |  1549.3 |  1518.6 |  1555.9 |  2128.8 |  2016.3 |  1415.2 |  1353.7 |  1694.2 |
+|   2GiB |  5081.1 |  2999.3 |  2879.5 |  3098.6 |  3775.5 |  3555.3 |  2725.9 |  2750.5 |  3325.9 |
+|   4GiB | 10052.6 |  5853.7 |  5572.6 |  5836.8 |  6942.7 |  6619.1 |  5432.3 |  5336.1 |  6597.6 |
+|   8GiB | 18091.5 | 11482.1 | 11005.9 | 11518.0 | 13140.5 | 12708.4 | 10652.7 | 10623.0 | 13150.2 |
+|  16GiB | 35853.3 | 22769.6 | 21846.0 | 22860.8 | 25700.9 | 25147.9 | 21085.1 | 21192.7 | 26211.3 |
+</code></pre>
+<pre><code>Summary of 9 collectives over 8 ranks:
+
+fastest median latency
+|     collective    | payload | fastest |
+| :---------------- | ------: | ------: |
+| reduce            |      8B |  11.6us |
+| gather            |    256B |  12.2us |
+| broadcast         |      8B |  12.3us |
+| scatter           |    128B |  15.4us |
+| all_to_all        |    128B |  16.4us |
+| batch_isend_irecv |      8B |  16.4us |
+| reduce_scatter    |    128B |  19.7us |
+| all_gather        |    128B |  19.8us |
+| all_reduce        |     16B |  23.5us |
+
+busbw
+|     collective    | payload |    peak    | half-peak |
+|                   |         |            |  payload  |
+| :---------------- | ------: | ---------: | --------: |
+| all_reduce        |   16GiB | 840.18GBps |     64MiB |
+| gather            |    1GiB | 763.36GBps |     16MiB |
+| scatter           |   16GiB | 717.23GBps |     16MiB |
+| reduce_scatter    |   16GiB | 689.72GBps |     64MiB |
+| reduce            |   16GiB | 688.60GBps |     32MiB |
+| broadcast         |   16GiB | 674.19GBps |     32MiB |
+| all_gather        |   16GiB | 661.74GBps |     64MiB |
+| all_to_all        |   16GiB | 658.62GBps |     32MiB |
+| batch_isend_irecv |   16GiB | 658.47GBps |    256MiB |
+</code></pre>
+<p>The fastest median is the smallest latency median across the measured payloads. The half-peak payload is the smallest payload reaching half the collective's peak <code>busbw</code>, as in <a href="#latency">Latency</a>.</p>
+<p><img src="images/torch-dist-bench-busbw-8xb200.png" alt="torch-dist-bench bus bandwidth 8x B200" /></p>
+<p><img src="images/torch-dist-bench-latency-8xb200.png" alt="torch-dist-bench latency 8x B200" /></p>
+<p>The fastest <code>all_to_all</code>, which MoE dispatch and combine use, is 16.4µs, against 23.5µs for <code>all_reduce</code>, and the fastest <code>reduce</code>, <code>gather</code> and <code>broadcast</code> are 11.6µs, 12.2µs and 12.3µs. <code>--sym-mem</code> brings <code>all_reduce</code>, <code>all_gather</code> and <code>reduce_scatter</code> down to 11.6µs, moves the others' fastest payloads by less than 1µs, and makes <code>batch_isend_irecv</code> 1.8µs slower. At the peak, <code>all_gather</code> reaches 749.03GBps instead of 661.74GBps, while <code>reduce_scatter</code> tops out at 489.13GBps at 8GiB instead of 689.72GBps at 16GiB.</p>
+<p><code>gather</code> peaks at 763.36GBps at 1GiB, above its 718.37GBps at 16GiB. <code>batch_isend_irecv</code> stays at 81-85GBps from 16MiB to 64MiB, under a third of any other collective there, and its median latency is flat at 834-839µs from 64MiB to 256MiB. It catches up only from 512MiB.</p>
+<p>Against <code>nccl-tests</code> built with NCCL 2.30.7 on an 8x B200 node - its per-iteration median and p99 (<code>-I 1</code>) for the latency, its default timing for the bandwidth - <code>all_reduce</code>, <code>all_gather</code>, <code>reduce_scatter</code>, <code>all_to_all</code>, <code>broadcast</code>, <code>reduce</code> and <code>gather</code> agree within about 1µs up to 1MiB and within 2% at 16GiB, and so do their p99s. Where they differ, it's because PyTorch runs the collective differently or <code>nccl-tests</code> times it differently:</p>
+<ul>
+<li><code>scatter</code> takes 3-4µs more up to 128KiB and 6-7µs more from 256KiB to 1MiB, and gets 7-24% less <code>busbw</code> from 8KiB to 256MiB. <code>torch.distributed.scatter</code> sends each rank its piece with separate NCCL sends, while <code>nccl-tests</code> calls NCCL's own <code>ncclScatter</code>, added in NCCL 2.28. For <code>gather</code> the benchmark calls <code>torch.distributed.gather_single</code>, which uses <code>ncclGather</code> when PyTorch was built with NCCL&gt;=2.28.3, and agrees with <code>nccl-tests</code>. The older <code>torch.distributed.gather</code>, which takes a list of output tensors and uses separate sends and receives, took 3.7µs longer at 1KiB.</li>
+<li><code>batch_isend_irecv</code> takes 2-4µs more up to 128KiB. Its send to the next rank and receive from the previous one go through PyTorch's point-to-point path rather than a single collective call. Its <code>busbw</code> agrees within 9% from 8KiB up, and within 1% from 32MiB up.</li>
+<li><code>broadcast</code> and <code>reduce</code> get 7-15% less <code>busbw</code> from 4MiB to 2GiB, because back-to-back <code>broadcast</code>s and <code>reduce</code>s overlap, unlike <code>all_reduce</code>s, and <code>nccl-tests</code> times 20 calls in a row, while this benchmark times trials of at most 10 calls, and of 1 call from 1GiB. Against a single <code>nccl-tests</code> call (<code>-n 1</code>) its 1GiB <code>broadcast</code>, at 1.89ms, is within 5%. Its latency median at 1GiB is 2.09ms, because a call's latency is the slowest rank's while the bandwidth, like <code>nccl-tests</code>' <code>time</code> column, averages over the ranks, and a <code>broadcast</code>'s ranks don't finish together.</li>
+</ul>
+<h4 id="other-implementations">Other implementations</h4>
+<p>Other benchmarks that measure the latency of collectives, with the payload range each one sweeps by default:</p>
+<ul>
+<li><a href="https://github.com/NVIDIA/nccl-tests">nccl-tests</a> - NVIDIA's benchmark of every NCCL collective through the NCCL C API; <code>time</code> is the mean per call, <code>-I 1</code> adds per-call min, max and p99. One 32MiB payload by default, while its README sweeps <code>-b 8 -e 128M</code> on one node and <code>-b 8 -e 8G</code> on 8 nodes - see <a href="#nccl-tests">nccl-tests</a>.</li>
+<li><a href="https://github.com/ROCm/rccl-tests">rccl-tests</a> - the same benchmark for AMD's RCCL, with the same flags and columns.</li>
+<li><a href="https://mvapich.cse.ohio-state.edu/benchmarks/">OSU Micro-Benchmarks</a> - the MPI benchmarks from the MVAPICH team; <code>osu_allreduce</code> and its siblings report the average, min and max latency per call, 1B to 1MiB by default.</li>
+<li><a href="https://github.com/intel/mpi-benchmarks">Intel MPI Benchmarks</a> - <code>IMB-MPI1 Allreduce</code> and the other collectives report <code>t_min</code>, <code>t_max</code> and <code>t_avg</code> per call, 0B to 4MiB by default.</li>
+<li><a href="https://github.com/facebookresearch/param">PARAM</a> - Meta's benchmarks, whose <code>train/comms/pt/comms.py</code> times collectives through <code>torch.distributed</code> like this benchmark does and reports p50, p75 and p95 latency, 8B to 64B by default.</li>
+<li><a href="https://github.com/openucx/ucc">UCC perftest</a> - <code>ucc_perftest</code> times collectives through UCC, which can run over NCCL, and reports the average, min and max latency; one 128-element payload by default.</li>
+<li><a href="https://github.com/microsoft/mscclpp">MSCCL++</a> - its <code>python/mscclpp_benchmark/allreduce_bench.py</code> times MSCCL++'s all-reduce kernels against NCCL's from 4KiB to 1GiB. See <a href="../../network/README.html#other-collective-libraries">Other collective libraries</a>.</li>
+<li><a href="https://github.com/deepseek-ai/DeepEP">DeepEP</a> - DeepSeek's MoE expert-parallel all-to-all library, whose tests time its dispatch and combine kernels at realistic token counts rather than sweeping payload sizes. See <a href="../../network/README.html#other-collective-libraries">Other collective libraries</a>.</li>
+</ul>
+<h4 id="symmetric-memory">Symmetric memory</h4>
+<p>Symmetric memory can speed up NCCL comms significantly at lower payloads. See <a href="../../network/README.html#symmetric-memory">Symmetric memory</a> for details.</p>
+<p>To run the collectives on buffers registered as an NCCL symmetric memory window, add <code>--sym-mem</code> (similar to <code>nccl-tests -R 2</code>), which lets NCCL&gt;=2.27 use its symmetric kernels for the collectives that have them. <code>register_mem_pool(..., symm=True)</code> arrived in torch 2.9. torch 2.9.1 (NCCL 2.27.7), 2.10.0 and 2.11.0 (both NCCL 2.28.9) hang in <code>broadcast</code> on that path. torch 2.12.0 with NCCL 2.29.7 is the oldest cu130 release that finishes it, so the benchmark refuses <code>--sym-mem</code> below torch 2.12 and NCCL 2.29. Run the benchmark with and without it to see what symmetric memory gains on your setup. Use it only if the workload you're benchmarking for runs them on symmetric memory buffers too, otherwise its numbers won't reflect what that workload will get. <a href="#other-collectives">Other collectives</a> shows which collectives it speeds up on a B200 node, and which it slows down.</p>
+<h3 id="all_gather_object-vs-all_reduce">all_gather_object vs all_reduce</h3>
+<p><a href="all_gather_object_vs_all_reduce.py">all_gather_object_vs_all_reduce.py</a> - a quick benchmark showing 23x speed up when moving from <code>all_gather_object</code> to <code>all_reduce</code> when collecting completion status from the process group. e.g. when implementing some sort of all-processes-are-done flag. This technique is usually used for synchronizing gpus when they may complete at different number of iterations - which one needs for inference over multiple DP channels, or when one wants to sync a <code>StopIteration</code> event in <code>DataLoader</code>. See also <a href="./all_gather_object_vs_all_gather.py">all_gather_object_vs_all_gather.py</a>.</p>
+<h3 id="all_reduce-latency-comparison">all_reduce latency comparison</h3>
+<p><a href="all_reduce_latency_comp.py">all_reduce_latency_comp.py</a> - exemplifies how 1x 4GB reduction is much faster than 1000x 4MB reductions.</p>
+<h3 id="nccl-tests">nccl-tests</h3>
+<p><a href="https://github.com/NVIDIA/nccl-tests">NVIDIA/nccl-tests</a> benchmarks collectives - <code>all-reduce</code>, <code>all-gather</code>, <code>reduce-scatter</code> and the rest - and reports the same <code>busbw</code>/<code>algbw</code> columns as <a href="torch-dist-bench.py">torch-dist-bench.py</a>.</p>
+<p>Which of the two to use depends on what you're writing. If it's a PyTorch program, use <code>torch-dist-bench.py</code>: it calls the collectives through <code>torch.distributed</code>, the way your program will, so its numbers are what your program gets - <a href="#other-collectives">Other collectives</a> shows where that differs from <code>nccl-tests</code>. If you're writing code that calls NCCL directly, such as a custom communication kernel or a C++/CUDA layer on top of NCCL, use <code>nccl-tests</code>, which calls the NCCL C API the same way your code will.</p>
+<p><code>MPI=0</code> is fine for a single node, and <code>NCCL_HOME</code> points at whichever NCCL you want to test - the one PyTorch uses being the convenient choice, since that is what your training will actually use. pip-installed PyTorch gets it from the <code>nvidia-nccl</code> wheel, which as of <code>nvidia-nccl-cu13==2.30.7</code> ships <code>libnccl.so.2</code> but no <code>libnccl.so</code>, so give the linker a <code>libnccl.so</code> next to the headers:</p>
+<pre><code class="language-bash">git clone https://github.com/NVIDIA/nccl-tests
+cd nccl-tests
+NCCL_PIP=$(python -c &quot;import nvidia.nccl; print(list(nvidia.nccl.__path__)[0])&quot;)
+mkdir -p nccl-home/lib
+ln -s $NCCL_PIP/include nccl-home/include
+ln -s $NCCL_PIP/lib/libnccl.so.2 nccl-home/lib/libnccl.so
+make -j MPI=0 NCCL_HOME=$PWD/nccl-home
+export LD_LIBRARY_PATH=$NCCL_PIP/lib:$LD_LIBRARY_PATH
+</code></pre>
+<p>That puts one binary per collective under <code>build/</code> - <code>all_reduce_perf</code>, <code>all_gather_perf</code>, <code>reduce_scatter_perf</code>, <code>alltoall_perf</code> and others. The <code>LD_LIBRARY_PATH</code> line makes them load that same NCCL at run time rather than a system one - check the <code>NCCL version</code> line they print. A default run times back-to-back calls, which matches <code>torch-dist-bench.py</code>'s default timing, and <code>-R 2</code> registers the buffers as a symmetric memory window, which matches <code>torch-dist-bench.py --sym-mem</code>.</p>
+<h3 id="nvbandwidth">nvbandwidth</h3>
+<p><a href="https://github.com/NVIDIA/nvbandwidth">NVIDIA/nvbandwidth</a> measures point-to-point bandwidth between hosts and accelerators - the closest thing to a direct reading of a single link, as opposed to a collective's aggregate:</p>
+<pre><code class="language-bash">git clone https://github.com/NVIDIA/nvbandwidth
+cd nvbandwidth
+cmake . &amp;&amp; make
+</code></pre>
+<p>Run it with no arguments for the full sweep, <code>./nvbandwidth -l</code> to list the testcases, or <code>-t &lt;testcase&gt;</code> to run just one. <code>-i N</code> raises the iteration count from its default of 3.</p>
+<p>note: <code>host_to_device_memcpy_ce</code> measures whatever the host-to-device path happens to be on that platform - PCIe on an x86 host with PCIe-attached accelerators, NVLink-C2C on a Grace-Blackwell system. Same command, an order of magnitude apart, so read the number against the fabric the machine actually uses.</p>
+<h3 id="p2pbandwidthlatencytest">p2pBandwidthLatencyTest</h3>
+<p><a href="https://github.com/NVIDIA/cuda-samples/tree/master/cpp/5_Domain_Specific/p2pBandwidthLatencyTest">p2pBandwidthLatencyTest</a> from CUDA samples is a low-level accelerator-to-accelerator benchmark:</p>
+<pre><code class="language-bash">git clone https://github.com/NVIDIA/cuda-samples/
+cd cuda-samples/cpp/5_Domain_Specific/p2pBandwidthLatencyTest
+nvcc -o p2pBandwidthLatencyTest p2pBandwidthLatencyTest.cu -I ../../../Common
+</code></pre>
+<p>note: this repository reorganized its layout - the samples used to live under <code>Samples/</code> and are now under <code>cpp/</code>. If the <code>cd</code> fails, <code>find . -name p2pBandwidthLatencyTest.cu</code> will locate it. <code>Common</code> is still at the repository root, so the <code>-I</code> path is unchanged.</p>
+<h2 id="crucial-reproducibility-requirements">Crucial reproducibility requirements</h2>
+<p>The most important requirements for a series of successful experiments is to be able to reproduce the experiment environment again and again while changing only one or a few setup variables.</p>
+<p>Therefore when you try to figure out whether some change will improve performance or make it worse, you must figure out how to keep things stable.</p>
+<p>For example, you need to find a way to prevent the network usage from fluctuations. When we were doing performance optimizations for <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide">108B pre-BLOOM experiments</a> it was close to impossible to perform, since we were on a shared internode network and the exact same setup would yield different throughput depending on how many other users used the network. It was not working. During BLOOM-176B we were given a dedicated SLURM partition with an isolated network where the only traffic was ours. Doing the performance optimization in such environment was just perfect.</p>
+<h2 id="network-throughput">Network throughput</h2>
+<p>It's critical to understand your particular model size and framework requirements with regard to network bandwidth, throughput and latency. If you underpay for network you will end up having idle gpus and thus you wasted money and time. If you overpay for very fast network, but your gpus are slow, then again you wasted money and time.</p>
+<p>If your network is very slow, your training is likely to be network-bound and many improvements in the training setup will not help with the improving performance.</p>
+<p>Note: The <a href="https://github.com/EleutherAI/cookbook">EAI cookbook</a> contains a set of <a href="https://github.com/EleutherAI/cookbook/tree/main/benchmarks/communication">communication benchmarks</a> for each collective that you can use to quickly measure the throughput of your internode or intranode network.</p>
+<p>Here is a simple all-reduce benchmark that you can use to quickly measure the throughput of your internode network:</p>
+<p><a href="torch-dist-bench.py">torch-dist-bench.py</a></p>
+<p>On CSPs that have enabled <a href="https://github.com/NVIDIA/pyxis">SLURM Pyxis Container Plugin</a>, such as CoreWeave, Crusoe, AWS, Oracle, Azure, GCP, etc, <code>torch-dist-bench.py</code> can be easily ran &amp; reproduced via the following command:</p>
+<pre><code class="language-bash">sbatch -n &lt;num_of_nodes&gt; ./torch-dist-bench-pyxis.sbatch
+</code></pre>
+<p>Usually benchmarking at least 4 nodes is recommended, but, of course, if you already have access to all the nodes you will be using during the training, benchmark using all of the nodes.</p>
+<p>If you do not have access to a pyxis SLURM environment, to run it on 4 nodes:</p>
+<pre><code class="language-bash">GPUS_PER_NODE=8
+NNODES=4
+MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+MASTER_PORT=6000
+python -u -m torch.distributed.run \
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
+    --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT \
+    --rdzv_backend c10d \
+    --max_restarts 0 \
+    --role `hostname -s`: \
+    --tee 3 \
+    torch-dist-bench.py
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li>adapt <code>MASTER_ADDR</code> to rank 0 hostname if it's not a SLURM environment where it's derived automatically.</li>
+</ul>
+<p>Here is how to launch it in a SLURM env with 4 nodes:</p>
+<pre><code class="language-bash">salloc --partition=mypartition --nodes=4 --ntasks-per-node=1 --cpus-per-task=48 --gres=gpu:8 --time=1:00:00 bash
+srun --cpus-per-task=$SLURM_CPUS_PER_TASK --gres=gpu:8 --nodes=4 --tasks-per-node=1 python -u -m torch.distributed.run --nproc_per_node=8 --nnodes 4 --rdzv_endpoint $(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1):6000 --rdzv_backend c10d torch-dist-bench.py
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li>You are likely to need to adapt <code>--cpus-per-task</code> and <code>--partition</code> arguments there.</li>
+<li>You do <code>salloc</code> once and then can repeat <code>srun</code> multiple times on the same allocation.</li>
+</ul>
+<p>You may get results anywhere between 5Gbps and 6700Gbps (as of 2026-10), and the payload size matters as much as the hardware does - <code>busbw</code> climbs by orders of magnitude from a small payload to a large one on the very same setup. In the measured tables under <a href="../../network/README.html#inter-node-speed-depends-on-intra-node-speed">Inter-node speed depends on intra-node speed</a>, at a 16GiB payload a single B200 node reaches 838.97GBps and four nodes 376.60GBps - about 6700Gbps and 3000Gbps - while at 32KiB those same runs report 2.17GBps and 0.64GBps. So always compare like payload with like. The minimal speed to prevent being network bound will depend on your particular training framework, but typically you'd want at least 400Gbps or higher. Though we trained BLOOM on 50Gbps.</p>
+<p>Frameworks that shard weights and optim stages like <a href="https://github.com/deepspeedai/DeepSpeed">DeepSpeed</a> w/ ZeRO Stage-3 do a lot more traffic than frameworks like <a href="https://github.com/bigscience-workshop/Megatron-DeepSpeed">Megatron-DeepSpeed</a> which do tensor and pipeline parallelism in addition to data parallelism. The latter ones only send activations across and thus don't need as much bandwidth. But they are much more complicated to set up and run.</p>
+<p>Of course, an efficient framework will overlap communications and compute, so that while one stage is fetching data, the other stage in parallel runs computations. So as long as the communication overhead is smaller than compute the network requirements are satisfied and don't have to be super fantastic.</p>
+<p>To get reasonable GPU throughput when training at scale (64+GPUs) with DeepSpeed ZeRO Stage 3 with V100s</p>
+<ol>
+<li>100Gbps is not enough</li>
+<li>200-400Gbps is ok</li>
+<li>800-1000Gbps is ideal</li>
+</ol>
+<p><a href="https://github.com/deepspeedai/DeepSpeed/issues/2928#issuecomment-1463041491">full details</a></p>
+<p>Of course, the requirements are higher for A100 gpu nodes and even higher for H100s (but no such benchmark information has been shared yet).</p>
+<h3 id="extrapolating-benchmark-results-from-several-nodes-to-many">Extrapolating benchmark results from several nodes to many</h3>
+<p>As it's often not easy to benchmark hundreds of nodes, often we try to benchmark interconnect performance using, say, 4 nodes. I wasn't sure whether this would give the correct indication for when 40 or 400 nodes will be used so I asked about it <a href="https://github.com/NVIDIA/nccl/issues/790">here</a> and the answer was:</p>
+<blockquote>
+<p>Extrapolating at scale is not that hard for ring and tree (we have a function in <code>tuning.cc</code> predicting it, based on the ring linear latency and the tree log latency with reduced BW). Now as you scale, there are many factors which may cause your real performance to be very far off the prediction, like routing. Also note on an IB network you'll be able to use SHARP; that way your latency stays mostly constant as you scale, your bandwidth doesn't degrade much either, and you're always better than both ring and tree.</p>
+</blockquote>
+<h2 id="disable-access-control-services">Disable Access Control Services</h2>
+<p>PCI Access Control Services (ACS) used for IO virtualization (also known as VT-d or IOMMU) force P2P PCIe transactions to go up through the PCIe Root Complex, which does not enable GDS to bypass the CPU on paths between a network adapter or NVMe and the GPU in systems that include a PCIe switch.</p>
+<p>For the optimal GDS performance, disable ACS by following these instructions <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#pci-access-control-services-acs">here</a>. Here are some <a href="https://docs.nvidia.com/gpudirect-storage/best-practices-guide/index.html">additional notes</a></p>
+<p>Please note that if you're using Virtual machines you can't disable ACS as it's a required feature. To run with maximum performance inside virtual machines, Address Translation Service (ATS) needs to be enabled in network adapters.</p>
+<h2 id="performance-oriented-nccl-environment-variables">Performance-Oriented NCCL Environment Variables</h2>
+<p>While NCCL is excellent at automatically figuring out the best performance for any given network, sometimes it needs some help, in which case the following NCCL env vars are used to tune up performance. Let's look at a few common ones you might want to be aware of, and the full list of those can be found <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html">here</a>.</p>
+<p>Note that some <code>NCCL_IB_*</code> env vars apply to RoCEv2 networks as well.</p>
+<h3 id="nccl_algo"><code>NCCL_ALGO</code></h3>
+<p>This one defines which algorithms NCCL will use. Typically it's one of:</p>
+<ol>
+<li>Tree</li>
+<li>Ring</li>
+<li>CollnetDirect and CollnetChain (IB SHARP)</li>
+<li>NVLS (NVLink SHARP)</li>
+</ol>
+<p>I was asking questions about how a user can do the optimization and was told at <a href="https://github.com/NVIDIA/nccl/issues/790">this NCCL Issue</a> that basically the user shouldn't try to optimize anything as NCCL has a ton of smart algorithms inside that will try to automatically switch from one algorithm to another depending on a concrete situation.</p>
+<p>Sylvain Jeaugey shared:</p>
+<blockquote>
+<p>There used to be a static threshold, but it's been replaced by a more complex tuning system. The new system builds a model of the latency and bandwidth of each algorithm/protocol combination (that's many, many combinations) and decides which one should perform best depending on the size. So there is no longer an env var and a static value, which is good because the performance of each algorithm depends on the number of nodes and number of GPUs per node and therefore we need to navigate a 2D space of algo/protocols which isn't easy. You can always force one algorithm with <code>NCCL_ALGO=TREE</code> and <code>NCCL_ALGO=RING</code> and see what performance you get and whether NCCL switches at the right point. I know it's hard to understand, but it's also the best solution we found to have the best performance across all platforms and users without users having to manually tune the switch points. Downside is, if you want to manually tune things, you can't.</p>
+</blockquote>
+<p>If you use <code>NCCL_ALGO</code> you need to list the algorithms to consider, but otherwise you have no control over it. So, really, this is only useful if you want to make sure that one of the algorithms isn't used.</p>
+<p>When asking about which algorithm is better, I received:</p>
+<blockquote>
+<p>Roughly speaking, ring is superior in terms of peak bandwidth (except on 2 nodes), tree is superior in terms of base latency (especially as we scale). <code>Bandwidth = Size / Time</code>, so whether you look at the time or the bandwidth for a given size, it will be a combination of both the peak bandwidth and the base latency. For a fixed size, as you scale, the base latency of ring will become prevalent and tree will be better.</p>
+</blockquote>
+<p>There is also an algo named <code>NVLS</code>, which uses NVLink SHARP to do the reduction inside the switch and can therefore report more than the wire spec - with NVLink 4.0 (450GBps) an <code>all-reduce</code> benchmark clocks 480GBps. <code>NVLSTree</code> (NCCL 2.18+) is the inter-node counterpart and <a href="https://github.com/NVIDIA/nccl/issues/1031#issuecomment-1773965518">requires IB or RoCE</a>. See <a href="../../network/README.html#sharp">SHARP</a> for when it engages, what it is worth, and why <code>busbw</code> stops describing the wire once it does.</p>
+<p>And if you would like to know which algo is being used, <code>NCCL_DEBUG=INFO</code> combined with <code>NCCL_DEBUG_SUBSYS=INIT,TUNING</code> reports the selection per payload size:</p>
+<pre><code class="language-bash">NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING NCCL_DEBUG_FILE=/tmp/nccl.%h.%p.log \
+./build/all_reduce_perf -b 32k -e 16G -f 2 -g 8
+grep -ihoE &quot;AllReduce: [0-9]+ Bytes -&gt; Algo [A-Z]+ proto [A-Z0-9]+&quot; /tmp/nccl.*.log | sort -u
+</code></pre>
+<p>On an 8x H200 node that prints lines like <code>AllReduce: 2097152 Bytes -&gt; Algo NVLS proto SIMPLE</code>, and reveals where NCCL switches over - <code>RING</code> with the <code>LL</code> protocol for payloads up to 1MiB, then <code>NVLS</code> with <code>SIMPLE</code> from 2MiB up. <code>NCCL_DEBUG_FILE</code> keeps all of this out of the benchmark's own output, which otherwise gets buried.</p>
+<p>Setting <code>NCCL_ALGO</code> explicitly is still worth doing, but for a different purpose - measuring what each algorithm delivers on your hardware, rather than discovering which one NCCL chose.</p>
+<h3 id="nccl_cross_nic"><code>NCCL_CROSS_NIC</code></h3>
+<p>The <code>NCCL_CROSS_NIC</code> variable controls whether NCCL should allow rings/trees to use different NICs, causing inter-node communication to use different NICs on different nodes.</p>
+<p>To maximize inter-node communication performance when using multiple NICs, NCCL tries to communicate between same NICs between nodes, to allow for network design where each NIC from each node connects to a different network switch (network rail), and avoid any risk of traffic flow interference. The NCCL_CROSS_NIC setting is therefore dependent on the network topology, and in particular depending on whether the network fabric is rail-optimized or not.</p>
+<p>This has no effect on systems with only one NIC.</p>
+<p>Values accepted:</p>
+<ul>
+<li>0: Always use the same NIC for the same ring/tree, to avoid crossing network rails. Suited for networks with per NIC switches (rails), with a slow inter-rail connection. Note there are corner cases for which NCCL may still cause cross-rail communication, so rails still need to be connected at the top.</li>
+<li>1: Do not attempt to use the same NIC for the same ring/tree. This is suited for networks where all NICs from a node are connected to the same switch, hence trying to communicate across the same NICs does not help avoiding flow collisions.</li>
+<li>2: (Default) Try to use the same NIC for the same ring/tree, but still allow for it if it would result in better performance.</li>
+</ul>
+<h3 id="nccl_ib_qps_per_connection"><code>NCCL_IB_QPS_PER_CONNECTION</code></h3>
+<p>This is relevant if you're on a multi-layer InfiniBand or RoCEv2 network.</p>
+<p><code>NCCL_IB_QPS_PER_CONNECTION</code> defines the number of IB queue pairs to use for each connection between two ranks. This can be useful on multi-level fabrics which need multiple queue pairs to have good routing entropy. In other words, when your jobs are crossing spine or super-spine switches.</p>
+<p>By default it is set to <code>1</code>, but having a higher number might benefit throughput.</p>
+<p>Depends on the size of the network. you could start with something like 4 for any cluster over 64 GPUs (i.e. any cluster that’s bigger than the radix (number of ports) of its IB switch (e.g. the IB NDR switch radix is 64.)</p>
+<p>Ideally you'd ask your cloud provider if they have already researched the best value, but if they didn't you can do it yourself, albeit it might be use-case specific.</p>
+<p>The other gotcha is that when the value is higher than <code>1</code> an additional GPU memory will be consumed.</p>
+<h3 id="nccl_min_ctas-and-nccl_max_ctas"><code>NCCL_MIN_CTAS</code> and <code>NCCL_MAX_CTAS</code></h3>
+<p>Cooperative Thread Array (CTA) implements CUDA thread blocks - You can read about it <a href="https://docs.nvidia.com/cuda/parallel-thread-execution/#thread-hierarchy">here</a>.</p>
+<p>In the past these 2 env vars were called <code>NCCL_MIN_NCHANNELS</code> and <code>NCCL_MAX_NCHANNELS</code>.</p>
+<p>Because in the CUDA world compute and communication operations share the same limited number of SMs per GPU, if too many SMs are used for compute, the comms will be blocked and vice versa. Since ideally compute and comms should overlap and not block each other finding the right balance is important.</p>
+<p>The CTA value is derived algorithmically by NCCL, but the default behavior can be overridden by setting the lower and upper limits via the env vars: <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html?highlight=nccl_max_ctas#nccl-min-ctas"><code>NCCL_MIN_CTAS</code></a> and <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html?highlight=nccl_max_ctas#nccl-max-ctas"><code>NCCL_MAX_CTAS</code></a>. And then NCCL's tuner will be limited to choose the best value in the user-imposed range. The same can be accomplished from the program using <code>pg_options</code> in <a href="https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group"><code>torch.distributed.init_process_group</code></a> via <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#ncclconfig-t"><code>ncclConfig_t</code></a>'s <code>minCTAs</code> and <code>maxCTAs</code> (other process group creation functions have <code>pg_options</code> as well). The latter approach allows you to set different CTA settings to different process groups, whereas the env vars will apply globally to all process groups.</p>
+<p>Here is an example that directly sets both values to <code>32</code> per process group:</p>
+<pre><code class="language-python">import torch
+nccl_options = torch.distributed.ProcessGroupNCCL.Options()
+nccl_options.config.min_ctas = 32
+nccl_options.config.max_ctas = 32
+torch.distributed.init_process_group(..., pg_options=nccl_options)
+</code></pre>
+<p>In order to find the best performance to experiment with different values against a specific benchmark of choice, that emulates the intended workload, you could set both config options to the same value and then bisect on a range of 1 to 64 or similar.</p>
+<h2 id="infiniband">InfiniBand</h2>
+<h3 id="infiniband-adaptive-routing">InfiniBand adaptive routing</h3>
+<p>Make sure your cloud provider enables IB adaptive routing which could greatly improve the performance.</p>
+<p>For nuances see this paper: <a href="https://web-backend.simula.no/sites/default/files/publications/files/adaptive_routing_in_infiniband_hardware.pdf">Adaptive Routing in InfiniBand Hardware</a>.</p>
+
+</article>
+<footer><a class="prev" href="../../network/debug/README.html">&larr; Network Debug</a><a class="next" href="../../orchestration/README.html">Orchestration &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

@@ -9,7 +9,7 @@
 
 ## Introduction
 
-It's not enough to buy/rent expensive accelerators to train and infer models fast. You need to ensure that your [storage IO](../storage), [CPU](../compute/cpu) and network are fast enough to "feed the accelerator furnace". If this is not ensured then the expensive accelerators will be underutilized leading to lost $$, slower training time and inference throughput. While it can be any other of the mentioned components, the network is often the bottleneck during the training (assume your DataLoader is fast).
+It's not enough to buy/rent expensive accelerators to train and infer models fast. You need to ensure that your [storage IO](../storage), [CPU](../compute/cpu) and network are fast enough to "feed the accelerator furnace". If this is not ensured then the expensive accelerators will be underutilized leading to lost \$\$, slower training time and inference throughput. While it can be any other of the mentioned components, the network is often the bottleneck during the training (assume your DataLoader is fast).
 
 If your model fits on a single accelerator, you have little to worry about. But nowadays most models require several accelerators to load and LLM/VLM models require multiple compute nodes for training and some even for inference.
 
@@ -36,7 +36,7 @@ You can safely ignore the many concepts and abbreviations listed here until you 
 - IB: InfiniBand
 - IBTA: InfiniBand Trade Association
 - ICI: Inter-Chip Interconnect - Google's scale-up fabric between TPU chips
-- MFU: Model Flops Utilization (e.g. `mfu=0.5` at half-precision on A100 comes from getting 156TFLOPS, because peak half-precision spec is 312TFLOPS, and thus `156/312=0.5`)
+- MFU: Model Flops Utilization (e.g. `mfu=0.5` at half-precision on A100 comes from getting 156TFLOPS, because peak half-precision spec is 312TFLOPS, and thus $156/312=0.5$)
 - NCCL: NVIDIA Collective Communications Library
 - NIC: Network Interface Card
 - NVL72: an NVLink domain of 72 accelerators; likewise NVL8 and NVL36
@@ -193,7 +193,7 @@ General notes:
 
 ### Peer-to-peer bandwidth
 
-Some vendors have their all-to-all and peer-to-peer (GPU-to-GPU) bandwidth the same, while others don't. For example, AMD MI300X/MI325X are 64GBps GPU-to-GPU (peer-to-peer), but 448GBps in total on a board of 8 accelerators, since `64*7=448`. Likewise MI350X/MI355X are 76.5GBps peer-to-peer and 535.5GBps all-to-all, since `76.5*7=535.5`.
+Some vendors have their all-to-all and peer-to-peer (GPU-to-GPU) bandwidth the same, while others don't. For example, AMD MI300X/MI325X are 64GBps GPU-to-GPU (peer-to-peer), but 448GBps in total on a board of 8 accelerators, since $64 \times 7=448$. Likewise MI350X/MI355X are 76.5GBps peer-to-peer and 535.5GBps all-to-all, since `76.5*7=535.5`.
 
 Here is the intra-node unidirectional theoretical peer-to-peer peak bandwidth cross-comparison for current solutions sorted by bandwidth:
 
@@ -555,9 +555,9 @@ Number of Trainium2 chips per node and intra-node network speeds:
 - Trainium2: 16 chips interconnected at 128GBps peer-to-peer undirectional (32 PCIe lanes) and each Trainium2 connects to 3 other chips
 - Trainium2 Ultra: 64 chips - the 16 chip groups are the same as non-Ultra, plus these 4 groups are interconnected at 64GBps with each other.
 
-Like TPU it is used in a 3D Torus structure. Here different axis connect at different speeds, so the total all-to-all bandwidth per chip is 640GBps unidirectional (`128GBps * 4 intra-node neighbors + 64GBps * 2 inter-node neighbors`)
+Like TPU it is used in a 3D Torus structure. Here different axis connect at different speeds, so the total all-to-all bandwidth per chip is 640GBps unidirectional ($128\ \text{GBps} \times 4\ \text{intra-node neighbors} + 64\ \text{GBps} \times 2\ \text{inter-node neighbors}$)
 
-When their spec suggests 1024GBps/chip intra-instance bandwidth, it is bidirectional, so only 512GBps/chip unidirectional - and it comes from `128GBps * 4 intra-node neighbors` (and only if all 4 chips are engaged).
+When their spec suggests 1024GBps/chip intra-instance bandwidth, it is bidirectional, so only 512GBps/chip unidirectional - and it comes from $128\ \text{GBps} \times 4\ \text{intra-node neighbors}$ (and only if all 4 chips are engaged).
 
 
 ## Inter-node networking
@@ -630,7 +630,7 @@ Notes:
 26. Illustrative four-interface node.
 27. Illustrative eight-adapter node.
 28. Four fabric-facing EFA interfaces.
-29. Google publishes a higher headline number for these machine types - 1800Gbps max network bandwidth for A3 Mega and 1000Gbps for A3 High. Those totals include the VPC/frontend NIC; the figures above count only the accelerator fabric, so `8x200=1600Gbps` and `4x200=800Gbps` respectively. The ~200Gbps difference in each case is the general-purpose network interface, which doesn't carry collectives.
+29. Google publishes a higher headline number for these machine types - 1800Gbps max network bandwidth for A3 Mega and 1000Gbps for A3 High. Those totals include the VPC/frontend NIC; the figures above count only the accelerator fabric, so $8 \times 200=1600$ Gbps and $4 \times 200=800$ Gbps respectively. The ~200Gbps difference in each case is the general-purpose network interface, which doesn't carry collectives.
 30. Eight fabric-facing EFA interfaces at 400Gbps each, device-reported via `/sys/class/infiniband/rdmap*/ports/1/rate`, for the 3.2Tbps AWS publishes per P6-B200 instance.
 31. The `v1`-`v4` EFA generation labels are AWS's own, taken from the [supported instance types](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa.html#efa-instance-types) tables, which group instances under `Nitro v3 (EFA v1)` through `Nitro v6 (EFA v4)` headings. The generation follows the Nitro version, not the accelerator - see [EFA](#efa).
 
@@ -727,7 +727,7 @@ Sources:
 1. [InfiniBand Trade Association roadmap](https://infinibandta.org/infiniband-roadmap/)
 2. [InfiniBand Trade Association historical 8X and 12X roadmap](https://infinibandta.org/infiniband-trade-association-ibta-announces-updated-infiniband-roadmap-projecting-data-speeds-of-104gb-s-per-4x-port-in-2011/)
 
-The earlier LDR 8x value was 4800Gbps; the corrected lane-rate arithmetic is `8 * 800 = 6400Gbps`.
+The earlier LDR 8x value was 4800Gbps; the corrected lane-rate arithmetic is $8 \times 800 = 6400$ Gbps.
 
 Latency in usecs, with columns ordered by generation from oldest to newest:
 
@@ -845,12 +845,12 @@ Do not count `/sys/class/infiniband/*` instead, because it also lists non-EFA ad
 
 ### Gaudi2 (inter-node)
 
-According to [Gaudi2 spec](https://habana.ai/wp-content/uploads/2023/10/HLS-Gaudi2_Datasheet_10_23.pdf), these nodes provide `3*8=24` NICs of 100GbE RoCE v2 RDMA for a total of 2.4Tbps of inter-node connectivity with other Gaudi2 nodes.
+According to [Gaudi2 spec](https://habana.ai/wp-content/uploads/2023/10/HLS-Gaudi2_Datasheet_10_23.pdf), these nodes provide $3 \times 8=24$ NICs of 100GbE RoCE v2 RDMA for a total of 2.4Tbps of inter-node connectivity with other Gaudi2 nodes.
 
 
 ### Gaudi3 (inter-node)
 
-According to [Gaudi3 spec](https://www.intel.com/content/www/us/en/content-details/817486/intel-gaudi-3-ai-accelerator-white-paper.html), these nodes provide `3*8=24` NICs of 200GbE RoCE v2 RDMA for a total of 4.8Tbps of inter-node connectivity with other Gaudi3 nodes.
+According to [Gaudi3 spec](https://www.intel.com/content/www/us/en/content-details/817486/intel-gaudi-3-ai-accelerator-white-paper.html), these nodes provide $3 \times 8=24$ NICs of 200GbE RoCE v2 RDMA for a total of 4.8Tbps of inter-node connectivity with other Gaudi3 nodes.
 
 
 ### HPE Slingshot interconnect
@@ -994,7 +994,7 @@ NCCL_NVLS_ENABLE=0 ./build/all_reduce_perf     -b 16G -e 16G -g 8 -z 1  # 367.2 
 ./build/reduce_scatter_perf                    -b 16G -e 16G -g 8 -z 1  # 362.9 - Ring, wrong collective
 ```
 
-footnote: `busbw` uses a different correction factor per collective - `2*(n-1)/n` for `all-reduce` against `(n-1)/n` for `all-gather` and `reduce-scatter` - and `nccl-tests` applies the right one for each, so the last column really is comparable across the rows as a fraction of the wire.
+footnote: `busbw` uses a different correction factor per collective - $2(n-1)/n$ for `all-reduce` against $(n-1)/n$ for `all-gather` and `reduce-scatter` - and `nccl-tests` applies the right one for each, so the last column really is comparable across the rows as a fraction of the wire.
 
 
 ## Understanding why inter-node network speed is of a huge importance
@@ -1005,11 +1005,11 @@ This is probably one of the most important multi-segment section that you really
 
 First, let's get a bit of a feeling what all those Gbps/GBps practically mean.
 
-If your model is 80B parameter large, and you need to transmit every parameter or a gradient on the network even once in float32 (fp32) format, which requires 4 bytes per parameter, so you need to send 320GB (`80*4`) of data, or 2560Gb (`320*8`). If your network's bandwidth is 200Gbps it will take 12.8 seconds (`2560/200`) to transmit. And if you had 1600Gbps network then it'd take only 1.6 seconds.
+If your model is 80B parameter large, and you need to transmit every parameter or a gradient on the network even once in float32 (fp32) format, which requires 4 bytes per parameter, so you need to send 320GB ($80 \times 4$) of data, or 2560Gb ($320 \times 8$). If your network's bandwidth is 200Gbps it will take 12.8 seconds ($2560/200$) to transmit. And if you had 1600Gbps network then it'd take only 1.6 seconds.
 
 ### 1-GPU training
 
-Let's start with a much smaller model of say 2B params, to train it you'd need at least [18 bytes per parameter](../training/performance/README.md#anatomy-of-models-memory-usage) in mixed half precision which requires 2 bytes to store. So 36GB (`18*2`) of memory just for model weights, optimizer states and gradients. Plus you need additional memory for activations. Saved hidden states, activation checkpoints, and logits scale linearly with batch size and sequence length. Standard dense attention compute scales quadratically with sequence length, while temporary attention memory also scales quadratically only when the kernel materializes the full attention matrix. Taking 80GB A100 GPU for example, we can definitely train this model on a single GPU.
+Let's start with a much smaller model of say 2B params, to train it you'd need at least [18 bytes per parameter](../training/performance/README.md#anatomy-of-models-memory-usage) in mixed half precision which requires 2 bytes to store. So 36GB ($18 \times 2$) of memory just for model weights, optimizer states and gradients. Plus you need additional memory for activations. Saved hidden states, activation checkpoints, and logits scale linearly with batch size and sequence length. Standard dense attention compute scales quadratically with sequence length, while temporary attention memory also scales quadratically only when the kernel materializes the full attention matrix. Taking 80GB A100 GPU for example, we can definitely train this model on a single GPU.
 
 We then assume for the moment that the DataLoader is fast enough to be negligible in duration compared to the compute time. And thus we get a close to a perfect MFU (Model FLOPs Utilization):
 
@@ -1027,9 +1027,9 @@ The previous situation was fantastic due to the close to perfect MFU, but you re
 
 footnote: You could, of course, use less than 8 GPUs, it is just that most NVIDIA GPU-based compute nodes these days have 8 GPUs so why not get the best return on investment. On NVLink 4 and higher there is a performance reason as well: an `all-reduce` over 4 or fewer accelerators loses [SHARP](#sharp) altogether, and 5 to 7 accelerators get only part of its benefit.
 
-footnote: In the ideal world the training on 1 GPU for 8 durations of time, should cost the same as training on 8 GPUs for 1 duration of time. That's what one would expect - the same $$ spent, but finishing 8x faster. But because of data synchronization requirements, this is not the case.
+footnote: In the ideal world the training on 1 GPU for 8 durations of time, should cost the same as training on 8 GPUs for 1 duration of time. That's what one would expect - the same \$\$ spent, but finishing 8x faster. But because of data synchronization requirements, this is not the case.
 
-If the experimental model still contains 2B params like in the previous section and grads are in fp32 then the training program needs to send 8GB (`2B * 4B`) of data on every iteration. Moreover, since syncing the gradients requires an [`all_reduce` collective](https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html#collective-communication) - it needs to transmit the data twice - the first time sending the gradient data by each GPU, computing the sum of gradients and send this value back to each participating GPU so that each training process will benefit from the learning advancements each of its peers made in the last iteration.
+If the experimental model still contains 2B params like in the previous section and grads are in fp32 then the training program needs to send 8GB ($2\text{B} \times 4\text{B}$) of data on every iteration. Moreover, since syncing the gradients requires an [`all_reduce` collective](https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html#collective-communication) - it needs to transmit the data twice - the first time sending the gradient data by each GPU, computing the sum of gradients and send this value back to each participating GPU so that each training process will benefit from the learning advancements each of its peers made in the last iteration.
 
 Here is the all-reduce collective visualized:
 
@@ -1039,14 +1039,14 @@ Here is the all-reduce collective visualized:
 
 So we need to send 8GB twice on every iteration, which means we need to send 16GB of data.
 
-footnote: and to be exact the 2x comms volume for all-reduce is really `2*(n-1)/n` where n is the number of participating GPUs. So if n=2, the coefficient is just 1 since `2*(2-1)/2=1` and 1.75 for n=8 since `2*(8-1)/8=1.75`. It becomes already very close to 2 at n=64.
+footnote: and to be exact the 2x comms volume for all-reduce is really $2(n-1)/n$ where $n$ is the number of participating GPUs. So if $n=2$, the coefficient is just 1 since $2(2-1)/2=1$ and 1.75 for $n=8$ since $2(8-1)/8=1.75$. It becomes already very close to 2 at $n=64$.
 
 footnote: there is also the important issue of latency of the network - which is multiplied several times due to how data is gathered from all participating GPUs. But, given that here we are moving a very large payload the latency contributes a very small overhead and for simplicity can be ignored.
 
 How long will it take to send 16GB of data?
 
-- A100 @ 300GBps: `16/300` = 0.053 secs
-- H100 @ 450GBps: `16/450` = 0.035 secs
+- A100 @ 300GBps: $16/300$ = 0.053 secs
+- H100 @ 450GBps: $16/450$ = 0.035 secs
 
 which is incredibly fast!
 
@@ -1113,9 +1113,10 @@ Also see the [wiki page](https://en.wikipedia.org/wiki/FLOPS) for more clarifica
 For GPT-family of decoder transformers models we can use the math described in this [BLOOM-176 docs](https://github.com/bigscience-workshop/bigscience/tree/master/math#calculate-tflops):
 
 Here is how many TFLOP are processed per second:
-```
-tflops = model_size_in_B * 4 * 2 * seqlen * global_batch_size / (time_in_sec_per_iteration * total_gpus * 1e3)
-```
+
+$$
+\text{tflops} = \frac{\text{model\_size\_in\_B} \cdot 4 \cdot 2 \cdot \text{seqlen} \cdot \text{global\_batch\_size}}{\text{time\_in\_sec\_per\_iteration} \cdot \text{total\_gpus} \cdot 10^3}
+$$
 
 This formula assume one uses [activation recomputation](../training/performance/README.md#gradient-checkpointing) which saves GPU memory while introducing a smallish overhead. If one doesn't use it then replace `4` with `3` as the model has to do only 1x compute per `forward` and 2x per `backward` (since the grads are calculated twice - once for inputs and once for weights). With activation recomputation the `forward` is done twice and thus you have an additional path which leads to a multiplier of `4` instead of `3`
 
@@ -1123,9 +1124,9 @@ footnote: activation recomputation and gradient checkpointing both refer to the 
 
 so let's remove the time component, which will give us the total TFLOP
 
-```
-tflop = model_size_in_B * 4 * 2 * seqlen * global_batch_size / (total_gpus * 1e3)
-```
+$$
+\text{tflop} = \frac{\text{model\_size\_in\_B} \cdot 4 \cdot 2 \cdot \text{seqlen} \cdot \text{global\_batch\_size}}{\text{total\_gpus} \cdot 10^3}
+$$
 
 So let's say we have:
 - `seqlen=2048` (sequence length)
@@ -1137,9 +1138,9 @@ and we already defined:
 
 This gives us:
 
-```
-tflops = 2 * 4 * 2 * 2048 * 16 / (8 * 1e3) = 65.536 TFLOP
-```
+$$
+\text{tflops} = \frac{2 \cdot 4 \cdot 2 \cdot 2048 \cdot 16}{8 \cdot 10^3} = 65.536\ \text{TFLOP}
+$$
 
 So if we do a mixed half-precision training and most of the operations are done in half-precision then we can roughly say that we do [312TFLOPS on A100](https://www.nvidia.com/en-us/data-center/a100/#specifications) and usually a well optimized framework on a well-tuned hardware will do at least 50% MFU - that is it'll be able to compute at about 1/2 peak performance.
 
@@ -1147,9 +1148,9 @@ footnote: It's a ~3x [989TFLOPS on H100](https://www.nvidia.com/en-us/data-cente
 
 So continuing this train of thought it means that the setup will have about 156TFLOPS for mixed half-precision training - and so it'll take 0.42 secs on A100 GPU to process a single iteration (2x `forward` and 2x `backward` compute) if we ignore the overhead of the DataLoader (which we hope is close to instant).
 
-Earlier we said that a typical A100 node has an intra-node NVLink connection of 300GBps, and thus we said that to send 16GB of grads will take `16/300` = 0.053 secs.
+Earlier we said that a typical A100 node has an intra-node NVLink connection of 300GBps, and thus we said that to send 16GB of grads will take $16/300$ = 0.053 secs.
 
-And we measured our compute to be 0.42 secs, so here the network isn't a bottleneck as `0.42 > 0.053` so the compute will be slower than communication.
+And we measured our compute to be 0.42 secs, so here the network isn't a bottleneck as $0.42 > 0.053$ so the compute will be slower than communication.
 
 You can now do several thought experiments - for example if you halve the batch size or the sequence length you will halve the compute time.
 
@@ -1171,7 +1172,7 @@ Let's say you have a 200Gbps connection. Let's repeat the math from the previous
 
 16GB is 128Gb, and so at 200Gbps this will take 0.64 seconds.
 
-And if stick to the compute taking 0.42 seconds, here we end up with comms taking longer than compute since `0.64 > 0.42`.
+And if stick to the compute taking 0.42 seconds, here we end up with comms taking longer than compute since $0.64 > 0.42$.
 
 Let's bring both use cases together:
 
@@ -1510,23 +1511,23 @@ At large payloads leaving the node costs about 2x, not 18x.
 
 The reason is that an inter-node NCCL collective does not stop using NVLink - it leans on it for nearly all of the data movement, and it keeps every NIC in the node busy at the same time. A ring, for example, visits all 8 accelerators of a node over NVLink before hopping to the next node, so only 1 hop in 8 crosses the slow links, and NCCL runs several rings at once, each leaving the node through a different accelerator's NIC. A hierarchical algorithm gets there differently: it reduces within each node first, sends only the reduced shard out over the network, and then broadcasts the result back inside each node.
 
-Let's do the arithmetic for a 4GiB `all-reduce` over 32 ranks (4 nodes x 8 accelerators). Write `P` for the payload, `g` for the accelerators per node, `k` for the nodes and `n = g*k` for the total ranks - here `P` = 4GiB, `g` = 8, `k` = 4 and `n` = 32. The table reports [`busbw`](#glossary-and-concepts), which is the payload-over-elapsed-time rate scaled by the `all-reduce` correction factor `2*(n-1)/n`, so undoing that scaling recovers an elapsed time - `P / (busbw / (2*(n-1)/n))`, which for 4 nodes is `4GiB / (374.66GBps / 1.9375)` = 22.21ms, against `4GiB / (749.12GBps / 1.75)` = 10.03ms on a single node, where `n` = 8 makes the factor `2*(8-1)/8` = 1.75. Three ways one might model the 4-node figure:
+Let's do the arithmetic for a 4GiB `all-reduce` over 32 ranks (4 nodes x 8 accelerators). Write $P$ for the payload, $g$ for the accelerators per node, $k$ for the nodes and $n = g k$ for the total ranks - here $P$ = 4GiB, $g$ = 8, $k$ = 4 and $n$ = 32. The table reports [`busbw`](#glossary-and-concepts), which is the payload-over-elapsed-time rate scaled by the `all-reduce` correction factor $2(n-1)/n$, so undoing that scaling recovers an elapsed time - $P / (\text{busbw} / (2(n-1)/n))$, which for 4 nodes is $4\ \text{GiB} / (374.66\ \text{GBps} / 1.9375)$ = 22.21ms, against $4\ \text{GiB} / (749.12\ \text{GBps} / 1.75)$ = 10.03ms on a single node, where $n$ = 8 makes the factor $2(8-1)/8$ = 1.75. Three ways one might model the 4-node figure:
 
 footnote: mind the bases when doing this yourself - the benchmark prints `1GiB = 2**30 Bytes` but `1GBps = 10**9 Bytes per second`, so 4GiB is 4.29e9 bytes, not 4e9. Dividing GiB by GBps as if they shared a base understates every time in this section by about 7%.
 
-1. the naive inter-node model - the whole payload has to cross one accelerator's NIC: `P / 50GBps` = `4GiB / 50GBps` = 85.9ms. That is 3.9x more than measured, and it is the arithmetic to avoid.
+1. the naive inter-node model - the whole payload has to cross one accelerator's NIC: $P / 50\ \text{GBps}$ = $4\ \text{GiB} / 50\ \text{GBps}$ = 85.9ms. That is 3.9x more than measured, and it is the arithmetic to avoid.
 
-2. a flat ring across all `n` ranks - each link carries `2*(n-1)/n * P` = `2*(32-1)/32 * 4GiB` = 7.75GiB, and a ring laid out over `k` nodes crosses a node boundary `k` = 4 times, so each node has one boundary link's worth to push out. What that costs depends on how many NICs carry it. Over a single accelerator's NIC it would be `7.75GiB / 50GBps` = 166.4ms, 7.5x more than measured - but NCCL opens multiple channels, so different rings cross the boundary at different accelerators and the node's NICs are all in flight, exactly as in model 3 below. Over the node's `g * 50GBps` = 400GBps that is `7.75GiB / 400GBps` = 20.8ms, 94% of the 22.21ms measured.
+2. a flat ring across all $n$ ranks - each link carries $2(n-1)/n \cdot P$ = $2(32-1)/32 \cdot 4\ \text{GiB}$ = 7.75GiB, and a ring laid out over $k$ nodes crosses a node boundary $k$ = 4 times, so each node has one boundary link's worth to push out. What that costs depends on how many NICs carry it. Over a single accelerator's NIC it would be $7.75\ \text{GiB} / 50\ \text{GBps}$ = 166.4ms, 7.5x more than measured - but NCCL opens multiple channels, so different rings cross the boundary at different accelerators and the node's NICs are all in flight, exactly as in model 3 below. Over the node's $g \cdot 50\ \text{GBps}$ = 400GBps that is $7.75\ \text{GiB} / 400\ \text{GBps}$ = 20.8ms, 94% of the 22.21ms measured.
 
 3. the hierarchical model - reduce inside each node, exchange the shard between nodes, broadcast back inside. Each phase moves its own collective's correction factor times the payload that phase operates on:
 
-   - intra-node reduce-scatter: `(g-1)/g * P` = `(8-1)/8 * 4GiB` = 3.5GiB per accelerator over NVLink
-   - inter-node all-reduce of the resulting `P/g` = 0.5GiB shard, across the `k` nodes: `2*(k-1)/k * P/g` = `2*(4-1)/4 * 0.5GiB` = 0.75GiB per accelerator over EFA
-   - intra-node all-gather: `(g-1)/g * P` = `(8-1)/8 * 4GiB` = 3.5GiB per accelerator over NVLink
+   - intra-node reduce-scatter: $(g-1)/g \cdot P$ = $(8-1)/8 \cdot 4\ \text{GiB}$ = 3.5GiB per accelerator over NVLink
+   - inter-node all-reduce of the resulting $P/g$ = 0.5GiB shard, across the $k$ nodes: $2(k-1)/k \cdot P/g$ = $2(4-1)/4 \cdot 0.5\ \text{GiB}$ = 0.75GiB per accelerator over EFA
+   - intra-node all-gather: $(g-1)/g \cdot P$ = $(8-1)/8 \cdot 4\ \text{GiB}$ = 3.5GiB per accelerator over NVLink
 
-   Per accelerator that is `2*(g-1)/g * P` = 7GiB over NVLink against `2*(k-1)/k * P/g` = 0.75GiB over EFA, so only `0.75/(7+0.75)` = 9.7% of the traffic leaves the node. And because each accelerator drives its own NIC, all `g` NICs are in flight at once, giving the node `g * 50GBps` = 400GBps of inter-node bandwidth rather than one link's 50GBps.
+   Per accelerator that is $2(g-1)/g \cdot P$ = 7GiB over NVLink against $2(k-1)/k \cdot P/g$ = 0.75GiB over EFA, so only $0.75/(7+0.75)$ = 9.7% of the traffic leaves the node. And because each accelerator drives its own NIC, all $g$ NICs are in flight at once, giving the node $g \cdot 50\ \text{GBps}$ = 400GBps of inter-node bandwidth rather than one link's 50GBps.
 
-   At wire rate that shard would cross in `0.75GiB / 50GBps` = 16.1ms, against 22.21ms measured - so the exchange would effectively run at ~73% of wire rate, with NIC efficiency and any non-overlapping intra-node time both folded into that figure. The two cannot simply be additive: `16.1 + 10.03` = 26.1ms would exceed the measured time, so the intra-node phases would have to substantially overlap the exchange rather than queue behind it. So this model brackets the measurement - 16.1ms fully overlapped, 26.1ms fully serialized, with 22.21ms in between.
+   At wire rate that shard would cross in $0.75\ \text{GiB} / 50\ \text{GBps}$ = 16.1ms, against 22.21ms measured - so the exchange would effectively run at ~73% of wire rate, with NIC efficiency and any non-overlapping intra-node time both folded into that figure. The two cannot simply be additive: $16.1 + 10.03$ = 26.1ms would exceed the measured time, so the intra-node phases would have to substantially overlap the exchange rather than queue behind it. So this model brackets the measurement - 16.1ms fully overlapped, 26.1ms fully serialized, with 22.21ms in between.
 
 Models 2 and 3 both fit the measurement, model 2 with the NICs at 94% of wire rate and model 3 at 73%, so the arithmetic alone does not tell you which one ran - only that the naive model 1 is badly wrong. Which of the two it is depends on the algorithm NCCL selected, and that is directly readable: `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING` reports it, and forcing `NCCL_ALGO=allreduce:<algo>` and comparing against the default confirms it. On these nodes the 4GiB selection is `Ring`: forcing `NCCL_ALGO=allreduce:ring` reproduced the default within 0.1% - 375.22 against 375.42GBps - while `NCCL_ALGO=allreduce:nvlstree`, a hierarchical algorithm, ran 18% slower at 308.15GBps. So model 2 is what ran, with each NIC sustaining 94% of its line rate. The selection is made per payload, as the algorithm column of the table shows: `Tree` up to 16MiB, `Ring` at 32-64MiB, `NVLSTree` at 128-256MiB and `Ring` again from 512MiB up. On this cluster the chooser is AWS's `NCCL_TUNER_PLUGIN=ofi` rather than NCCL's own tuner, and its own log line - `base Tuner is chosen for platform: p6-b200.48xlarge` - shows it keying off the instance type. A different instance gets a different tuner table, so the only way to know what your own runs pick is to read it.
 
@@ -1536,17 +1537,17 @@ Two warnings come with this:
 
 - It is a large-payload effect. The `slowdown` column grows at small payloads - 3-5x below 32MiB against 2x from 1GiB up - because latency, not bandwidth, dominates there and every node hop adds some. And the absolute numbers are tiny: at 32KiB the 4 nodes move 0.64GBps, under 0.2% of what they do at 16GiB. This is the strongest possible argument for bucketing gradients into large reductions rather than reducing each tensor separately.
 
-- Do not read the 4-node `busbw` as a NIC speed. 376.60GBps at 16GiB is 7.5x what one NIC can do - undoing the correction factor gives 88.4ms for that reduction, over which the ring pushes `2*(n-1)/n * 16GiB` = 31GiB out of each node across its 8 NICs, 3.875GiB each, i.e. 47.07GBps, or 94% of each NIC's 50GBps. `busbw` is derived from the payload and the elapsed time with a per-collective correction factor, so once NCCL spreads a collective over several NICs it no longer maps onto any single link - the same caveat as in [SHARP](#sharp).
+- Do not read the 4-node `busbw` as a NIC speed. 376.60GBps at 16GiB is 7.5x what one NIC can do - undoing the correction factor gives 88.4ms for that reduction, over which the ring pushes $2(n-1)/n \cdot 16\ \text{GiB}$ = 31GiB out of each node across its 8 NICs, 3.875GiB each, i.e. 47.07GBps, or 94% of each NIC's 50GBps. `busbw` is derived from the payload and the elapsed time with a per-collective correction factor, so once NCCL spreads a collective over several NICs it no longer maps onto any single link - the same caveat as in [SHARP](#sharp).
 
 #### So what should you expect?
 
-If `busbw` isn't a wire speed, what number can you hold against the NIC's spec? Undo both scalings at once. The elapsed time is `P * (2*(n-1)/n) / busbw`, and the bytes each accelerator's NIC moves during it depend on the algorithm. In a ring that leaves the node once per channel, spread across all `g` accelerators, each NIC moves `2*(n-1)/n * P/g`, so dividing the bytes by the time cancels the payload entirely - units and all - and leaves a payload-free conversion: `per-accelerator rate = busbw / g`. In the hierarchical model each NIC moves `2*(k-1)/k * P/g` instead, which gives `busbw * (k-1)/(n-1)`. For the 4GiB 4-node row, which ran `Ring`, that is `374.66GBps / 8` = 46.83GBps per accelerator, or 94% of the 50GBps of inter-node bandwidth each accelerator has on this node type - higher even than the single-node column's own `749.12GBps / 900GBps` = 83% against NVLink 5. Expressed per accelerator, the inter-node result stops looking anomalous.
+If `busbw` isn't a wire speed, what number can you hold against the NIC's spec? Undo both scalings at once. The elapsed time is $P \cdot (2(n-1)/n) / \text{busbw}$, and the bytes each accelerator's NIC moves during it depend on the algorithm. In a ring that leaves the node once per channel, spread across all $g$ accelerators, each NIC moves $2(n-1)/n \cdot P/g$, so dividing the bytes by the time cancels the payload entirely - units and all - and leaves a payload-free conversion: $\text{per-accelerator rate} = \text{busbw} / g$. In the hierarchical model each NIC moves $2(k-1)/k \cdot P/g$ instead, which gives $\text{busbw} \cdot (k-1)/(n-1)$. For the 4GiB 4-node row, which ran `Ring`, that is $374.66\ \text{GBps} / 8$ = 46.83GBps per accelerator, or 94% of the 50GBps of inter-node bandwidth each accelerator has on this node type - higher even than the single-node column's own $749.12\ \text{GBps} / 900\ \text{GBps}$ = 83% against NVLink 5. Expressed per accelerator, the inter-node result stops looking anomalous.
 
 footnote: per accelerator, not per NIC, because the two only coincide when the node puts one interface on each accelerator - as P6-B200 does with its 8 EFA devices for 8 accelerators. P6-B300 puts 16 devices on 8 accelerators, so there the same conversion has to be compared against two interfaces' worth of bandwidth.
 
-footnote: this is the one place in this section where the `GiB` vs `GBps` base trap does not bite, and it's worth seeing why. `P` appears in both the byte count and the elapsed time, so it cancels whatever unit it was quoted in, and the result comes out in `busbw`'s own decimal `GBps` - the same base the interface spec uses, since 400Gbps is 50GBps decimal. Going the long way round does need the conversion, and agrees: the 16GiB warning above reaches 47.07GBps by converting 3.875GiB to 4.16e9 bytes and dividing by 88.4ms, while `376.60GBps / 8` = 47.07GBps.
+footnote: this is the one place in this section where the `GiB` vs `GBps` base trap does not bite, and it's worth seeing why. $P$ appears in both the byte count and the elapsed time, so it cancels whatever unit it was quoted in, and the result comes out in `busbw`'s own decimal `GBps` - the same base the interface spec uses, since 400Gbps is 50GBps decimal. Going the long way round does need the conversion, and agrees: the 16GiB warning above reaches 47.07GBps by converting 3.875GiB to 4.16e9 bytes and dividing by 88.4ms, while $376.60\ \text{GBps} / 8$ = 47.07GBps.
 
-`1/g` = 1/8 is also the share of a ring's hops that cross a node boundary, just as `(k-1)/(n-1)` = `3/31` is the 9.7% of the hierarchical model's bytes that leave the node, which is the tidiest statement of this whole section: `busbw` overstates the wire by exactly the reciprocal of the fraction of traffic that crosses it.
+$1/g$ = 1/8 is also the share of a ring's hops that cross a node boundary, just as $(k-1)/(n-1)$ = $3/31$ is the 9.7% of the hierarchical model's bytes that leave the node, which is the tidiest statement of this whole section: `busbw` overstates the wire by exactly the reciprocal of the fraction of traffic that crosses it.
 
 Two things to keep in mind about the resulting number. It is comparable to a spec figure, whereas `busbw` is not comparable to anything. And it is a floor rather than a wire measurement, because it charges the whole elapsed time to the NICs, including the ring's fill and drain and any time they wait on NVLink - the true wire rate is somewhat higher than what comes out.
 
@@ -1565,9 +1566,9 @@ It also only reaches its plateau at large payloads. The same 4-node measurements
 
 `% of spec` is against the 50GBps of inter-node bandwidth per accelerator on this node type. Below about 1GiB it falls off a cliff, and at 32MiB a perfectly healthy fabric reports 35.6% - which is worth remembering before reading anything into a small-payload number.
 
-Now the caveat that matters most: these percentages describe this system, and they may or may not translate to another one. The conversion itself is topology and algorithm only - `g` accelerators per node, `k` nodes, `n` ranks, no link speeds appear in it - so that part transfers anywhere. The *value* it produces does not, because it depends on how the intra-node and inter-node fabrics are balanced against each other, and that balance is a property of the node type. B300 shows how far it can shift without even changing accelerator generation: it keeps [NVLink 5](#nvlink) at the same 900GBps per accelerator as B200, while its inter-node side is twice as fast - 800Gbps per accelerator against B200's 400Gbps. Whatever the algorithm, the inter-node time shrinks in proportion while the NVLink time doesn't move at all, so a larger share of the elapsed time is intra-node work, and a figure that charges all of that time to the NICs has to be read differently - and the tuner may well pick a different algorithm there to begin with. What it actually comes out as is unknown - this benchmark has not been run on a B300 cluster - so derive the number from that system's own measurements instead of carrying 94% across.
+Now the caveat that matters most: these percentages describe this system, and they may or may not translate to another one. The conversion itself is topology and algorithm only - $g$ accelerators per node, $k$ nodes, $n$ ranks, no link speeds appear in it - so that part transfers anywhere. The *value* it produces does not, because it depends on how the intra-node and inter-node fabrics are balanced against each other, and that balance is a property of the node type. B300 shows how far it can shift without even changing accelerator generation: it keeps [NVLink 5](#nvlink) at the same 900GBps per accelerator as B200, while its inter-node side is twice as fast - 800Gbps per accelerator against B200's 400Gbps. Whatever the algorithm, the inter-node time shrinks in proportion while the NVLink time doesn't move at all, so a larger share of the elapsed time is intra-node work, and a figure that charges all of that time to the NICs has to be read differently - and the tuner may well pick a different algorithm there to begin with. What it actually comes out as is unknown - this benchmark has not been run on a B300 cluster - so derive the number from that system's own measurements instead of carrying 94% across.
 
-footnote: the conversion depends on the algorithm - `busbw / g` for model 2's ring and `busbw * (k-1)/(n-1)` for model 3's hierarchical exchange, see [Inter-node speed depends on intra-node speed](#inter-node-speed-depends-on-intra-node-speed) - and NCCL picks the algorithm per payload size, so capture `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING` alongside the numbers. Applying the wrong one is not a small error: the hierarchical formula would have put the 16GiB row above at 73% instead of 94%.
+footnote: the conversion depends on the algorithm - $\text{busbw} / g$ for model 2's ring and $\text{busbw} \cdot (k-1)/(n-1)$ for model 3's hierarchical exchange, see [Inter-node speed depends on intra-node speed](#inter-node-speed-depends-on-intra-node-speed) - and NCCL picks the algorithm per payload size, so capture `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING` alongside the numbers. Applying the wrong one is not a small error: the hierarchical formula would have put the 16GiB row above at 73% instead of 94%.
 
 For how to get these numbers out of a provider in the first place, see [Ask for the actual performance numbers](../insights/how-to-choose-cloud-provider.md#ask-for-the-actual-performance-numbers).
 
@@ -1598,7 +1599,7 @@ Typically the more "hops" the message has to travel, the bigger the latency. 2 a
 
 The latency of a small all-reduce is the most flattering of all collectives, so on its own it says little about the latency of other traffic:
 
-- **It gets the only tree.** NCCL implements its tree algorithm for all-reduce only; the other collectives use rings. A NCCL maintainer models the tree's latency as `2*(G-1)*l + 2*log2(N)*L`, which grows with the log of the node count, and the ring's as `N*(G-1)*l + N*L`, which grows linearly ([NCCL #1049](https://github.com/NVIDIA/nccl/issues/1049); `N` nodes, `G` accelerators per node, `L` network latency, `l` NVLink latency).
+- **It gets the only tree.** NCCL implements its tree algorithm for all-reduce only; the other collectives use rings. A NCCL maintainer models the tree's latency as $2(G-1)\,l + 2\log_2(N)\,L$, which grows with the log of the node count, and the ring's as $N(G-1)\,l + N L$, which grows linearly ([NCCL #1049](https://github.com/NVIDIA/nccl/issues/1049); $N$ nodes, $G$ accelerators per node, $L$ network latency, $l$ NVLink latency).
 - **The other collectives lack an equivalent.** NCCL 2.23 added the PAT algorithm for all-gather and reduce-scatter, but only for one GPU per node, and a maintainer says it's "not yet as low-latency as the Tree allreduce" ([NCCL #1473](https://github.com/NVIDIA/nccl/issues/1473), [NVIDIA blog](https://developer.nvidia.com/blog/new-scaling-algorithm-and-initialization-with-nvidia-collective-communications-library-2-23/)).
 - **The switch may do the work.** With [NVLS](#sharp) (NVLink SHARP) or InfiniBand [SHARP](#sharp), a small all-reduce is reduced inside the switch, so its latency describes the switch's reduction rather than the path ordinary traffic takes.
 
