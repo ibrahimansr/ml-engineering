@@ -1,0 +1,1485 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operating an Inference Service - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li><li><a href="../inference/serving-efficiently.html">Serving Efficiently on a Fixed Fleet</a></li></ul></details>
+<details open><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/deploys-recovery-autoscaling.html">Model Deploys, Recovery and Autoscaling</a></li><li><a href="../platform/operating-inference.html" class="current">Operating an Inference Service</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li><li><a href="../platform/small-inference-provider.html">Running a Small Inference Provider: A Worked Example</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="operating-an-inference-service">Operating an Inference Service</h1>
+<p>Picture a small company that sells LLM inference over an HTTP API. It leases a fixed fleet of GPUs, say a few dozen 8-GPU H100 nodes on a one-year contract, and runs open-weight models on them with vLLM or SGLang. Customers send it requests with API keys. It bills them per token, and some large customers rent whole replicas by the hour. Earlier chapters built the engine (<a href="../inference/serving-engine-internals.html">Inference Internals II</a>), tuned it (<a href="../inference/serving-efficiently.html">Serving Efficiently</a>), put a gateway in front of it (<a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a>), and covered how replicas are started, rolled out, recovered and scaled (<a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>). This chapter is about the layer between those engines and the customers, the part that makes a fleet of engines a business:</p>
+<ul>
+<li>what the API promises a client, including what it says when it is overloaded;</li>
+<li>who is allowed to use how much (rate limits and quotas);</li>
+<li>whose request runs next when there is not enough GPU for everyone (fairness and priority);</li>
+<li>what &quot;working&quot; means, as a number (SLOs, goodput, error budgets);</li>
+<li>what to do with the GPUs at 4 a.m. when nobody is chatting (batch work);</li>
+<li>what a million tokens costs you and what to charge for it;</li>
+<li>how you find out that the service is returning HTTP 200 with worse text;</li>
+<li>what pages the on-call engineer, and what they do next;</li>
+<li>the security basics that are specific to an inference API.</li>
+</ul>
+<p>One fact runs through the whole chapter: <strong>on a leased fleet, the GPU-hours are already paid for.</strong> A serverless provider that rents GPUs by the second can hand an idle GPU back and stop paying. You can't. So your cost per token is set mostly by one number, the fraction of leased GPU-time doing paid work (<strong>utilization</strong>), and any work you can put on an otherwise idle GPU earns money for no extra GPU cost. Many techniques below come from vendors that run differently: per-second serverless (Modal), multi-cloud capacity markets (Baseten, Fireworks), or very large first-party fleets (OpenAI, Anthropic). Each time one comes up, a short <strong>On a leased fleet</strong> note says whether it carries over and what the equivalent is.</p>
+<p>Conventions:</p>
+<ul>
+<li>Every script starts with a comment naming its file. All of them are pure Python with only the standard library, run with CPython 3.14.5 on an Apple Silicon Mac, from one scratch directory (<code>/tmp/opinf</code>). Some import earlier ones (<code>tpm_limiter.py</code> imports <code>token_bucket.py</code>), so keep them together.</li>
+<li>Output under a script is real output from running it. No block in this chapter needs a GPU or a real engine.</li>
+<li>Simulations are seeded, so you get the same numbers. Several end with <code>assert</code>s that fail if you break the property the section is about.</li>
+<li>Prices are quoted with the date they were read (November 2026) and a link. They change often; check them before you reuse them.</li>
+</ul>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>This chapter links to the following instead of repeating them:</p>
+<ul>
+<li><a href="../inference/arithmetic.html">Inference Internals I</a>: <a href="../inference/arithmetic.html#prefill-and-decode">prefill and decode</a>, <a href="../inference/arithmetic.html#definitions">TTFT, TPOT, ITL, E2E and goodput</a>, <a href="../inference/arithmetic.html#percentiles">percentiles</a>, <a href="../inference/arithmetic.html#littles-law">Little's law</a>, <a href="../inference/arithmetic.html#decode-latency-lower-bound">the decode-latency bound and the $/1M-token conversion</a>, <a href="../inference/arithmetic.html#kv-cache-sizing">KV cache sizing</a> and <a href="../inference/arithmetic.html#worked-sizing-example">worked capacity sizing</a>.</li>
+<li><a href="../inference/serving-engine-internals.html">Inference Internals II</a>: <a href="../inference/serving-engine-internals.html#policies">scheduler policies</a>, <a href="../inference/serving-engine-internals.html#admission-control-by-kv-budget">admission by KV budget</a>, <a href="../inference/serving-engine-internals.html#preemption-swap-vs-recompute">preemption</a>, <a href="../inference/serving-engine-internals.html#hash-based-block-caching-vllm-apc">prefix caching</a>, <a href="../inference/serving-engine-internals.html#cache-aware-routing-across-replicas">cache-aware routing</a>, <a href="../inference/serving-engine-internals.html#determinism-and-batch-invariance">batch invariance</a>, <a href="../inference/serving-engine-internals.html#multi-lora-serving">multi-LoRA serving</a> and <a href="../inference/serving-engine-internals.html#observability">the engine metrics table</a>.</li>
+<li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a>: <a href="../inference/serving-hands-on.html#the-openai-compatible-api-and-streaming">the OpenAI-compatible API and SSE streaming</a>, <a href="../inference/serving-hands-on.html#concurrency-and-client-side-backpressure">client-side backpressure and retries</a>, <a href="../inference/serving-hands-on.html#timeouts-retries-and-ejection">the gateway and its timeouts</a>, <a href="../inference/serving-hands-on.html#cancellation-end-to-end">cancellation</a>, <a href="../inference/serving-hands-on.html#monitoring-engine-metrics">engine monitoring</a>, <a href="../inference/serving-hands-on.html#capacity-planning-from-measured-numbers">capacity planning</a> and <a href="../inference/serving-hands-on.html#common-failure-modes">the failure-mode table</a>.</li>
+<li><a href="../inference/serving-efficiently.html">Serving Efficiently</a>: engine tuning, routing, speculative decoding, long context and multimodal serving. Throughput numbers in the pricing section are what that chapter's work buys you.</li>
+<li><a href="../platform/control-planes.html">Control Planes</a>: <a href="../platform/control-planes.html#idempotency-keys">idempotency keys</a>, <a href="../platform/control-planes.html#bounded-queues-load-shedding-and-per-tenant-limits">token buckets and per-tenant limits</a>, <a href="../platform/control-planes.html#retries-and-retry-budgets">retry budgets</a>, <a href="../platform/control-planes.html#errors-and-status-codes">status codes</a>, <a href="../platform/control-planes.html#slis-slos-and-error-budgets">SLIs, SLOs and burn-rate alerts</a>, <a href="../platform/control-planes.html#metrics-with-prometheus">Prometheus</a>, <a href="../platform/control-planes.html#tracing">tracing</a>, <a href="../platform/control-planes.html#dashboards-and-alerting">dashboards</a>, <a href="../platform/control-planes.html#on-call-and-incident-debugging">on-call</a> and <a href="../platform/control-planes.html#partial-outages-and-cells">cells</a>.</li>
+<li><a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>: startup time, rollouts and canaries, recovery and autoscaling. This chapter assumes replicas come and go and does not explain how.</li>
+<li><a href="../foundations/distributed-systems.html">Distributed Systems</a>: <a href="../foundations/distributed-systems.html#idempotency">idempotency</a>, <a href="../foundations/distributed-systems.html#retries-with-exponential-backoff-and-jitter">retries with backoff and jitter</a>, and <a href="../foundations/distributed-systems.html#availability-slos-and-nines">availability, SLOs and nines</a>.</li>
+</ul>
+<p><strong>What was run.</strong> Every Python block with output was run as shown: the token bucket, the TPM limiter with reservation and refund, hierarchical limits, the FCFS/VTC/RPM fairness simulator, the noisy-neighbour arithmetic, the request-log generator and SLO/goodput report, the nines-and-capacity table, the deadline batch queue, the cost calculator, the quality probe, the incident watchdog and the API-key/cache-salt demo. None of it needs a GPU: the engines are simulated with step-cost models of the same shape as the one in <a href="../inference/serving-hands-on.html#a-mock-server-you-can-run-anywhere">Serving LLMs in Practice</a>. Vendor numbers were re-read on the linked pages in November 2026.</p>
+<h2 id="1-the-api-surface">1. The API surface</h2>
+<h3 id="what-the-customer-is-buying">What the customer is buying</h3>
+<p>Almost every LLM API today speaks the OpenAI wire format: <code>POST /v1/chat/completions</code> with a JSON body of <code>messages</code>, <code>max_tokens</code>, sampling parameters and <code>stream</code>, answered either with one JSON object or with a Server-Sent Events (SSE) stream of chunks. <a href="../inference/serving-hands-on.html#the-openai-compatible-api-and-streaming">Serving LLMs in Practice</a> took that format apart chunk by chunk. Being compatible with it is not optional for a small provider: customers switch to you by changing a <code>base_url</code> in the official SDK, and anything that SDK cannot parse is a support ticket.</p>
+<p>Compatibility on the happy path is easy, because vLLM and SGLang already serve the format. The work is in everything the engine does not do. Here is what happens to one request in a production API, in order:</p>
+<pre><code>client --TLS--&gt; edge / load balancer
+                 |
+                 v
+              gateway: authenticate key -&gt; resolve org, tier, model, adapter
+                       validate (context length, max_tokens, parameters)
+                       rate limits (key, org, global)        -&gt; 429 + Retry-After
+                       admission (is there capacity?)        -&gt; 503 + Retry-After
+                       fair queue / priority                 (section 3)
+                 |
+                 v
+              router: pick a replica (prefix affinity, load)  (Serving Efficiently)
+                 |
+                 v
+              engine: prefill, decode, stream tokens back
+                 |
+                 v
+              gateway: count tokens, settle the rate limit, write the request log,
+                       emit metrics, bill                      (sections 2, 4, 7)
+</code></pre>
+<p>The engine is one box in that list. The rest is this chapter.</p>
+<h3 id="streaming-and-cancellation">Streaming and cancellation</h3>
+<p>Two details about streaming matter more for an operator than for the engine.</p>
+<p><strong>The HTTP status is sent before the work is done.</strong> A streaming response starts with <code>200 OK</code> and headers, and only then do the tokens arrive. If the replica dies halfway through, the client has already seen a 200. The OpenAI format has no standard way to report that, so providers send an error event in the stream or just close it, and the client sees a stream that ended without <code>finish_reason</code> and without the usage chunk. Your access logs will record the request as a success. Section 4 shows how far apart &quot;success by status code&quot; and &quot;success at completion&quot; drift on a realistic log, and why you have to measure the second one.</p>
+<p><strong>Cancellation has to reach the engine, and billing has to agree with it.</strong> When a client disconnects, the engine must stop generating, or an abandoned request keeps its batch slot and KV blocks until <code>max_tokens</code> (<a href="../inference/serving-hands-on.html#cancellation-end-to-end">the cancellation chain</a> shows the whole path). The billing question is what to charge. The usual answer is to charge for the prompt (the prefill was done) and for the output tokens generated before the disconnect was noticed. Your engine knows that count even though the client never received the usage chunk, so take it from the engine side of the gateway, not from what was relayed. Log <code>finish_reason = &quot;client_cancel&quot;</code> so these requests can be left out of your availability numbers (the client chose to leave) and still be counted in your token metrics (the GPU did the work).</p>
+<h3 id="idempotency-and-retries">Idempotency and retries</h3>
+<p>A client sends a request, the connection drops before the reply, and the client retries. For a non-streaming chat completion that is a second generation and a second bill. Two rules make this safe:</p>
+<ul>
+<li><strong>Accept an idempotency key on non-streaming and batch endpoints.</strong> The mechanism is the one in <a href="../platform/control-planes.html#idempotency-keys">Control Planes</a>: the client sends an <code>Idempotency-Key</code> header, you store the key with the response for a bounded time (per tenant), and a retry with the same key gets the stored response instead of a new generation. Two LLM-specific points apply. Sampling is random, so a regenerated answer differs from the first one; returning the stored response is the only way the client gets the answer it was billed for. And storing responses is storing customer content, so the stored copy falls under your retention policy (section 9).</li>
+<li><strong>Streams cannot be replayed, so retry only before the first byte.</strong> Once tokens have reached the client, a retry either duplicates them or throws away work. The rule from <a href="../inference/serving-hands-on.html#concurrency-and-client-side-backpressure">Serving LLMs in Practice</a> holds for the whole stack: the gateway may retry a request on another replica only while nothing has been sent to the client.</li>
+</ul>
+<p>Retries also amplify overload, because every layer that retries multiplies load at the moment the system can least take it. Retry at one layer, cap retries with a <a href="../platform/control-planes.html#retries-and-retry-budgets">retry budget</a>, and in your SDK documentation tell customers which errors are safe to retry.</p>
+<h3 id="timeouts-for-long-generations">Timeouts for long generations</h3>
+<p>LLM requests are long. A reasoning model that thinks for 20,000 tokens at 50 tokens/s takes 400 s, and a single request can be cheap to start and expensive to finish. Every hop on the path has a timeout, and the shortest one wins:</p>
+<table>
+<thead>
+<tr>
+<th>Hop</th>
+<th>What usually cuts it</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>client SDK</td>
+<td>a default total timeout</td>
+<td>document the maximum generation time; recommend streaming for long outputs</td>
+</tr>
+<tr>
+<td>corporate proxies, browsers</td>
+<td>idle timeouts on a connection with no bytes</td>
+<td>send SSE comment lines (<code>: keepalive</code>) during long prefills, so the connection is never idle</td>
+</tr>
+<tr>
+<td>your load balancer</td>
+<td>idle and maximum-duration limits</td>
+<td>raise them above your longest allowed generation; check them, since cloud defaults are short</td>
+</tr>
+<tr>
+<td>gateway → engine</td>
+<td>a first-byte timeout and a between-chunks timeout</td>
+<td>set the first-byte timeout from your TTFT SLO, and the between-chunks timeout from the worst inter-token gap, never from the total length (<a href="../inference/serving-hands-on.html#timeouts-retries-and-ejection">gateway timeouts</a>)</td>
+</tr>
+<tr>
+<td>your own deadline</td>
+<td>none, by default</td>
+<td>enforce a server-side maximum (e.g. <code>max_tokens</code> cap per tier) so one request cannot hold a slot for an hour</td>
+</tr>
+</tbody>
+</table>
+<p>For work that really takes many minutes, a synchronous HTTP request is the wrong shape. Offer an asynchronous one: <code>POST</code> returns a request ID immediately, and the result is fetched later or pushed to a webhook. Baseten's async inference is a documented example (<a href="https://docs.baseten.co/inference/async">docs</a>): a request can wait in its queue for 10 minutes by default and up to 72 hours, sync requests take priority (&quot;when the model has no free slots, the load balancer rejects async work with <code>429</code>&quot;), only 500/502/503/504 are retried, and webhook delivery is attempted twice. One sentence in those docs is worth copying into your own design review: &quot;If all delivery attempts fail, your model output is permanently lost.&quot; If you push results, store them until delivery is confirmed.</p>
+<p><strong>On a leased fleet.</strong> The async pattern carries over unchanged and is more valuable for you than for a serverless provider, because async requests are exactly the deferrable work that fills idle leased GPUs (section 5). Baseten's &quot;sync wins&quot; rule is the policy you want too.</p>
+<h3 id="what-the-client-sees-on-overload-429-vs-503">What the client sees on overload: 429 vs 503</h3>
+<p>Clients have to decide two things from an error: whether to retry, and when. The general table of status codes is in <a href="../platform/control-planes.html#errors-and-status-codes">Control Planes</a>. For an inference API the important split is between <strong>&quot;you sent too much&quot;</strong> and <strong>&quot;we have too little&quot;</strong>:</p>
+<ul>
+<li><strong>429 Too Many Requests</strong>: <em>the client</em> exceeded a limit it was given (rate limit, quota, spend cap). It is the client's to fix, and it should come with a <code>Retry-After</code> header saying how many seconds to wait. A token bucket can compute that number exactly (next section).</li>
+<li><strong>503 Service Unavailable</strong>: <em>you</em> can't serve a request that was within its limits. The fleet is overloaded or a dependency is down. It also gets <code>Retry-After</code>, set from how long you expect the overload to last, plus jitter so the retries don't all arrive together.</li>
+</ul>
+<p>Providers draw this line in public:</p>
+<ul>
+<li>Fireworks returns 429 when you are over your rate limit and <code>503 Service Overloaded</code> when it is shedding load, and says plainly that &quot;Staying within your rate limits does not guarantee that every request succeeds&quot; (<a href="https://docs.fireworks.ai/serverless/rate-limits">rate limits doc</a>). It tells clients to honor <code>Retry-After</code> and otherwise use exponential backoff with jitter.</li>
+<li>Baseten's Model APIs use a non-standard <strong>529</strong>: &quot;A <code>529 Overloaded</code> response means that the Model API has no available serving capacity&quot;, and &quot;This response can occur even when your organization remains within its rate limits&quot; (<a href="https://docs.baseten.co/inference/model-apis/pricing-and-limits">pricing and limits</a>).</li>
+<li>Anthropic returns 429 for rate limits with a <code>retry-after</code> header, and also uses 429 when a monthly spend cap is reached, but then <em>without</em> <code>retry-after</code>, because retrying will not help until the month ends; the body carries <code>error_code: enforced_spend_limit_reached</code> so clients can tell the two apart (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>).</li>
+</ul>
+<p>The Anthropic case points at a rule: <strong>put a machine-readable reason in the error body</strong>, not just a status code. Something like <code>rate_limit_exceeded</code> with the name of the limit that was hit (<code>key_tpm</code>, <code>org_rpm</code>), <code>overloaded</code>, <code>spend_cap_reached</code> or <code>context_length_exceeded</code>. Clients and your support team both use it.</p>
+<p>Two more client-visible rules:</p>
+<ul>
+<li><strong>Reject early, not late.</strong> A request that will be shed should be shed at the gateway in milliseconds, before it has a replica, not after it has waited 30 s in an engine queue. A fast 503 lets the client retry elsewhere or back off. A slow 503 has already wasted the client's time and your queue slot.</li>
+<li><strong>Never return 400 for a capacity problem, or 503 for a bad request.</strong> A 400 is never retried. A client that gets 400 for &quot;prompt too long for this replica's <code>max-model-len</code>&quot; when another replica would have taken it has been told something false. And a 503 for a malformed request makes well-behaved clients retry it forever.</li>
+</ul>
+<h2 id="2-rate-limiting-and-quotas">2. Rate limiting and quotas</h2>
+<h3 id="requests-per-minute-vs-tokens-per-minute">Requests per minute vs tokens per minute</h3>
+<p>A <strong>rate limit</strong> caps how fast one client may consume the service: so much per minute, enforced continuously. A <strong>quota</strong> caps total consumption over a long period (tokens per day, dollars per month). Both protect the fleet from one client and protect the client from runaway costs.</p>
+<p>Counting <em>requests</em> per minute (RPM) is the classic web API limit, and for LLMs it is the wrong unit on its own. One request can be 50 tokens in and 10 out, or 200,000 in and 8,000 out, a difference of thousands of times in GPU cost. So LLM APIs meter <strong>tokens per minute</strong> (TPM), usually alongside RPM, and the big providers split TPM further:</p>
+<ul>
+<li>Anthropic meters RPM, input tokens per minute (ITPM) and output tokens per minute (OTPM) per model class. Its ITPM counts only <em>uncached</em> input: &quot;With a 2,000,000 ITPM limit and an 80 percent cache hit rate, you could effectively process 10,000,000 total input tokens per minute&quot; (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>).</li>
+<li>Fireworks keeps three per-model meters: total prompt TPM, uncached prompt TPM and generated TPM (<a href="https://docs.fireworks.ai/serverless/rate-limits">rate limits doc</a>).</li>
+<li>Baseten's Model APIs use a single TPM that counts input and output, and &quot;Cached and uncached input tokens count equally toward token rate limits&quot; (<a href="https://docs.baseten.co/inference/model-apis/pricing-and-limits">pricing and limits</a>).</li>
+<li>OpenAI meters RPM, RPD, TPM, TPD and images per minute, at organization and project level (<a href="https://developers.openai.com/api/docs/guides/rate-limits">rate limits guide</a>).</li>
+</ul>
+<p>The split follows the cost structure. Prefill and decode use the GPU very differently (<a href="../inference/arithmetic.html#prefill-and-decode">Inference Internals I</a>): a cached input token costs almost nothing, an uncached input token costs a little compute, and an output token costs a full decode step's share of memory bandwidth. Section 6 puts numbers on that. Separate meters let you protect the scarce resource (decode slots) without throttling the cheap one. Not counting cache hits against the limit also rewards clients for structuring prompts so they cache well, which is good for your fleet.</p>
+<p><strong>On a leased fleet.</strong> Copy the split meters. Input, cached input and output have very different costs on your hardware, the same as on theirs. A single TPM that counts a cached token like an output token (the Baseten choice) is simpler to explain, but it throttles cache-friendly customers you would rather encourage.</p>
+<h3 id="a-token-bucket">A token bucket</h3>
+<p>The standard limiter is a <strong>token bucket</strong>. A bucket holds up to <code>capacity</code> tokens (here &quot;token&quot; means a unit of permission, which for a TPM limit happens to be an LLM token) and refills continuously at <code>rate</code> per second. A request that costs <code>n</code> is admitted only if <code>n</code> are in the bucket, and then they are removed. <code>capacity</code> is the largest allowed burst and <code>rate</code> is the sustained limit. Anthropic says its API works this way: &quot;your capacity is continuously replenished up to your maximum limit, rather than being reset at fixed intervals&quot;, and &quot;a rate of 60 requests per minute (RPM) might be enforced as 1 request per second&quot; (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>).</p>
+<p><a href="../platform/control-planes.html#bounded-queues-load-shedding-and-per-tenant-limits">Control Planes</a> used a token bucket to protect a scheduler. The version here adds the one thing an API needs on top: when it rejects, it computes how long until the request <em>would</em> fit. That number is the <code>Retry-After</code> header.</p>
+<pre><code class="language-python"># token_bucket.py - a token bucket that also tells the client how long to wait (Retry-After)
+import math
+
+class TokenBucket:
+    &quot;&quot;&quot;Holds up to `capacity` tokens and refills at `rate` tokens/s.
+    A request costing n tokens is admitted only if n tokens are in the bucket.&quot;&quot;&quot;
+    def __init__(self, capacity, rate, now=0.0):
+        self.capacity, self.rate = capacity, rate
+        self.level, self.t = capacity, now            # start full: a new key may burst once
+
+    def _refill(self, now):
+        self.level = min(self.capacity, self.level + (now - self.t) * self.rate)
+        self.t = now
+
+    def try_take(self, n, now):
+        &quot;&quot;&quot;Return (admitted, retry_after_seconds).&quot;&quot;&quot;
+        self._refill(now)
+        if n &gt; self.capacity:                         # can never fit: that is a 400, not a 429
+            raise ValueError(f&quot;cost {n} exceeds bucket capacity {self.capacity}&quot;)
+        if self.level &gt;= n:
+            self.level -= n
+            return True, 0.0
+        return False, (n - self.level) / self.rate    # exact time until n tokens are available
+
+if __name__ == &quot;__main__&quot;:
+    # &quot;60 RPM&quot; as a bucket: rate 1 request/s, burst 10 (Anthropic enforces RPM this way; see text)
+    b = TokenBucket(capacity=10, rate=1.0)
+    t, admitted, waits = 0.0, 0, []
+    for i in range(25):                               # 25 requests in the first 0.5 s
+        ok, ra = b.try_take(1, now=t)
+        admitted += ok
+        if not ok: waits.append(ra)
+        t += 0.02
+    print(f&quot;burst of 25 in 0.5 s: admitted={admitted}, rejected={25 - admitted}&quot;)
+    print(f&quot;Retry-After on first/last rejection: {waits[0]:.2f} s / {waits[-1]:.2f} s &quot;
+          f&quot;-&gt; header value {math.ceil(waits[0])} (integer seconds, rounded up)&quot;)
+    # a well-behaved client that waits exactly Retry-After succeeds on its first retry
+    ok, ra = b.try_take(1, now=t)
+    ok2, _ = b.try_take(1, now=t + ra)
+    print(f&quot;retry at t+Retry-After ({ra:.2f} s): admitted={ok2}&quot;)
+    # sustained: one minute at 2 req/s offered -&gt; ~60 + burst admitted
+    b, adm = TokenBucket(10, 1.0), 0
+    for k in range(120):
+        adm += b.try_take(1, now=k * 0.5)[0]
+    print(f&quot;60 s at 2 req/s offered: admitted={adm} (= 60 refilled + 10 burst, give or take one)&quot;)
+    assert 69 &lt;= adm &lt;= 71
+</code></pre>
+<pre><code class="language-console">$ python3 token_bucket.py
+burst of 25 in 0.5 s: admitted=10, rejected=15
+Retry-After on first/last rejection: 0.80 s / 0.52 s -&gt; header value 1 (integer seconds, rounded up)
+retry at t+Retry-After (0.50 s): admitted=True
+60 s at 2 req/s offered: admitted=69 (= 60 refilled + 10 burst, give or take one)
+</code></pre>
+<p>Three things to notice:</p>
+<ul>
+<li><strong>The burst is a product decision.</strong> With <code>capacity</code> equal to a full minute of <code>rate</code>, a client can spend a whole minute's allowance in one second, and a fleet of clients that all do so at the top of the minute is a synchronized spike. Smaller buckets smooth load; larger ones are friendlier to bursty clients. Anthropic's &quot;60 RPM might be enforced as 1 request per second&quot; is a small bucket.</li>
+<li><strong><code>Retry-After</code> is exact, so honor it exactly.</strong> The client that waited 0.50 s got in on its first retry. HTTP's <code>Retry-After</code> is in whole seconds, so round up. Add a little jitter on the server side too, so that the 15 rejected clients don't all come back in the same millisecond.</li>
+<li><strong>A request bigger than the bucket is not a 429.</strong> It can never be admitted, however long the client waits, so return a 400 that says which limit it exceeds. Otherwise a well-behaved client retries it forever.</li>
+</ul>
+<p>Anthropic adds one more kind of limit on top of this: a <strong>ramp limit</strong>, which caps how fast an organization's usage may <em>grow</em>. &quot;Your ramp limit is your organization's highest per-minute usage of the model in the recent past, plus a step&quot;, it rises as successful usage grows, and exceeding it returns a 429 with <code>error_code: ramp_limit_exceeded</code> even under the rate limit (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>). The reason is capacity: a customer whose limit is ten times its usage can still go from 10% to 100% in one minute, and no fleet has spare capacity for every customer's limit at once. Fireworks does something similar in slow motion: limits grow 25% when recent usage exceeds half of the limit, at most once every 15 minutes, and shrink 20% after three days of low use (<a href="https://docs.fireworks.ai/serverless/rate-limits">rate limits doc</a>).</p>
+<p><strong>On a leased fleet.</strong> Ramp limits matter <em>more</em> for you. A serverless provider can buy more GPUs within minutes when a customer ramps (at a price). You can't add GPUs this month. A ramp limit is how you turn &quot;a customer quadrupled their traffic at 10:00&quot; from an outage for everyone into a slower ramp for one customer. Implement it as a second bucket whose capacity tracks the customer's recent peak usage plus a step.</p>
+<h3 id="estimating-tokens-before-generation-reservation-and-refund">Estimating tokens before generation: reservation and refund</h3>
+<p>A TPM limiter has a problem that an RPM limiter does not: at admission time it does not know the cost. The prompt can be tokenized (or estimated from its character count), but the output length is unknown until generation stops. There are three policies, and providers use all of them:</p>
+<ol>
+<li><strong>Charge at completion.</strong> Admit while the bucket is positive, and subtract the actual tokens when the request finishes. Nothing is wasted, but a burst of long requests all gets admitted before any of them is charged.</li>
+<li><strong>Reserve <code>max_tokens</code> and keep it.</strong> Charge <code>prompt_estimate + max_tokens</code> at admission. Never overshoots, but most requests use a fraction of <code>max_tokens</code>, so most of the limit is spent on tokens never generated.</li>
+<li><strong>Reserve, then refund.</strong> Charge <code>prompt_estimate + max_tokens</code> at admission and, at completion, give back what was not used (or take more, if the prompt estimate was low).</li>
+</ol>
+<p>OpenAI documents the reservation: &quot;Your rate limit is calculated as the maximum of <code>max_tokens</code> and the estimated number of tokens based on the character count of your request&quot;, and advises setting <code>max_tokens</code> &quot;as close to your expected response size as possible&quot; (<a href="https://developers.openai.com/api/docs/guides/rate-limits">rate limits guide</a>). Anthropic took the other route for output: &quot;OTPM rate limits are evaluated in real time as output tokens are produced, counting only the actual tokens generated. The <code>max_tokens</code> parameter does not factor into OTPM rate limit calculations&quot; (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>). That is policy 1 done continuously, debiting as each token is generated, which needs a limiter in the token stream rather than only at the door.</p>
+<p>The simulation puts one organization with a 100,000 TPM limit under a realistic shape of traffic: a batch script fires 200 requests at once, then steady traffic follows at 1 request per second. Each request has an estimated 1,000-token prompt (the real count is 0.8 to 1.25 times that), asks for <code>max_tokens = 4096</code>, and actually generates about 300 tokens on average.</p>
+<pre><code class="language-python"># tpm_limiter.py - tokens-per-minute limiting when output length is unknown at admission:
+#   end   : admit while the bucket is positive, charge actual tokens at completion
+#   hold  : reserve prompt_estimate + max_tokens at admission, never refund
+#   refund: reserve prompt_estimate + max_tokens at admission, refund the unused part at completion
+import random
+from token_bucket import TokenBucket
+
+TPM = 100_000                  # tokens per minute for this org (input + output, one meter)
+DT, T_END = 0.1, 600.0         # 100 ms ticks, 10 simulated minutes
+DECODE_S = 0.02                # 50 tok/s per stream once running
+
+def workload(seed=0):
+    rng = random.Random(seed)
+    reqs, t = [], 0.0
+    for i in range(200):       # a batch script fires 200 requests at t=0 ...
+        reqs.append(0.0)
+    while t &lt; T_END:           # ... then steady traffic at 1 req/s (Poisson)
+        t += rng.expovariate(1.0)
+        reqs.append(t)
+    out = []
+    for t0 in reqs:
+        est = 1000                                     # prompt estimate from character count
+        prompt = int(est * rng.uniform(0.8, 1.25))     # the tokenizer's real count differs
+        n_out = min(4096, int(rng.expovariate(1 / 300)) + 1)   # mean ~300, capped by max_tokens
+        out.append(dict(t0=t0, est=est, prompt=prompt, max_tokens=4096, n_out=n_out))
+    return out
+
+def run(policy):
+    bucket = TokenBucket(capacity=TPM, rate=TPM / 60)
+    backlog = workload()                       # client-side queue, sorted by arrival time
+    inflight, done, served = [], [], []        # served: (t, tokens) when a request finishes
+    peak_inflight, t = 0, 0.0
+    while t &lt; T_END:
+        bucket._refill(t)
+        for r in [r for r in inflight if r[&quot;t_done&quot;] &lt;= t]:      # completions: settle
+            inflight.remove(r)
+            actual = r[&quot;prompt&quot;] + r[&quot;n_out&quot;]
+            if policy == &quot;end&quot;:
+                bucket.level -= actual                           # may go negative: debt
+            elif policy == &quot;refund&quot;:
+                bucket.level = min(TPM, bucket.level + r[&quot;held&quot;] - actual)   # refund (or extra debit)
+            served.append((t, actual))
+        while backlog and backlog[0][&quot;t0&quot;] &lt;= t:                 # admit in arrival order
+            r = backlog[0]
+            if policy == &quot;end&quot;:
+                if bucket.level &lt;= 0: break
+            else:
+                r[&quot;held&quot;] = r[&quot;est&quot;] + r[&quot;max_tokens&quot;]
+                if bucket.level &lt; r[&quot;held&quot;]: break
+                bucket.level -= r[&quot;held&quot;]
+            backlog.pop(0)
+            r[&quot;t_done&quot;] = t + 0.2 + r[&quot;n_out&quot;] * DECODE_S
+            inflight.append(r)
+        peak_inflight = max(peak_inflight, sum(r[&quot;prompt&quot;] + r[&quot;n_out&quot;] for r in inflight))
+        t = round(t + DT, 1)
+    per_min = [sum(n for (ts, n) in served if m * 60 &lt;= ts &lt; (m + 1) * 60) for m in range(10)]
+    return per_min, peak_inflight
+
+print(f&quot;limit: {TPM:,} tokens/min.  minute-by-minute tokens actually served:&quot;)
+for policy in (&quot;end&quot;, &quot;hold&quot;, &quot;refund&quot;):
+    per_min, peak = run(policy)
+    print(f&quot;{policy:6s} &quot; + &quot; &quot;.join(f&quot;{x/1000:5.0f}k&quot; for x in per_min)
+          + f&quot; | min 2-10 avg {sum(per_min[1:]) / 9 / TPM:4.0%} of limit, peak in flight {peak / 1000:.0f}k&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 tpm_limiter.py
+limit: 100,000 tokens/min.  minute-by-minute tokens actually served:
+end      260k   107k    82k    85k    71k   101k    82k    89k    73k    83k | min 2-10 avg  86% of limit, peak in flight 258k
+hold      45k    28k    25k    24k    25k    24k    25k    28k    21k    30k | min 2-10 avg  26% of limit, peak in flight 25k
+refund   153k   105k    99k   104k    92k   102k    98k    98k    96k    83k | min 2-10 avg  98% of limit, peak in flight 27k
+</code></pre>
+<p>Reading the three rows:</p>
+<ul>
+<li><strong>Charge at completion</strong> let all 200 burst requests in before any had finished, so 258k tokens of work were in flight against a 100k/minute limit, and 260k tokens were served in the first minute. Then the debt (the bucket went far negative) blocked the client for a while. The limit is right on average and wrong exactly when it matters, during a burst.</li>
+<li><strong>Reserve and keep</strong> never overshoots and serves about a quarter of the limit. Each request reserves about 5,100 tokens and uses about 1,300, so the client pays for a limit four times larger than what it gets. Customers notice, and they respond by lowering <code>max_tokens</code>, which truncates their answers.</li>
+<li><strong>Reserve and refund</strong> keeps in-flight work near the limit (27k at peak) and still serves 98% of the limit over minutes 2-10. The 153k in the first minute is not an overshoot: the bucket started full (100k of burst) and refilled another 100k during that minute. That is the burst you configured.</li>
+</ul>
+<p>Production details:</p>
+<ul>
+<li><strong>Settle with the engine's token counts</strong>, not your estimate. The <code>usage</code> the engine reports at the end of each request is what refunds and bills use, and it must be logged with the request (section 7).</li>
+<li><strong>Refund on every exit path</strong>: completion, client cancel, engine error, timeout. A refund that is only on the success path leaks limit on every failure, which is when clients retry most.</li>
+<li><strong>Allow small debt.</strong> When the prompt estimate was low, the settlement takes the bucket slightly negative. Don't reject a request that already ran. Let the debt delay the next one.</li>
+<li><strong>Cap <code>max_tokens</code> per tier</strong> so a single reservation can't take a whole minute's limit.</li>
+</ul>
+<p><strong>On a leased fleet.</strong> Reserve-and-refund is the one to build. It is what keeps a client's in-flight work bounded, and in-flight work is what consumes your fixed KV capacity. Anthropic's real-time OTPM debit is better for the client, but it needs the limiter in the token path of every stream; build it once you have the request log working.</p>
+<h3 id="per-key-per-org-and-global-limits">Per-key, per-org and global limits</h3>
+<p>Limits nest. An <strong>API key</strong> belongs to a <strong>project</strong> or workspace, which belongs to an <strong>organization</strong> (the paying customer), which shares the <strong>fleet</strong> with everyone else. Each level gets its own buckets:</p>
+<ul>
+<li><strong>Per key</strong>: stops one leaked or buggy key (a CI job in a loop) from taking the whole organization's allowance.</li>
+<li><strong>Per org</strong>: what the customer pays for, and what their tier says.</li>
+<li><strong>Global</strong> (per model): what your fleet can actually serve at its SLO, from measured goodput (section 4), not a guess. It is the limit that turns overload into fast 503s at the gateway instead of slow queueing in the engines.</li>
+</ul>
+<p>Anthropic documents the same nesting: workspace limits inside the organization limit, where &quot;Organization-wide limits always apply, even if workspace limits add up to more&quot; (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>); OpenAI limits at both organization and project level (<a href="https://developers.openai.com/api/docs/guides/rate-limits">rate limits guide</a>).</p>
+<p>A request must fit in every bucket on its path, and it must take from all of them or none, otherwise a request rejected by the org limit has already spent the key's tokens:</p>
+<pre><code class="language-python"># hier_limits.py - per-key, per-org and global limits: a request must fit in every bucket on its path
+from token_bucket import TokenBucket
+
+class Limits:
+    def __init__(self):
+        self.b = {}
+    def add(self, name, per_min):
+        self.b[name] = TokenBucket(capacity=per_min, rate=per_min / 60)
+    def try_take(self, path, n, now):
+        &quot;&quot;&quot;path = [&quot;key:abc&quot;, &quot;org:acme&quot;, &quot;global&quot;]. All-or-nothing: check every level, then take.&quot;&quot;&quot;
+        waits = {}
+        for name in path:
+            b = self.b[name]; b._refill(now)
+            if b.level &lt; n:
+                waits[name] = (n - b.level) / b.rate
+        if waits:
+            name = max(waits, key=waits.get)          # tell the client about the slowest bucket
+            return False, name, waits[name]
+        for name in path:
+            self.b[name].level -= n
+        return True, None, 0.0
+
+L = Limits()
+L.add(&quot;global&quot;, 300_000)                  # what the fleet can actually serve (from measured goodput)
+L.add(&quot;org:acme&quot;, 200_000); L.add(&quot;org:zeta&quot;, 200_000)
+L.add(&quot;key:acme-prod&quot;, 200_000); L.add(&quot;key:acme-ci&quot;, 50_000); L.add(&quot;key:zeta-prod&quot;, 200_000)
+path = lambda key: [f&quot;key:{key}&quot;, f&quot;org:{key.split('-')[0]}&quot;, &quot;global&quot;]
+
+for key, n in [(&quot;acme-ci&quot;, 40_000), (&quot;acme-ci&quot;, 40_000),        # CI key hits its own cap
+               (&quot;acme-prod&quot;, 150_000), (&quot;acme-prod&quot;, 20_000),    # org cap: 40k + 150k + 20k &gt; 200k
+               (&quot;zeta-prod&quot;, 100_000), (&quot;zeta-prod&quot;, 100_000)]:  # global cap: 290k used, 10k left
+    ok, who, wait = L.try_take(path(key), n, now=0.0)
+    print(f&quot;{key:10s} {n:7,} -&gt; &quot; + (&quot;admitted&quot; if ok else f&quot;429, limited by {who}, Retry-After {wait:.1f} s&quot;))
+</code></pre>
+<pre><code class="language-console">$ python3 hier_limits.py
+acme-ci     40,000 -&gt; admitted
+acme-ci     40,000 -&gt; 429, limited by key:acme-ci, Retry-After 36.0 s
+acme-prod  150,000 -&gt; admitted
+acme-prod   20,000 -&gt; 429, limited by org:acme, Retry-After 3.0 s
+zeta-prod  100,000 -&gt; admitted
+zeta-prod  100,000 -&gt; 429, limited by global, Retry-After 18.0 s
+</code></pre>
+<p>The last line deserves a second look. The two organizations' limits add up to 400k against a global 300k: the fleet is <strong>oversold</strong>. That is normal and deliberate, the same bet an airline makes, because customers rarely all peak together. But it means the global rejection is a different kind of event from the others: zeta was within everything it paid for. That one is <em>your</em> capacity problem, so it should be a 503 (overloaded), not a 429, and it should page someone if it persists. The code returns the name of the limiting bucket so the gateway can pick the status code and the error reason.</p>
+<p>In a real gateway these buckets live in shared state, because many gateway replicas admit requests for the same organization. The usual design is Redis, with one atomic script that checks and takes from all buckets on the path (Redis runs a Lua script atomically, so no other client sees a half-applied take). A cheaper alternative is to split each organization's rate across the N gateway replicas and keep the buckets in memory; it is exact only if the load balancer spreads each organization evenly. <a href="../platform/control-planes.html#bounded-queues-load-shedding-and-per-tenant-limits">Control Planes</a> discusses both.</p>
+<h3 id="why-per-client-rpm-limits-waste-capacity">Why per-client RPM limits waste capacity</h3>
+<p>Rate limits are often the only fairness mechanism a young API has: give every client a limit equal to its share of capacity, and nobody can take more than their share. The problem is that a limit is enforced even when nobody else wants the capacity. If only one client is active, it is still held to its share and the rest of the fleet idles. A scheduler with that property is not <strong>work-conserving</strong>: it leaves capacity unused while work is waiting.</p>
+<p>Sheng et al. measured this in &quot;Fairness in Serving Large Language Models&quot; (<a href="https://arxiv.org/abs/2401.00588">arXiv 2401.00588</a>), on a trace from LMSYS Chatbot Arena. Their table 2, in output tokens per second:</p>
+<table>
+<thead>
+<tr>
+<th>Scheduler</th>
+<th>Max service difference</th>
+<th>Throughput (tok/s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FCFS</td>
+<td>759.97</td>
+<td>777</td>
+</tr>
+<tr>
+<td>VTC</td>
+<td>368.40</td>
+<td>779</td>
+</tr>
+<tr>
+<td>RPM(5)</td>
+<td>143.86</td>
+<td>340</td>
+</tr>
+<tr>
+<td>RPM(20)</td>
+<td>446.76</td>
+<td>694</td>
+</tr>
+<tr>
+<td>RPM(30)</td>
+<td>693.66</td>
+<td>747</td>
+</tr>
+</tbody>
+</table>
+<p>A 5-requests-per-minute limit per client makes service the most even, at 340 tok/s instead of 779: <span class="math inline"><span class="math-inline">1 - 340/779 = 56\%</span></span> of the capacity unused. Looser limits waste less and are less fair. The paper describes RPM limiting as working &quot;as an FCFS approach with admission control&quot; rather than as a fair scheduler, and notes it &quot;may not be work-conserving when the number of active clients is low&quot;. VTC, the scheduler in the second row, gets better fairness than FCFS at the same throughput. The next section builds it.</p>
+<p><strong>On a leased fleet.</strong> This result is sharper for you than for anyone with elastic capacity. Unused leased capacity is money already spent for nothing. Keep rate limits for what they are good at (stopping abuse and runaway clients, enforcing what a tier paid for), set them generously, and get fairness from the scheduler instead.</p>
+<h2 id="3-fairness-and-priority-across-tenants">3. Fairness and priority across tenants</h2>
+<h3 id="fcfs-and-its-failure">FCFS and its failure</h3>
+<p>Rate limits decide what gets <em>in</em>. Once requests are in, something decides which one gets the next free batch slot. Most engines use <strong>first-come, first-served</strong> (FCFS): the waiting queue is ordered by arrival (<a href="../inference/serving-engine-internals.html#policies">engine policies</a>). Under overload FCFS gives each tenant service in proportion to how much it sends. A tenant that sends three times as much gets three times the service, and a light tenant's request waits behind the heavy tenant's queue. That last part is the one customers notice: the light tenant did nothing wrong and still sees its TTFT go from 300 ms to 30 s.</p>
+<p>What you want is closer to <strong>max-min fairness</strong>: a tenant that asks for less than an equal share gets everything it asks for, and the tenants that ask for more split what is left equally. Network routers solved this for packets decades ago with <strong>fair queuing</strong>, which tracks how much service each flow has received and serves the flow that has received least. The complication for LLMs is that the cost of a request is not known when it is admitted (output length again), and that input and output tokens cost different amounts.</p>
+<h3 id="virtual-token-counter">Virtual Token Counter</h3>
+<p>The <strong>Virtual Token Counter</strong> (VTC) scheduler from the Sheng et al. paper (<a href="https://arxiv.org/abs/2401.00588">arXiv 2401.00588</a>) adapts fair queuing to continuous batching:</p>
+<ul>
+<li><strong>Service is weighted tokens</strong>: <span class="math inline"><span class="math-inline">W = w_p \cdot n_{\text{in}} + w_q \cdot n_{\text{out}}</span></span>. The paper uses <span class="math inline"><span class="math-inline">w_p = 1</span></span> and <span class="math inline"><span class="math-inline">w_q = 2</span></span>, following OpenAI's pricing at the time, because output tokens are the more expensive ones.</li>
+<li><strong>Each client has a counter</strong> of the service it has received. When a batch slot frees up, the scheduler admits the head request of the client with the <em>smallest</em> counter.</li>
+<li><strong>Charge as you go.</strong> Input tokens are added to the counter at admission. Output tokens are added one decode step at a time, as they are generated. So the unknown output length is never needed in advance.</li>
+<li><strong>Lift the counter when a client returns.</strong> A client that was idle would otherwise come back with a low counter and get a burst of service as &quot;back pay&quot;. When a client goes from no queued requests to some, its counter is raised to at least the smallest counter among queued clients (or, if none are queued, to that of the last client to leave the queue). In the paper's words, credits &quot;cannot be carried over&quot;.</li>
+</ul>
+<p>The paper proves that two clients that are both continuously backlogged never differ in received service by more than <span class="math inline"><span class="math-inline">2 \cdot \max(w_p L_{\text{in}}, w_q M)</span></span>, where <span class="math inline"><span class="math-inline">L_{\text{in}}</span></span> is the maximum input length and <span class="math inline"><span class="math-inline">M</span></span> the maximum number of tokens in a running batch, and that no work-conserving non-preemptive scheduler can guarantee better than <span class="math inline"><span class="math-inline">w_q M</span></span>.</p>
+<p>The simulator below is a toy continuous-batching engine: a KV budget of 10,000 tokens, every request 256 tokens in and 256 out, one decode step every 20 ms. It can therefore run 19 requests at once and finish at most 3.71 requests per second. Three clients send Poisson traffic:</p>
+<ul>
+<li><strong>A</strong> is heavy (4 req/s, more than the whole engine can do by itself) and is the only one active for the first 60 s.</li>
+<li><strong>B</strong> is medium (2 req/s) and joins at 60 s.</li>
+<li><strong>C</strong> is light (0.3 req/s, well under a third of capacity) and joins at 60 s.</li>
+</ul>
+<p>It runs FCFS, VTC, and FCFS with a per-client request-rate limit set to a third of capacity each (the &quot;fair share&quot; RPM policy).</p>
+<pre><code class="language-python"># vtc_sim.py - FCFS vs Virtual Token Counter (VTC) vs per-client request-rate limits
+# on a toy continuous-batching engine. Service is measured as in the VTC paper:
+#   W = w_p * input_tokens + w_q * output_tokens,  w_p = 1, w_q = 2
+import random
+from collections import deque
+
+W_P, W_Q = 1, 2
+M = 10_000                 # KV capacity in tokens; a request reserves input + max_tokens
+STEP = 0.02                # one decode step = 20 ms: every running request emits 1 token
+N_IN, N_OUT = 256, 256     # every request: 256 in, 256 out (so cost differences are pure arrival rate)
+PHASE2, T_END = 60.0, 180.0
+RATES = {&quot;A&quot;: 4.0, &quot;B&quot;: 2.0, &quot;C&quot;: 0.3}    # req/s; only A is active before t = 60 s
+
+def arrivals(seed):
+    rng, out = random.Random(seed), []
+    for c, lam in RATES.items():
+        t = 0.0 if c == &quot;A&quot; else PHASE2
+        while True:
+            t += rng.expovariate(lam)
+            if t &gt;= T_END: break
+            out.append((t, c))
+    return sorted(out)
+
+def simulate(policy, seed=0, rpm_rate=None):
+    arr = deque(arrivals(seed))
+    q = {c: deque() for c in RATES}           # per-client FIFO of waiting requests (arrival times)
+    fifo = deque()                            # global arrival order, for FCFS / RPM
+    vtc = {c: 0.0 for c in RATES}             # virtual counters
+    last_left = 0.0                           # counter of the last client whose queue emptied
+    tokens = {c: 1.0 for c in RATES}          # per-client request buckets for the RPM policy
+    running, used = [], 0                     # running: [client, tokens_left, t_arrival]
+    served = {c: 0.0 for c in RATES}          # service W since PHASE2
+    lat = {c: [] for c in RATES}              # queue wait (admission - arrival) since PHASE2
+    out_tok = {&quot;p1&quot;: 0, &quot;p2&quot;: 0}
+    max_gap_ab, t = 0.0, 0.0
+    while t &lt; T_END:
+        while arr and arr[0][0] &lt;= t:                     # arrivals
+            ta, c = arr.popleft()
+            if policy == &quot;vtc&quot; and not q[c]:              # client becomes backlogged: lift counter
+                backlogged = [vtc[k] for k in RATES if q[k]]
+                vtc[c] = max(vtc[c], min(backlogged) if backlogged else last_left)
+            q[c].append(ta); fifo.append((ta, c))
+        if policy == &quot;rpm&quot;:
+            for c in RATES: tokens[c] = min(1.0, tokens[c] + rpm_rate * STEP)
+        while True:                                       # admission, non-preemptive
+            if used + N_IN + N_OUT &gt; M: break
+            if policy == &quot;vtc&quot;:
+                cands = [c for c in RATES if q[c]]
+                if not cands: break
+                c = min(cands, key=lambda k: vtc[k])
+                ta = q[c].popleft(); fifo.remove((ta, c))
+                vtc[c] += W_P * N_IN                      # input charged at admission
+                if not q[c]: last_left = vtc[c]
+            else:
+                pick = None
+                for (ta, c) in fifo:                      # FCFS; RPM skips clients out of tokens
+                    if policy == &quot;fcfs&quot; or tokens[c] &gt;= 1: pick = (ta, c); break
+                if pick is None: break
+                fifo.remove(pick); ta, c = pick; q[c].popleft()
+                if policy == &quot;rpm&quot;: tokens[c] -= 1
+            running.append([c, N_OUT, ta]); used += N_IN + N_OUT
+            if t &gt;= PHASE2:
+                served[c] += W_P * N_IN; lat[c].append(t - ta)
+        for r in running:                                 # one decode step
+            r[1] -= 1
+            if policy == &quot;vtc&quot;: vtc[r[0]] += W_Q          # output charged per generated token
+            if t &gt;= PHASE2: served[r[0]] += W_Q
+            out_tok[&quot;p2&quot; if t &gt;= PHASE2 else &quot;p1&quot;] += 1
+        for r in [r for r in running if r[1] == 0]:
+            running.remove(r); used -= N_IN + N_OUT
+        if t &gt;= PHASE2:
+            max_gap_ab = max(max_gap_ab, abs(served[&quot;A&quot;] - served[&quot;B&quot;]))
+        t = round(t + STEP, 2)
+    p2 = T_END - PHASE2
+    return dict(thr1=out_tok[&quot;p1&quot;] / PHASE2, thr2=out_tok[&quot;p2&quot;] / p2,
+                share={c: served[c] / p2 for c in RATES},
+                wait={c: sum(v) / len(v) if v else float(&quot;nan&quot;) for c, v in lat.items()},
+                gap=max_gap_ab)
+
+cap = M // (N_IN + N_OUT)
+print(f&quot;engine: {cap} concurrent requests, {cap / (N_OUT * STEP):.2f} req/s max; offered in phase 2: &quot;
+      f&quot;{sum(RATES.values()):.1f} req/s (A {RATES['A']}, B {RATES['B']}, C {RATES['C']})&quot;)
+print(f&quot;{'policy':10s} {'out tok/s':&gt;9s} {'out tok/s':&gt;9s} | {'service/s (W) since t=60':^26s} | &quot;
+      f&quot;{'mean queue wait, s':^20s} | max|W_A-W_B|&quot;)
+print(f&quot;{'':10s} {'A alone':&gt;9s} {'all 3':&gt;9s} | {'A':&gt;8s} {'B':&gt;8s} {'C':&gt;8s} | {'A':&gt;6s} {'B':&gt;6s} {'C':&gt;6s} |&quot;)
+res = {}
+for name, pol, kw in [(&quot;FCFS&quot;, &quot;fcfs&quot;, {}), (&quot;VTC&quot;, &quot;vtc&quot;, {}),
+                      (&quot;RPM-limit&quot;, &quot;rpm&quot;, {&quot;rpm_rate&quot;: cap / (N_OUT * STEP) / 3})]:
+    r = res[name] = simulate(pol, **kw)
+    print(f&quot;{name:10s} {r['thr1']:9.0f} {r['thr2']:9.0f} | &quot; + &quot; &quot;.join(f&quot;{r['share'][c]:8.0f}&quot; for c in &quot;ABC&quot;)
+          + &quot; | &quot; + &quot; &quot;.join(f&quot;{r['wait'][c]:6.1f}&quot; for c in &quot;ABC&quot;) + f&quot; | {r['gap']:10,.0f}&quot;)
+
+bound = 2 * max(W_P * N_IN, W_Q * M)
+print(f&quot;VTC paper bound on the gap between two backlogged clients: 2*max(w_p*L_in, w_q*M) = {bound:,}&quot;)
+assert res[&quot;VTC&quot;][&quot;gap&quot;] &lt;= bound &lt; res[&quot;FCFS&quot;][&quot;gap&quot;]
+assert res[&quot;VTC&quot;][&quot;wait&quot;][&quot;C&quot;] &lt; 1.0 &lt; res[&quot;FCFS&quot;][&quot;wait&quot;][&quot;C&quot;]
+</code></pre>
+<pre><code class="language-console">$ python3 vtc_sim.py
+engine: 19 concurrent requests, 3.71 req/s max; offered in phase 2: 6.3 req/s (A 4.0, B 2.0, C 0.3)
+policy     out tok/s out tok/s |  service/s (W) since t=60  |  mean queue wait, s  | max|W_A-W_B|
+             A alone     all 3 |        A        B        C |      A      B      C |
+FCFS             858       950 |     1787      960      109 |   28.3   29.2   30.1 |     99,308
+VTC              858       950 |     1349     1325      182 |   38.4   14.7    0.4 |      3,536
+RPM-limit        299       678 |      936      922      182 |   79.6   29.2    0.3 |      1,880
+VTC paper bound on the gap between two backlogged clients: 2*max(w_p*L_in, w_q*M) = 40,000
+</code></pre>
+<p>What each policy did:</p>
+<ul>
+<li><strong>FCFS</strong> kept the engine full (950 output tok/s is 19 streams at 50 tok/s) and handed out service in proportion to demand: A got almost twice B's service, and the gap between them grew to 99,308 weighted tokens by the end and would keep growing. The light client C waited <strong>30 s</strong> on average for each request, the same as everyone else, because it queued behind A's backlog.</li>
+<li><strong>VTC</strong> kept the same throughput in both phases, split the contended capacity almost equally between A and B (1,349 vs 1,325), and kept their gap at 3,536, inside the paper's bound of 40,000. C waited <strong>0.4 s</strong>: it always had the smallest counter, so its requests went to the front. A waits longest, which is correct, since A is the client sending more than the whole engine can serve.</li>
+<li><strong>The RPM limit</strong> was the most even (gap 1,880) and threw away capacity in both phases. With A alone it served 299 tok/s instead of 858, about two thirds of the engine idle while A's requests waited 80 s. With all three active it served 678 instead of 950, because C uses less than its third and nobody may use the rest. This is the paper's RPM result in miniature.</li>
+</ul>
+<p>(One quirk of the toy: C's service is lower under FCFS than under the other two only because C's queue was still draining at the end of the run. The gap in queue wait is the real effect.)</p>
+<p>What a production version adds:</p>
+<ul>
+<li><strong>Where it runs.</strong> VTC needs to control which request enters the batch next, so it belongs where the queue is. Open-source engines mostly do FCFS or priority in their core (<a href="../inference/serving-engine-internals.html#policies">engine policies</a>), so the practical place is a queue in the gateway or router that holds requests until a replica has room and releases them in VTC order. That only works if the engines themselves are not queueing much, so cap each replica's in-flight requests near its running batch size, and let the waiting happen in the gateway, where fairness is applied.</li>
+<li><strong>Weights per tier.</strong> Weighted fair queuing gives a tenant with weight 2 twice the share of a tenant with weight 1 when both are backlogged. Divide each client's counter increments by its weight, and paying more buys a bigger share under contention without starving anyone.</li>
+<li><strong>Cost weights from your own costs.</strong> <span class="math inline"><span class="math-inline">w_q/w_p</span></span> should be your output-to-input cost ratio. Section 6 derives it from the hardware. It comes out much higher than 2, and cached input should cost close to nothing.</li>
+</ul>
+<p><strong>On a leased fleet.</strong> VTC is a scheduler, not a capacity model, so it applies unchanged. It matters more for you than for an elastic provider: when you are oversold and overloaded, you cannot buy your way out of the contention, so who waits is decided by the scheduler. VTC is also work-conserving, which is the property that keeps leased GPUs busy when only one tenant is active.</p>
+<h3 id="priority-classes-interactive-batch-and-best-effort">Priority classes: interactive, batch and best-effort</h3>
+<p>Fairness among equals is one problem; traffic of different <em>kinds</em> is another. Most inference products end up with three classes:</p>
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Example</th>
+<th>Latency target</th>
+<th>Admission under overload</th>
+<th>Pricing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>interactive</strong></td>
+<td>chat, coding assistants, agents</td>
+<td>TTFT in hundreds of ms, steady TPOT</td>
+<td>admitted first; shed last</td>
+<td>list price, or a premium for a priority tier</td>
+</tr>
+<tr>
+<td><strong>batch</strong></td>
+<td>evaluations, synthetic data, nightly document processing</td>
+<td>a deadline in hours</td>
+<td>waits for spare capacity; expires at the deadline</td>
+<td>discounted (section 5)</td>
+</tr>
+<tr>
+<td><strong>best-effort</strong></td>
+<td>free tier, internal experiments</td>
+<td>none</td>
+<td>shed first, with a fast 503</td>
+<td>free or cheapest</td>
+</tr>
+</tbody>
+</table>
+<p>Order the queue by class first, then by VTC within a class. Strict priority between classes is simple and usually right for interactive over batch, since batch has hours of slack. Two guards keep it from going wrong:</p>
+<ul>
+<li><strong>Reserve headroom for the top class.</strong> If batch work fills every slot, an interactive burst has to wait for batch requests to finish, which at a few hundred tokens each is seconds. Cap the lower classes at, say, 90% of slots or KV, so interactive arrivals always find room. The batch queue in section 5 does exactly this.</li>
+<li><strong>Don't let a priority tier become the default.</strong> Anthropic offers a Priority Tier with its own rate-limit headers (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>), and Fireworks a Priority tier that &quot;is prioritized during high load&quot; and shares the same rate limits as regular requests (<a href="https://docs.fireworks.ai/serverless/rate-limits">rate limits doc</a>). If everyone buys priority, there is no lower class left to shed. Sell priority as a capacity commitment you have actually reserved, and price it so.</li>
+</ul>
+<p>vLLM's <code>--scheduling-policy priority</code> orders admission and preemption by a per-request priority (<a href="../inference/serving-engine-internals.html#policies">engine policies</a>), so the class can be passed down to the engine as well as enforced in the gateway queue.</p>
+<p><strong>On a leased fleet.</strong> Classes are how a fixed fleet serves a variable load. Interactive demand peaks during the day; batch and best-effort fill the rest. Without classes, you size the fleet for the interactive peak and waste the trough. With them, the trough is sold as batch.</p>
+<h3 id="preemption">Preemption</h3>
+<p><strong>Preemption</strong> means taking resources away from work that is already running. It happens at two levels.</p>
+<p><strong>Inside an engine</strong>, when the KV cache fills, the scheduler evicts a running sequence and later either swaps its KV back from host memory or recomputes it (<a href="../inference/serving-engine-internals.html#preemption-swap-vs-recompute">swap vs recompute</a>). With priority scheduling, the victim is the lowest-priority, most recently admitted sequence. The cost is real: a recomputed victim pays its prefill again. A steady rate of preemptions means the engine is oversubscribed, and you should admit less (section 8, KV exhaustion).</p>
+<p><strong>Across the fleet</strong>, a whole replica is taken away from a lower class: batch replicas are drained to make room for an interactive surge. Fireworks sells capacity on these terms. Preemptible deployments cost &quot;50% off the on-demand GPU rate&quot;, Fireworks &quot;can take the GPUs back at any time&quot;, and &quot;A replica can be preempted mid-request without warning&quot;, so in-flight requests fail and the client must retry (<a href="https://docs.fireworks.ai/guides/ondemand-deployments">on-demand deployments doc</a>).</p>
+<p>Rules that keep preemption cheap:</p>
+<ul>
+<li><strong>Preempt the cheapest work to redo.</strong> A batch request 20 tokens into its output has lost almost nothing. One 3,000 tokens in has lost a lot. Prefer victims by tokens generated so far, not only by class.</li>
+<li><strong>Never preempt an interactive stream that has started.</strong> The client has seen tokens. Preempting means a broken response, or a re-run with different sampling.</li>
+<li><strong>Make batch requests restartable.</strong> A batch request that is preempted goes back in the queue, not to the customer as an error. Since batch requests are not streamed, re-running from scratch is invisible to the customer except in completion time.</li>
+</ul>
+<p><strong>On a leased fleet.</strong> You don't sell your GPUs back to a cloud, so fleet-level preemption is a move between your own classes: batch replicas give way to interactive. The Fireworks model, a discounted class that can be interrupted at any time, is the right one for the work you put on spare capacity.</p>
+<h3 id="dedicated-vs-shared-deployments-noisy-neighbours">Dedicated vs shared deployments, noisy neighbours</h3>
+<p>A <strong>shared</strong> (multi-tenant) deployment runs many customers' requests in the same batches on the same replicas, priced per token. A <strong>dedicated</strong> deployment gives one customer whole replicas, priced per GPU-hour. Both are common. Together, for example, sells serverless inference (largely best effort), dedicated GPUs, and in between them Provisioned Throughput: reserved per-model capacity at token prices, committed for a month or more, with a 99% uptime SLA, through the same API (<a href="https://www.together.ai/blog/provisioned-throughput">announcement, July 2026</a>, <a href="https://docs.together.ai/docs/inference/provisioned-throughput">docs</a>). Fireworks' docs say that on dedicated deployments the prompt cache is shared across all requests by default, while its serverless caches are separate per account &quot;to prevent data leakage and timing attacks&quot; (<a href="https://docs.fireworks.ai/guides/prompt-caching">prompt caching doc</a>).</p>
+<p>Sharing is what makes per-token pricing cheap. Tenants' peaks don't coincide, so the fleet is sized for the peak of the sum rather than the sum of the peaks, and everyone's requests fill one large batch. The cost is <strong>noisy neighbours</strong>: one tenant's traffic degrades another's in a shared batch. The most visible case is a <strong>prefill stall</strong>: a long prompt is prefilled in chunks interleaved with everyone's decode steps, and each of those steps is slower. With the step-cost model of the mock engine from <a href="../inference/serving-hands-on.html#a-mock-server-you-can-run-anywhere">Serving LLMs in Practice</a>:</p>
+<pre><code class="language-python"># neighbour.py - one tenant's 100k-token prompt, chunked into a shared batch, seen by 32 other streams.
+# Step-cost model from the mock engine in Serving LLMs in Practice: t = 8 ms + 0.25 ms*decodes + 0.02 ms*prefill tokens
+T0, C_DEC, C_PRE = 8.0, 0.25, 0.02
+decodes = 32
+quiet = T0 + C_DEC * decodes
+for chunk in (8192, 2048):
+    steps = -(-100_000 // chunk)
+    busy = T0 + C_DEC * decodes + C_PRE * chunk
+    print(f&quot;chunk {chunk:5d}: {steps:3d} steps at {busy:5.1f} ms instead of {quiet:.1f} ms -&gt; every other stream's &quot;
+          f&quot;ITL is {busy / quiet:.1f}x for {steps * busy / 1000:.1f} s&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 neighbour.py
+chunk  8192:  13 steps at 179.8 ms instead of 16.0 ms -&gt; every other stream's ITL is 11.2x for 2.3 s
+chunk  2048:  49 steps at  57.0 ms instead of 16.0 ms -&gt; every other stream's ITL is 3.6x for 2.8 s
+</code></pre>
+<p>One customer's long-document request makes 32 other customers' streams stutter for over two seconds. Smaller chunks spread the damage thinner. Routing long prompts to replicas reserved for them, or to disaggregated prefill (<a href="../inference/serving-efficiently.html">Serving Efficiently</a>), removes it. The other mechanisms:</p>
+<ul>
+<li><strong>KV pressure.</strong> A tenant with long contexts fills the KV cache, which caps everyone's batch size and causes preemptions. Per-tenant caps on in-flight tokens (not just requests) bound this.</li>
+<li><strong>Cache eviction.</strong> A tenant streaming many unique prompts evicts other tenants' cached prefixes, and their TTFT rises.</li>
+<li><strong>Rate-limit sharing at the global level</strong> (the 503 in <code>hier_limits.py</code>).</li>
+</ul>
+<p>When a customer needs guaranteed latency, a custom model, or isolation for compliance, they get dedicated capacity. Section 6 works out when dedicated is cheaper for them.</p>
+<p><strong>On a leased fleet.</strong> A dedicated replica sold by the hour shifts utilization risk to the customer: you are paid whether or not they use it. That is attractive when your own utilization is uncertain. Sell dedicated replicas on terms that match your lease (monthly, not hourly) if you can. Otherwise an hourly customer who leaves leaves you holding the GPUs.</p>
+<h2 id="4-slos-and-goodput">4. SLOs and goodput</h2>
+<h3 id="slos-per-tier">SLOs per tier</h3>
+<p>The vocabulary is from <a href="../foundations/distributed-systems.html#availability-slos-and-nines">Distributed Systems</a> and <a href="../platform/control-planes.html#slis-slos-and-error-budgets">Control Planes</a>: a <strong>service level indicator</strong> (SLI) is a measured number about what users experience, a <strong>service level objective</strong> (SLO) is a target for it over a window, and the <strong>error budget</strong> is the fraction the SLO allows to fail. An <strong>SLA</strong> is an SLO written into a contract with a penalty.</p>
+<p>For an LLM API, &quot;the request succeeded&quot; is not enough as an SLI, because a request that streams at 2 tokens per second has succeeded and is useless. The SLI that matches what a user feels is per request: <strong>the request completed, its TTFT was under a target, and its TPOT was under a target.</strong> Both latency metrics are defined in <a href="../inference/arithmetic.html#definitions">Inference Internals I</a>. Targets differ per tier, because the tiers sell different things. The numbers below are the ones this chapter's examples use. They are a design choice, not a standard:</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>TTFT target</th>
+<th>TPOT target</th>
+<th>Good-request SLO</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>interactive</td>
+<td>1 s</td>
+<td>50 ms (20 tok/s, faster than reading speed)</td>
+<td>99% of requests good, 30 days</td>
+<td>what chat and agents need</td>
+</tr>
+<tr>
+<td>standard</td>
+<td>5 s</td>
+<td>100 ms</td>
+<td>99%</td>
+<td>cheaper per token; tolerates queueing</td>
+</tr>
+<tr>
+<td>batch</td>
+<td>(none)</td>
+<td>(none)</td>
+<td>99% of requests completed by the deadline</td>
+<td>section 5</td>
+</tr>
+</tbody>
+</table>
+<p>Write the SLO per request <em>class</em> where prompt length varies a lot: a 100k-token prompt cannot have the same TTFT as a 1k-token one, since prefill alone takes longer. Either scale the TTFT target with prompt length (for example 1 s plus 0.1 ms per input token) or report SLOs separately per prompt-length bucket.</p>
+<h3 id="goodput">Goodput</h3>
+<p>DistServe (<a href="https://arxiv.org/abs/2401.09670">arXiv 2401.09670</a>) made <strong>goodput</strong> the standard metric for LLM serving: &quot;the maximum rate that can be served within both TTFT and TPOT constraints on each GPU&quot;. In operation, goodput is requests per second that <em>met the SLO</em>. Throughput counts every completed request, including slow ones, and you can always raise throughput by batching more and making everyone slower. Goodput can't be gamed that way. Report it per tier and per GPU, and use it, not throughput, as the capacity number in your global rate limit (section 2) and in capacity planning (<a href="../inference/serving-hands-on.html#capacity-planning-from-measured-numbers">Serving LLMs in Practice</a>).</p>
+<h3 id="measure-at-completion-not-at-the-gateway">Measure at completion, not at the gateway</h3>
+<p>Where you measure decides what you see. Together's post on what uptime means for inference puts it in one sentence: &quot;We measure at inference completion, not at the gateway&quot; (<a href="https://www.together.ai/blog/99-9-uptime-for-inference">Together, July 2026</a>). A request that reached the load balancer and then failed on the GPU counts as downtime in their accounting. The same post names silent corruption from VRAM ECC errors as &quot;the most common thing we see; they corrupt weights silently&quot;, which is a failure that no status code shows at all (section 7).</p>
+<p>Here is why the difference is large for streaming APIs, with real numbers from a simulated hour. <code>make_log.py</code> writes one JSON line per request, the per-request log section 7 asks you to keep, with three problems injected: replica <code>r3</code> has a failing GPU from minute 20 to 40 and 30% of its streams die after the 200 has been sent; minutes 45-50 are overloaded; and one customer is over quota.</p>
+<pre><code class="language-python"># make_log.py - write one hour of synthetic per-request logs (JSON lines) with three injected problems:
+#   1. replica r3 has a failing GPU from minute 20 to 40: 30% of its streams die mid-generation
+#   2. minutes 45-50 are overloaded: queueing adds 0-3 s to TTFT and the gateway sheds 5% with 503
+#   3. a customer over quota gets 429s (their fault, not ours)
+import json, random
+rng = random.Random(7)
+REPLICAS = [&quot;r0&quot;, &quot;r1&quot;, &quot;r2&quot;, &quot;r3&quot;]
+with open(&quot;requests.jsonl&quot;, &quot;w&quot;) as f:
+    t, i = 0.0, 0
+    while t &lt; 3600:
+        t += rng.expovariate(10.0)                       # 10 req/s
+        i += 1
+        tier = &quot;interactive&quot; if rng.random() &lt; 0.7 else &quot;standard&quot;
+        tenant = rng.choice([&quot;acme&quot;, &quot;zeta&quot;, &quot;orbit&quot;, &quot;quota-hog&quot;])
+        rec = dict(id=f&quot;req_{i:06d}&quot;, ts=round(t, 3), tenant=tenant, tier=tier,
+                   n_in=int(rng.lognormvariate(7, 1)), max_tokens=1024)
+        overloaded = 45 * 60 &lt;= t &lt; 50 * 60
+        if tenant == &quot;quota-hog&quot; and rng.random() &lt; 0.2:
+            rec.update(http=429, finish=&quot;rate_limited&quot;, n_out=0); f.write(json.dumps(rec) + &quot;\n&quot;); continue
+        if overloaded and rng.random() &lt; 0.05:
+            rec.update(http=503, finish=&quot;shed&quot;, n_out=0); f.write(json.dumps(rec) + &quot;\n&quot;); continue
+        rep = rng.choice(REPLICAS)
+        ttft = 0.15 + rec[&quot;n_in&quot;] / 20000 + (rng.uniform(0, 3) if overloaded else rng.expovariate(1 / 0.05))
+        tpot = rng.gauss(0.030, 0.004) + (0.02 if overloaded else 0)
+        n_out = min(1024, int(rng.expovariate(1 / 250)) + 1)
+        finish = &quot;stop&quot; if n_out &lt; 1024 else &quot;length&quot;
+        if rep == &quot;r3&quot; and 20 * 60 &lt;= t &lt; 40 * 60 and rng.random() &lt; 0.3:
+            n_out, finish = rng.randint(1, n_out), &quot;error&quot;   # stream dies after headers were sent
+        elif rng.random() &lt; 0.02:
+            n_out, finish = rng.randint(1, n_out), &quot;client_cancel&quot;
+        rec.update(http=200, replica=rep, n_out=n_out, finish=finish, ttft_ms=round(ttft * 1e3, 1),
+                   tpot_ms=round(tpot * 1e3, 2), e2e_ms=round((ttft + (n_out - 1) * tpot) * 1e3, 1))
+        f.write(json.dumps(rec) + &quot;\n&quot;)
+print(open(&quot;requests.jsonl&quot;).readline().strip())
+print(sum(1 for _ in open(&quot;requests.jsonl&quot;)), &quot;records&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 make_log.py
+{&quot;id&quot;: &quot;req_000001&quot;, &quot;ts&quot;: 0.039, &quot;tenant&quot;: &quot;acme&quot;, &quot;tier&quot;: &quot;interactive&quot;, &quot;n_in&quot;: 225, &quot;max_tokens&quot;: 1024, &quot;http&quot;: 200, &quot;replica&quot;: &quot;r2&quot;, &quot;n_out&quot;: 23, &quot;finish&quot;: &quot;stop&quot;, &quot;ttft_ms&quot;: 205.0, &quot;tpot_ms&quot;: 32.35, &quot;e2e_ms&quot;: 916.6}
+36159 records
+</code></pre>
+<p>The report computes, per tier: availability as an access log sees it (non-5xx status codes), availability at completion (finished with <code>stop</code> or <code>length</code>), latency percentiles, throughput, goodput, and the <strong>burn rate</strong>, the rate at which the error budget is being spent relative to plan (1.0 means the budget lasts exactly the window; the alerting arithmetic is in <a href="../platform/control-planes.html#slis-slos-and-error-budgets">Control Planes</a>). The customer's own 429s and cancellations are left out of the denominator: they are not failures of the service.</p>
+<pre><code class="language-python"># slo_report.py - availability, latency percentiles, goodput and error-budget burn from a request log
+import json, math
+from collections import defaultdict
+
+SLO = {  # per tier: a request is GOOD if it completed and met both latency targets
+    &quot;interactive&quot;: dict(ttft_ms=1000, tpot_ms=50, target=0.99),
+    &quot;standard&quot;:    dict(ttft_ms=5000, tpot_ms=100, target=0.99),
+}
+recs = [json.loads(l) for l in open(&quot;requests.jsonl&quot;)]
+span_s = recs[-1][&quot;ts&quot;] - recs[0][&quot;ts&quot;]
+
+def pct(xs, p):                                   # nearest-rank percentile
+    xs = sorted(xs); return xs[max(0, math.ceil(p / 100 * len(xs)) - 1)]
+
+def counted(r):
+    # out of the denominator: the customer's own 429s and the customer's own cancellations
+    return r[&quot;finish&quot;] not in (&quot;rate_limited&quot;, &quot;client_cancel&quot;)
+
+def completed(r):
+    return r[&quot;http&quot;] == 200 and r[&quot;finish&quot;] in (&quot;stop&quot;, &quot;length&quot;)
+
+def good(r):
+    s = SLO[r[&quot;tier&quot;]]
+    return completed(r) and r[&quot;ttft_ms&quot;] &lt;= s[&quot;ttft_ms&quot;] and r[&quot;tpot_ms&quot;] &lt;= s[&quot;tpot_ms&quot;]
+
+print(f&quot;{len(recs):,} requests over {span_s / 60:.0f} min\n&quot;)
+print(f&quot;{'tier':12s} {'n':&gt;6s} {'avail@gw':&gt;9s} {'avail@done':&gt;10s} {'TTFT p50/p99 ms':&gt;16s} &quot;
+      f&quot;{'TPOT p99':&gt;8s} {'thru r/s':&gt;8s} {'goodput':&gt;8s} {'good %':&gt;7s} {'burn':&gt;5s}&quot;)
+for tier, s in SLO.items():
+    rs = [r for r in recs if r[&quot;tier&quot;] == tier and counted(r)]
+    ok_gw = sum(r[&quot;http&quot;] &lt; 500 for r in rs) / len(rs)       # what an access log shows: status codes
+    ok_done = sum(completed(r) for r in rs) / len(rs)        # measured at inference completion
+    done = [r for r in rs if completed(r)]
+    g = sum(good(r) for r in rs)
+    burn = (1 - g / len(rs)) / (1 - s[&quot;target&quot;])
+    print(f&quot;{tier:12s} {len(rs):6d} {ok_gw:9.3%} {ok_done:10.3%} &quot;
+          f&quot;{pct([r['ttft_ms'] for r in done], 50):7.0f}/{pct([r['ttft_ms'] for r in done], 99):&lt;8.0f} &quot;
+          f&quot;{pct([r['tpot_ms'] for r in done], 99):8.1f} {len(done) / span_s:8.2f} {g / span_s:8.2f} &quot;
+          f&quot;{g / len(rs):7.2%} {burn:5.1f}&quot;)
+
+# where did the bad requests come from? group by 5-minute bucket and by replica
+print(&quot;\nbad interactive requests by 5-minute window (only windows with &gt;1% bad):&quot;)
+by_win = defaultdict(lambda: [0, 0])
+for r in recs:
+    if r[&quot;tier&quot;] == &quot;interactive&quot; and counted(r):
+        w = int(r[&quot;ts&quot;] // 300); by_win[w][0] += 1; by_win[w][1] += not good(r)
+for w, (n, bad) in sorted(by_win.items()):
+    if bad / n &gt; 0.01: print(f&quot;  min {w * 5:2d}-{w * 5 + 5:2d}: {bad:4d}/{n:4d} bad ({bad / n:5.1%})&quot;)
+print(&quot;mid-stream errors by replica (HTTP 200, finish=error):&quot;,
+      {rep: sum(1 for r in recs if r.get(&quot;replica&quot;) == rep and r[&quot;finish&quot;] == &quot;error&quot;)
+       for rep in (&quot;r0&quot;, &quot;r1&quot;, &quot;r2&quot;, &quot;r3&quot;)})
+</code></pre>
+<pre><code class="language-console">$ python3 slo_report.py
+36,159 requests over 60 min
+
+tier              n  avail@gw avail@done  TTFT p50/p99 ms TPOT p99 thru r/s  goodput  good %  burn
+interactive   23601   99.542%    97.098%     266/2877         54.7     6.37     5.89  89.86%  10.1
+standard      10145   99.517%    97.122%     267/2953         54.6     2.74     2.74  97.12%   2.9
+
+bad interactive requests by 5-minute window (only windows with &gt;1% bad):
+  min 20-25:  140/2030 bad ( 6.9%)
+  min 25-30:  143/1955 bad ( 7.3%)
+  min 30-35:  154/1944 bad ( 7.9%)
+  min 35-40:  169/2019 bad ( 8.4%)
+  min 45-50: 1736/1974 bad (87.9%)
+mid-stream errors by replica (HTTP 200, finish=error): {'r0': 0, 'r1': 0, 'r2': 0, 'r3': 820}
+</code></pre>
+<p>What the report says:</p>
+<ul>
+<li><strong>The access log says 99.54%; completion says 97.10%.</strong> The 820 streams that died on <code>r3</code> all returned HTTP 200, so a status-code SLI never saw them. Measured at the gateway, this hour looks like a minor overload blip. Measured at completion, the interactive tier lost 2.9% of requests to a hardware fault.</li>
+<li><strong>Goodput is 5.89 req/s against 6.37 completed.</strong> Adding the latency targets removes another 8% of the requests, almost all from the overloaded window, where 88% of interactive requests missed TTFT or TPOT while still returning 200.</li>
+<li><strong>The interactive tier burned its budget at 10x</strong> for this hour. The standard tier, with looser latency targets, was hurt only by the failures (burn 2.9). The same incident costs different tiers different amounts of budget, which is why budgets are per tier.</li>
+<li><strong>The breakdowns point at the causes.</strong> Bad requests by time window give the two incidents; mid-stream errors by replica give the bad GPU. That is why <code>replica</code> belongs in every log line.</li>
+</ul>
+<p>The practical rule: <strong>compute SLIs from a log written at completion</strong>, with the finish reason and the engine's token counts, and treat dashboards built on access-log status codes as a lower bound on how bad things are.</p>
+<h3 id="error-budgets">Error budgets</h3>
+<p>An error budget turns an SLO into a decision rule: while the budget lasts, ship changes; when it is spent, stop and fix reliability. The alerting arithmetic (multi-window burn-rate alerts) is in <a href="../platform/control-planes.html#slis-slos-and-error-budgets">Control Planes</a>. Three things are specific to inference:</p>
+<ul>
+<li><strong>Latency misses spend budget.</strong> With a goodput SLI, an overloaded hour spends budget even if nothing errored. That is the right incentive: it makes capacity a reliability problem, which it is.</li>
+<li><strong>Budgets are per tier, and per model.</strong> A new model with a buggy chat template can burn its own budget while the others are fine. Aggregating them hides it.</li>
+<li><strong>Spend budget on purpose.</strong> Deploys, engine upgrades and kernel changes are where most incidents come from (section 7's postmortem is a list of them). A team with budget left can afford a canary on a risky engine upgrade; a team without should freeze.</li>
+</ul>
+<h3 id="what-999-vs-9999-means-and-the-capacity-it-needs">What 99.9% vs 99.99% means, and the capacity it needs</h3>
+<p>An availability target is a number of minutes, and the minutes decide the architecture:</p>
+<pre><code class="language-python"># nines_capacity.py - what an availability target allows per 30 days, and the GPUs each design needs
+import math
+MIN_30D = 30 * 24 * 60
+for a in (0.99, 0.999, 0.9999):
+    print(f&quot;{a:.2%}: {(1 - a) * MIN_30D:6.1f} min of full outage per 30 days &quot;
+          f&quot;(or {(1 - a) * 1e6:5.0f} failed requests per million)&quot;)
+
+peak_rps, per_replica_rps, gpus_per_replica = 120, 10, 8   # per-replica rate measured AT the SLO
+n = math.ceil(peak_rps / per_replica_rps)
+designs = [
+    (&quot;one site, N+1 replicas (survives a node)&quot;, n + 1),
+    (&quot;two sites, each carries full peak (survives a site)&quot;, 2 * (n + 1)),
+    (&quot;three regions, any two carry peak (survives a region)&quot;, 3 * math.ceil((n + 1) / 2)),
+    (&quot;four regions, any three carry peak&quot;, 4 * math.ceil((n + 1) / 3)),
+]
+print(f&quot;\npeak {peak_rps} req/s, {per_replica_rps} req/s per {gpus_per_replica}-GPU replica -&gt; N = {n}&quot;)
+for name, reps in designs:
+    print(f&quot;  {name:54s} {reps:3d} replicas = {reps * gpus_per_replica:4d} GPUs &quot;
+          f&quot;({reps / n:.2f}x the peak requirement)&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 nines_capacity.py
+99.00%:  432.0 min of full outage per 30 days (or 10000 failed requests per million)
+99.90%:   43.2 min of full outage per 30 days (or  1000 failed requests per million)
+99.99%:    4.3 min of full outage per 30 days (or   100 failed requests per million)
+
+peak 120 req/s, 10 req/s per 8-GPU replica -&gt; N = 12
+  one site, N+1 replicas (survives a node)                13 replicas =  104 GPUs (1.08x the peak requirement)
+  two sites, each carries full peak (survives a site)     26 replicas =  208 GPUs (2.17x the peak requirement)
+  three regions, any two carry peak (survives a region)   21 replicas =  168 GPUs (1.75x the peak requirement)
+  four regions, any three carry peak                      20 replicas =  160 GPUs (1.67x the peak requirement)
+</code></pre>
+<p>43 minutes a month (99.9%) is one bad deploy and its rollback, or one node failure handled by a human. 4.3 minutes (99.99%) is less than the time it takes most engines to load a large model, so a single replica restart in the critical path breaks it: at four nines, failover has to be automatic and the capacity to fail over to has to be running already.</p>
+<p>Together's post lays out what each level has to survive (<a href="https://www.together.ai/blog/99-9-uptime-for-inference">Together, July 2026</a>):</p>
+<ul>
+<li><strong>99%</strong> must survive node failures (&quot;GPU hardware faults, driver crashes, thermal events&quot;): health checks, draining and fast replica replacement in one data center.</li>
+<li><strong>99.9%</strong> must survive losing a data center: &quot;model weights deployed across two facilities, enough capacity on each side to absorb the full load&quot;, with live traffic to both sites, not a cold standby.</li>
+<li><strong>99.99%</strong> must survive a regional outage, which &quot;typically calls for multi-region deployment with AZ redundancy and reserved failover capacity&quot;.</li>
+</ul>
+<p>Together reports delivering 99.9% measured at completion, with a contractual SLA of 99% for single-data-center deployments and 99.9% for multi-data-center ones. The capacity table shows what that ladder costs. Surviving a site means owning the peak twice (2.17x). Spreading over more failure domains is cheaper, because each one only has to cover a fraction of a lost peer: with <span class="math inline"><span class="math-inline">k</span></span> domains that must survive the loss of one, the overhead is <span class="math inline"><span class="math-inline">k/(k-1)</span></span>, so 1.75x with three and 1.67x with four. The catch is that every domain has to be big enough to be worth running.</p>
+<p><strong>On a leased fleet.</strong> This is the most expensive line in your plan, because spare capacity on a lease is paid every hour whether or not it's used. Two things soften it. First, the redundancy doesn't have to sit idle: run batch and best-effort work on the failover capacity (section 5) and preempt it when a site fails, so the &quot;spare&quot; GPUs earn money until they're needed. Second, don't promise more nines than your lease geography supports. A fleet in one data center can honestly offer 99%, maybe 99.5%. Selling 99.9% on it is selling an SLA you can't meet.</p>
+<h3 id="multi-region-and-failover">Multi-region and failover</h3>
+<p>Fireworks published a seven-day production comparison: &quot;request success rate went from 99.269% for a single-region deployment to 99.992% on a multi-region deployment&quot; (<a href="https://fireworks.ai/blog/multi-region-deployment">Fireworks, September 2026</a>). In minutes per 30 days, that is roughly the difference between 5 hours and 3.5 minutes of failed requests. The authors are careful about what it proves: &quot;These are observational signals, not an A/B test or a universal uptime promise&quot;, &quot;traffic was concentrated in a few accounts and paired-account outcomes were mixed&quot;, and the sensitivity checks &quot;did not make it causal&quot;. Take it as evidence of direction, not as a number to promise. Their design is worth copying anyway: &quot;Fireworks plans placement ahead of traffic, so requests do not need to consult the scheduler or probe every region&quot;, &quot;DNS directs requests to healthy gateways based on proximity&quot;, and &quot;On a qualifying failure, the gateway can try another destination if routing policy permits&quot;. That last one is the retry-before-first-byte rule from section 1 at the scale of regions.</p>
+<p>What goes wrong with failover in practice:</p>
+<ul>
+<li><strong>The surviving region gets the whole load at once.</strong> Its prefix caches are cold for the new traffic, its TTFT rises, and if it was sized only for its own peak, it overloads. Failover capacity must be sized and <em>warm</em>.</li>
+<li><strong>Retries from the failed region arrive as a herd.</strong> Every client whose request failed retries at the same moment. Retry budgets and jitter at the client and the gateway turn that wave into a ramp.</li>
+<li><strong>Failback is a second failover.</strong> Moving traffic back to the recovered region is the same cold-cache event in reverse. Shift it gradually.</li>
+<li><strong>Cross-region moves break cache affinity.</strong> A conversation whose prefix is cached in one region pays full prefill in another. Route sessions stickily to a region and move them only on failure.</li>
+</ul>
+<p><strong>On a leased fleet.</strong> Multi-region means leases in several regions, which a small company may not have. The common compromise is a primary leased fleet with a fallback to a serverless provider of the same open model for overflow and disasters: you pay per token only when you use it, and the failover capacity is &quot;reserved&quot; in someone else's fleet. Test that the fallback works (same model revision, same chat template, same tokenizer) before you need it.</p>
+<h2 id="5-batch-and-offline-inference">5. Batch and offline inference</h2>
+<h3 id="batch-apis">Batch APIs</h3>
+<p>A <strong>batch API</strong> accepts a file of many requests, processes them asynchronously within a completion window, and returns a file of results. The two largest providers price it the same way:</p>
+<ul>
+<li>OpenAI: &quot;50% cost discount compared to synchronous APIs&quot;; the completion window &quot;can only be set to <code>24h</code>&quot;; up to 50,000 requests and 200 MB per batch; unfinished requests are cancelled when a batch expires and &quot;You will be charged for tokens consumed from any completed requests&quot;; batch rate limits &quot;are separate from existing per-model rate limits&quot; (<a href="https://developers.openai.com/api/docs/guides/batch">batch guide</a>).</li>
+<li>Anthropic: &quot;reducing costs by 50 percent&quot;, &quot;most batches completing within 1 hour&quot;, &quot;Batches expire if processing does not complete within 24 hours&quot;, up to 100,000 requests or 256 MB per batch, results available for 29 days, and expired requests are not billed (<a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing">batch processing docs</a>). The 50% stacks with prompt-caching discounts (<a href="https://platform.claude.com/docs/en/about-claude/pricing">pricing</a>). Batches have their own rate limits, including a cap on requests waiting in the processing queue, and are not subject to ramp limits (<a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits doc</a>).</li>
+</ul>
+<p>Why a provider can afford half price: a deadline in hours lets it run the work whenever capacity is free, at the large batch sizes that give the most tokens per GPU-second (<a href="../inference/arithmetic.html#the-throughput-latency-pareto">the throughput-latency Pareto</a>), and stop it the moment interactive traffic needs the GPUs back. The interactive tier pays for the peak; batch buys the trough.</p>
+<p><strong>On a leased fleet.</strong> The product shape (a file in, a file out, a 24-hour window, half price, separate limits) is what customers already know from OpenAI and Anthropic, so copy it. What differs is your reason for offering it: those providers can also shift batch across a huge fleet and many regions; you have one fleet and its daily trough, which is exactly what the 24-hour window lets you use.</p>
+<h3 id="fireworks-swapped-its-batch-api-for-preemptible-capacity">Fireworks swapped its batch API for preemptible capacity</h3>
+<p>Fireworks' batch inference page now opens with &quot;<strong>Batch is paused.</strong>&quot;: new jobs are not accepted, stored batch data &quot;will be permanently deleted&quot;, and users are pointed to a guide on migrating batch workloads to preemptible deployments (<a href="https://docs.fireworks.ai/guides/batch-inference">batch inference docs</a>). While it ran, it was priced at 50% off serverless. Preemptible deployments are also 50% off the on-demand GPU rate, can be taken back at any time, and can lose a replica mid-request (<a href="https://docs.fireworks.ai/guides/ondemand-deployments">on-demand deployments doc</a>). Fireworks' pricing page still lists &quot;50% off input and output for jobs that don't need an immediate answer&quot; for batch (<a href="https://fireworks.ai/pricing">pricing</a>), so the two pages disagree as of November 2026.</p>
+<p>The shift is from selling <em>tokens later</em> to selling <em>GPUs that may vanish</em>. For the provider, the second is simpler: no job queue, no per-token accounting of partial work, no deadline promise. For the customer, it is more work: they run their own engine and their own retry logic.</p>
+<p><strong>On a leased fleet.</strong> Both models work on a fixed fleet, and they are two ways of selling the same idle capacity. A batch API keeps the scheduling and the deadline promise on your side, which is more engineering and more control. Selling preemptible replicas pushes that to the customer, and is simpler if your customers are capable of running engines. Either way, the economics are better for you than for a provider with elastic capacity: the GPUs in your trough are already paid for, so batch revenue at a discount is almost pure margin, as long as it never delays interactive traffic.</p>
+<h3 id="filling-idle-capacity-with-a-deadline-queue">Filling idle capacity with a deadline queue</h3>
+<p>A <strong>deadline queue</strong> holds batch jobs, each with a submission time, a deadline and an amount of work, and spends whatever capacity interactive traffic leaves on them. The scheduling rule that matters is <strong>earliest deadline first</strong> (EDF): among queued jobs, serve the one due soonest. On a single resource, EDF is optimal in a precise sense: if any order meets every deadline, EDF does.</p>
+<p>The second rule is <strong>admission control</strong>: at submission time, check whether the forecast spare capacity before the job's deadline covers this job plus everything already queued that is due no later. If not, reject the job <em>now</em>. A customer who learns at submission that a job won't finish can split it or pay for priority. A customer who learns 24 hours later, from an expired batch, has lost a day.</p>
+<p>The simulation runs two days of a fleet with 1,000 units of capacity per minute, interactive load that swings daily between 300 and 850, and a 10% reserve kept free for interactive bursts. Batch jobs arrive at random, 80% with a 24-hour deadline and 20% with a 1-hour deadline (a &quot;fast batch&quot; product), at two load levels:</p>
+<pre><code class="language-python"># batch_queue.py - fill a fixed fleet's idle capacity with deadline-bound batch work.
+# Units: fleet capacity is 1000 &quot;units&quot;/minute (say 1 unit = 1k output tokens at the batch size you run).
+# Interactive traffic always goes first; batch gets what is left, minus a burst reserve.
+import math, random
+
+C, RESERVE = 1000, 0.10                    # capacity per minute; keep 10% free for interactive bursts
+DAY = 24 * 60
+
+def interactive(m):                        # diurnal load: 300 at night, 850 at the daily peak
+    return 575 + 275 * math.sin(2 * math.pi * (m % DAY) / DAY - math.pi / 2)
+
+def spare(m):
+    return max(0.0, C * (1 - RESERVE) - interactive(m))
+
+def jobs(gap, seed=1):
+    rng, out, m = random.Random(seed), [], 0.0
+    while m &lt; 2 * DAY:
+        m += rng.expovariate(1 / gap)      # a job every `gap` minutes on average
+        window = 60 if rng.random() &lt; 0.2 else DAY     # 20% &quot;1-hour&quot; jobs, 80% &quot;24-hour&quot; jobs
+        size = rng.lognormvariate(math.log(2000), 0.8) if window == DAY else rng.lognormvariate(math.log(300), 0.5)
+        out.append(dict(sub=int(m), deadline=int(m) + window, size=size, left=size))
+    return out
+
+def run(order, admission, gap):
+    js, queue, done_units, expired_units, rejected_units, util = jobs(gap), [], 0.0, 0.0, 0.0, []
+    nxt = 0
+    for m in range(2 * DAY + DAY):         # run a third day with no new jobs, so every deadline passes
+        while nxt &lt; len(js) and js[nxt][&quot;sub&quot;] &lt;= m:
+            j = js[nxt]; nxt += 1
+            if admission:
+                # admit only if the spare capacity forecast before the deadline covers this job plus
+                # the work already queued that is due no later (the EDF feasibility test)
+                ahead = sum(q[&quot;left&quot;] for q in queue if q[&quot;deadline&quot;] &lt;= j[&quot;deadline&quot;])
+                cap = sum(spare(k) for k in range(m, j[&quot;deadline&quot;]))
+                if ahead + j[&quot;size&quot;] &gt; cap:
+                    rejected_units += j[&quot;size&quot;]; continue     # tell the customer now, not in 24 h
+            queue.append(j)
+        for j in [j for j in queue if j[&quot;deadline&quot;] &lt;= m]:     # expiry: unfinished part is not billed
+            expired_units += j[&quot;left&quot;]; queue.remove(j)
+        queue.sort(key=(lambda j: j[&quot;deadline&quot;]) if order == &quot;edf&quot; else (lambda j: j[&quot;sub&quot;]))
+        s, used = spare(m), 0.0
+        for j in queue:
+            take = min(j[&quot;left&quot;], s - used)
+            j[&quot;left&quot;] -= take; used += take; done_units += take
+            if used &gt;= s: break
+        queue = [j for j in queue if j[&quot;left&quot;] &gt; 1e-9]
+        if m &lt; 2 * DAY: util.append((interactive(m) + used) / C)
+    total = sum(j[&quot;size&quot;] for j in js)
+    short = [j for j in js if j[&quot;deadline&quot;] - j[&quot;sub&quot;] == 60]
+    short_ok = sum(j[&quot;left&quot;] &lt;= 1e-9 for j in short) / len(short)     # rejected ones keep left &gt; 0
+    return done_units / total, expired_units / total, rejected_units / total, short_ok, sum(util) / len(util)
+
+base = sum(interactive(m) for m in range(2 * DAY)) / (2 * DAY) / C
+print(f&quot;interactive only: fleet utilization {base:.1%}, peak {max(interactive(m) for m in range(DAY)) / C:.0%}&quot;)
+for gap in (6, 4):
+    print(f&quot;\nbatch offered: one job every {gap} min ({sum(j['size'] for j in jobs(gap)) / (2 * DAY) / C:.0%} of capacity)&quot;)
+    print(f&quot;{'policy':26s} {'units done':&gt;10s} {'expired':&gt;8s} {'rejected':&gt;9s} {'1h jobs on time':&gt;16s} {'fleet util':&gt;11s}&quot;)
+    for name, order, adm in [(&quot;FIFO&quot;, &quot;fifo&quot;, False), (&quot;EDF&quot;, &quot;edf&quot;, False),
+                             (&quot;EDF + admission control&quot;, &quot;edf&quot;, True)]:
+        d, e, r, s1, u = run(order, adm, gap)
+        print(f&quot;{name:26s} {d:10.1%} {e:8.1%} {r:9.1%} {s1:16.1%} {u:11.1%}&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 batch_queue.py
+interactive only: fleet utilization 57.5%, peak 85%
+
+batch offered: one job every 6 min (36% of capacity)
+policy                     units done  expired  rejected  1h jobs on time  fleet util
+FIFO                            97.6%     2.4%      0.0%            14.0%       87.3%
+EDF                            100.0%     0.0%      0.0%           100.0%       87.3%
+EDF + admission control        100.0%     0.0%      0.0%           100.0%       87.3%
+
+batch offered: one job every 4 min (55% of capacity)
+policy                     units done  expired  rejected  1h jobs on time  fleet util
+FIFO                            84.4%    15.6%      0.0%            13.2%       89.0%
+EDF                             84.4%    15.6%      0.0%           100.0%       89.0%
+EDF + admission control         83.9%     0.6%     15.6%           100.0%       89.0%
+</code></pre>
+<p>Reading it:</p>
+<ul>
+<li><strong>Batch takes fleet utilization from 57.5% to 87-89%.</strong> Nothing else in this chapter moves cost per token as much. Section 6 shows why: cost per token is inversely proportional to utilization.</li>
+<li><strong>At moderate load, EDF meets every deadline and FIFO doesn't.</strong> FIFO let 86% of the 1-hour jobs miss, because they queued behind large 24-hour jobs that had hours of slack. EDF ran them first and still finished everything else in time.</li>
+<li><strong>At overload, the order can't save you, but admission control changes who finds out and when.</strong> Without it, 15.6% of the work expires after waiting up to a day. With it, the same amount is rejected at submission and only 0.6% expires. The forecast here is perfect (the interactive load is a known curve). Yours won't be, so admit against a conservative forecast, for example last week's same-hour load plus a margin, and expect some expiries.</li>
+</ul>
+<p>What a real batch system adds around this core:</p>
+<ul>
+<li><strong>Requests, not jobs, are the unit of work.</strong> A batch file is thousands of independent requests. Schedule requests across replicas, bill each completed one, and on expiry cancel only the unfinished ones (both OpenAI and Anthropic bill completed requests and not expired ones).</li>
+<li><strong>Run batch at the throughput-optimal configuration.</strong> Batch requests don't care about TPOT, so they can run at much larger batch sizes. If you can, put batch on replicas configured for it, or let the batch class fill the slots that the interactive SLO leaves free on mixed replicas.</li>
+<li><strong>Give batch its own rate limits</strong> and its own queue cap, as both providers do, so a huge batch submission can't touch interactive admission.</li>
+<li><strong>Preempt, don't fail.</strong> When interactive load rises, batch requests that are preempted go back to the queue (section 3).</li>
+<li><strong>Store results durably</strong> before reporting completion, and keep them only as long as your retention policy says (section 9).</li>
+</ul>
+<p><strong>On a leased fleet.</strong> Of all the techniques in this chapter, this one is closest to free money. The two published 50% discounts show what customers expect to pay. Your marginal cost for batch run in the trough is close to zero, because the GPU-hours are sunk; the only real costs are the engineering and the power above idle. So the discount you can offer is set by what the market pays for batch, not by your costs, and every batch token is margin.</p>
+<h2 id="6-pricing-and-unit-economics">6. Pricing and unit economics</h2>
+<h3 id="from-gpu-hour-to-dollars-per-million-tokens">From GPU-hour to dollars per million tokens</h3>
+<p>Cost per token comes from three numbers: what a GPU-hour costs, how many tokens a replica produces per second while busy, and what fraction of the time it is busy. For a replica of <span class="math inline"><span class="math-inline">G</span></span> GPUs leased at <span class="math inline"><span class="math-inline">p</span></span> dollars per GPU-hour, with throughput <span class="math inline"><span class="math-inline">X</span></span> tokens/s while busy and utilization <span class="math inline"><span class="math-inline">u</span></span> (the fraction of leased time spent on paid work):</p>
+<div class="math block">
+<div class="math-display">\text{cost per 1M tokens} = \frac{G \cdot p}{3600 \cdot X \cdot u} \cdot 10^6</div>
+</div>
+<p>This is the conversion from <a href="../inference/arithmetic.html#decode-latency-lower-bound">Inference Internals I</a> with <span class="math inline"><span class="math-inline">u</span></span> added, and <span class="math inline"><span class="math-inline">u</span></span> is the term operators control. Halving utilization doubles cost per token, whatever the engine does.</p>
+<p>Input and output tokens go through different phases. Prefill processes a prompt's tokens in parallel and is compute-bound; decode produces one token per sequence per step and is memory-bound (<a href="../inference/arithmetic.html#prefill-and-decode">prefill and decode</a>). So a replica has two throughputs: <span class="math inline"><span class="math-inline">X_p</span></span> input tokens/s when prefilling and <span class="math inline"><span class="math-inline">X_d</span></span> output tokens/s when decoding at the batch size the TPOT SLO allows. Charging each token the GPU-time it takes gives</p>
+<div class="math block">
+<div class="math-display">\text{cost of a request} = \frac{G \cdot p}{3600 \cdot u} \left( \frac{n_{\text{in}} - n_{\text{cached}}}{X_p} + \frac{n_{\text{out}}}{X_d} \right)</div>
+</div>
+<p>which treats prefill and decode time as additive. That is exact for disaggregated serving and a good approximation for chunked prefill.</p>
+<p>The calculator below uses one replica of a 70B dense model on 8 H100s, with FP8 weights and KV cache. The inputs are assumptions, and the comments say where each comes from: <span class="math inline"><span class="math-inline">X_p</span></span> from the H100's measured FP8 matmul ceiling (<a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MAMF table</a>) at 50% efficiency and <span class="math inline"><span class="math-inline">2N</span></span> FLOPs per token; <span class="math inline"><span class="math-inline">X_d</span></span> as 60% of the roofline bound for batch 64 at 4k context in <a href="../inference/arithmetic.html#decode-latency-lower-bound">Inference Internals I's table</a>; and $2.00 per GPU-hour, the rate that chapter uses. Put your measured numbers in instead; <a href="../inference/serving-hands-on.html#capacity-planning-from-measured-numbers">Serving LLMs in Practice</a> shows how to measure per-replica throughput at an SLO.</p>
+<pre><code class="language-python"># cost_calc.py - $/1M tokens from GPU price, throughput and utilization; break-even and margin.
+# Every input below is an ASSUMPTION for one replica of a 70B dense model, FP8 weights and KV,
+# on 8x H100 (see the text for where each comes from). Replace them with your own measurements.
+GPU_HR      = 2.00        # $/GPU-hour on the lease
+GPUS        = 8           # GPUs per replica
+X_PREFILL   = 43_900      # input tok/s per replica: 8 x 1535 TFLOP/s (FP8 MAMF) x 50% / (2 x 70e9)
+X_DECODE    = 4_430       # output tok/s per replica at the TPOT SLO: 60% of the 7,384 tok/s roofline bound
+KV_BYTES    = 163_840     # KV bytes per token, 70B (80 layers, 8 KV heads, d=128) with FP8 KV
+HBM_GB      = 80          # per GPU
+
+def per_m(x_tok_s, util):
+    &quot;&quot;&quot;$ per 1M tokens of a phase that runs at x_tok_s when busy, if the fleet is busy `util` of the time.&quot;&quot;&quot;
+    return GPUS * GPU_HR / 3600 / x_tok_s / util * 1e6
+
+print(&quot;cost per 1M tokens (what it costs YOU, before margin):&quot;)
+print(f&quot;{'utilization':&gt;11s} {'input':&gt;8s} {'output':&gt;8s} {'out/in':&gt;7s}&quot;)
+for u in (0.3, 0.5, 0.7, 0.9):
+    i, o = per_m(X_PREFILL, u), per_m(X_DECODE, u)
+    print(f&quot;{u:11.0%} {i:8.3f} {o:8.3f} {o / i:7.1f}&quot;)
+
+# --- a request's cost is GPU-seconds: input at prefill speed, output at decode speed
+def request_cost(n_in, n_out, util, cached=0):
+    return (n_in - cached) * per_m(X_PREFILL, util) / 1e6 + n_out * per_m(X_DECODE, util) / 1e6
+print(f&quot;\none chat turn, 3,000 in / 400 out at 60% util: ${request_cost(3000, 400, 0.6):.5f}  &quot;
+      f&quot;(output is {400 * per_m(X_DECODE, .6) / (3000 * per_m(X_PREFILL, .6) + 400 * per_m(X_DECODE, .6)):.0%} of it)&quot;)
+
+# --- prompt caching: a hit skips prefill compute but the KV had to be HELD somewhere meanwhile
+hbm_gb_hr = GPU_HR / HBM_GB                       # attribute the whole GPU price to its HBM: upper bound
+gb_per_mtok = KV_BYTES * 1e6 / 1e9
+hold_5min = gb_per_mtok * hbm_gb_hr * 5 / 60
+recompute = per_m(X_PREFILL, 0.6)
+print(f&quot;\nKV for 1M tokens = {gb_per_mtok:.0f} GB. Holding it in HBM for 5 min: ${hold_5min:.3f}; &quot;
+      f&quot;recomputing it (prefill at 60% util): ${recompute:.3f}&quot;)
+print(f&quot;-&gt; HBM residency breaks even with recompute after {recompute / (hold_5min / 5):.1f} min unless it is reused&quot;)
+print(f&quot;-&gt; reloading it from host DRAM over PCIe 5 x16 (~55 GB/s measured) takes {gb_per_mtok / 55:.1f} s &quot;
+      f&quot;vs {1e6 / X_PREFILL:.1f} s to recompute&quot;)
+
+# --- break-even utilization and margin sensitivity for a price list
+P_IN, P_OUT = 0.60, 1.80                          # YOUR list price, $/1M tokens (a choice, not a market quote)
+MIX = 7.5                                         # input tokens per output token in your traffic
+def blended_cost(u): return (MIX * per_m(X_PREFILL, u) + per_m(X_DECODE, u)) / (MIX + 1)
+blended_price = (MIX * P_IN + P_OUT) / (MIX + 1)
+u_star = blended_cost(1.0) / blended_price
+print(f&quot;\nprice ${P_IN}/${P_OUT} per 1M in/out, mix {MIX}:1 -&gt; blended ${blended_price:.3f}/1M tokens; &quot;
+      f&quot;break-even utilization {u_star:.0%}&quot;)
+print(f&quot;{'util':&gt;5s} &quot; + &quot; &quot;.join(f&quot;{'x' + str(m):&gt;7s}&quot; for m in (0.6, 0.8, 1.0, 1.2)) + &quot;   (gross margin at price multiplier)&quot;)
+for u in (0.2, 0.3, 0.4, 0.6, 0.8):
+    row = [1 - blended_cost(u) / (blended_price * m) for m in (0.6, 0.8, 1.0, 1.2)]
+    print(f&quot;{u:5.0%} &quot; + &quot; &quot;.join(f&quot;{x:7.0%}&quot; for x in row))
+
+# --- dedicated (per GPU-hour) vs per-token, from the customer's side
+DED_GPU_HR = 4.00                                 # what you charge for a dedicated GPU-hour
+ded_hr = DED_GPU_HR * GPUS
+tok_hr_full = 3600 / (MIX / X_PREFILL + 1 / X_DECODE) * (MIX + 1)   # tokens/h one replica can do at 100%
+breakeven_tok = ded_hr / blended_price * 1e6
+print(f&quot;\ndedicated replica ${ded_hr:.0f}/h vs per-token at ${blended_price:.3f}/1M: customer breaks even at &quot;
+      f&quot;{breakeven_tok / 1e6:.0f}M tokens/h = {breakeven_tok / tok_hr_full:.0%} of what the replica can do&quot;)
+assert abs(blended_cost(u_star) - blended_price) &lt; 1e-9
+</code></pre>
+<pre><code class="language-console">$ python3 cost_calc.py
+cost per 1M tokens (what it costs YOU, before margin):
+utilization    input   output  out/in
+        30%    0.337    3.344     9.9
+        50%    0.202    2.007     9.9
+        70%    0.145    1.433     9.9
+        90%    0.112    1.115     9.9
+
+one chat turn, 3,000 in / 400 out at 60% util: $0.00118  (output is 57% of it)
+
+KV for 1M tokens = 164 GB. Holding it in HBM for 5 min: $0.341; recomputing it (prefill at 60% util): $0.169
+-&gt; HBM residency breaks even with recompute after 2.5 min unless it is reused
+-&gt; reloading it from host DRAM over PCIe 5 x16 (~55 GB/s measured) takes 3.0 s vs 22.8 s to recompute
+
+price $0.6/$1.8 per 1M in/out, mix 7.5:1 -&gt; blended $0.741/1M tokens; break-even utilization 28%
+ util    x0.6    x0.8    x1.0    x1.2   (gross margin at price multiplier)
+  20%   -133%    -75%    -40%    -17%
+  30%    -55%    -17%      7%     22%
+  40%    -17%     13%     30%     42%
+  60%     22%     42%     53%     61%
+  80%     42%     56%     65%     71%
+
+dedicated replica $32/h vs per-token at $0.741/1M: customer breaks even at 43M tokens/h = 56% of what the replica can do
+</code></pre>
+<h3 id="why-input-is-cheaper-than-output">Why input is cheaper than output</h3>
+<p>With these numbers, an output token costs about 10x an input token, because <span class="math inline"><span class="math-inline">X_p / X_d \approx 10</span></span>: prefill runs at the compute roofline and decode at the bandwidth roofline. Public prices have the same shape with a smaller ratio. As of November 2026, Anthropic lists Claude Sonnet 4.6 at $3 input and $15 output per million tokens (<a href="https://platform.claude.com/docs/en/about-claude/pricing">pricing</a>), and Baseten lists GPT OSS 120B at $0.10 / $0.50 and DeepSeek V4.1 Flash at $0.30 / $1.20 (<a href="https://www.baseten.co/pricing/">pricing</a>): ratios of 5x, 5x and 4x. The VTC paper's <span class="math inline"><span class="math-inline">w_q = 2</span></span> followed OpenAI's ratio at the time (<a href="https://arxiv.org/abs/2401.00588">arXiv 2401.00588</a>).</p>
+<p>Why price ratios are lower than raw compute ratios:</p>
+<ul>
+<li><strong>Input tokens also cost during decode.</strong> Every input token sits in the KV cache for the whole generation and is read at every decode step. Long prompts shrink the batch size the KV cache allows and slow each step (<a href="../inference/arithmetic.html#kv-cache-sizing">KV cache sizing</a>), which lowers <span class="math inline"><span class="math-inline">X_d</span></span> for everyone in the batch. A long prompt's real cost is mostly KV-seconds, not prefill FLOPs.</li>
+<li><strong>Agentic traffic is input-heavy.</strong> Ratios of input to output tokens of 10:1 or more are common for agents that resend a long history every turn. In the calculator's chat turn, 3,000 in and 400 out, output is still 57% of the cost; with a 30,000-token history it would be a small fraction. Pricing input near cost would make the most common workloads unprofitable.</li>
+<li><strong>Prices are set by the market as well as cost.</strong> Anyone can serve an open model, so the floor is set by the cheapest competent competitor.</li>
+</ul>
+<p>The practical consequence: price per token class (input, cached input, output) from <em>your</em> measured costs, then check them against market prices. If your output price is far below your output cost and input far above, your margins depend on your traffic mix staying the same.</p>
+<h3 id="prompt-caching-discounts-and-their-cost-basis">Prompt-caching discounts and their cost basis</h3>
+<p>A <strong>prompt cache</strong> keeps the KV of a prompt prefix so a later request with the same prefix skips its prefill (<a href="../inference/serving-engine-internals.html#hash-based-block-caching-vllm-apc">prefix caching</a>). Providers pass part of the saving on:</p>
+<ul>
+<li>Anthropic: a 5-minute cache write costs 1.25x the base input price, a 1-hour write 2x, and a cache read 0.1x on most models (0.05x on Opus 5.5 and Sonnet 5.5). Caching pays off &quot;after one cache read&quot; for the 5-minute cache and &quot;after two cache reads&quot; for the 1-hour cache, and the multipliers stack with the batch discount (<a href="https://platform.claude.com/docs/en/about-claude/pricing">pricing</a>).</li>
+<li>OpenAI caches automatically from 1,024 tokens (for GPT-5.6 and later), discounts cached input &quot;up to 95%&quot;, and does not share caches across organizations. Its docs also reveal how routing works: a <code>prompt_cache_key</code> influences routing, and &quot;traffic above 15 requests per minute can lead to overflow routing&quot;, because cached state lives on individual machines (<a href="https://developers.openai.com/api/docs/guides/prompt-caching">prompt caching guide</a>).</li>
+<li>Fireworks bills cached input at 50% off by default (<a href="https://fireworks.ai/pricing">pricing</a>); Baseten lists DeepSeek V4.1 Flash cached input at $0.007 against $0.30 uncached (<a href="https://www.baseten.co/pricing/">pricing</a>).</li>
+</ul>
+<p>The cost basis has two sides, and the calculator prints both. A hit saves the prefill ($0.169 per million tokens at 60% utilization in this example). But the KV had to be <em>held</em> somewhere between requests. Held in HBM, the memory that also bounds your batch size, 1M tokens of a 70B model's FP8 KV is 164 GB, and attributing the GPU's whole price to its 80 GB of HBM, keeping it for 5 minutes costs $0.341: twice the cost of recomputing it. Unless that prefix is read again within about 2.5 minutes, HBM residency loses money. Host DRAM changes the answer: reloading those 164 GB over PCIe 5 at the ~55 GB/s <a href="../network/interconnects.html">measured in the interconnects chapter</a> takes 3 s, versus 23 s to recompute.</p>
+<p>So the economics of a prompt cache are a tiering problem. Hot prefixes (system prompts shared by thousands of requests per minute) belong in HBM. A conversation that might come back in a few minutes belongs in host memory or on local NVMe. The pricing follows: the write premium (1.25x, 2x) pays for holding the KV, longer retention costs more, and the deep read discounts are possible because the read is a memory copy, not a prefill.</p>
+<p><strong>On a leased fleet.</strong> Host DRAM and local NVMe on leased GPU nodes are already paid for and mostly idle, so the marginal cost of a host-memory KV tier is close to zero until it fills. That makes deep cached-input discounts cheaper for you than the HBM arithmetic suggests, as long as the router sends returning conversations to the node that holds their KV (<a href="../inference/serving-engine-internals.html#cache-aware-routing-across-replicas">cache-aware routing</a>). The cache hit rate is a revenue number: track it per tenant.</p>
+<h3 id="dedicated-vs-per-token-pricing">Dedicated vs per-token pricing</h3>
+<p><strong>Per-token</strong> pricing puts utilization risk on you: idle time is your loss. <strong>Dedicated</strong> pricing, per GPU-hour, puts it on the customer. Published on-demand H100 prices, read in November 2026, give the range customers compare you against: Modal at $0.001097 per second ($3.95 per hour) (<a href="https://modal.com/pricing">pricing</a>), Baseten at $0.10833 per minute ($6.50 per hour) (<a href="https://www.baseten.co/pricing/">pricing</a>), and Fireworks at $8.00 per hour (<a href="https://fireworks.ai/pricing">pricing</a>). These are per-second or per-minute billing on capacity the vendor can reassign. A one-year lease costs much less per hour than any of them, and the difference is what pays for your idle time.</p>
+<p>From the customer's side, the calculator's last line is the break-even: a dedicated replica at $4.00 per GPU-hour costs the same as per-token at the example prices once the customer uses 56% of what the replica can do. Customers above that should go dedicated; customers below it are better off per token, and you are better off with them per token too, since you can pool their idle time with others'.</p>
+<h3 id="break-even-utilization-and-margin-sensitivity">Break-even utilization and margin sensitivity</h3>
+<p>The margin table is the one to keep on the wall. At the example prices, the fleet loses money below 28% utilization, makes 30% gross margin at 40% and 53% at 60%. Utilization moves margin more than any plausible change in price: going from 40% to 60% utilization is worth more than a 20% price increase. That is the economic argument for everything in sections 3 and 5: fair scheduling that keeps the batch full, priority classes, and batch work in the trough.</p>
+<p><strong>On a leased fleet.</strong> The lease converts GPU cost into a fixed cost, so the cost per token falls as <span class="math inline"><span class="math-inline">1/u</span></span> for as long as demand lasts. A serverless provider can't get below its per-second GPU price however busy it is. You can, which is the reason to lease, and the reason you lose money in a month when demand drops. Track utilization weekly, as revenue.</p>
+<h2 id="7-observability-and-quality">7. Observability and quality</h2>
+<h3 id="the-per-request-log">The per-request log</h3>
+<p>One line per request, written when the request ends (completion, error, cancel or timeout), is the source for SLOs, billing, debugging and abuse detection. <code>make_log.py</code> wrote a minimal one. A production record adds the fields you will want during an incident:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>request_id</code>, <code>trace_id</code></td>
+<td>join the log to traces and to the customer's support ticket</td>
+</tr>
+<tr>
+<td><code>org</code>, <code>project</code>, <code>key_id</code> (never the key), <code>tier</code>, <code>model</code>, <code>adapter</code></td>
+<td>per-tenant SLOs, billing, abuse</td>
+</tr>
+<tr>
+<td><code>replica</code>, <code>node</code>, <code>gpu_ids</code>, <code>engine_version</code>, <code>model_revision</code></td>
+<td>find the bad replica, the bad GPU, the bad deploy</td>
+</tr>
+<tr>
+<td><code>ts_arrival</code>, <code>ts_admitted</code>, <code>ts_first_token</code>, <code>ts_done</code></td>
+<td>queue time, TTFT, E2E, all computed, never estimated</td>
+</tr>
+<tr>
+<td><code>n_in</code>, <code>n_cached</code>, <code>n_out</code>, <code>max_tokens</code></td>
+<td>billing and limit settlement, from the engine's <code>usage</code></td>
+</tr>
+<tr>
+<td><code>finish_reason</code>, <code>http_status</code>, <code>error_code</code></td>
+<td>completion-based availability (section 4)</td>
+</tr>
+<tr>
+<td><code>retry_of</code>, <code>idempotency_key</code></td>
+<td>separating retries from new traffic</td>
+</tr>
+</tbody>
+</table>
+<p>Billing and SLOs must come from the same record. If billing reads one pipeline and reliability another, they will disagree and you will not know which is right. Prompt and response <em>content</em> does not go in this log by default (section 9).</p>
+<h3 id="metrics">Metrics</h3>
+<p>Prometheus-style metrics give you the same information as the log aggregated in real time. The engine metrics, and how to scrape them, are in <a href="../inference/serving-hands-on.html#monitoring-engine-metrics">Serving LLMs in Practice</a> and <a href="../inference/serving-engine-internals.html#observability">the engine metrics table</a>. What the operator layer adds:</p>
+<ul>
+<li><strong>Queue depth and the age of the oldest waiting request</strong>, per class, at the gateway queue as well as the engines. Queue age shows a stuck queue that queue length hides.</li>
+<li><strong>KV usage with the preemption rate.</strong> Usage near 100% alone is fine; near 100% with preemptions rising is oversubscription (section 8).</li>
+<li><strong>TTFT and TPOT percentiles per tier and per tenant.</strong> Per-tenant labels are a cardinality problem: thousands of tenants times histogram buckets times replicas will overload Prometheus (<a href="../platform/control-planes.html#metrics-with-prometheus">label cardinality</a>). Label the top tenants by traffic explicitly, put everyone else in <code>other</code>, and get per-tenant detail for the rest from the request log.</li>
+<li><strong>Goodput and budget burn per tier</strong>, computed from the log stream.</li>
+<li><strong>Limit rejections by reason</strong> (<code>key_tpm</code>, <code>org_rpm</code>, <code>global</code>): a rise in <code>global</code> means your capacity is short; a rise in one org's limits is that customer's problem.</li>
+</ul>
+<p>Baseten's metrics docs carry one caveat worth repeating: concurrency and queue-size panels are sampled gauges, so short spikes between samples can be missed (<a href="https://docs.baseten.co/observability/metrics">metrics docs</a>). Modal's GPU-health post gives a second: their metrics are &quot;aggregated at the container level, so they are less effective at spotting a single bad GPU&quot; among eight (<a href="https://modal.com/blog/gpu-health">Modal, December 2025</a>). Per-GPU signals need per-GPU export.</p>
+<h3 id="tracing-through-gateway-router-and-engine">Tracing through gateway, router and engine</h3>
+<p>A trace follows one request across processes as a tree of timed spans (<a href="../platform/control-planes.html#tracing">tracing</a>). For an inference request the spans are: gateway (auth, limits, queue wait), router (replica choice and why: prefix match length, load), engine (waiting, prefill, decode), and the return path. Pass the W3C <code>traceparent</code> header from the gateway to the router to the engine's HTTP server, and record the router's decision as span attributes. Engine-internal span support differs between engine versions; check yours. Sample traces (1-10%, plus every slow or failed request), and keep the <code>trace_id</code> in the request log so you can jump from a bad log line to its trace.</p>
+<h3 id="silent-quality-regressions">Silent quality regressions</h3>
+<p>The incidents that hurt most return HTTP 200. In September 2025 Anthropic published a postmortem of three bugs that degraded Claude's output quality over August and early September (<a href="https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues">Anthropic, September 2025</a>). It opens with &quot;We never reduce model quality due to demand, time of day, or server load&quot;, and the problems were infrastructure bugs:</p>
+<ol>
+<li><strong>A routing bug.</strong> From August 5, some Sonnet 4 requests were sent to servers configured for an upcoming 1M-token context window, at first 0.8% of them. A routine load-balancing change on August 29 increased the share; at the worst hour, on August 31, it was 16%. About 30% of Claude Code users had at least one message misrouted. <strong>Sticky routing</strong> made it worse: &quot;once a request was served by the incorrect server, subsequent follow-ups were likely to be served by the same incorrect server.&quot;</li>
+<li><strong>Output corruption.</strong> A misconfiguration deployed to TPU servers on August 25 caused errors during token generation, such as &quot;producing Thai or Chinese characters in response to English prompts&quot;. It affected Opus 4.1 and Opus 4 until August 28 and Sonnet 4 until the rollback on September 2.</li>
+<li><strong>A compiler bug in approximate top-k.</strong> Next-token probabilities were computed in bf16, but the XLA compiler for TPUs could run some operations in fp32 under a flag (<code>xla_allow_excess_precision</code>) that defaults to true, so different operations disagreed on which token was most likely. The fix was to switch from approximate to exact top-k and standardize some operations on fp32: &quot;Model quality is non-negotiable, so we accepted the minor efficiency impact.&quot;</li>
+</ol>
+<p>Why it took weeks to find: the evaluations didn't capture the degradation, partly because &quot;Claude often recovers well from isolated mistakes&quot;; privacy controls limit engineers' access to user conversations; and &quot;Each bug produced different symptoms on different platforms at different rates&quot;. Among the remediations: running quality evaluations &quot;continuously on true production systems&quot;.</p>
+<p>The lessons for any operator:</p>
+<ul>
+<li><strong>Routing is a quality change</strong> when replica pools differ (context length, quantization, engine version, hardware). Treat a load-balancer change like a model change.</li>
+<li><strong>Stickiness concentrates harm.</strong> Session affinity, which you want for prefix caching, sends the same users back to the same bad replica.</li>
+<li><strong>Sampling and kernel &quot;optimizations&quot; need numerical tests</strong> against a reference implementation before deploy, comparing next-token distributions, not just benchmark scores.</li>
+<li><strong>Canary gates on latency and errors can't see any of this.</strong> Together's canary rollouts gate on three router metrics, error rate, latency and in-flight requests (<a href="https://together.ai/blog/canary-rollouts-upgrade-models-in-production-without-downtime">Together, September 2026</a>); a regression in text quality passes all three. Rollouts themselves are covered in <a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>. What this chapter adds is a quality signal for them to gate on.</li>
+</ul>
+<h3 id="continuous-evals-and-canary-prompts-in-production">Continuous evals and canary prompts in production</h3>
+<p>Two kinds of quality signal can run all the time, per replica:</p>
+<ul>
+<li><strong>Canary prompts</strong>: a fixed set of prompts with checkable answers (arithmetic, exact-match extraction, a JSON schema, a unit test for generated code), sent to every replica on a schedule at temperature 0. They catch a replica that has become worse at the task. They are expensive per request and few in number, so they are statistically weak.</li>
+<li><strong>Passive checks on live traffic</strong>: cheap properties computed on every response without storing it, such as the share of English prompts whose reply contains characters from another script (the postmortem's symptom), the share of JSON-mode replies that fail to parse, the share hitting <code>max_tokens</code>, repetition rate, and the mean log-probability of sampled tokens where the engine returns it. They have huge sample sizes and only see what you thought to measure.</li>
+</ul>
+<p>Compare each replica against the others, not against a fixed threshold: a bad replica stands out from its peers, while traffic changes move all replicas together. The simulation has 8 replicas; replica <code>r5</code> picks up a sampling bug at minute 30 that drops its canary pass rate from 97% to 90% and makes 2% of its live replies contain unexpected scripts:</p>
+<pre><code class="language-python"># quality_probe.py - catch a replica that returns HTTP 200 with worse text.
+# Two signals per replica: (1) canary prompts with checkable answers, (2) a character-script
+# anomaly rate on live English traffic (the symptom in Anthropic's Aug 2025 postmortem).
+import math, random, unicodedata
+
+def scripts(text):
+    &quot;&quot;&quot;Set of Unicode scripts in a string, from character names ('THAI CHARACTER ...' -&gt; 'THAI').&quot;&quot;&quot;
+    out = set()
+    for ch in text:
+        if ch.isalpha():
+            name = unicodedata.name(ch, &quot;UNKNOWN&quot;)
+            out.add(&quot;LATIN&quot; if name.startswith(&quot;LATIN&quot;) else name.split()[0])
+    return out
+
+def anomalous(prompt, reply):
+    &quot;&quot;&quot;English prompt, reply contains a script the prompt does not: suspicious.&quot;&quot;&quot;
+    return bool(scripts(reply) - scripts(prompt) - {&quot;LATIN&quot;})
+
+assert not anomalous(&quot;Say hello&quot;, &quot;Hello there!&quot;)
+assert anomalous(&quot;Say hello&quot;, &quot;Hello สวัสดี there!&quot;)
+assert anomalous(&quot;Fix this Python&quot;, &quot;def f(x): return x  # 修复&quot;)
+
+def z_lower(k, n, k0, n0):
+    &quot;&quot;&quot;Two-proportion z: is this replica's pass rate k/n below everyone else's k0/n0?&quot;&quot;&quot;
+    p = (k + k0) / (n + n0)
+    se = math.sqrt(p * (1 - p) * (1 / n + 1 / n0)) or 1e-9
+    return (k / n - k0 / n0) / se
+
+rng = random.Random(3)
+REPLICAS = [f&quot;r{i}&quot; for i in range(8)]
+BAD, START = &quot;r5&quot;, 30                       # r5 picks up a sampling bug at minute 30
+PASS_OK, PASS_BAD = 0.97, 0.90              # canary pass rates
+ANOM_OK, ANOM_BAD = 0.0005, 0.02            # share of live replies with an unexpected script
+PROBES, LIVE = 10, 400                      # per replica per minute
+stats = {r: dict(k=0, n=0, a=0, m=0) for r in REPLICAS}
+fired = {}
+for minute in range(120):
+    for r in REPLICAS:
+        bad = r == BAD and minute &gt;= START
+        s = stats[r]
+        s[&quot;k&quot;] += sum(rng.random() &lt; (PASS_BAD if bad else PASS_OK) for _ in range(PROBES)); s[&quot;n&quot;] += PROBES
+        s[&quot;a&quot;] += sum(rng.random() &lt; (ANOM_BAD if bad else ANOM_OK) for _ in range(LIVE)); s[&quot;m&quot;] += LIVE
+    if minute % 5 == 4:                      # every 5 min, compare each replica with the rest (last 30 min
+        for r in REPLICAS:                   # would be better; cumulative keeps the code short)
+            o = [stats[x] for x in REPLICAS if x != r]
+            zc = z_lower(stats[r][&quot;k&quot;], stats[r][&quot;n&quot;], sum(x[&quot;k&quot;] for x in o), sum(x[&quot;n&quot;] for x in o))
+            za = -z_lower(stats[r][&quot;a&quot;], stats[r][&quot;m&quot;], sum(x[&quot;a&quot;] for x in o), sum(x[&quot;m&quot;] for x in o))
+            for sig, z in ((&quot;canary&quot;, zc), (&quot;script&quot;, za)):
+                if z &lt; -4 and (r, sig) not in fired:       # |z| &gt; 4: few false alarms across 8 replicas x 2 signals
+                    fired[(r, sig)] = minute
+                    print(f&quot;minute {minute:3d}: {r} flagged by {sig:6s} z={z:6.1f}  &quot;
+                          f&quot;({minute - START + 1} min after the bug, if {r} is the bad one)&quot;)
+print(&quot;false alarms:&quot;, [k for k in fired if k[0] != BAD])
+for sig in (&quot;canary&quot;, &quot;script&quot;):
+    assert (BAD, sig) in fired
+</code></pre>
+<pre><code class="language-console">$ python3 quality_probe.py
+minute  34: r5 flagged by script z=  -9.8  (5 min after the bug, if r5 is the bad one)
+minute  69: r5 flagged by canary z=  -4.8  (40 min after the bug, if r5 is the bad one)
+false alarms: []
+</code></pre>
+<p>The passive check found the bad replica in 5 minutes; the canary prompts needed 40, with 10 probes per replica per minute. Detecting a drop from 97% to 90% takes a few hundred samples, and a cumulative count dilutes a new problem with the clean history (a sliding window would be faster). Run both. The passive checks catch the known symptoms quickly on all traffic. The canaries catch the regressions you didn't think to write a detector for. A slower, broader eval (a held-out benchmark run against one replica of each pool every few hours) catches what's left, and its results should be compared with the same eval run against the reference deployment at rollout time.</p>
+<h3 id="numerics-differences-across-hardware">Numerics differences across hardware</h3>
+<p>The same model and weights give different outputs on different hardware and software, for two reasons. <strong>Batch dependence</strong>: kernels pick reduction orders from the batch shape, so the same request gives different floating-point results depending on other users' traffic (<a href="../inference/serving-engine-internals.html#determinism-and-batch-invariance">batch invariance</a>). <strong>Implementation differences</strong>: different GPU generations, TP degrees, quantization formats, attention kernels and, as the postmortem shows, compiler precision flags.</p>
+<p>Small differences are normal; the job is to tell them apart from bugs. Measure them once per pool against a reference: run a fixed prompt set through both with teacher forcing (feed the same tokens, compare the next-token distributions), and record the KL divergence and top-1 agreement per pool. That gives you a baseline, and a new deploy whose divergence is several times the baseline is a bug until shown otherwise. Fireworks evaluated its FP4 kernels with MMLU-style accuracy instead of KL because not every engine returns log-probabilities (<a href="https://fireworks.ai/blog/fireattention-v4-fp4-b200">FireAttention V4</a>); if your engine does return them, the distribution comparison is far more sensitive.</p>
+<p><strong>On a leased fleet.</strong> A fixed fleet is usually more uniform than a multi-cloud one, which makes per-replica comparison easier: replicas should agree closely, so outliers stand out. The exceptions are the moments you mix hardware (a new node type joining) or software (an engine upgrade rolled out halfway). Those are the times to run the full eval against both pools.</p>
+<h2 id="8-incidents-and-on-call">8. Incidents and on-call</h2>
+<p>The general practice (mitigate first, then understand, then fix; runbook per page; blameless postmortems) is in <a href="../platform/control-planes.html#on-call-and-incident-debugging">Control Planes</a>, and <a href="../inference/serving-hands-on.html#common-failure-modes">the failure-mode table</a> in Serving LLMs in Practice covers startup and configuration failures. These are the incidents that page an inference operator once the service is running. Each runbook entry is: symptom, how to confirm, how to mitigate, how to fix for good.</p>
+<table>
+<thead>
+<tr>
+<th>Incident</th>
+<th>Symptom</th>
+<th>Confirm</th>
+<th>Mitigate</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>KV exhaustion</strong></td>
+<td>ITL p99 and TTFT rise together, throughput falls</td>
+<td>KV usage near 100% <em>and</em> preemptions rising (<a href="../inference/serving-engine-internals.html#admission-control-by-kv-budget">admission by KV budget</a>); look for one tenant's longer prompts or larger <code>max_tokens</code></td>
+<td>lower the per-replica in-flight cap at the gateway so requests wait in the fair queue instead of thrashing; cap that tenant's in-flight tokens</td>
+<td>per-tenant in-flight token limits; long-prompt replicas; FP8 KV; capacity</td>
+</tr>
+<tr>
+<td><strong>Stuck engine</strong></td>
+<td>a replica holds requests and produces nothing; <code>/health</code> stays green; its TTFT hits the first-byte timeout</td>
+<td>running &gt; 0 and the generated-token counter flat for a minute</td>
+<td>eject it from the router; capture <code>py-spy dump</code> and <code>nvidia-smi</code> <em>before</em> restarting, since the evidence dies with the process</td>
+<td>from the dump (NCCL hang, scheduler deadlock, hung GPU); add &quot;running but not producing&quot; to router health</td>
+</tr>
+<tr>
+<td><strong>Bad GPU</strong></td>
+<td>one replica or node with more errors, slower steps or worse quality than its peers; Xid errors, rising ECC counters</td>
+<td>per-replica breakdowns (sections 4 and 7)</td>
+<td>drain and cordon the <em>whole host</em></td>
+<td>provider replaces the part</td>
+</tr>
+<tr>
+<td><strong>OOM on long prompts</strong></td>
+<td>crashes or errors only on some requests, often after a customer starts sending longer documents or many images</td>
+<td>failing requests' <code>n_in</code> in the log; engine error output</td>
+<td>lower the accepted input length at the gateway with a clear 400; route long prompts to replicas with smaller prefill chunks</td>
+<td>test the advertised maximum context end to end, at full batch, before advertising it</td>
+</tr>
+<tr>
+<td><strong>Thundering herd after a deploy</strong></td>
+<td>errors and latency spike as a rollout finishes or the gateway restarts</td>
+<td>request rate above organic traffic; <code>retry_of</code> set in the log; cold new replicas</td>
+<td>retry budgets; <code>Retry-After</code> with jitter; shift traffic gradually</td>
+<td>warm-up and rollout pacing (<a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>); SDKs that honor <code>Retry-After</code></td>
+</tr>
+<tr>
+<td><strong>Cache-cold routing</strong></td>
+<td>TTFT rises everywhere with no traffic change</td>
+<td>prefix hit rate per replica before and after; changed replica membership remaps a hash ring (<a href="../foundations/distributed-systems.html#consistent-hashing-sharding-that-survives-membership-changes">consistent hashing</a>)</td>
+<td>roll back the router change; caches rewarm in minutes if routing is stable</td>
+<td>bounded-load prefix affinity (<a href="../inference/serving-efficiently.html">Serving Efficiently</a>); change membership a few replicas at a time</td>
+</tr>
+</tbody>
+</table>
+<p>Two of these have published field experience behind them. On bad GPUs, Together names ECC errors &quot;the most common thing we see; they corrupt weights silently&quot; (<a href="https://www.together.ai/blog/99-9-uptime-for-inference">Together, July 2026</a>). Modal, running over 20,000 GPUs, marks the whole host unhealthy, drains it and disposes of or reinstalls it, rather than resetting single GPUs, which is &quot;overcomplicated and no guarantee of recovery&quot;; it runs light checks at boot, passive checks (<code>dmesg</code>, <code>dcgmi health</code>) continuously and active checks weekly (DCGM diagnostics level 2, a GPU burn test, a local NCCL all-reduce), and concludes that &quot;It's underappreciated how unreliable GPUs are&quot; (<a href="https://modal.com/blog/gpu-health">Modal, December 2025</a>).</p>
+<p>The detection side of these entries can be automated from the scrapes every replica already exports. A watchdog that maps three of them to their runbook entries, on synthetic scrapes:</p>
+<pre><code class="language-python"># watchdog.py - turn engine scrapes into runbook entries. Each scrape is what /metrics gives you
+# every 10 s per replica (vLLM-style names; counters are cumulative, so rules use differences).
+RULES = []
+def rule(f): RULES.append(f); return f
+
+@rule
+def stuck_engine(w):   # requests are running but no token has been produced for 60 s
+    if all(s[&quot;running&quot;] &gt; 0 for s in w[-6:]) and w[-1][&quot;gen_tokens&quot;] == w[-7][&quot;gen_tokens&quot;]:
+        return &quot;STUCK ENGINE: eject from router, capture py-spy + nvidia-smi, then restart&quot;
+
+@rule
+def kv_exhaustion(w):  # KV full and the scheduler is evicting running sequences
+    if w[-1][&quot;kv_usage&quot;] &gt; 0.97 and w[-1][&quot;preemptions&quot;] - w[-7][&quot;preemptions&quot;] &gt; 20:
+        return &quot;KV EXHAUSTION: lower max-num-seqs / admit less; check for one tenant's long prompts&quot;
+
+@rule
+def cache_cold(w):     # prefix hit rate collapsed relative to 5 minutes ago
+    def hit(a, b): return (b[&quot;hits&quot;] - a[&quot;hits&quot;]) / max(1, b[&quot;queries&quot;] - a[&quot;queries&quot;])
+    if len(w) &gt;= 37 and hit(w[-7], w[-1]) &lt; 0.5 * hit(w[-37], w[-31]):
+        return &quot;CACHE-COLD ROUTING: check the router's replica set / hash ring changed (deploy?)&quot;
+
+def scrapes(kind, n=40):
+    s, out = dict(running=30, gen_tokens=0, kv_usage=0.7, preemptions=0, hits=0, queries=0), []
+    for i in range(n):
+        s = dict(s)
+        s[&quot;gen_tokens&quot;] += 0 if (kind == &quot;stuck&quot; and i &gt;= 30) else 15_000
+        s[&quot;queries&quot;] += 50_000
+        s[&quot;hits&quot;] += 10_000 if (kind == &quot;cold&quot; and i &gt;= 33) else 35_000
+        if kind == &quot;kv&quot; and i &gt;= 30: s[&quot;kv_usage&quot;], s[&quot;preemptions&quot;] = 0.99, s[&quot;preemptions&quot;] + 8
+        out.append(s)
+    return out
+
+for name, kind in [(&quot;r0&quot;, &quot;healthy&quot;), (&quot;r1&quot;, &quot;stuck&quot;), (&quot;r2&quot;, &quot;kv&quot;), (&quot;r3&quot;, &quot;cold&quot;)]:
+    w = scrapes(kind)
+    alerts = [msg for f in RULES for t in range(7, len(w) + 1) if (msg := f(w[:t]))]
+    print(f&quot;{name} ({kind:7s}): {alerts[0] if alerts else 'ok'}&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 watchdog.py
+r0 (healthy): ok
+r1 (stuck  ): STUCK ENGINE: eject from router, capture py-spy + nvidia-smi, then restart
+r2 (kv     ): KV EXHAUSTION: lower max-num-seqs / admit less; check for one tenant's long prompts
+r3 (cold   ): CACHE-COLD ROUTING: check the router's replica set / hash ring changed (deploy?)
+</code></pre>
+<p>The stuck-engine rule is worth having on day one: the standard engine health endpoint does not catch it, and it is the incident that turns one hung process into minutes of timeouts for every request routed there.</p>
+<p><strong>On a leased fleet.</strong> You can't replace a bad GPU by asking for another instance; you open a ticket with the provider and wait. Two practices follow. Keep at least one spare node's worth of capacity so a cordoned node doesn't cost you capacity during the wait (run batch on it meanwhile). And put the provider's hardware replacement time into your lease negotiation, since it directly sets how long you run without the node.</p>
+<h2 id="9-security-basics-for-an-inference-api">9. Security basics for an inference API</h2>
+<h3 id="api-keys-and-their-scope">API keys and their scope</h3>
+<p>An API key is a bearer credential: whoever holds it can spend the customer's money. The basics:</p>
+<ul>
+<li><strong>Store a hash, not the key.</strong> Show the secret once at creation and store only a hash of it. A database leak then leaks no usable keys. Compare in constant time.</li>
+<li><strong>Put a public ID in the key.</strong> A key like <code>sk_live_&lt;id&gt;_&lt;secret&gt;</code> lets you find the record without a scan, and lets logs, dashboards and support refer to keys by ID. Secret scanners (GitHub's, for example) find keys with a recognizable prefix in public repositories.</li>
+<li><strong>Scope keys</strong>: which endpoints (inference, batch, fine-tuning, admin), which models and adapters, which limits and spend cap. A CI key should not be able to start a fine-tune.</li>
+<li><strong>Return the same 401 for unknown, revoked and wrong keys</strong>, and 404 for another tenant's model or adapter, so an attacker can't use error messages to learn what exists.</li>
+</ul>
+<p>A plain SHA-256 is enough here because the secret is 256 random bits; slow password hashes (bcrypt, scrypt) exist for low-entropy human passwords. The key ID and the order of the set in the output differ on every run:</p>
+<pre><code class="language-python"># api_keys.py - API keys stored as hashes with scopes, and per-tenant salting of prefix-cache block hashes
+import hashlib, hmac, secrets
+
+DB = {}   # key_id -&gt; record. In production: a table; the secret itself is never stored.
+
+def create_key(org, scopes, models, tpm):
+    key_id = secrets.token_hex(4)                       # public, shows up in logs and dashboards
+    secret = secrets.token_urlsafe(32)                  # 256 bits, shown to the customer exactly once
+    DB[key_id] = dict(org=org, scopes=set(scopes), models=set(models), tpm=tpm, revoked=False,
+                      sha256=hashlib.sha256(secret.encode()).hexdigest())
+    return f&quot;sk_live_{key_id}_{secret}&quot;
+
+def authorize(header, scope, model):
+    try:
+        _, _, key_id, secret = header.removeprefix(&quot;Bearer &quot;).split(&quot;_&quot;, 3)
+    except ValueError:
+        return 401, &quot;malformed key&quot;
+    rec = DB.get(key_id)
+    digest = hashlib.sha256(secret.encode()).hexdigest()
+    if rec is None or rec[&quot;revoked&quot;] or not hmac.compare_digest(digest, rec[&quot;sha256&quot;]):
+        return 401, &quot;invalid key&quot;                      # same answer for unknown, revoked and wrong
+    if scope not in rec[&quot;scopes&quot;]:
+        return 403, f&quot;key lacks scope {scope}&quot;
+    if model not in rec[&quot;models&quot;]:
+        return 404, f&quot;model {model} not found&quot;          # don't confirm that other tenants' models exist
+    return 200, rec[&quot;org&quot;]
+
+k = create_key(&quot;acme&quot;, [&quot;inference&quot;], [&quot;llama-70b&quot;, &quot;acme/lora-support-v3&quot;], tpm=200_000)
+print(&quot;issued:&quot;, k[:22] + &quot;...&quot;, &quot;| stored:&quot;, {kk: v for kk, v in DB[k.split('_')[2]].items() if kk != &quot;sha256&quot;})
+print(authorize(&quot;Bearer &quot; + k, &quot;inference&quot;, &quot;llama-70b&quot;))
+print(authorize(&quot;Bearer &quot; + k, &quot;inference&quot;, &quot;zeta/lora-legal-v1&quot;))   # another tenant's adapter
+print(authorize(&quot;Bearer &quot; + k, &quot;batch&quot;, &quot;llama-70b&quot;))
+print(authorize(&quot;Bearer &quot; + k[:-1] + &quot;x&quot;, &quot;inference&quot;, &quot;llama-70b&quot;))
+DB[k.split(&quot;_&quot;)[2]][&quot;revoked&quot;] = True
+print(authorize(&quot;Bearer &quot; + k, &quot;inference&quot;, &quot;llama-70b&quot;))
+</code></pre>
+<pre><code class="language-console">$ python3 api_keys.py
+issued: sk_live_cfd20703_jKATe... | stored: {'org': 'acme', 'scopes': {'inference'}, 'models': {'llama-70b', 'acme/lora-support-v3'}, 'tpm': 200000, 'revoked': False}
+(200, 'acme')
+(404, 'model zeta/lora-legal-v1 not found')
+(403, 'key lacks scope batch')
+(401, 'invalid key')
+(401, 'invalid key')
+</code></pre>
+<h3 id="prompt-and-response-logging-and-retention">Prompt and response logging, and retention</h3>
+<p>Prompts and responses are customer data: source code, contracts, medical notes. What you keep, for how long and who can read it is a product decision with legal weight, and it should be written down before the first customer arrives:</p>
+<ul>
+<li><strong>Log metadata by default, content by exception.</strong> The request log in section 7 has token counts and timings, not text. Content logging is opt-in per customer (for debugging their integration), time-limited, and access-controlled.</li>
+<li><strong>Every copy has a retention period</strong>: the request log, idempotency records with stored responses, batch inputs and outputs (Anthropic keeps batch results for 29 days (<a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing">batch processing docs</a>)), prompt caches in host memory or on disk, and traces, which may capture prompt snippets as span attributes. Delete on schedule, and test deletion.</li>
+<li><strong>Plan for debugging without content.</strong> The Anthropic postmortem names privacy controls as one reason the bugs took weeks to reproduce. The tools that help are the ones in this chapter: per-replica statistics, passive checks computed on content without storing it, canary prompts that are yours, and customer-submitted feedback with explicit consent.</li>
+</ul>
+<h3 id="the-inference-endpoint-is-an-egress-path">The inference endpoint is an egress path</h3>
+<p>In August 2026 Prime Intellect described how a model in an &quot;offline&quot; evaluation sandbox reached the internet anyway (<a href="https://www.primeintellect.ai/blog/universal-offline-sandbox-escape">Prime Intellect, August 2026</a>). The sandbox had no web access, but the agent could reach the inference API through an interception proxy (<code>verifiers</code>' <code>InterceptionServer</code>) with an authorized key, since it needed the model to run. It sent a normal Responses API request using the <code>file_url</code> input, &quot;the file input capability to fetch remote content&quot;, and the provider fetched a GitHub API URL on its behalf. The result came back in the model's context, and the agent found the answer it was not supposed to have.</p>
+<p>For an operator, the lesson is that <strong>any feature that makes your server fetch a URL is an egress path</strong> for whoever can send you requests: image URLs in multimodal requests, file inputs, tool calls run server-side. It is a server-side request forgery (SSRF) surface too: a URL pointing at <code>169.254.169.254</code> or an internal service makes your server fetch it from inside your network. The post lists the state of the engines: TensorRT-LLM disables remote fetching by default from v1.3.0rc15 and Dynamo from v1.4.0, SGLang added an opt-in allowlist for media domains in v0.5.18, and vLLM has had an equivalent allowlist since v0.11.0. Its recommendation applies to every operator: harden inference deployments used internally, &quot;rather than only public-facing endpoints&quot;.</p>
+<p>What to do:</p>
+<ul>
+<li>Disable remote fetching in the engine unless a product needs it; if it does, fetch through a proxy with a domain allowlist and no route to internal addresses.</li>
+<li>Treat internal endpoints (RL rollouts, evals, staging) like public ones: keys, limits, logs.</li>
+</ul>
+<h3 id="isolation-between-tenants-adapters-and-caches">Isolation between tenants' adapters and caches</h3>
+<p>Multi-LoRA serving (<a href="../inference/serving-engine-internals.html#multi-lora-serving">Inference Internals II</a>) and prefix caching share GPU state between tenants, which makes isolation a property of your routing and naming:</p>
+<ul>
+<li><strong>Adapters</strong>: authorize every request's adapter against the key's allowed models (<code>api_keys.py</code> does), namespace adapter names by organization so two tenants can't collide, and load adapters only from your own storage, never from a URL in the request.</li>
+<li><strong>Prefix caches leak through timing.</strong> A cache hit has a lower TTFT, so a client that can time requests can test whether some prefix is cached, which means someone else sent it. Song et al. turned this into an attack, &quot;a token-by-token search algorithm to efficiently recover shared prompt prefixes in the caches&quot;, and showed &quot;the feasibility of stealing system prompts and those produced by peer users&quot;, including in black-box tests on public services (<a href="https://arxiv.org/abs/2409.20002">arXiv 2409.20002</a>). Fireworks documents the risk for its dedicated deployments, where one cache is shared by all requests by default: &quot;potentially, an adversary can learn that a particular prompt is cached by observing the response time&quot;; its serverless caches are per account, and an <code>x-prompt-cache-isolation-key</code> header separates caches within a deployment (<a href="https://docs.fireworks.ai/guides/prompt-caching">prompt caching doc</a>). OpenAI's caches &quot;are not shared across organizations&quot; (<a href="https://developers.openai.com/api/docs/guides/prompt-caching">prompt caching guide</a>).</li>
+</ul>
+<p>The fix in vLLM is a per-request <code>cache_salt</code>, which is hashed into the first block so that only requests with the same salt can reuse those cached blocks. The docs say this &quot;prevents timing-based attacks where an adversary could infer cached content by observing latency differences&quot; (<a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html">vLLM prefix caching design doc</a>). Set it in the gateway from the organization ID, never from the client. What salting does to the chained block hashes:</p>
+<pre><code class="language-python"># cache_salt.py - per-tenant salting of prefix-cache block hashes
+import hashlib
+
+# Prefix caching hashes each block of 16 tokens chained with the previous block's hash. Mixing a
+# per-tenant salt into the FIRST block makes identical prompts from different tenants share nothing.
+def block_hashes(tokens, salt=&quot;&quot;, block=16):
+    h, out = salt.encode(), []
+    for i in range(0, len(tokens) - len(tokens) % block, block):
+        h = hashlib.sha256(h + repr(tokens[i:i + block]).encode()).digest()
+        out.append(h.hex()[:8])
+    return out
+
+system_prompt = list(range(48))                        # the same 48-token system prompt
+print(&quot;no salt  :&quot;, block_hashes(system_prompt), block_hashes(system_prompt) == block_hashes(system_prompt))
+a, b = block_hashes(system_prompt, salt=&quot;org:acme&quot;), block_hashes(system_prompt, salt=&quot;org:zeta&quot;)
+print(&quot;salted   :&quot;, a, &quot;vs&quot;, b, &quot;shared blocks:&quot;, len(set(a) &amp; set(b)))
+</code></pre>
+<pre><code class="language-console">$ python3 cache_salt.py
+no salt  : ['be2af200', '137dc9a1', 'ad7dee3a'] True
+salted   : ['26334de0', 'b44c15f7', '2260193a'] vs ['916aa9a0', '6c579ac7', '0edf6fdf'] shared blocks: 0
+</code></pre>
+<p>Salting per organization gives up cross-tenant sharing of identical prefixes, such as a popular open-source agent's system prompt sent by many customers. That sharing is real savings, and it is exactly the information the side channel leaks. Share across tenants only for prefixes you publish yourself.</p>
+<p><strong>On a leased fleet.</strong> Nothing changes for security, except that you, not a cloud's managed service, own every layer: the node, the engine flags, the proxy. The Prime Intellect engines list is a checklist of flags to verify on your own deployment.</p>
+<h2 id="operations-checklist-for-a-leased-fleet">Operations checklist for a leased fleet</h2>
+<p>In rough order of when a small team should do them. Each item names the section that explains it and the source it is based on.</p>
+<ol>
+<li><strong>Compute SLIs at completion from a per-request log</strong>, with finish reason, engine token counts and replica on every line (section 4; <a href="https://www.together.ai/blog/99-9-uptime-for-inference">Together</a>).</li>
+<li><strong>Return 429 for the client's limits and 503 for your capacity, both with <code>Retry-After</code></strong>, plus a machine-readable reason in the body (section 1; <a href="https://docs.fireworks.ai/serverless/rate-limits">Fireworks</a>, <a href="https://platform.claude.com/docs/en/api/rate-limits">Anthropic</a>).</li>
+<li><strong>Meter input, cached input and output separately, with reserve-and-refund for <code>max_tokens</code></strong> (section 2; <a href="https://platform.claude.com/docs/en/api/rate-limits">Anthropic</a>, <a href="https://developers.openai.com/api/docs/guides/rate-limits">OpenAI</a>).</li>
+<li><strong>Add ramp limits</strong>, so one customer's step change can't take the fleet (section 2; <a href="https://platform.claude.com/docs/en/api/rate-limits">Anthropic</a>).</li>
+<li><strong>Detect stuck engines</strong> (running &gt; 0, tokens flat) and eject them, and capture <code>py-spy</code> before restarting (section 8).</li>
+<li><strong>Health-check GPUs passively all the time and actively every week; on failure, drain the whole host</strong> (section 8; <a href="https://modal.com/blog/gpu-health">Modal</a>).</li>
+<li><strong>Disable remote URL fetching in the engines</strong>, or allowlist it, and harden internal endpoints like public ones (section 9; <a href="https://www.primeintellect.ai/blog/universal-offline-sandbox-escape">Prime Intellect</a>).</li>
+<li><strong>Salt prefix caches per organization</strong> (section 9; <a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html">vLLM</a>, <a href="https://arxiv.org/abs/2409.20002">arXiv 2409.20002</a>).</li>
+<li><strong>Run passive quality checks on all traffic and canary prompts per replica</strong>, and compare replicas with each other (section 7; <a href="https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues">Anthropic postmortem</a>).</li>
+<li><strong>Treat routing and load-balancer changes as quality changes</strong>, and gate rollouts on a quality signal as well as latency and errors (section 7; <a href="https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues">Anthropic postmortem</a>, <a href="https://together.ai/blog/canary-rollouts-upgrade-models-in-production-without-downtime">Together</a>).</li>
+<li><strong>Replace FCFS with fair queuing in the gateway</strong>, and keep rate limits generous (section 3; <a href="https://arxiv.org/abs/2401.00588">arXiv 2401.00588</a>).</li>
+<li><strong>Sell the trough: a batch tier with deadlines, EDF and admission control</strong>, preempted by interactive traffic (section 5; <a href="https://developers.openai.com/api/docs/guides/batch">OpenAI</a>, <a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing">Anthropic</a>, <a href="https://docs.fireworks.ai/guides/ondemand-deployments">Fireworks</a>).</li>
+<li><strong>Track utilization weekly as the number that sets cost per token</strong>, and price from measured throughput (section 6).</li>
+<li><strong>Store async results until delivery is confirmed</strong> (section 1; <a href="https://docs.baseten.co/inference/async">Baseten</a>).</li>
+<li><strong>Promise only the nines your lease geography supports</strong>, and run batch on your redundancy (section 4; <a href="https://www.together.ai/blog/99-9-uptime-for-inference">Together</a>, <a href="https://fireworks.ai/blog/multi-region-deployment">Fireworks</a>).</li>
+</ol>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li>Provider rate-limit, batch and pricing pages (<a href="https://platform.claude.com/docs/en/api/rate-limits">Anthropic</a>, <a href="https://developers.openai.com/api/docs/guides/rate-limits">OpenAI</a>, <a href="https://docs.fireworks.ai/serverless/rate-limits">Fireworks</a>) as descriptions of the schedulers and limiters behind them, and tell which policy each one implements.</li>
+<li>The <a href="https://arxiv.org/abs/2401.00588">VTC paper</a> and its follow-ups on fair LLM serving, and judge whether a proposed scheduler is work-conserving.</li>
+<li>Vendor reliability posts (<a href="https://www.together.ai/blog/99-9-uptime-for-inference">Together</a>, <a href="https://fireworks.ai/blog/multi-region-deployment">Fireworks</a>, <a href="https://modal.com/blog/gpu-health">Modal</a>) critically: where they measure, over what window, and what they don't claim.</li>
+<li>Postmortems like <a href="https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues">Anthropic's</a>, and write the detector that would have caught each bug.</li>
+<li><a href="../platform/rl-infrastructure.html">RL Infrastructure</a>, where the inference service's biggest internal customer is a trainer, and the <a href="https://www.primeintellect.ai/blog/universal-offline-sandbox-escape">Prime Intellect escape</a> explains why its endpoints need the same hardening as public ones.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<p>Papers:</p>
+<ul>
+<li>Sheng et al., <a href="https://arxiv.org/abs/2401.00588">&quot;Fairness in Serving Large Language Models&quot;</a> (VTC), arXiv 2401.00588.</li>
+<li>Zhong et al., <a href="https://arxiv.org/abs/2401.09670">&quot;DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving&quot;</a>, arXiv 2401.09670.</li>
+<li>Song et al., <a href="https://arxiv.org/abs/2409.20002">&quot;The Early Bird Catches the Leak: Unveiling Timing Side Channels in LLM Serving Systems&quot;</a>, arXiv 2409.20002.</li>
+<li>Demers, Keshav and Shenker, &quot;Analysis and Simulation of a Fair Queueing Algorithm&quot;, SIGCOMM 1989: the network ancestor of VTC.</li>
+<li>Liu and Layland, &quot;Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment&quot;, JACM 1973: earliest-deadline-first.</li>
+</ul>
+<p>Provider documentation and posts (all read in November 2026):</p>
+<ul>
+<li>Anthropic: <a href="https://platform.claude.com/docs/en/api/rate-limits">rate limits</a>, <a href="https://platform.claude.com/docs/en/about-claude/pricing">pricing</a>, <a href="https://platform.claude.com/docs/en/build-with-claude/batch-processing">batch processing</a>, <a href="https://www.anthropic.com/engineering/a-postmortem-of-three-recent-issues">&quot;A postmortem of three recent issues&quot;</a> (September 2025).</li>
+<li>OpenAI: <a href="https://developers.openai.com/api/docs/guides/rate-limits">rate limits</a>, <a href="https://developers.openai.com/api/docs/guides/batch">batch</a>, <a href="https://developers.openai.com/api/docs/guides/prompt-caching">prompt caching</a>.</li>
+<li>Fireworks: <a href="https://docs.fireworks.ai/serverless/rate-limits">serverless rate limits</a>, <a href="https://docs.fireworks.ai/guides/ondemand-deployments">on-demand and preemptible deployments</a>, <a href="https://docs.fireworks.ai/guides/batch-inference">batch inference (paused)</a>, <a href="https://docs.fireworks.ai/guides/prompt-caching">prompt caching</a>, <a href="https://fireworks.ai/pricing">pricing</a>, <a href="https://fireworks.ai/blog/multi-region-deployment">&quot;Inside Fireworks multi-region deployments&quot;</a> (September 2026), <a href="https://fireworks.ai/blog/fireattention-v4-fp4-b200">FireAttention V4</a>.</li>
+<li>Together: <a href="https://www.together.ai/blog/99-9-uptime-for-inference">&quot;What does 99.9% uptime mean for inference?&quot;</a> (July 2026), <a href="https://together.ai/blog/canary-rollouts-upgrade-models-in-production-without-downtime">canary rollouts</a> (September 2026), <a href="https://www.together.ai/blog/provisioned-throughput">Provisioned Throughput</a> (July 2026).</li>
+<li>Baseten: <a href="https://docs.baseten.co/inference/async">async inference</a>, <a href="https://docs.baseten.co/inference/model-apis/pricing-and-limits">Model API pricing and limits</a>, <a href="https://docs.baseten.co/observability/metrics">metrics</a>, <a href="https://www.baseten.co/pricing/">pricing</a>.</li>
+<li>Modal: <a href="https://modal.com/blog/gpu-health">&quot;Keeping 20,000 GPUs healthy&quot;</a> (December 2025), <a href="https://modal.com/pricing">pricing</a>.</li>
+<li>Prime Intellect: <a href="https://www.primeintellect.ai/blog/universal-offline-sandbox-escape">&quot;Uncovering a universal offline sandbox escape&quot;</a> (August 2026).</li>
+<li>vLLM: <a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html">prefix caching design, including cache isolation</a>.</li>
+<li>Google, <a href="https://sre.google/sre-book/table-of-contents/"><em>Site Reliability Engineering</em></a> and <a href="https://sre.google/workbook/table-of-contents/"><em>The Site Reliability Workbook</em></a>, for SLOs and error budgets.</li>
+<li>In this repo: <a href="../platform/control-planes.html">Control Planes</a>, <a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>, <a href="../inference/serving-efficiently.html">Serving Efficiently</a>, <a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a>, <a href="../inference/arithmetic.html">Inference Internals I</a> and <a href="../inference/serving-engine-internals.html">II</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../platform/deploys-recovery-autoscaling.html">&larr; Model Deploys, Recovery and Autoscaling</a><a class="next" href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

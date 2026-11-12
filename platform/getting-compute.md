@@ -10,7 +10,7 @@ Much of the material comes from Stas Bekman's years of training large models (BL
 
 ## Prerequisites
 
-This is the last chapter of Part 7, and it leans on almost everything before it. The most important ones:
+This chapter leans on almost everything before it. The most important ones:
 
 - [Accelerators](../compute/accelerators.md): [TFLOPS](../compute/accelerators.md#tflops), the [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table), [MAMF and MSMF](../compute/accelerators.md#maximum-achievable-and-sustainable-flops) (the measured matmul ceilings), [silicon lottery](../compute/accelerators.md#not-all-accelerators-are-created-equal), [Where you can get what](../compute/accelerators.md#where-you-can-get-what), [Software stacks](../compute/accelerators.md#software-stacks) and [How to get the best price](../compute/accelerators.md#how-to-get-the-best-price).
 - [Interconnects](../network/interconnects.md): [intra-node](../network/interconnects.md#intra-node-networking) (NVLink) and [inter-node](../network/interconnects.md#inter-node-networking) (InfiniBand, RoCE, EFA) networking, [SHARP/NVLS](../network/interconnects.md#sharp), [Real network throughput](../network/interconnects.md#real-network-throughput) and [Inter-node speed depends on intra-node speed](../network/interconnects.md#inter-node-speed-depends-on-intra-node-speed).

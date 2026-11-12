@@ -52,12 +52,16 @@ It assumes you know Python, the basics of PyTorch (tensors, `nn.Module`, writing
 1. **[Inference Arithmetic](inference/arithmetic.md)** - vocabulary and metrics, rooflines, KV cache sizing, quantization, capacity planning
 1. **[Inside a Serving Engine](inference/serving-engine-internals.md)** - paged attention, scheduling, speculative decoding, disaggregation
 1. **[Serving LLMs in Practice](inference/serving-hands-on.md)** - vLLM/SGLang, choosing a framework, load testing, gateways, multi-node serving
+1. **[Serving Efficiently on a Fixed Fleet](inference/serving-efficiently.md)** - tuning engines for your traffic, prefix-aware routing, speculative decoding in production, packing models, long-context and multimodal serving
 
 **Part 7. Platforms**
 
 1. **[Control Planes and Fleet Management](platform/control-planes.md)** - placement, node agents, leases, reconciliation, operating services
+1. **[Model Deploys, Recovery and Autoscaling](platform/deploys-recovery-autoscaling.md)** - where startup time goes and how to cut it, rolling deploys, GPU failure recovery, autoscaling, what infrastructure to build on
+1. **[Operating an Inference Service](platform/operating-inference.md)** - rate limits, fair scheduling across tenants, SLOs and goodput, batch work, cost per token, quality monitoring, incidents
 1. **[Infrastructure for Large-Scale RL](platform/rl-infrastructure.md)** - generators vs trainers, async RL, weight sync, environments and sandboxes
 1. **[Getting Compute](platform/getting-compute.md)** - renting vs buying, choosing a cloud provider, evaluating a cluster, when to upgrade GPUs
+1. **[Running a Small Inference Provider](platform/small-inference-provider.md)** - a worked example on two leased 8xB300 nodes: placement, training-to-serving, isolation, failure planning, the first 30 days
 
 **Part 8. Development**
 
@@ -74,7 +78,7 @@ It assumes you know Python, the basics of PyTorch (tensors, `nn.Module`, writing
 After Part 1, pick the path closest to the work you want to do. Each path lists its chapters in book order, so prerequisites always come first:
 
 - **Distributed training:** Collective Communication Internals → Slurm From Zero → Training Arithmetic → Parallelism From First Principles → Profiling and Optimizing Training → Training Stability → Fault Tolerance → Training Across Datacenters
-- **Inference:** Kubernetes From Zero → Inference Arithmetic → Inside a Serving Engine → Serving LLMs in Practice → Control Planes
+- **Inference:** Kubernetes From Zero → Inference Arithmetic → Inside a Serving Engine → Serving LLMs in Practice → Serving Efficiently on a Fixed Fleet → Control Planes → Model Deploys, Recovery and Autoscaling → Operating an Inference Service → Running a Small Inference Provider
 - **RL infrastructure:** Parallelism From First Principles → Inference Arithmetic → Inside a Serving Engine → Infrastructure for Large-Scale RL (the sandboxing material is in Part 1's Containers chapter)
 - **Sandboxes and compute platforms:** The GPU Node Software Stack → Kubernetes From Zero → Orchestration Internals → Control Planes → Getting Compute (building on Part 1's Containers, VMs and MicroVMs)
 - **Kernels and performance:** Accelerators → GPU Execution Model → Writing GPU Kernels → Profiling and Optimizing Training → Inside a Serving Engine (attention kernels)

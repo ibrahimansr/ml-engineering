@@ -1,0 +1,1307 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running a Small Inference Provider: A Worked Example - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li><li><a href="../inference/serving-efficiently.html">Serving Efficiently on a Fixed Fleet</a></li></ul></details>
+<details open><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/deploys-recovery-autoscaling.html">Model Deploys, Recovery and Autoscaling</a></li><li><a href="../platform/operating-inference.html">Operating an Inference Service</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li><li><a href="../platform/small-inference-provider.html" class="current">Running a Small Inference Provider: A Worked Example</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="running-a-small-inference-provider-a-worked-example">Running a Small Inference Provider: A Worked Example</h1>
+<p>This chapter puts the whole book to work on one concrete business. A small company trains and serves models for other startups, who are its customers. Some customers want a fine-tune of an open model behind an API. Some want a base model at a lower price than the big providers charge. One or two want a model nobody else may touch. The company leases two 8-GPU NVIDIA B300 nodes from a GPU provider on a one-year contract: 16 GPUs, each with 288 GB of HBM. Nothing else. No third node, no second region, and no autoscaling into a cloud it already pays for.</p>
+<p>Every mechanism used here was taught earlier, and every one is linked rather than re-derived. What this chapter adds is the arithmetic for <em>this</em> setup and the decisions that follow from it:</p>
+<ol>
+<li><strong>Capacity.</strong> What fits on a B300 and on a node, how much KV cache is left, roughly how many tokens per second each model gives, and a planner that proposes a placement of customer models on 16 GPUs.</li>
+<li><strong>Packing.</strong> Why LoRA fine-tunes on shared bases are the business, and full fine-tunes are an exception with a different price.</li>
+<li><strong>The pipeline from a training checkpoint to a served model</strong>, with a quality gate that compares a quantized model to its BF16 original on the customer's own evals.</li>
+<li><strong>Training and serving on the same 16 GPUs</strong>, and what each sharing policy buys over a synthetic day.</li>
+<li><strong>Customer isolation</strong>: caches, weights, logs, keys and noisy neighbours.</li>
+<li><strong>Losing one of two nodes</strong>, what each mitigation costs, and what uptime to put in a contract.</li>
+<li><strong>The first 30 days</strong>, step by step, each step linked to the section that teaches it.</li>
+<li><strong>When to lease node 3.</strong></li>
+</ol>
+<p>The three chapters this one leans on most each end in a checklist for a leased fleet: <a href="../inference/serving-efficiently.html#tuning-checklist-for-a-leased-fleet">the tuning checklist</a>, <a href="../platform/deploys-recovery-autoscaling.html#startup-time-checklist-for-a-leased-fleet">the startup-time checklist</a> and <a href="../platform/operating-inference.html#operations-checklist-for-a-leased-fleet">the operations checklist</a>. They are written for fleets from a couple of nodes to a few dozen. Two nodes change the answers in specific ways: a node is half the fleet, a spare node doubles the bill, block granularity matters more than control laws, and the most valuable tool is a GPU-hour budget per customer. This chapter turns those checklists into one plan for this setup and points back to them rather than repeating them.</p>
+<p>The company is fictional, and so are its customers (&quot;kestrel&quot;, &quot;rook&quot;, &quot;sable&quot;, &quot;wren&quot;). Vendors appear only as sources of published numbers and practice.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../compute/accelerators.html">Accelerators</a>: the <a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS table</a>, the <a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">measured MAMF and MSMF table</a> (this chapter uses the book's own B300 measurements), the <a href="../compute/accelerators.html#memory-comparison-table">memory table</a> and <a href="../compute/accelerators.html#gb-gib-and-the-capacity-you-actually-get">GB vs GiB</a>.</li>
+<li><a href="../compute/gpu-software-stack.html">The GPU node software stack</a>: <a href="../compute/gpu-software-stack.html#sharing-one-gpu-mig-and-mps">MIG and MPS</a>, <a href="../compute/gpu-software-stack.html#nccl-tests-single-node-then-two-then-all">nccl-tests</a>, <a href="../compute/gpu-software-stack.html#running-diagnostics-with-dcgmi-diag"><code>dcgmi diag</code></a>, the <a href="../compute/gpu-software-stack.html#9-bring-up-order-the-runbook">bring-up runbook</a> and the <a href="../compute/gpu-software-stack.html#10-a-node-acceptance-script">node acceptance script</a>.</li>
+<li><a href="../training/arithmetic.html">Training arithmetic</a>: <a href="../training/arithmetic.html#fp8-training">FP8 training</a>, <a href="../training/arithmetic.html#fp4-formats">FP4 formats</a> and <a href="../training/arithmetic.html#optimizer-state-memory">optimizer-state memory</a>.</li>
+<li><a href="../training/fault-tolerance-and-reproducibility.html">Fault tolerance</a>: <a href="../training/fault-tolerance-and-reproducibility.html#checkpoints">checkpoints</a>, <a href="../training/fault-tolerance-and-reproducibility.html#graceful-stops-kill-and-save-switches">graceful stops</a> and <a href="../training/fault-tolerance-and-reproducibility.html#dealing-with-forced-job-preemption">forced preemption</a>.</li>
+<li><a href="../inference/arithmetic.html">Inference Internals I</a>: <a href="../inference/arithmetic.html#max-concurrent-sequences">max concurrent sequences</a>, <a href="../inference/arithmetic.html#decode-latency-lower-bound">the decode-latency bound</a>, <a href="../inference/arithmetic.html#tensor-parallel-communication-in-decode">TP communication in decode</a>, <a href="../inference/arithmetic.html#moe-inference-arithmetic">MoE arithmetic</a>, <a href="../inference/arithmetic.html#fp8-e4m3-and-its-scaling-granularities">FP8 scaling</a>, <a href="../inference/arithmetic.html#nvfp4-and-mxfp4">NVFP4 and MXFP4</a> and <a href="../inference/arithmetic.html#what-the-bounds-leave-out">what the bounds leave out</a>.</li>
+<li><a href="../inference/serving-engine-internals.html">Inference Internals II</a>: <a href="../inference/serving-engine-internals.html#prefix-caching">prefix caching</a> and <a href="../inference/serving-engine-internals.html#multi-lora-serving">multi-LoRA serving</a>.</li>
+<li><a href="../inference/serving-efficiently.html">Serving Efficiently on a Fixed Fleet</a>: <a href="../inference/serving-efficiently.html#tp-vs-dp-vs-ep-the-layout-per-model-size">TP vs DP vs EP</a>, <a href="../inference/serving-efficiently.html#fp8-weights-and-fp8-kv-cache">FP8 weights and KV</a>, <a href="../inference/serving-efficiently.html#packing-many-models-onto-a-fixed-fleet">packing many models</a> and <a href="../inference/serving-efficiently.html#priority-filling-idle-capacity-with-batch-work">backfill</a>.</li>
+<li><a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>: <a href="../platform/deploys-recovery-autoscaling.html#the-stages">the stages of a replica start</a>, <a href="../platform/deploys-recovery-autoscaling.html#weights">weights</a>, <a href="../platform/deploys-recovery-autoscaling.html#surge-and-unavailability-on-a-full-fleet">rolling updates on a full fleet</a>, <a href="../platform/deploys-recovery-autoscaling.html#output-quality-probes">output-quality probes</a>, <a href="../platform/deploys-recovery-autoscaling.html#mttr-arithmetic">MTTR arithmetic</a>, <a href="../platform/deploys-recovery-autoscaling.html#on-a-fixed-fleet-move-gpus-between-models">moving GPUs between models</a> and <a href="../platform/deploys-recovery-autoscaling.html#when-serverless-beats-reserved">burst economics</a>.</li>
+<li><a href="../platform/operating-inference.html">Operating an Inference Service</a>: <a href="../platform/operating-inference.html#dedicated-vs-shared-deployments-noisy-neighbours">noisy neighbours</a>, <a href="../platform/operating-inference.html#slos-per-tier">SLOs per tier</a>, <a href="../platform/operating-inference.html#what-999-vs-9999-means-and-the-capacity-it-needs">nines and capacity</a>, <a href="../platform/operating-inference.html#5-batch-and-offline-inference">batch</a>, <a href="../platform/operating-inference.html#6-pricing-and-unit-economics">pricing</a>, <a href="../platform/operating-inference.html#continuous-evals-and-canary-prompts-in-production">continuous evals</a> and <a href="../platform/operating-inference.html#9-security-basics-for-an-inference-api">security</a>.</li>
+<li><a href="../platform/rl-infrastructure.html">RL infrastructure</a> (training jobs that share an inference fleet) and <a href="../platform/getting-compute.html">Getting Compute</a> (leases, contracts, burn-in, cluster evaluation).</li>
+</ul>
+<p><strong>What was run.</strong> Every Python block with a file name in its first line was run on an Apple M4 laptop (macOS, CPython 3.14.5) from one scratch directory, <code>/tmp/sip</code>, and its output is pasted verbatim. <code>capacity.py</code>, <code>planner.py</code>, <code>lora_or_full.py</code>, <code>share_sim.py</code> and <code>failure_plan.py</code> use only the standard library; <code>planner.py</code> imports <code>capacity.py</code>, so keep them together. <code>quality_gate.py</code> ran in a virtualenv with PyTorch 2.15 (CPU) and <code>transformers</code> 5.22.2 on <code>Qwen/Qwen2.5-0.5B-Instruct</code> from the local Hugging Face cache; its quantized candidates are <strong>simulated</strong> (weights rounded to the FP8 or NVFP4 grid and kept in fp32), which is said again where it matters. From its output, only the weight-loading progress bars and one PyTorch platform warning were removed. No GPU was available. <strong>Every <code>vllm</code>, <code>nvidia-smi</code>, <code>llmcompressor</code> and shell command is untested.</strong> Flag and API names were checked against current docs and source in November 2026. The capacity numbers are <strong>roofline bounds</strong> from the book's measured B300 numbers, not benchmarks: a real engine reaches some fraction of them, and the planner assumes half. Prices were read on the linked pages in November 2026. The lease price ($4.00 per GPU-hour) is an <strong>assumption</strong>, stated wherever it is used.</p>
+<h2 id="1-the-hardware-confirmed">1. The hardware, confirmed</h2>
+<p>Before any arithmetic, pin down what a B300 is. Three sources agree, and one detail needs care.</p>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Value</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HBM per GPU</td>
+<td>288 GB HBM3e</td>
+<td><a href="../compute/accelerators.html#memory-comparison-table">memory table</a></td>
+</tr>
+<tr>
+<td>HBM bandwidth per GPU</td>
+<td>8.0 TB/s</td>
+<td><a href="../compute/accelerators.html#memory-comparison-table">memory table</a>; NVIDIA's <a href="https://www.nvidia.com/en-us/data-center/hgx/">HGX page</a> doesn't list it</td>
+</tr>
+<tr>
+<td>Dense BF16 / FP8 / NVFP4, spec</td>
+<td>2,250 / 4,500 / 13,500 TFLOPS</td>
+<td><a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS table</a>, from NVIDIA's 108 PFLOPS dense FP4 per 8 GPUs</td>
+</tr>
+<tr>
+<td>Measured MSMF BF16 / FP8 / NVFP4</td>
+<td>1,519 / 2,969 / 7,434 TFLOPS</td>
+<td><a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MAMF and MSMF table</a></td>
+</tr>
+<tr>
+<td>Measured MAMF BF16 / FP8 / NVFP4</td>
+<td>1,892 / 3,608 / 8,909 TFLOPS</td>
+<td>same</td>
+</tr>
+<tr>
+<td>NVLink per GPU</td>
+<td>1.8 TB/s; 14.4 TB/s per 8-GPU board</td>
+<td><a href="https://www.nvidia.com/en-us/data-center/hgx/">HGX page</a></td>
+</tr>
+<tr>
+<td>Total GPU memory per 8-GPU system</td>
+<td>&quot;2.1 TB&quot;</td>
+<td><a href="https://www.nvidia.com/en-us/data-center/hgx/">HGX page</a>, <a href="https://www.nvidia.com/en-us/data-center/dgx-b300/">DGX B300 page</a></td>
+</tr>
+<tr>
+<td>Networking (DGX B300)</td>
+<td>8 single-port ConnectX-8, &quot;Up to 800 Gb/s&quot; each</td>
+<td><a href="https://www.nvidia.com/en-us/data-center/dgx-b300/">DGX B300 page</a></td>
+</tr>
+<tr>
+<td>Local NVMe (DGX B300)</td>
+<td>&quot;8x 3.84 TB NVMe E1.S&quot;</td>
+<td>same</td>
+</tr>
+<tr>
+<td>System power (DGX B300)</td>
+<td>&quot;~14 kW&quot;</td>
+<td>same</td>
+</tr>
+</tbody>
+</table>
+<p>The detail is the memory size. &quot;288 GB&quot; and &quot;2.1 TB per 8 GPUs&quot; disagree unless you read the units: 288 GB is <span class="math inline"><span class="math-inline">288 \times 10^9</span></span> bytes, which is 268 GiB, and <span class="math inline"><span class="math-inline">8 \times 268 = 2{,}146</span></span> GiB, about 2.1 TiB. NVIDIA's MIG profile for the whole GPU is called <code>7g.269gb</code>, which matches the GiB reading (<a href="https://docs.nvidia.com/datacenter/tesla/mig-user-guide/supported-mig-profiles.html">MIG user guide</a>). The scripts below use <span class="math inline"><span class="math-inline">288 \times 10^9</span></span> bytes and vLLM's default <code>gpu_memory_utilization</code> of 0.9, so 259 GB per GPU is usable for weights and KV. Check <code>nvidia-smi --query-gpu=memory.total --format=csv</code> on your nodes on day one; that is the number that counts.</p>
+<p>Three more things to note about the measured rows:</p>
+<ul>
+<li><strong>MSMF, not the spec, is the compute number to plan with.</strong> The B300's sustained BF16 matmul rate is 67.5% of the spec (<a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MSMF %</a>), because a saturated GPU drops its clock to stay within its power limit (<a href="../compute/accelerators.html#why-msmf-is-well-below-the-spec-and-mamf-above-msmf">why MSMF is below the spec</a>).</li>
+<li><strong>The BF16 and FP8 rows were measured with the node's other GPUs idle</strong> (<code>Siblings = no</code>), which can read higher than a busy node sustains. The NVFP4 row was measured with siblings busy. Re-measure on your own nodes during bring-up (<a href="#8-the-first-30-days">section 8</a>).</li>
+<li><strong>NVFP4 needs the right kernels.</strong> The book's NVFP4 MSMF of 7,434 needs cuBLAS 13.4 (torch 2.14.1+cu132); with cuBLAS 13.1 the same GPU reached 6,410, because the older library picks a kernel that doesn't use B300's faster FP4 path (<a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">note 19</a>). Your serving engine's NVFP4 kernels have the same dependency.</li>
+</ul>
+<p><strong>MIG on B300.</strong> NVIDIA documents these profiles for the B300 288 GB product (<a href="https://docs.nvidia.com/datacenter/tesla/mig-user-guide/supported-mig-profiles.html">MIG user guide</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Profile</th>
+<th>Compute</th>
+<th>Memory</th>
+<th>Max instances per GPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1g.34gb</code></td>
+<td>1/7</td>
+<td>1/8</td>
+<td>7</td>
+</tr>
+<tr>
+<td><code>1g.67gb</code></td>
+<td>1/7</td>
+<td>2/8</td>
+<td>4</td>
+</tr>
+<tr>
+<td><code>2g.67gb</code></td>
+<td>2/7</td>
+<td>2/8</td>
+<td>3</td>
+</tr>
+<tr>
+<td><code>3g.135gb</code></td>
+<td>3/7</td>
+<td>4/8</td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>4g.135gb</code></td>
+<td>4/7</td>
+<td>4/8</td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>7g.269gb</code></td>
+<td>7/7</td>
+<td>8/8</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>(plus a <code>1g.34gb+me</code> variant with media engines). The guide lists these for &quot;the B300 288 GB product&quot; without naming the HGX board, so confirm with <code>nvidia-smi mig -lgip</code> on your nodes before you plan around them. Two things the guide doesn't say, and which the planner below assumes: that a slice's HBM bandwidth scales with its share of memory (1/8 of 8 TB/s for a <code>1g.34gb</code>), and that any combination whose compute and memory fractions fit is placeable. Real MIG placement has fixed start positions, so some combinations that fit by arithmetic aren't allowed; <code>nvidia-smi mig -lgipp</code> lists the valid placements.</p>
+<p><strong>The lease.</strong> Sixteen B300s at an assumed $4.00 per GPU-hour on a one-year contract cost <span class="math inline"><span class="math-inline">16 \times 4.00 \times 730 = \$46{,}720</span></span> a month, $560,640 a year. For scale, the list prices for renting a B300 by the hour, read in November 2026, are $6.64 on demand at <a href="https://www.primeintellect.ai/compute">Prime Intellect</a>, $0.001972 per second ($7.10 per hour) on <a href="https://modal.com/pricing">Modal</a>, and $11.49 for a dedicated endpoint at <a href="https://www.together.ai/pricing">Together</a>. Those three numbers come back in <a href="#7-planning-for-the-loss-of-a-node">section 7</a>, where they price the alternatives to a third node.</p>
+<h2 id="2-capacity-what-fits-on-16-b300s">2. Capacity: what fits on 16 B300s</h2>
+<h3 id="memory-budgets-per-gpu-and-per-node">Memory budgets per GPU and per node</h3>
+<p>The per-GPU budget is the formula from <a href="../inference/arithmetic.html#max-concurrent-sequences">max concurrent sequences</a>: usable HBM, minus this GPU's share of the weights, is what the KV cache gets. The calculator below applies it to four representative customer models in BF16, FP8 and NVFP4, picks the smallest tensor-parallel degree that leaves room for at least 128k tokens of KV, and then computes roofline decode and prefill rates the way <a href="../inference/arithmetic.html#decode-latency-lower-bound">the decode-latency bound</a> does. The four models are Llama-3.1-8B and Llama-3.3-70B (configs as in <a href="../inference/arithmetic.html#real-configs">Internals I</a>), GLM-4.5-Air as the ~100B-class MoE (106B total, 12B active per the <a href="https://huggingface.co/zai-org/GLM-4.5-Air">model card</a>, MIT license; 46 layers, 8 KV heads of 128, 128 routed experts with 8 active, from its <code>config.json</code>), and DeepSeek-V3 (671B, 37B active, MLA). Two small Qwen2.5 models (1.5B and 3B, from their <code>config.json</code> files) are in <code>MODELS</code> for the planner but not printed.</p>
+<p>Four modelling choices, all visible in the code:</p>
+<ul>
+<li><strong>Not everything gets quantized.</strong> Embeddings and the LM head stay in BF16, as in the <a href="https://github.com/vllm-project/llm-compressor/tree/main/examples">llm-compressor examples</a> (<code>ignore=[&quot;lm_head&quot;]</code>). For Llama-3.3-70B that is 2.1B of the 70.55B parameters.</li>
+<li><strong>NVFP4 costs 4.5 bits per weight</strong>: a 4-bit value plus one FP8 scale per 16 values, as NVIDIA <a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/">describes it</a> (the per-tensor FP32 scale is negligible). The bits-per-weight arithmetic is in <a href="../inference/arithmetic.html#bits-per-weight-including-metadata">Internals I</a>.</li>
+<li><strong>KV is BF16 with BF16 weights and FP8 otherwise</strong>, the <a href="../inference/serving-efficiently.html#fp8-weights-and-fp8-kv-cache">recommended pairing</a>. With tensor parallelism above the number of KV heads, the KV is replicated. DeepSeek-V3 is modelled with data-parallel attention, so each rank holds its own sequences' latents (<a href="../inference/arithmetic.html#max-concurrent-sequences">why</a>).</li>
+<li><strong>The all-reduce floor uses the book's 8x B200 measurement</strong>, 23.5 µs per small all-reduce (<a href="../inference/arithmetic.html#tensor-parallel-communication-in-decode">TP communication</a>). Nobody has measured it on B300 for this book; B300 has the same NVLink generation, but measure it during bring-up.</li>
+</ul>
+<pre><code class="language-python"># capacity.py - what fits on a B300 and on an 8x B300 node, KV room, and roofline decode/prefill rates.
+#   python3 capacity.py          (planner.py imports the tables and functions below)
+# Hardware numbers are the book's: compute/accelerators.md spec + measured MSMF. Bounds, not benchmarks.
+import math
+
+HBM = 288e9            # bytes per GPU (memory table); MIG's full-GPU profile is 7g.269gb, i.e. ~268 GiB
+HBM_BW = 8.0e12        # bytes/s per GPU (memory table)
+MSMF = {&quot;bf16&quot;: 1519e12, &quot;fp8&quot;: 2969e12, &quot;nvfp4&quot;: 7434e12}   # measured sustained matmul FLOP/s
+ALPHA = 23.5e-6        # s per small all-reduce: measured on 8x B200 (Internals I). B300 not measured.
+UTIL = 0.90            # vLLM's default gpu_memory_utilization
+BYTES_W = {&quot;bf16&quot;: 2.0, &quot;fp8&quot;: 1.0, &quot;nvfp4&quot;: 4.5 / 8}   # NVFP4: 4-bit value + one FP8 scale per 16 values
+BYTES_KV = {&quot;bf16&quot;: 2, &quot;fp8&quot;: 1, &quot;nvfp4&quot;: 1}            # BF16 KV with BF16 weights, FP8 KV otherwise
+
+# N: total params; N16: params left in BF16 (embeddings, lm_head); Nact: params per token;
+# Nexp: routed-expert params; E, k: experts and experts per token; L: layers;
+# kv: KV elements per token per layer (2 * kv_heads * head_dim, or 576 for DeepSeek's MLA latent);
+# nkv: KV heads (TP above this replicates KV); af: attention FLOPs per decoded token per context token per layer;
+# lin: sum of (in + out) dims of the 7 linear layers per block, for LoRA sizing (0: not used with LoRA here)
+MODELS = {
+    &quot;qwen-1.5b&quot;:   dict(N=1.54e9, N16=0.233e9, Nact=1.54e9, Nexp=0, E=1, k=1, L=28, kv=2*2*128, nkv=2, af=4*12*128, lin=41216),
+    &quot;qwen-3b&quot;:     dict(N=3.09e9, N16=0.311e9, Nact=3.09e9, Nexp=0, E=1, k=1, L=36, kv=2*2*128, nkv=2, af=4*16*128, lin=51968),
+    &quot;llama-8b&quot;:    dict(N=8.03e9, N16=1.051e9, Nact=8.03e9, Nexp=0, E=1, k=1, L=32, kv=2*8*128, nkv=8, af=4*32*128, lin=81920),
+    &quot;llama-70b&quot;:   dict(N=70.55e9, N16=2.101e9, Nact=70.55e9, Nexp=0, E=1, k=1, L=80, kv=2*8*128, nkv=8, af=4*64*128, lin=161792),
+    &quot;glm-air-106b&quot;: dict(N=106e9, N16=1.241e9, Nact=12e9, Nexp=99.65e9, E=128, k=8, L=46, kv=2*8*128, nkv=8, af=4*96*128, lin=0),
+    &quot;dsv3-671b&quot;:   dict(N=671e9, N16=1.853e9, Nact=37e9, Nexp=653.9e9, E=256, k=8, L=61, kv=576, nkv=None, af=2*128*1088, lin=0),
+}
+
+def weights_per_gpu(m, dt, P):                       # bytes
+    return ((m[&quot;N&quot;] - m[&quot;N16&quot;]) * BYTES_W[dt] + m[&quot;N16&quot;] * 2) / P
+
+def kv_per_token_per_gpu(m, dt, P):                  # bytes of KV one token costs on each GPU of the replica
+    total = m[&quot;L&quot;] * m[&quot;kv&quot;] * BYTES_KV[dt]
+    if m[&quot;nkv&quot;] is None:                             # MLA with data-parallel attention: each rank holds its own seqs
+        return total / P
+    return total / min(P, m[&quot;nkv&quot;])                  # TP shards KV heads; past nkv ranks the KV is replicated
+
+def kv_tokens(m, dt, P, hbm=HBM, extra=0.0):         # tokens of KV the replica can hold; extra = other bytes/GPU
+    budget = hbm * UTIL - weights_per_gpu(m, dt, P) - extra
+    return max(0.0, budget) / kv_per_token_per_gpu(m, dt, P)
+
+def step_time(m, dt, P, B, T, bw=1.0, fl=1.0):      # one decode step, B seqs, T tokens of context each
+    # bw, fl: fraction of the GPU's HBM bandwidth and FLOPs the replica gets (1.0, or a MIG slice)
+    touched = m[&quot;E&quot;] * (1 - (1 - m[&quot;k&quot;] / m[&quot;E&quot;]) ** B) / m[&quot;E&quot;] if m[&quot;Nexp&quot;] else 0.0
+    wbytes = ((m[&quot;N&quot;] - m[&quot;Nexp&quot;] - m[&quot;N16&quot;]) * BYTES_W[dt] + m[&quot;N16&quot;] * 2 + m[&quot;Nexp&quot;] * touched * BYTES_W[dt]) / P
+    t_mem = (wbytes + B * T * kv_per_token_per_gpu(m, dt, P)) / (HBM_BW * bw)
+    t_cmp = (2 * m[&quot;Nact&quot;] * B + m[&quot;L&quot;] * m[&quot;af&quot;] * T * B) / (P * MSMF[dt] * fl)
+    return max(t_mem, t_cmp) + (2 * m[&quot;L&quot;] * ALPHA if P &gt; 1 else 0.0)
+
+def prefill_tok_s(m, dt, P, T, fl=1.0):              # compute-bound prefill, average context T/2
+    return P * MSMF[dt] * fl / (2 * m[&quot;Nact&quot;] + m[&quot;L&quot;] * m[&quot;af&quot;] * T / 2)
+
+def smallest_tp(m, dt, min_tokens=128_000):
+    for P in (1, 2, 4, 8, 16):
+        if kv_tokens(m, dt, P) &gt;= min_tokens:
+            return P
+    return None
+
+if __name__ == &quot;__main__&quot;:
+    T = 8192
+    print(f&quot;B300: {HBM/1e9:.0f} GB, {UTIL:.0%} usable = {HBM*UTIL/1e9:.0f} GB/GPU, {HBM_BW/1e12:.0f} TB/s; &quot;
+          f&quot;node = 8 GPUs = {8*HBM*UTIL/1e9:.0f} GB usable&quot;)
+    print(f&quot;{'model':13s} {'dtype':5s} {'weights':&gt;8s} {'TP':&gt;3s} {'W/GPU':&gt;6s} {'KV/GPU':&gt;6s} {'KV tok':&gt;7s} &quot;
+          f&quot;{'@8k':&gt;5s} {'@32k':&gt;5s} {'B':&gt;4s} {'TPOT':&gt;6s} {'dec tok/s/GPU':&gt;13s} {'pre tok/s/GPU':&gt;13s}&quot;)
+    for name, m in MODELS.items():
+        if name.startswith(&quot;qwen&quot;):
+            continue
+        for dt in (&quot;bf16&quot;, &quot;fp8&quot;, &quot;nvfp4&quot;):
+            P = smallest_tp(m, dt)
+            wtot = weights_per_gpu(m, dt, 1) / 1e9
+            if P is None:
+                print(f&quot;{name:13s} {dt:5s} {wtot:7.0f}G  does not fit on 16 GPUs&quot;); continue
+            tok = kv_tokens(m, dt, P)
+            B = int(min(tok / T, 256))
+            st = step_time(m, dt, P, B, T)
+            print(f&quot;{name:13s} {dt:5s} {wtot:7.0f}G {P:3d} {weights_per_gpu(m, dt, P)/1e9:5.0f}G &quot;
+                  f&quot;{(HBM*UTIL - weights_per_gpu(m, dt, P))/1e9:5.0f}G {tok/1e6:6.2f}M {tok/8192:5.0f} {tok/32768:5.0f} &quot;
+                  f&quot;{B:4d} {st*1e3:5.1f}ms {B/st/P:13,.0f} {prefill_tok_s(m, dt, P, T)/P:13,.0f}&quot;)
+    # the same 70B on more GPUs than it needs: KV room grows, but so does the all-reduce floor
+    m = MODELS[&quot;llama-70b&quot;]
+    print(&quot;\nllama-70b fp8, B=64 at 8k context, by TP degree&quot;)
+    for P in (1, 2, 4, 8):
+        st = step_time(m, &quot;fp8&quot;, P, 64, T)
+        print(f&quot;  TP{P}: KV {kv_tokens(m, 'fp8', P)/1e6:5.2f}M tok, step {st*1e3:5.2f} ms &quot;
+              f&quot;(all-reduce floor {2*m['L']*ALPHA*1e3 if P &gt; 1 else 0:.2f} ms), {64/st/P:6,.0f} tok/s/GPU&quot;)
+    assert smallest_tp(MODELS[&quot;llama-8b&quot;], &quot;bf16&quot;) == 1 and smallest_tp(MODELS[&quot;dsv3-671b&quot;], &quot;bf16&quot;) == 8
+</code></pre>
+<pre><code class="language-console">$ python3 capacity.py
+B300: 288 GB, 90% usable = 259 GB/GPU, 8 TB/s; node = 8 GPUs = 2074 GB usable
+model         dtype  weights  TP  W/GPU KV/GPU  KV tok   @8k  @32k    B   TPOT dec tok/s/GPU pre tok/s/GPU
+llama-8b      bf16       16G   1    16G   243G   1.86M   226    57  226  32.3ms         6,988        83,427
+llama-8b      fp8         9G   1     9G   250G   3.82M   466   116  256  18.3ms        13,978       163,065
+llama-8b      nvfp4       6G   1     6G   253G   3.86M   472   118  256  17.9ms        14,275       408,294
+llama-70b     bf16      141G   1   141G   118G   0.36M    44    11   43  32.1ms         1,341        10,004
+llama-70b     fp8        73G   1    73G   187G   1.14M   139    35  138  32.2ms         4,281        19,554
+llama-70b     nvfp4      43G   1    43G   216G   1.32M   161    40  161  32.3ms         4,977        48,960
+glm-air-106b  bf16      212G   1   212G    47G   0.25M    31     8   30  28.7ms         1,046        45,669
+glm-air-106b  fp8       107G   1   107G   152G   1.61M   197    49  196  32.3ms         6,066        89,264
+glm-air-106b  nvfp4      61G   1    61G   198G   2.10M   256    64  256  32.4ms         7,908       223,505
+dsv3-671b     bf16     1342G   8   168G    91G  10.41M  1271   318  256  26.1ms         1,225        10,579
+dsv3-671b     fp8       673G   4   168G    91G  10.36M  1264   316  256  26.2ms         2,444        20,677
+dsv3-671b     nvfp4     380G   2   190G    69G   3.94M   480   120  256  31.2ms         4,100        51,772
+
+llama-70b fp8, B=64 at 8k context, by TP degree
+  TP1: KV  1.14M tok, step 19.82 ms (all-reduce floor 0.00 ms),  3,229 tok/s/GPU
+  TP2: KV  2.72M tok, step 13.67 ms (all-reduce floor 3.76 ms),  2,341 tok/s/GPU
+  TP4: KV  5.88M tok, step  8.71 ms (all-reduce floor 3.76 ms),  1,836 tok/s/GPU
+  TP8: KV 12.21M tok, step  6.24 ms (all-reduce floor 3.76 ms),  1,283 tok/s/GPU
+</code></pre>
+<p>Columns: <code>weights</code> is the whole model; <code>TP</code> the smallest tensor-parallel degree that leaves 128k tokens of KV; <code>W/GPU</code> and <code>KV/GPU</code> the per-GPU split of the 259 GB; <code>KV tok</code> the tokens of KV the replica holds; <code>@8k</code> and <code>@32k</code> how many full-length sequences that is; <code>B</code> the batch used for the rate (KV-limited at 8k, capped at 256); <code>TPOT</code> the bound on time per output token at that batch; the last two columns are bounds per GPU.</p>
+<p>What this says about the hardware the company leased:</p>
+<ul>
+<li><strong>A 70B dense model in BF16 fits on one GPU.</strong> 141 GB of weights leaves 118 GB of KV, 44 sequences of 8k. On an 80 GB H100 the same model needs TP4 for weights alone. On B300 the question for a 70B model is never whether it fits but how much KV you want: FP8 gives 1.14M tokens on one GPU, 3.2x the BF16 figure, because it halves both the weights and every token of KV.</li>
+<li><strong>The ~100B MoE fits on one GPU in FP8</strong> (107 GB) and is barely usable in BF16 (47 GB of KV, 31 sequences of 8k). GLM-4.5-Air in NVFP4 on one B300 holds 2.1M tokens of KV.</li>
+<li><strong>The 671B MoE takes half a node in FP8.</strong> 673 GB on 4 GPUs, 168 GB each. In BF16 it takes a whole node; in NVFP4, two GPUs. A customer who asks for DeepSeek-V3 is asking for a quarter of the fleet in FP8 per replica, or half the fleet for two replicas on different nodes. <a href="#3-packing-many-customers-lora-first">Section 3</a> comes back to that.</li>
+<li><strong>Replicas beat bigger TP on throughput per GPU</strong>, as <a href="../inference/serving-efficiently.html#tp-vs-dp-vs-ep-the-layout-per-model-size">Serving Efficiently</a> argued for H100s. The second table makes it concrete: for the 70B FP8 model at batch 64, TP1 gets 3,229 tokens/s per GPU and TP8 gets 1,283. TP8's step is three times faster (6.24 vs 19.82 ms), but 3.76 ms of it is the all-reduce floor (<span class="math inline"><span class="math-inline">2L \times 23.5\ \mu\text{s} = 160 \times 23.5\ \mu\text{s}</span></span>), and it uses eight times the GPUs. On B300, TP is a latency tool, and a KV-capacity tool for long contexts, not a throughput tool.</li>
+<li><strong>NVFP4 barely moves decode for dense models at this batch and context.</strong> 4,977 vs 4,281 tokens/s per GPU for the 70B model: at 8k context, the KV reads dominate the step, and NVFP4 shrinks only the weights. It moves prefill a lot (48,960 vs 19,554 tokens/s per GPU), because prefill is compute-bound and B300's FP4 MSMF is 2.5x its FP8 MSMF. NVFP4 KV, which the Prime Intellect result in the <a href="../inference/serving-efficiently.html#tuning-checklist-for-a-leased-fleet">tuning checklist</a> used, would be the lever for decode.</li>
+</ul>
+<h3 id="kv-room-and-concurrency-at-typical-contexts">KV room and concurrency at typical contexts</h3>
+<p>The <code>@8k</code> and <code>@32k</code> columns are the ceiling on concurrent full-length sequences per replica. Agents and coding assistants run long contexts, so it is worth reading the 32k column as the planning number. A 70B FP8 replica holds 35 sequences of 32k on one GPU. That is the one place where TP2 makes sense for a 70B model on B300: 2.72M tokens of KV instead of 1.14M, 2.4x more (each GPU holds half the weights and half the KV heads), at 2,341 rather than 3,229 tokens/s per GPU. If a customer's sessions are KV-bound, <a href="../inference/serving-efficiently.html#kv-capacity-is-the-bottleneck-for-agentic-workloads">KV capacity is the bottleneck</a> and TP2 can win on goodput despite losing on the roofline. The planner below does the trade-off per deployment, from that deployment's context length.</p>
+<h3 id="rough-tokens-per-second">Rough tokens per second</h3>
+<p>The rates are bounds. <a href="../inference/arithmetic.html#what-the-bounds-leave-out">What the bounds leave out</a> lists why a real engine reaches less: kernel launch gaps, achieved HBM bandwidth below spec, host scheduling, prefill interference. It also says what &quot;good&quot; is: above about 70% of the HBM roofline for decode. The planner below assumes 50%, a conservative number for a team that hasn't tuned yet. Replace it with your measured fraction as soon as you have one (<a href="../inference/arithmetic.html#what-the-bounds-leave-out">achieved.py</a> backs it out of a measured TPOT).</p>
+<p>With that derate, a rough fleet-wide figure: 16 GPUs serving Llama-3.3-70B in FP8 at batch 64, TP1, give about <span class="math inline"><span class="math-inline">16 \times 3{,}229 \times 0.5 \approx 26{,}000</span></span> output tokens/s, or 93 million output tokens an hour if they ran flat out. The same 16 GPUs serving the 8B model in FP8 at batch 256 give about <span class="math inline"><span class="math-inline">16 \times 13{,}978 \times 0.5 \approx 112{,}000</span></span> tokens/s. Real traffic isn't flat, and some of the fleet must be headroom, which is what the planner works out.</p>
+<h3 id="a-placement-planner">A placement planner</h3>
+<p>The planner takes a list of customer deployments with their peak traffic and latency targets and proposes a placement on 2 nodes × 8 GPUs. For each deployment it tries every shape (MIG slices for models under 10B parameters, then TP1, TP2, TP4 and TP8 inside one node) and keeps the one that needs the fewest GPUs. For a shape it:</p>
+<ol>
+<li>Computes KV room after weights and resident LoRA adapters, and requires room for at least four full-context sequences.</li>
+<li>Finds the largest batch whose decode step meets the deployment's TPOT target, the <a href="../inference/serving-efficiently.html#the-batch-knobs-max_num_seqs-max_num_batched_tokens-and-the-chunked-prefill-budget">knob a real engine sets with <code>max_num_seqs</code></a>.</li>
+<li>Derives the replica's output rate (roofline × 50%, × 90% if it carries LoRA adapters), and its prefill rate.</li>
+<li>Adds decode time and uncached prefill time at peak to get how busy one replica would be, and sizes replicas to stay at or below 70% busy. That 30% headroom absorbs bursts and the queueing that <a href="../inference/arithmetic.html#littles-law">Little's law</a> predicts near saturation.</li>
+</ol>
+<p>LoRA customers on the same base are one deployment (a <strong>LoRA pool</strong>) with the sum of their traffic. The 90% factor is Fireworks' published number for multi-LoRA throughput, which can &quot;approach 90% of base model performance&quot; (<a href="https://fireworks.ai/blog/multi-lora">Fireworks</a>). Adapters are sized as in <a href="../inference/serving-engine-internals.html#multi-lora-serving">Internals II</a>, at rank 64 with 16 resident per replica. That memory comes out of the KV budget.</p>
+<p>Placement spreads each deployment's replicas over both nodes, so a deployment with two or more replicas survives a node failure, and reports which deployments would lose every replica if each node died. MIG slices are packed onto shared GPUs first-fit, with replica <span class="math inline"><span class="math-inline">j</span></span> of a deployment going to node <span class="math inline"><span class="math-inline">j \bmod 2</span></span>.</p>
+<pre><code class="language-python"># planner.py - propose a placement of customer models on 2 nodes x 8 B300, and report headroom.
+#   python3 planner.py           (imports capacity.py from the same directory)
+# Rates are roofline bounds from capacity.py times EFF. Replace EFF with your measured fraction.
+import math, sys
+from capacity import MODELS, HBM, kv_tokens, step_time, prefill_tok_s, weights_per_gpu
+
+NODES, GPUS = 2, 8
+EFF = 0.5            # fraction of the roofline a real engine reaches (assumption; measure it, Internals I)
+TARGET = 0.7         # plan replicas to run at most 70% busy at peak
+LORA_EFF = 0.9       # multi-LoRA throughput vs base (&quot;approach 90%&quot;, Fireworks)
+MAX_LORAS, LORA_RANK = 16, 64   # adapters resident per replica, and the rank the kernels are sized for
+GiB = 2**30
+MIG = [(&quot;1g.34gb&quot;, 1, 1, 34 * GiB), (&quot;2g.67gb&quot;, 2, 2, 67 * GiB), (&quot;3g.135gb&quot;, 3, 4, 135 * GiB)]
+#      name, compute sevenths, memory eighths, bytes   (B300 288GB profiles, NVIDIA MIG user guide)
+
+def lora_bytes(m, r=LORA_RANK):                      # rank-r adapter on all 7 linear layers, BF16
+    return m[&quot;L&quot;] * r * m[&quot;lin&quot;] * 2
+
+def shapes(d):
+    &quot;&quot;&quot;Candidate replica shapes: MIG slices first, then whole-GPU TP groups inside one node.&quot;&quot;&quot;
+    m = MODELS[d[&quot;model&quot;]]
+    extra = MAX_LORAS * lora_bytes(m) if d[&quot;adapters&quot;] else 0.0
+    for name, c7, m8, mem in MIG if m[&quot;N&quot;] &lt; 10e9 else []:   # MIG only for small models; bw ~ memory share,
+                                                             # FLOPs ~ compute share (assumed)
+        yield dict(kind=&quot;mig&quot;, name=name, P=1, gpus=max(c7 / 7, m8 / 8), c7=c7, m8=m8, hbm=mem, bw=m8 / 8, fl=c7 / 7, extra=extra)
+    for P in (1, 2, 4, 8):
+        yield dict(kind=&quot;tp&quot;, name=f&quot;TP{P}&quot;, P=P, gpus=P, hbm=HBM, bw=1.0, fl=1.0, extra=extra / P)
+
+def size(d, s):
+    &quot;&quot;&quot;Replicas of shape s that carry deployment d's peak at &lt;= TARGET busy, or None if it can't.&quot;&quot;&quot;
+    m, dt, T = MODELS[d[&quot;model&quot;]], d[&quot;dtype&quot;], d[&quot;ctx&quot;]
+    tok = kv_tokens(m, dt, s[&quot;P&quot;], hbm=s[&quot;hbm&quot;], extra=s[&quot;extra&quot;])
+    if tok &lt; 4 * T:                                  # want room for at least 4 full-context sequences
+        return None
+    B = 1
+    while B &lt; min(tok // T, 256) and step_time(m, dt, s[&quot;P&quot;], B + 1, T, s[&quot;bw&quot;], s[&quot;fl&quot;]) &lt;= d[&quot;tpot&quot;]:
+        B += 1
+    st = step_time(m, dt, s[&quot;P&quot;], B, T, s[&quot;bw&quot;], s[&quot;fl&quot;])
+    if st &gt; d[&quot;tpot&quot;]:
+        return None
+    eff = EFF * (LORA_EFF if d[&quot;adapters&quot;] else 1.0)
+    dec = eff * B / st                               # output tok/s per replica
+    pre = eff * prefill_tok_s(m, dt, s[&quot;P&quot;], T, s[&quot;fl&quot;])
+    busy = d[&quot;out&quot;] / dec + d[&quot;out&quot;] * d[&quot;in_per_out&quot;] * (1 - d[&quot;hit&quot;]) / pre   # replica-seconds per second
+    n = max(d.get(&quot;min_rep&quot;, 1), math.ceil(busy / TARGET))
+    return dict(shape=s, n=n, B=B, step=st, busy=busy, dec=dec, kv=tok)
+
+def plan(deploys):
+    picks = []
+    for d in deploys:
+        best = min((r for s in shapes(d) if (r := size(d, s))), key=lambda r: (r[&quot;n&quot;] * r[&quot;shape&quot;][&quot;gpus&quot;], r[&quot;shape&quot;][&quot;P&quot;], r[&quot;shape&quot;][&quot;kind&quot;] == &quot;mig&quot;), default=None)
+        if best is None:
+            sys.exit(f&quot;{d['name']}: no shape meets TPOT {d['tpot']*1e3:.0f} ms&quot;)
+        picks.append((d, best))
+    # pack MIG slices onto shared GPUs, first fit on compute sevenths and memory eighths;
+    # replica j of a deployment goes to a MIG GPU on node j % NODES, so replicas don't share a node
+    mig_gpus = []                                    # each: [node, used sevenths, used eighths, [labels]]
+    for d, r in picks:
+        if r[&quot;shape&quot;][&quot;kind&quot;] != &quot;mig&quot;: continue
+        for j in range(r[&quot;n&quot;]):
+            fits = lambda g: g[0] == j % NODES and g[1] + r[&quot;shape&quot;][&quot;c7&quot;] &lt;= 7 and g[2] + r[&quot;shape&quot;][&quot;m8&quot;] &lt;= 8
+            g = next((g for g in mig_gpus if fits(g)), None)
+            if g is None:
+                g = [j % NODES, 0, 0, []]; mig_gpus.append(g)
+            g[1] += r[&quot;shape&quot;][&quot;c7&quot;]; g[2] += r[&quot;shape&quot;][&quot;m8&quot;]; g[3].append(f&quot;{d['name']}:{r['shape']['name']}&quot;)
+    # MIG GPUs go to their node; TP groups (largest first) to the node holding fewest of their replicas
+    nodes = [[] for _ in range(NODES)]               # each: list of (label, gpus)
+    free = lambda i: GPUS - sum(g for _, g in nodes[i])
+    for g in mig_gpus:
+        if free(g[0]) &lt; 1:
+            return picks, nodes, &quot;MIG GPU&quot;
+        nodes[g[0]].append((&quot;MIG[&quot; + &quot; &quot;.join(g[3]) + &quot;]&quot;, 1))
+    items = [(d[&quot;name&quot;], r[&quot;shape&quot;][&quot;P&quot;]) for d, r in picks if r[&quot;shape&quot;][&quot;kind&quot;] == &quot;tp&quot; for _ in range(r[&quot;n&quot;])]
+    for label, P in sorted(items, key=lambda x: -x[1]):
+        same = lambda i: sum(l == label for l, _ in nodes[i])
+        ok = [i for i in range(NODES) if free(i) &gt;= P]
+        if not ok:
+            return picks, nodes, label
+        nodes[min(ok, key=lambda i: (same(i), -free(i)))].append((label, P))
+    return picks, nodes, None
+
+def report(title, deploys):
+    print(f&quot;=== {title}&quot;)
+    picks, nodes, failed = plan(deploys)
+    print(f&quot;{'deployment':18s} {'model':12s} {'dtype':5s} {'shape':8s} {'n':&gt;2s} {'GPUs':&gt;5s} {'B':&gt;4s} {'TPOT':&gt;6s} &quot;
+          f&quot;{'tok/s/rep':&gt;9s} {'peak out':&gt;8s} {'busy@peak':&gt;9s}&quot;)
+    for d, r in picks:
+        print(f&quot;{d['name']:18s} {d['model']:12s} {d['dtype']:5s} {r['shape']['name']:8s} {r['n']:2d} &quot;
+              f&quot;{r['n']*r['shape']['gpus']:5.2f} {r['B']:4d} {r['step']*1e3:5.1f}ms {r['dec']:9,.0f} {d['out']:8,d} &quot;
+              f&quot;{r['busy']/r['n']:9.0%}&quot;)
+    need = sum(P for n in nodes for _, P in n)
+    if failed:
+        want = sum(r[&quot;n&quot;] * r[&quot;shape&quot;][&quot;gpus&quot;] for _, r in picks)
+        print(f&quot;DOES NOT FIT: needs {want:.1f} GPUs before packing losses; ran out at {failed}&quot;); return None
+    for i, n in enumerate(nodes):
+        print(f&quot;node {i}: &quot; + &quot;, &quot;.join(f&quot;{l}({P})&quot; for l, P in n) + f&quot;  | free {GPUS - sum(P for _, P in n)}&quot;)
+    print(f&quot;fleet: {need}/{NODES*GPUS} GPUs placed, {NODES*GPUS-need} free&quot;)
+    for i in range(NODES):                           # what survives if node i dies?
+        lost = [d[&quot;name&quot;] for d, r in picks if not any(any(l == d[&quot;name&quot;] or d[&quot;name&quot;] + &quot;:&quot; in l for l, _ in nodes[j]) for j in range(NODES) if j != i)]
+        print(f&quot;  lose node {i}: no replica left for {lost if lost else 'nobody'}&quot;)
+    return picks, nodes
+
+# Peak output tok/s per deployment; in_per_out = prompt tokens per output token; hit = prefix-cache hit rate
+def D(name, model, dtype, out, in_per_out, hit, ctx, tpot_ms, adapters=0, **kw):
+    return dict(name=name, model=model, dtype=dtype, out=out, in_per_out=in_per_out, hit=hit, ctx=ctx,
+                tpot=tpot_ms / 1e3, adapters=adapters, **kw)
+
+LORA_FIRST = [
+    D(&quot;8b-lora-pool&quot;, &quot;llama-8b&quot;, &quot;fp8&quot;, 6000, 6, 0.5, 8192, 40, adapters=14, min_rep=2),
+    D(&quot;70b-lora-pool&quot;, &quot;llama-70b&quot;, &quot;fp8&quot;, 2000, 8, 0.5, 16384, 50, adapters=6, min_rep=2),
+    D(&quot;70b-ft-kestrel&quot;, &quot;llama-70b&quot;, &quot;fp8&quot;, 600, 5, 0.3, 16384, 50),
+    D(&quot;glm-air-api&quot;, &quot;glm-air-106b&quot;, &quot;nvfp4&quot;, 2500, 10, 0.6, 32768, 50, min_rep=2),
+    D(&quot;3b-ft-rook&quot;, &quot;qwen-3b&quot;, &quot;bf16&quot;, 600, 20, 0.2, 4096, 30, min_rep=2),
+    D(&quot;1.5b-ft-sable&quot;, &quot;qwen-1.5b&quot;, &quot;bf16&quot;, 300, 10, 0.2, 2048, 30, min_rep=2),
+    D(&quot;1.5b-ft-wren&quot;, &quot;qwen-1.5b&quot;, &quot;bf16&quot;, 200, 10, 0.2, 2048, 30),
+]
+# the same customers if every LoRA customer had insisted on a full fine-tune (traffic split evenly)
+FULL_FT = [d for d in LORA_FIRST if not d[&quot;adapters&quot;]]
+FULL_FT += [D(f&quot;8b-ft-{i:02d}&quot;, &quot;llama-8b&quot;, &quot;fp8&quot;, 6000 // 14, 6, 0.5, 8192, 40) for i in range(14)]
+FULL_FT += [D(f&quot;70b-ft-{i:02d}&quot;, &quot;llama-70b&quot;, &quot;fp8&quot;, 2000 // 6, 8, 0.5, 16384, 50) for i in range(6)]
+
+if __name__ == &quot;__main__&quot;:
+    m = MODELS[&quot;llama-8b&quot;]
+    print(f&quot;rank-{LORA_RANK} LoRA: 8B {lora_bytes(m)/1e6:.0f} MB, 70B {lora_bytes(MODELS['llama-70b'])/1e6:.0f} MB; &quot;
+          f&quot;{MAX_LORAS} resident cost {MAX_LORAS*lora_bytes(MODELS['llama-70b'])/1e9:.1f} GB on a 70B replica&quot;)
+    a = report(&quot;LoRA-first: fine-tunes as adapters on shared bases&quot;, LORA_FIRST)
+    print()
+    b = report(&quot;Full fine-tunes for everyone&quot;, FULL_FT)
+    assert a is not None and b is None               # the point of the section
+    assert abs(lora_bytes(m, 16) / 2 - 41.9e6) &lt; 0.1e6   # matches Internals II's 41.9M-param rank-16 adapter
+</code></pre>
+<p>The customer list in <code>LORA_FIRST</code> is the company's book of business at month three: 14 startups with LoRA fine-tunes of Llama-3.1-8B, 6 with LoRA fine-tunes of Llama-3.3-70B, one (&quot;kestrel&quot;) with a full fine-tune of the 70B model, a shared GLM-4.5-Air API, and three small full fine-tunes of Qwen2.5 models used as classifiers and routers. The traffic numbers are peak output tokens per second, made up for the example; the ratios of prompt to output tokens and the prefix-cache hit rates are the kind of thing <a href="../inference/serving-efficiently.html#what-to-compute-from-a-trace">trace_stats.py</a> measures from real logs.</p>
+<pre><code class="language-console">$ python3 planner.py
+rank-64 LoRA: 8B 336 MB, 70B 1657 MB; 16 resident cost 26.5 GB on a 70B replica
+=== LoRA-first: fine-tunes as adapters on shared bases
+deployment         model        dtype shape     n  GPUs    B   TPOT tok/s/rep peak out busy@peak
+8b-lora-pool       llama-8b     fp8   TP1       2  2.00  256  18.3ms     6,290    6,000       60%
+70b-lora-pool      llama-70b    fp8   TP1       5  5.00   59  28.9ms       919    2,000       63%
+70b-ft-kestrel     llama-70b    fp8   TP1       2  2.00   69  32.2ms     1,070      600       40%
+glm-air-api        glm-air-106b nvfp4 TP1       4  4.00   64  32.3ms       992    2,500       67%
+3b-ft-rook         qwen-3b      bf16  1g.34gb   2  0.29  157  29.9ms     2,627      600       41%
+1.5b-ft-sable      qwen-1.5b    bf16  1g.34gb   2  0.29  256  18.1ms     7,067      300        6%
+1.5b-ft-wren       qwen-1.5b    bf16  1g.34gb   1  0.14  256  18.1ms     7,067      200        8%
+node 0: MIG[3b-ft-rook:1g.34gb 1.5b-ft-sable:1g.34gb 1.5b-ft-wren:1g.34gb](1), 8b-lora-pool(1), 70b-lora-pool(1), 70b-lora-pool(1), 70b-lora-pool(1), 70b-ft-kestrel(1), glm-air-api(1), glm-air-api(1)  | free 0
+node 1: MIG[3b-ft-rook:1g.34gb 1.5b-ft-sable:1g.34gb](1), 8b-lora-pool(1), 70b-lora-pool(1), 70b-lora-pool(1), 70b-ft-kestrel(1), glm-air-api(1), glm-air-api(1)  | free 1
+fleet: 15/16 GPUs placed, 1 free
+  lose node 0: no replica left for ['1.5b-ft-wren']
+  lose node 1: no replica left for nobody
+
+=== Full fine-tunes for everyone
+deployment         model        dtype shape     n  GPUs    B   TPOT tok/s/rep peak out busy@peak
+70b-ft-kestrel     llama-70b    fp8   TP1       2  2.00   69  32.2ms     1,070      600       40%
+glm-air-api        glm-air-106b nvfp4 TP1       4  4.00   64  32.3ms       992    2,500       67%
+3b-ft-rook         qwen-3b      bf16  1g.34gb   2  0.29  157  29.9ms     2,627      600       41%
+1.5b-ft-sable      qwen-1.5b    bf16  1g.34gb   2  0.29  256  18.1ms     7,067      300        6%
+1.5b-ft-wren       qwen-1.5b    bf16  1g.34gb   1  0.14  256  18.1ms     7,067      200        8%
+8b-ft-00           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-01           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-02           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-03           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-04           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-05           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-06           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-07           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-08           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-09           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-10           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-11           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-12           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+8b-ft-13           llama-8b     fp8   1g.34gb   2  0.29   44  32.7ms       673      428       37%
+70b-ft-00          llama-70b    fp8   TP1       1  1.00   69  32.2ms     1,070      333       46%
+70b-ft-01          llama-70b    fp8   TP1       1  1.00   69  32.2ms     1,070      333       46%
+70b-ft-02          llama-70b    fp8   TP1       1  1.00   69  32.2ms     1,070      333       46%
+70b-ft-03          llama-70b    fp8   TP1       1  1.00   69  32.2ms     1,070      333       46%
+70b-ft-04          llama-70b    fp8   TP1       1  1.00   69  32.2ms     1,070      333       46%
+70b-ft-05          llama-70b    fp8   TP1       1  1.00   69  32.2ms     1,070      333       46%
+DOES NOT FIT: needs 16.7 GPUs before packing losses; ran out at 70b-ft-04
+</code></pre>
+<p>How to read the first plan:</p>
+<ul>
+<li><strong>Everything is TP1 or smaller.</strong> With 259 GB per GPU, no deployment on this list needs tensor parallelism to fit or to meet a 50 ms TPOT target. Every replica is an independent single-GPU engine behind a router, the layout <a href="../inference/serving-efficiently.html#many-independent-replicas-vs-one-multi-node-engine">Prime Intellect found to scale linearly</a>. One consequence is a simple failure domain: one bad GPU takes out one replica, not a node's worth.</li>
+<li><strong>The 70B LoRA pool runs at batch 59, not 138.</strong> Sixteen resident rank-64 adapters cost 26.5 GB, and the 16k context halves the sequences that fit, so KV is what limits the batch. A customer who wants longer contexts on this pool moves it toward TP2 (twice the KV per replica, <a href="#kv-room-and-concurrency-at-typical-contexts">see above</a>).</li>
+<li><strong>The three small fine-tunes cost less than one GPU together.</strong> Five <code>1g.34gb</code> slices hold them on two shared GPUs, one per node. The 1.5B &quot;sable&quot; model runs at 6% busy at peak; it has two replicas because its contract says so, not because it needs the throughput.</li>
+<li><strong>The headroom is one GPU and the 30% built into each pool.</strong> 15 of 16 GPUs are placed. The busiest pool would run at 67% at peak if the traffic forecasts are right.</li>
+<li><strong>The N-1 check finds one exposure</strong>: &quot;wren&quot;, which bought the cheapest tier with one replica, is down while node 0 is. That's a contract decision, not a bug, and <a href="#7-planning-for-the-loss-of-a-node">section 7</a> puts it in the tier table. The check is only about whether <em>some</em> replica survives. How much capacity survives is a different question, also in section 7.</li>
+</ul>
+<p>The planner is deliberately crude. It ignores prefill/decode interference, it assumes a uniform context length per deployment, its MIG packing doesn't know the hardware's placement rules, and its rates are 50% of a roofline. What it gives you is the shape of the answer and the arithmetic to check a proposal against. When you have <a href="../inference/serving-efficiently.html#a-replayable-benchmark">a replayed trace</a> and measured per-replica goodput, replace <code>dec</code> and <code>pre</code> with measured numbers and keep the rest.</p>
+<h3 id="mig-slices-for-small-models">MIG slices for small models</h3>
+<p>MIG is how a 16-GPU fleet serves small models without giving each one a 288 GB GPU. A Qwen2.5-1.5B model needs about 3 GB of weights; on a whole B300 it would leave 99% of the memory as KV that its traffic never uses. A <code>1g.34gb</code> slice gives it hardware-isolated memory and compute, a seventh of the SMs and (by assumption) an eighth of the bandwidth, which the planner's table shows is still enough for about 7,000 tokens/s per slice after its 50% derate, at an 18 ms step.</p>
+<p>MIG is the right tool here for three reasons beyond packing: the <a href="../compute/gpu-software-stack.html#sharing-one-gpu-mig-and-mps">isolation is in hardware</a>, so one tenant's out-of-memory error or illegal access can't take down another's; each slice is a separate CUDA device, so each engine is an ordinary process with <code>CUDA_VISIBLE_DEVICES=MIG-&lt;uuid&gt;</code>; and slices can be sold. The costs: reconfiguring MIG needs the GPU idle (and may need a reset), so the layout is chosen at bring-up and changed rarely, and a slice can't borrow idle SMs from its neighbours the way processes under <a href="../compute/gpu-software-stack.html#sharing-one-gpu-mig-and-mps">MPS</a> can. Use MPS or plain co-location (two engines at <code>--gpu-memory-utilization 0.45</code>, as in <a href="../inference/serving-efficiently.html#multiplexing-and-swapping-whole-models">Serving Efficiently</a>) for your own cooperating processes, and MIG between tenants.</p>
+<pre><code class="language-bash"># untested. One B300 split into seven 1g.34gb slices, one small model per slice.
+sudo nvidia-smi -i 15 -mig 1                          # MIG mode on GPU 15 (GPU must be idle)
+nvidia-smi mig -i 15 -lgip                            # confirm the B300 profiles listed above
+nvidia-smi mig -i 15 -lgipp                           # valid placements, which the planner ignores
+sudo nvidia-smi mig -i 15 -cgi 1g.34gb,1g.34gb,1g.34gb -C
+nvidia-smi -L                                         # MIG device UUIDs
+CUDA_VISIBLE_DEVICES=MIG-&lt;uuid&gt; vllm serve /mnt/nvme/models/rook-3b/v7 --port 8101 --gpu-memory-utilization 0.9
+</code></pre>
+<h2 id="3-packing-many-customers-lora-first">3. Packing many customers: LoRA first</h2>
+<h3 id="shared-bases-vs-dedicated-replicas">Shared bases vs dedicated replicas</h3>
+<p>The second plan is the same customers if every one of the 20 LoRA customers had insisted on a full fine-tune: same traffic, split evenly. It doesn't fit, and the way it fails is the business lesson.</p>
+<ul>
+<li><strong>The 8B customers survive on MIG.</strong> Fourteen 8B full fine-tunes in FP8 fit in <code>1g.34gb</code> slices, two each, about 4 GPUs. Each runs at batch 44 because a 34 GB slice has room for only that much KV, and at 37% busy.</li>
+<li><strong>The 70B customers each cost a whole GPU</strong>, regardless of traffic. Six 70B full fine-tunes at 333 tokens/s each need six GPUs at 46% busy, against five GPUs at 63% busy for the LoRA pool that carries the same 2,000 tokens/s. And that's with one replica each. A customer who also wants to survive a node failure needs two, and six such customers need twelve GPUs, three quarters of the fleet.</li>
+<li><strong>The fleet stops at 16.7 GPUs of demand</strong>, before the per-customer floors for redundancy, before any headroom for growth, before any GPU is left for training.</li>
+</ul>
+<p>The mechanism is the per-deployment floor. A full fine-tune is a separate set of weights, so it needs its own replica (a slice, a GPU, or a TP group), sized for its own peak, idle in its own troughs. A LoRA adapter rides on a replica that exists anyway, costs a few hundred MB to 1.7 GB of memory, and shares a batch with every other customer on that base (<a href="../inference/serving-efficiently.html#multi-lora-many-fine-tunes-on-one-base">Serving Efficiently</a>). Prime Intellect's hosted training product runs on exactly this design, with &quot;multi-tenant LoRA deployments&quot; that allow &quot;shared hardware across runs, enabling high efficiency and per-token pricing&quot;, and says that &quot;running dedicated, fine-tuned deployments of large Mixture of Experts models per customer is infeasible and wasteful&quot; (<a href="https://www.primeintellect.ai/blog/lab">Prime Intellect</a>).</p>
+<p>The same arithmetic disposes of the 671B request from <a href="#memory-budgets-per-gpu-and-per-node">section 2</a>. A dedicated DeepSeek-V3 deployment in FP8 needs 4 GPUs per replica and two replicas to survive a node: half the fleet for one customer. On 16 GPUs the honest answer is to route that customer to a provider that serves the model per token, or to price a dedicated deployment at half the lease plus margin, on the same term as the lease.</p>
+<h3 id="the-business-consequence">The business consequence</h3>
+<p>On a fixed lease, every replica floor is a cost the company pays every hour. Translate the floors into money with the assumed $4.00 per GPU-hour:</p>
+<table>
+<thead>
+<tr>
+<th>What the customer buys</th>
+<th>GPUs it pins</th>
+<th>Lease cost per month</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>70B full fine-tune, one replica</td>
+<td>1</td>
+<td><span class="math inline"><span class="math-inline">730 \times 4.00 = \$2{,}920</span></span></td>
+</tr>
+<tr>
+<td>70B full fine-tune, two replicas (survives a node)</td>
+<td>2</td>
+<td>$5,840</td>
+</tr>
+<tr>
+<td>8B full fine-tune, two <code>1g.34gb</code> slices</td>
+<td>2/7</td>
+<td>about $830</td>
+</tr>
+<tr>
+<td>671B dedicated, FP8, two replicas</td>
+<td>8</td>
+<td>$23,360</td>
+</tr>
+<tr>
+<td>any LoRA on a pool that already exists</td>
+<td>0</td>
+<td>adapter memory, plus ~10% of the throughput it uses</td>
+</tr>
+</tbody>
+</table>
+<p>That table is a price list's floor. Three consequences for how the company sells:</p>
+<ol>
+<li><strong>Default every fine-tune to LoRA</strong>, priced per token like the base model, and make it the path of least resistance in the training product. Fireworks prices multi-LoRA serving the same as the base, &quot;Inference prices are the same as a single base model&quot;, whether you serve one LoRA or hundreds (<a href="https://fireworks.ai/blog/multi-lora">Fireworks</a>). The cost basis makes that possible: the pool's GPUs are paid for by its aggregate traffic.</li>
+<li><strong>Price full fine-tunes as dedicated capacity</strong>, per replica-month, with a minimum term that matches the lease. <a href="../platform/operating-inference.html#dedicated-vs-shared-deployments-noisy-neighbours">Operating Inference</a> makes the case: dedicated capacity sold by the hour shifts utilization risk onto the provider, and a customer who leaves after a month leaves the GPU idle for the eleven months the company still pays for.</li>
+<li><strong>Keep the number of bases small.</strong> Every distinct base model is another pool with its own floor and its own headroom. Two or three bases (an 8B, a 70B and one MoE here) are what 16 GPUs can hold with redundancy. A customer who wants LoRA on a fourth base is a full-fine-tune customer in disguise.</li>
+</ol>
+<h3 id="deciding-with-evals">Deciding with evals</h3>
+<p>&quot;LoRA when quality allows&quot; needs a test, agreed with the customer before training starts. The procedure:</p>
+<ol>
+<li><strong>The customer supplies the eval</strong>, or you build it with them: held-out items from their task, with a scoring rule they accept (written before the models are trained, so neither side tunes to it).</li>
+<li><strong>Agree a non-inferiority margin</strong>: how much worse than a full fine-tune the LoRA may be. Two points of accuracy is a common kind of number; the customer's product decides it.</li>
+<li><strong>Train both</strong> on the same data, a LoRA at a rank the pool supports and a full fine-tune, score both on the same items, and compare <em>paired</em> per-item results. Pairing matters because most items are scored the same by both models; the variance that counts is in the items where they differ.</li>
+<li><strong>Decide on the confidence interval, not the point estimate</strong>: LoRA if the upper end of the 95% interval on (full − LoRA) is below the margin, full fine-tune if the lower end is above it, otherwise more eval items.</li>
+</ol>
+<pre><code class="language-python"># lora_or_full.py - is the LoRA good enough? A paired non-inferiority test on the customer's eval set.
+#   python3 lora_or_full.py
+# The per-item scores are SIMULATED (seeded): replace them with your two models' per-item results.
+import random
+
+MARGIN = 0.02          # the customer accepts up to 2 points worse than the full fine-tune (agreed up front)
+
+def simulate(n, p_full, p_lora, rho_flip, seed):
+    &quot;&quot;&quot;Per-item 0/1 scores for both models on the same items. Most items agree; a few flip.&quot;&quot;&quot;
+    rng = random.Random(seed)
+    full = [rng.random() &lt; p_full for _ in range(n)]
+    lora = [f if rng.random() &gt; rho_flip else (rng.random() &lt; p_lora) for f in full]
+    return full, lora
+
+def paired_bootstrap(full, lora, B=10_000, seed=0):
+    rng = random.Random(seed)
+    d = [int(f) - int(l) for f, l in zip(full, lora)]            # +1: full right, LoRA wrong
+    n = len(d)
+    means = sorted(sum(d[rng.randrange(n)] for _ in range(n)) / n for _ in range(B))
+    return sum(d) / n, means[int(0.025 * B)], means[int(0.975 * B)]
+
+print(f&quot;{'eval items':&gt;10s} {'full':&gt;6s} {'LoRA':&gt;6s} {'diff':&gt;6s} {'95% CI':&gt;16s}  decision (margin {MARGIN:.0%})&quot;)
+for n, p_lora, rho, seed in ((60, 0.80, 0.25, 1), (600, 0.80, 0.25, 2), (600, 0.55, 0.5, 3), (3000, 0.80, 0.25, 4)):
+    full, lora = simulate(n, 0.82, p_lora, rho_flip=rho, seed=seed)
+    diff, lo, hi = paired_bootstrap(full, lora)
+    if hi &lt; MARGIN:
+        verdict = &quot;LoRA is non-inferior: serve it on the shared base&quot;
+    elif lo &gt; MARGIN:
+        verdict = &quot;LoRA is worse by more than the margin: full fine-tune (dedicated price)&quot;
+    else:
+        verdict = &quot;inconclusive: get more eval items before deciding&quot;
+    print(f&quot;{n:10d} {sum(full)/n:6.1%} {sum(lora)/n:6.1%} {diff:+6.1%} [{lo:+6.1%}, {hi:+6.1%}]  {verdict}&quot;)
+</code></pre>
+<pre><code class="language-console">$ python3 lora_or_full.py
+eval items   full   LoRA   diff           95% CI  decision (margin 2%)
+        60  80.0%  81.7%  -1.7% [ -8.3%,  +3.3%]  inconclusive: get more eval items before deciding
+       600  81.8%  82.2%  -0.3% [ -2.7%,  +2.0%]  inconclusive: get more eval items before deciding
+       600  83.2%  72.7% +10.5% [ +7.0%, +14.0%]  LoRA is worse by more than the margin: full fine-tune (dedicated price)
+      3000  81.6%  80.7%  +0.9% [ -0.1%,  +1.9%]  LoRA is non-inferior: serve it on the shared base
+</code></pre>
+<p>Sixty items can't decide anything at a 2-point margin: the interval is 11.6 points wide. Six hundred items nearly decide the equal-quality case; the interval's upper end lands right on the margin, so it still says &quot;inconclusive&quot;. Three thousand decide it. A clearly worse LoRA shows up with 600. Most startups arrive with fewer than a few hundred labelled examples, so the practical rule is to agree the margin and the eval size before training, and to offer to build the eval with them. When the eval can't decide, the default is LoRA: it can be upgraded to a full fine-tune later, while a dedicated replica, once sold, is hard to take back. Seeds and their meaning are in <a href="../inference/serving-hands-on.html#seeds-and-why-one-run-is-an-anecdote">Serving LLMs in Practice</a>; a real comparison should also train each variant with more than one seed.</p>
+<h2 id="4-from-a-training-checkpoint-to-a-served-model">4. From a training checkpoint to a served model</h2>
+<h3 id="the-pipeline">The pipeline</h3>
+<p>Every customer model goes through the same nine steps between &quot;training finished&quot; and &quot;serving all traffic&quot;. Each is a gate: a failure stops the pipeline and leaves the previous version serving.</p>
+<ol>
+<li><strong>Checkpoint.</strong> The training job writes a final checkpoint with its config, data hashes and git SHA (<a href="../training/fault-tolerance-and-reproducibility.html#reproducibility">reproducibility</a>).</li>
+<li><strong>Merge or keep the LoRA.</strong> Keep it as an adapter by default; merge only for customers who get a dedicated replica (below).</li>
+<li><strong>Convert</strong> to the serving format: Hugging Face safetensors with the base model's tokenizer and chat template copied verbatim, pre-sharded per rank if TP &gt; 1 (<a href="../inference/serving-hands-on.html#speeding-up-model-loading-time">pre-sharding</a>).</li>
+<li><strong>Quantize</strong> to FP8 or NVFP4, with calibration data where the scheme needs it.</li>
+<li><strong>Quality gate</strong> against the BF16 model on the customer's evals.</li>
+<li><strong>Stage weights</strong> on every serving node's NVMe, with a <code>.complete</code> marker (<a href="../platform/deploys-recovery-autoscaling.html#weights">weights</a>).</li>
+<li><strong>Rolling deploy</strong> with a canary replica and readiness gated on warmup (<a href="../platform/deploys-recovery-autoscaling.html#surge-and-unavailability-on-a-full-fleet">rolling updates on a full fleet</a>).</li>
+<li><strong>Canary prompts</strong> on the new replica, compared with golden outputs (<a href="../platform/deploys-recovery-autoscaling.html#output-quality-probes">output-quality probes</a>).</li>
+<li><strong>Rollback</strong> to the previous version, kept on NVMe (<a href="../platform/deploys-recovery-autoscaling.html#rollback">rollback</a>).</li>
+</ol>
+<h3 id="merge-or-keep-the-adapter">Merge or keep the adapter</h3>
+<p>For a LoRA customer, <em>keep the adapter</em>. Loading it is a runtime API call on a running pool (<a href="../inference/serving-efficiently.html#multi-lora-many-fine-tunes-on-one-base">runtime LoRA loading</a>), so a new version is a few hundred megabytes on disk and a load call, not a replica restart. The adapter stays in BF16 while the base is FP8 or NVFP4. Two cautions. The base the adapter was trained against is the BF16 base, and it is served on a quantized base, so the quality gate must run on the <em>quantized base plus the adapter</em>, not on BF16 alone. And the adapter's rank must fit the pool's <code>--max-lora-rank</code>, which sizes the kernels for every adapter on the replica (<a href="../inference/serving-efficiently.html#multi-lora-many-fine-tunes-on-one-base">Serving Efficiently</a>); a rank-256 adapter belongs on a different pool.</p>
+<p>For a full fine-tune or a customer who pays for a dedicated replica, <em>merge</em> (<span class="math inline"><span class="math-inline">W&#x27; = W + BA</span></span>), then quantize the merged weights. Merging removes the LoRA kernels' overhead (the 10% in the planner). The catch is that quantization error is now applied to the fine-tuned weights, not the base. Fireworks reports that when &quot;LoRA is merged into the base model&quot; and then quantized, &quot;the quality is significantly degraded&quot; without quantization-aware training (<a href="https://fireworks.ai/blog/fireattention-v4-fp4-b200">FireAttention V4</a>). That is the case the gate below exists for.</p>
+<pre><code class="language-python"># untested. Merge a LoRA into its base with PEFT, in BF16, on CPU or one GPU.
+import torch
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+base = AutoModelForCausalLM.from_pretrained(&quot;/models/llama-3.3-70b-instruct&quot;, dtype=torch.bfloat16)
+merged = PeftModel.from_pretrained(base, &quot;/ckpt/kestrel/lora-final&quot;).merge_and_unload()
+merged.save_pretrained(&quot;/ckpt/kestrel/merged-bf16&quot;, max_shard_size=&quot;5GB&quot;)
+AutoTokenizer.from_pretrained(&quot;/models/llama-3.3-70b-instruct&quot;).save_pretrained(&quot;/ckpt/kestrel/merged-bf16&quot;)
+</code></pre>
+<h3 id="convert-and-quantize">Convert and quantize</h3>
+<p>The two formats that matter on B300 need different amounts of calibration:</p>
+<ul>
+<li><strong>FP8 with dynamic activation scales</strong> needs none. Weights get per-channel scales computed from the weights themselves; activations are scaled per token at runtime. llm-compressor's FP8 example is <code>QuantizationModifier(targets=&quot;Linear&quot;, scheme=&quot;FP8_DYNAMIC&quot;, ignore=[&quot;lm_head&quot;])</code> with <code>oneshot(model=model, recipe=recipe)</code> and no dataset (<a href="https://github.com/vllm-project/llm-compressor/blob/main/examples/quantization_w8a8_fp8/llama3_example.py">example</a>). The scaling choices are explained in <a href="../inference/arithmetic.html#fp8-e4m3-and-its-scaling-granularities">FP8 E4M3 scaling granularities</a>.</li>
+<li><strong>NVFP4 (W4A4)</strong> quantizes activations to FP4 too, and needs calibration data to set the activations' global scale. llm-compressor's NVFP4 example uses <code>scheme=&quot;NVFP4&quot;</code>, <code>ignore=[&quot;lm_head&quot;]</code>, and a <code>oneshot</code> call with a dataset, <code>max_seq_length=2048</code> and <code>num_calibration_samples=20</code> (<a href="https://github.com/vllm-project/llm-compressor/blob/main/examples/quantization_w4a4_fp4/llama3_example.py">example</a>). The format itself is in <a href="../inference/arithmetic.html#nvfp4-and-mxfp4">NVFP4 and MXFP4</a>.</li>
+</ul>
+<p>Calibration data should be the customer's traffic, not a generic chat set. A model fine-tuned on legal contracts has activation ranges a chat dataset never exercises. Use a sample of the customer's training prompts (they already gave you those) or of logged production prompts if the contract allows. Never use the eval set: the gate must be measured on data the quantizer didn't see.</p>
+<pre><code class="language-python"># untested. NVFP4 with calibration on the customer's own prompts (llm-compressor oneshot API).
+from datasets import load_dataset
+from llmcompressor import oneshot
+from llmcompressor.modifiers.quantization import QuantizationModifier
+from transformers import AutoModelForCausalLM, AutoTokenizer
+src = &quot;/ckpt/kestrel/merged-bf16&quot;
+model, tok = AutoModelForCausalLM.from_pretrained(src), AutoTokenizer.from_pretrained(src)
+calib = load_dataset(&quot;json&quot;, data_files=&quot;/data/kestrel/train_prompts.jsonl&quot;, split=&quot;train&quot;).shuffle(seed=0).select(range(512))
+oneshot(model=model, dataset=calib, recipe=QuantizationModifier(targets=&quot;Linear&quot;, scheme=&quot;NVFP4&quot;, ignore=[&quot;lm_head&quot;]),
+        max_seq_length=2048, num_calibration_samples=512)
+model.save_pretrained(&quot;/ckpt/kestrel/nvfp4&quot;, save_compressed=True); tok.save_pretrained(&quot;/ckpt/kestrel/nvfp4&quot;)
+</code></pre>
+<p>The output is a compressed-tensors checkpoint that vLLM detects and loads without a <code>--quantization</code> flag. A 70B merge-and-quantize should fit on one B300, since 141 GB of BF16 weights fit (untested), which matters for <a href="#5-training-and-serving-on-the-same-16-gpus">section 5</a>: it is a job that takes one GPU off serving for a while, not a node.</p>
+<h3 id="the-quality-gate">The quality gate</h3>
+<p>The gate compares the candidate (quantized, possibly merged, possibly with an adapter) with the BF16 reference on the customer's eval set, and passes only if all of these hold:</p>
+<ul>
+<li><strong>Distribution distance on the reference answers.</strong> Teacher-force the reference answers through both models and compute, per answer token, the KL divergence from reference to candidate and whether their top-1 tokens agree. This is the most sensitive signal and needs no generation. It needs logprobs, which is why it runs offline on your own models: Fireworks notes that it fell back to MMLU for cross-engine comparisons because &quot;not all LLM implementations return log probabilities&quot; (<a href="https://fireworks.ai/blog/fireattention-v4-fp4-b200">FireAttention V4</a>).</li>
+<li><strong>The customer's task metric</strong>, under the same decoding the product uses (greedy here), on the same items, with paired flips counted: how many items went right→wrong, and how many wrong→right.</li>
+<li><strong>Thresholds written down before looking at candidates.</strong> NVIDIA reports &quot;1% or less accuracy degradation&quot; from FP8 to NVFP4 on DeepSeek-R1-0528 (<a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/">NVIDIA</a>); that is a vendor number on a 671B model, and a customer's 8B fine-tune can do much worse. Set the thresholds per customer, in the contract if their product depends on it.</li>
+</ul>
+<p>The script below is the gate, run on Qwen2.5-0.5B-Instruct on CPU, with three candidates: FP8 (per-channel E4M3), NVFP4 (16-element blocks, E4M3 block scales, a per-tensor FP32 scale) and a deliberately broken INT4 with one scale per tensor. The candidates are <strong>simulated</strong>: weights are rounded to each format's grid and stored back in fp32, so the script measures the effect of weight rounding only. A real W8A8 or W4A4 engine also quantizes activations and uses different kernels, so its numbers will differ. The gate logic is unchanged when you feed it a real engine's logprobs.</p>
+<pre><code class="language-python"># quality_gate.py - gate a quantized candidate against the BF16 reference on a customer's eval set.
+#   /tmp/absorb-venv/bin/python quality_gate.py
+# Model: Qwen/Qwen2.5-0.5B-Instruct from the local Hugging Face cache, on CPU.
+# The candidates are SIMULATED quantizations (weights rounded to FP8 / NVFP4 grids and stored back in
+# fp32), not real low-precision kernels: they reproduce the weight rounding error, not the activation
+# quantization or the kernels. The gate logic is the same for a real engine's outputs.
+import math, time, torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+torch.manual_seed(0)
+MODEL = &quot;Qwen/Qwen2.5-0.5B-Instruct&quot;
+# Gate thresholds, written down BEFORE looking at candidates. Per-token numbers are on the reference answers.
+MAX_KL = 0.05          # mean KL(ref || cand), nats per answer token
+MIN_TOP1 = 0.90        # fraction of answer positions where both models' argmax agree
+MAX_ACC_DROP = 0.025   # task accuracy may drop by at most 2.5 points ...
+MAX_NET_FLIPS = 1      # ... and at most 1 more item may go right-&gt;wrong than wrong-&gt;right
+
+EVAL = [  # (question, accepted answer) - stands in for the customer's held-out eval set
+    (&quot;What is 7 times 8?&quot;, &quot;56&quot;), (&quot;What is 12 plus 15?&quot;, &quot;27&quot;), (&quot;What is 100 minus 37?&quot;, &quot;63&quot;),
+    (&quot;What is 9 times 9?&quot;, &quot;81&quot;), (&quot;What is 144 divided by 12?&quot;, &quot;12&quot;), (&quot;What is 25 plus 17?&quot;, &quot;42&quot;),
+    (&quot;What is 6 times 7?&quot;, &quot;42&quot;), (&quot;What is 50 minus 18?&quot;, &quot;32&quot;), (&quot;What is 11 times 11?&quot;, &quot;121&quot;),
+    (&quot;What is 90 divided by 3?&quot;, &quot;30&quot;), (&quot;What is 8 times 12?&quot;, &quot;96&quot;), (&quot;What is 33 plus 44?&quot;, &quot;77&quot;),
+    (&quot;What is the capital of France?&quot;, &quot;Paris&quot;), (&quot;What is the capital of Japan?&quot;, &quot;Tokyo&quot;),
+    (&quot;What is the capital of Italy?&quot;, &quot;Rome&quot;), (&quot;What is the capital of Germany?&quot;, &quot;Berlin&quot;),
+    (&quot;What is the capital of Spain?&quot;, &quot;Madrid&quot;), (&quot;What is the capital of Canada?&quot;, &quot;Ottawa&quot;),
+    (&quot;What is the capital of Australia?&quot;, &quot;Canberra&quot;), (&quot;What is the capital of Egypt?&quot;, &quot;Cairo&quot;),
+    (&quot;What is the capital of Kenya?&quot;, &quot;Nairobi&quot;), (&quot;What is the capital of Peru?&quot;, &quot;Lima&quot;),
+    (&quot;What is the capital of Norway?&quot;, &quot;Oslo&quot;), (&quot;What is the capital of Turkey?&quot;, &quot;Ankara&quot;),
+    (&quot;What is the chemical symbol for gold?&quot;, &quot;Au&quot;), (&quot;What is the chemical symbol for iron?&quot;, &quot;Fe&quot;),
+    (&quot;What is the chemical symbol for sodium?&quot;, &quot;Na&quot;), (&quot;What is the chemical symbol for oxygen?&quot;, &quot;O&quot;),
+    (&quot;How many days are in a leap year?&quot;, &quot;366&quot;), (&quot;How many legs does a spider have?&quot;, &quot;8&quot;),
+    (&quot;How many continents are there?&quot;, &quot;7&quot;), (&quot;How many minutes are in an hour?&quot;, &quot;60&quot;),
+    (&quot;Which planet is closest to the Sun?&quot;, &quot;Mercury&quot;), (&quot;Which planet is known as the Red Planet?&quot;, &quot;Mars&quot;),
+    (&quot;What is the largest ocean on Earth?&quot;, &quot;Pacific&quot;), (&quot;What gas do plants absorb from the air?&quot;, &quot;carbon dioxide&quot;),
+    (&quot;Who wrote Romeo and Juliet?&quot;, &quot;Shakespeare&quot;), (&quot;What is the freezing point of water in Celsius?&quot;, &quot;0&quot;),
+    (&quot;What is the square root of 64?&quot;, &quot;8&quot;), (&quot;In which year did World War II end?&quot;, &quot;1945&quot;),
+]
+
+tok = AutoTokenizer.from_pretrained(MODEL)
+def prompt_ids(q):
+    msgs = [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: q + &quot; Answer in a few words.&quot;}]
+    return tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors=&quot;pt&quot;, return_dict=True)[&quot;input_ids&quot;]
+
+def load():
+    return AutoModelForCausalLM.from_pretrained(MODEL, dtype=torch.bfloat16).float().eval()
+
+# ---- fake quantizers: (out, in) weight -&gt; same shape, values on the target grid
+def q_fp8(w):                                       # E4M3, one scale per output channel
+    s = w.abs().amax(dim=1, keepdim=True).clamp(min=1e-12) / 448.0
+    return (w / s).to(torch.float8_e4m3fn).float() * s
+
+E2M1 = torch.tensor([0, 0.5, 1, 1.5, 2, 3, 4, 6])
+def to_e2m1(x):                                     # round |x| &lt;= 6 to the nearest FP4 (E2M1) value
+    idx = (x.abs().unsqueeze(-1) - E2M1).abs().argmin(-1)
+    return E2M1[idx] * x.sign()
+
+def q_nvfp4(w):                                     # blocks of 16 along `in`, FP8 E4M3 block scale, FP32 tensor scale
+    o, i = w.shape
+    g = w.abs().max() / (6.0 * 448.0)               # tensor scale so every block scale fits in E4M3
+    b = w.reshape(o, i // 16, 16)
+    s = (b.abs().amax(-1, keepdim=True) / 6.0 / g).to(torch.float8_e4m3fn).float().clamp(min=2**-9) * g
+    return (to_e2m1(b / s) * s).reshape(o, i)
+
+def q_int4_tensor(w):                               # the &quot;bad&quot; candidate: INT4 with ONE scale per tensor
+    s = w.abs().max() / 7.0
+    return (w / s).round().clamp(-8, 7) * s
+
+def quantize(model, fn):                            # decoder Linear layers only; embeddings / lm_head stay
+    with torch.no_grad():
+        for name, mod in model.named_modules():
+            if isinstance(mod, torch.nn.Linear) and &quot;.layers.&quot; in name:
+                mod.weight.copy_(fn(mod.weight))
+    return model
+
+@torch.no_grad()
+def answer_logprobs(model):                         # teacher-forced log-softmax over each reference answer
+    out = []
+    for q, a in EVAL:
+        p = prompt_ids(q)
+        a_ids = tok(&quot; &quot; + a if a[0].isdigit() else a, return_tensors=&quot;pt&quot;)[&quot;input_ids&quot;]
+        ids = torch.cat([p, a_ids], 1)
+        logits = model(ids).logits[0, p.shape[1] - 1:-1]        # (len(a), vocab): predictions of answer tokens
+        out.append((torch.log_softmax(logits.float(), -1), a_ids[0]))
+    return out
+
+@torch.no_grad()
+def task_correct(model):                            # greedy, 16 new tokens, case-insensitive containment
+    res, texts = [], []
+    for q, a in EVAL:
+        p = prompt_ids(q)
+        g = model.generate(p, attention_mask=torch.ones_like(p), max_new_tokens=16, do_sample=False)
+        t = tok.decode(g[0, p.shape[1]:], skip_special_tokens=True)
+        res.append(a.lower() in t.lower()); texts.append(t)
+    return res, texts
+
+t0 = time.time()
+ref = load()
+ref_lp, (ref_ok, ref_txt) = answer_logprobs(ref), task_correct(ref)
+print(f&quot;reference (bf16 weights, fp32 compute): accuracy {sum(ref_ok)}/{len(EVAL)} = {sum(ref_ok)/len(EVAL):.1%}&quot;
+      f&quot;  [{time.time()-t0:.0f} s]&quot;)
+print(&quot;  sample:&quot;, repr(EVAL[0][0]), &quot;-&gt;&quot;, repr(ref_txt[0]))
+
+print(f&quot;\n{'candidate':12s} {'KL nats/tok':&gt;11s} {'top1 agree':&gt;10s} {'dNLL/tok':&gt;9s} {'acc':&gt;6s} {'R-&gt;W':&gt;4s} {'W-&gt;R':&gt;4s}  verdict&quot;)
+for cname, fn in ((&quot;fp8&quot;, q_fp8), (&quot;nvfp4&quot;, q_nvfp4), (&quot;int4-tensor&quot;, q_int4_tensor)):
+    cand = quantize(load(), fn)
+    kl = agree = dnll = n = 0.0
+    for (lr, ids), (lc, _) in zip(ref_lp, answer_logprobs(cand)):
+        kl += (lr.exp() * (lr - lc)).sum().item()                    # sum over positions of KL(ref || cand)
+        agree += (lr.argmax(-1) == lc.argmax(-1)).sum().item()
+        dnll += (lr.gather(1, ids[:, None]) - lc.gather(1, ids[:, None])).sum().item()
+        n += len(ids)
+    ok, txt = task_correct(cand)
+    rw = sum(r and not c for r, c in zip(ref_ok, ok)); wr = sum(c and not r for r, c in zip(ref_ok, ok))
+    acc = sum(ok) / len(EVAL)
+    fails = [why for bad, why in ((kl / n &gt; MAX_KL, &quot;KL&quot;), (agree / n &lt; MIN_TOP1, &quot;top1&quot;),
+             (sum(ref_ok) / len(EVAL) - acc &gt; MAX_ACC_DROP, &quot;acc&quot;), (rw - wr &gt; MAX_NET_FLIPS, &quot;flips&quot;)) if bad]
+    print(f&quot;{cname:12s} {kl/n:11.4f} {agree/n:10.1%} {dnll/n:+9.4f} {acc:6.1%} {rw:4d} {wr:4d}  &quot;
+          f&quot;{'PASS' if not fails else 'FAIL (' + ', '.join(fails) + ')'}&quot;)
+    for i in [i for i, (r, c) in enumerate(zip(ref_ok, ok)) if r != c][:2]:
+        print(f&quot;    {EVAL[i][0]!r}: ref {ref_txt[i]!r} | cand {txt[i]!r}&quot;)
+print(f&quot;[total {time.time()-t0:.0f} s]&quot;)
+</code></pre>
+<pre><code class="language-console">$ /tmp/absorb-venv/bin/python quality_gate.py
+reference (bf16 weights, fp32 compute): accuracy 31/40 = 77.5%  [21 s]
+  sample: 'What is 7 times 8?' -&gt; '64'
+
+candidate    KL nats/tok top1 agree  dNLL/tok    acc R-&gt;W W-&gt;R  verdict
+fp8               0.0293      91.5%   +0.0446  82.5%    0    2  PASS
+    'What is the capital of Italy?': ref 'Florence.' | cand 'The capital of Italy is Rome.'
+    'What is the capital of Kenya?': ref 'Khartoum' | cand 'The capital of Kenya is Nairobi.'
+nvfp4             0.2381      81.9%   -0.2596  95.0%    0    7  FAIL (KL, top1)
+    'What is 7 times 8?': ref '64' | cand '7 x 8 = 56.'
+    'What is 100 minus 37?': ref '93' | cand 'The result of 100 minus 37 is 63.'
+int4-tensor      16.3061       0.0%  +13.2109   2.5%   30    0  FAIL (KL, top1, acc, flips)
+    'What is 12 plus 15?': ref '12 + 15 = 27' | cand ' &quot;.$_steen bådeiationExceptionallisoisrishayoutenussoles okoerus schöne acompañaatorialfrage'
+    'What is 9 times 9?': ref '9 squared equals 81.' | cand '石膏ák益 décidé岙蒴🏽ье &quot;.$_enção部副 INDIRECT调剂swireträgthole'
+[total 997 s]
+</code></pre>
+<p><code>dNLL/tok</code> is the candidate's negative log-likelihood of the reference answers minus the reference model's: positive means the candidate finds the right answers less likely.</p>
+<p>The three verdicts are the three kinds of result a gate sees in practice:</p>
+<ul>
+<li><strong>FP8 passes</strong>, with a mean KL of 0.029 nats per token and 91.5% top-1 agreement. It also flipped two items from wrong to right. That is noise, not an improvement: on 40 items, the standard error of a 77.5% accuracy is <span class="math inline"><span class="math-inline">\sqrt{0.775 \times 0.225 / 40} = 6.6</span></span> points.</li>
+<li><strong>NVFP4 fails, and scores higher.</strong> Accuracy went from 77.5% to 95.0%, seven items flipped wrong→right and none the other way, and the gate still says no, because the KL is 0.24 and the top-1 agreement 82%. Look at the outputs: the reference answers tersely, as the prompt asked (&quot;64&quot;); the NVFP4 model answers in sentences that show the working (&quot;7 x 8 = 56.&quot;), and the containment check rewards that. The candidate is a <em>different model</em>. A customer whose product parses one-word answers would see breakage where the accuracy column shows a gain. That is the reason the gate measures sameness first and the task metric second, and the reason a score that rises after quantization is a reason to look at outputs, not to ship. (A 0.5B model is also much more sensitive to 4-bit rounding than the 70B-class models vendors report on; on this model, this simulation says NVFP4 needs quantization-aware training or a different recipe.)</li>
+<li><strong>The broken INT4 produces garbage</strong>, and every check fails. One scale per tensor lets a single outlier weight set the step size for millions of others (<a href="../inference/arithmetic.html#quantization-from-scratch-scales-zero-points-groups">why group scales exist</a>). A deploy pipeline should never get this far with one, but a conversion bug, a wrong config or a tokenizer mismatch produces outputs that look exactly like this, and the gate is the cheapest place to catch it.</li>
+</ul>
+<p>The thresholds above are illustrations. For a real customer: an eval of several hundred items or more, so a 2-point threshold is above the noise (<a href="#deciding-with-evals">lora_or_full.py</a> showed what 60 items can and can't decide); KL and top-1 measured on their eval and on a sample of their production prompts; and the decoding settings their product uses. Also run the gate on the <em>served</em> path once the candidate is staged: the same prompts through the real engine at the batch sizes it serves, because kernels and batch shape change numerics (<a href="../platform/operating-inference.html#numerics-differences-across-hardware">numerics across hardware</a>).</p>
+<h3 id="stage-roll-canary-roll-back">Stage, roll, canary, roll back</h3>
+<p>From here on, the deploy chapter's machinery applies unchanged. On two nodes it has three peculiarities.</p>
+<ul>
+<li><strong>Stage on both nodes before starting.</strong> Each B300 node's NVMe takes a 70B FP8 checkpoint (73 GB) in about 6 s at 12 GB/s (<a href="../platform/deploys-recovery-autoscaling.html#weights">loadmath.py</a>), so the replica start, not the copy, is the critical path. Copy to <code>/mnt/nvme/models/&lt;customer&gt;/&lt;version&gt;/</code>, write <code>.complete</code> last, keep the previous version for rollback, and keep the weights encrypted at rest (<a href="#6-customer-isolation">section 6</a>).</li>
+<li><strong>There is no surge capacity.</strong> With 15 of 16 GPUs placed, a rolling update can't add a replica before removing one, so it runs with <code>maxSurge: 0, maxUnavailable: 1</code> per pool, and the pool runs one replica short while each replica restarts (<a href="../platform/deploys-recovery-autoscaling.html#surge-and-unavailability-on-a-full-fleet">surge and unavailability</a>). Roll during the trough. The pool's 30% headroom from the planner is what makes one-short safe for big pools. A small pool is different: the 8B pool's two replicas run at 60% busy at peak, so while one restarts the other would need 120% of a replica. Roll small pools at night.</li>
+<li><strong>For a LoRA, the canary is an adapter, not a replica.</strong> Load the new adapter version under a new name (<code>acme-v8</code>) next to <code>acme-v7</code>, send a percentage of the customer's traffic or only the canary prompts to it at the gateway, compare, then switch the name the customer's key resolves to. Rollback is switching the name back. Nothing restarts.</li>
+</ul>
+<pre><code class="language-bash"># untested. LoRA canary on a running vLLM pool: load v8 beside v7, probe it, then flip the alias in the gateway.
+# Runtime loading needs the server started with VLLM_ALLOW_RUNTIME_LORA_UPDATING=True; keep these endpoints internal.
+curl -X POST localhost:8000/v1/load_lora_adapter -H 'Content-Type: application/json' \
+  -d '{&quot;lora_name&quot;: &quot;acme-v8&quot;, &quot;lora_path&quot;: &quot;/mnt/nvme/adapters/acme/v8&quot;}'
+python3 probe.py --model acme-v8 --golden /mnt/nvme/adapters/acme/v8/golden.jsonl   # deploys chapter's probe
+# gateway: acme -&gt; acme-v8 for 5% of acme's requests; watch acme's SLIs and quality signals; then 100%
+curl -X POST localhost:8000/v1/unload_lora_adapter -H 'Content-Type: application/json' -d '{&quot;lora_name&quot;: &quot;acme-v7&quot;}'
+</code></pre>
+<p>Canary signals are the ones from <a href="../platform/operating-inference.html#continuous-evals-and-canary-prompts-in-production">Operating Inference</a>: per-replica (or per-adapter) canary prompts with checkable answers, error and latency SLIs, and a passive check on live outputs. Gate the promotion on all three, and keep the previous version loaded until the new one has served a full daily cycle.</p>
+<h2 id="5-training-and-serving-on-the-same-16-gpus">5. Training and serving on the same 16 GPUs</h2>
+<p>The company trains models too: customers' fine-tunes, its own evals, sometimes an RL run (<a href="../platform/rl-infrastructure.html">RL infrastructure</a>). On 16 GPUs it can't afford a separate training cluster, so training and serving share the fleet. The question is how.</p>
+<h3 id="three-policies">Three policies</h3>
+<ol>
+<li><strong>Static split.</strong> Some GPUs serve, the rest train, always. Simple, and wasteful in both directions: serving is sized for peak and idle at night; training never gets more than its share.</li>
+<li><strong>Time-sharing.</strong> Serving gets the fleet during the day, training gets most of it at night. Matches a diurnal load shape, but it is a schedule, not a response: a 3 a.m. burst from a customer's batch job finds the serving side at night size.</li>
+<li><strong>Preemptible training.</strong> Serving takes what it needs plus a margin, training gets the rest, and serving can take GPUs back at any time. Training jobs must checkpoint quickly and restart at a different size. This is the <a href="../platform/deploys-recovery-autoscaling.html#on-a-fixed-fleet-move-gpus-between-models">move-GPUs-between-models</a> idea with training as the second tenant, and the <a href="../platform/control-planes.html#constraints-affinity-spreading-and-preemption">preemption with priorities</a> the control-planes chapter describes.</li>
+</ol>
+<h3 id="what-a-switch-costs">What a switch costs</h3>
+<p>A GPU moving from training to serving is useless for: the time to stop the training job cleanly and save its state, plus the serving replica's <span class="math inline"><span class="math-inline">T_{\text{start}}</span></span>. From the <a href="../platform/deploys-recovery-autoscaling.html#mttr-arithmetic">MTTR arithmetic</a>, <span class="math inline"><span class="math-inline">T_{\text{start}}</span></span> for a 70B replica is about 2.3 minutes with weights pre-staged on NVMe and a cached compile, and 13.6 minutes cold, from a network disk without caches. With a one-minute checkpoint save, a switch costs 3.3 minutes pre-staged and 14.6 minutes cold. For four GPUs that is <span class="math inline"><span class="math-inline">4 \times 3.3 / 60 = 0.22</span></span> GPU-hours or <span class="math inline"><span class="math-inline">4 \times 14.6 / 60 = 0.97</span></span> GPU-hours per switch. Small per switch; what matters is how long serving runs short meanwhile.</p>
+<p>The other direction (serving to training) costs a drain, bounded by the longest generation you allow (<a href="../platform/deploys-recovery-autoscaling.html#draining-in-flight-streams">draining</a>), plus restarting the training job at its new size: loading the checkpoint, rebuilding the process group. The whole job pays that, not just the GPUs that moved.</p>
+<p>How long a save takes depends on what is saved. A full fine-tune of the 70B model with AdamW in mixed precision keeps about 16 bytes per parameter: BF16 weights and gradients (4), an FP32 master copy (4) and AdamW's two FP32 moments (8, from the <a href="../training/arithmetic.html#optimizer-state-memory">optimizer-state table</a>). That is <span class="math inline"><span class="math-inline">70.55 \times 10^9 \times 16 = 1.13</span></span> TB across the job, of which roughly 1 TB (everything but the gradients) is checkpointed. Spread over a node's 8 local NVMe drives (8 × 3.84 TB on a DGX B300), at an assumed aggregate 20 GB/s of writes, that is about 50 s. A LoRA job's state is the adapter and its optimizer state: for a rank-64 adapter on the 70B model, 1.7 GB of BF16 weights (<a href="#a-placement-planner">planner.py</a>) and a few GB with optimizer state, saved in seconds. <strong>LoRA training jobs are the ideal preemptible tenant</strong>: small state, fast restarts, and they usually fit on one or a few GPUs.</p>
+<h3 id="checkpoint-on-preempt">Checkpoint on preempt</h3>
+<p>Without a save on preemption, a preempted job loses everything since its last periodic checkpoint: half the interval on average. With a 30-minute interval that is 15 minutes of the whole job's GPUs, every time serving reclaims capacity. The fix is the one the training chapters use for Slurm preemption: catch a signal, save, exit (<a href="../training/fault-tolerance-and-reproducibility.html#graceful-stops-kill-and-save-switches">graceful stops</a>, <a href="../training/fault-tolerance-and-reproducibility.html#dealing-with-forced-job-preemption">forced preemption</a>). In this setup the &quot;scheduler&quot; is the company's own control loop. It sends SIGUSR1 (or writes a save-switch file) to the training job, waits for the save to finish or a deadline (two minutes) to pass, and only then starts the serving replica. Write checkpoints to local NVMe first and copy them to object storage in the background, so the save is bounded by NVMe speed.</p>
+<pre><code class="language-bash"># untested. The reclaim sequence the control loop runs for one 4-GPU block.
+kill -USR1 &quot;$(cat /run/train/kestrel-ft.pid)&quot;                  # training job saves and exits on SIGUSR1
+timeout 120 bash -c 'until [ -f /mnt/nvme/ckpt/kestrel-ft/latest/.complete ]; do sleep 2; done' \
+  || echo &quot;save missed its deadline: reclaiming anyway, job resumes from its periodic checkpoint&quot;
+CUDA_VISIBLE_DEVICES=4,5,6,7 vllm serve /mnt/nvme/models/llama-3.3-70b-fp8 --port 8004 ...   # replica starts
+</code></pre>
+<h3 id="filling-idle-serving-gpus">Filling idle serving GPUs</h3>
+<p>Between preemptible training and the serving peak there is a second filler: batch inference and eval jobs on the serving replicas themselves, at low priority, capped in flight (<a href="../inference/serving-efficiently.html#priority-filling-idle-capacity-with-batch-work">backfill</a>, <a href="../platform/operating-inference.html#filling-idle-capacity-with-a-deadline-queue">batch with deadlines</a>). Batch work is finer-grained than training: it fills a replica's idle fraction request by request, so it uses the capacity a 4-GPU block granularity can't give to training. The company's own work qualifies (evals of every candidate model, synthetic data generation, RL rollouts), and so does a customer-facing batch tier sold at a discount.</p>
+<h3 id="a-simulator">A simulator</h3>
+<p><code>share_sim.py</code> runs one synthetic weekday on 16 GPUs moved in blocks of 4. Serving demand (GPUs needed at the SLO) follows a daily curve peaking at 13 GPUs, a little under the 15 that <code>planner.py</code> places with headroom, plus three customer bursts, one of them at 3 a.m. The policies are the three above, the preemptible one in four variants: cold vs pre-staged serving starts, with and without checkpoint-on-preempt, and with batch backfill using 70% of idle serving capacity. The switch costs are the deploy chapter's <span class="math inline"><span class="math-inline">T_{\text{start}}</span></span> values and stated assumptions.</p>
+<pre><code class="language-python"># share_sim.py - 16 GPUs shared by serving and training: static split, night training, preemptible
+# training (with and without checkpoint-on-preempt and pre-staged serving), and batch backfill.
+#   python3 share_sim.py
+# One step = 5 min, one synthetic weekday. GPUs move in blocks of 4 (a TP group or half a node).
+import math, random
+
+GPUS, BLOCK, STEP = 16, 4, 5                      # GPUs, GPUs per block, minutes per step
+STEPS = 24 * 60 // STEP
+rng = random.Random(7)
+
+def need(t):                                       # serving GPUs needed at the SLO (planner.py: ~15 at peak)
+    h = t * STEP / 60
+    base = 3.5 + 8.5 * max(0.0, math.sin(math.pi * (h - 7) / 15)) ** 1.5  # quiet 22:00-07:00, peak mid-afternoon
+    return base * rng.uniform(0.9, 1.1)
+NEED = [need(t) for t in range(STEPS)]
+for start_h, mins, extra in ((3.0, 40, 5), (10.5, 30, 4), (19.0, 45, 5)):   # customer bursts: a backfill job, a launch
+    for t in range(int(start_h * 60 / STEP), int((start_h * 60 + mins) / STEP)):
+        NEED[t] += extra
+NEED = [min(GPUS, n) for n in NEED]
+
+# switch costs in minutes. Serving start: deploys chapter recovery.py (pre-staged 2.3 min, cold 13.6 min).
+DRAIN = 1.0           # finish in-flight streams before a serving block leaves (assumed cap on generation time)
+TRAIN_RESTART = 3.0   # training job re-launch at a new size: load checkpoint, NCCL init (assumed)
+CKPT_SAVE = 1.0       # checkpoint-on-preempt: save sharded state to local NVMe (assumed)
+CKPT_EVERY = 30.0     # periodic checkpoint interval when there is no save-on-preempt
+BACKFILL = 0.7        # fraction of idle serving GPU-time batch/eval work can use (assumed; serving-efficiently backfill.py)
+
+def run(policy, t_start=2.3, save_on_preempt=True, backfill=False):
+    serve_blocks = {&quot;static&quot;: 3, &quot;night&quot;: 1}.get(policy, 4)   # blocks serving at midnight
+    dead = [0.0] * (GPUS // BLOCK)                 # minutes left of switching for each block (useless meanwhile)
+    surplus_steps = 0
+    short = served = train = batch = lost = short_min = 0.0
+    switches = 0
+    for t in range(STEPS):
+        h = t * STEP / 60
+        n = NEED[t]
+        if policy == &quot;static&quot;:
+            want = 3
+        elif policy == &quot;night&quot;:
+            want = 1 if h &lt; 8 else 4
+        else:                                      # preemptible: serving gets need + 2 GPUs margin, rounded up
+            want = min(4, math.ceil((n + 2) / BLOCK))
+            if want &lt; serve_blocks:                # give blocks back to training only after 30 min of surplus
+                surplus_steps += 1
+                if surplus_steps &lt; 30 // STEP:
+                    want = serve_blocks
+            else:
+                surplus_steps = 0
+        if want != serve_blocks:
+            switches += 1
+            moved = abs(want - serve_blocks)
+            if want &gt; serve_blocks:                # training -&gt; serving: save (or lose) work, then start serving
+                cost = (CKPT_SAVE if save_on_preempt else 0) + t_start
+                lost += (CKPT_EVERY / 2 / 60) * BLOCK * (4 - serve_blocks) * (not save_on_preempt)
+            else:                                  # serving -&gt; training: drain
+                cost = DRAIN
+            for b in range(min(want, serve_blocks), max(want, serve_blocks)):
+                dead[b] = cost
+            for b in range(max(want, serve_blocks), 4):   # the whole training job restarts at its new size
+                dead[b] = max(dead[b], TRAIN_RESTART + (CKPT_SAVE if save_on_preempt and want &gt; serve_blocks else 0))
+            serve_blocks = want
+        live = [max(0.0, 1 - dead[b] / STEP) for b in range(4)]    # usable fraction of this step per block
+        dead = [max(0.0, d - STEP) for d in dead]
+        cap = BLOCK * sum(live[:serve_blocks])
+        hrs = STEP / 60
+        served += min(n, cap) * hrs
+        short += max(0.0, n - cap) * hrs
+        short_min += STEP * (n &gt; cap + 1e-9)
+        train += BLOCK * sum(live[serve_blocks:]) * hrs
+        if backfill:
+            batch += BACKFILL * max(0.0, cap - n) * hrs
+    train -= lost
+    return served, short, short_min, train, batch, switches
+
+print(f&quot;serving need: mean {sum(NEED)/STEPS:.1f} GPUs, peak {max(NEED):.1f}, trough {min(NEED):.1f}; &quot;
+      f&quot;day = {GPUS*24} GPU-h&quot;)
+print(f&quot;{'policy':42s} {'served':&gt;6s} {'unmet':&gt;5s} {'short min':&gt;9s} {'train':&gt;5s} {'batch':&gt;5s} {'useful':&gt;6s} {'moves':&gt;5s}&quot;)
+rows = [(&quot;static 12 serve / 4 train&quot;, dict(policy=&quot;static&quot;)),
+        (&quot;night training (00-08: 4 serve / 12 train)&quot;, dict(policy=&quot;night&quot;)),
+        (&quot;preemptible, cold serving start 13.6 min&quot;, dict(policy=&quot;preempt&quot;, t_start=13.6)),
+        (&quot;preemptible, no checkpoint-on-preempt&quot;, dict(policy=&quot;preempt&quot;, save_on_preempt=False)),
+        (&quot;preemptible, pre-staged start 2.3 min&quot;, dict(policy=&quot;preempt&quot;)),
+        (&quot;preemptible + batch backfill&quot;, dict(policy=&quot;preempt&quot;, backfill=True))]
+res = {}
+for name, kw in rows:
+    s, u, sm, tr, b, sw = res[name] = run(**kw)
+    print(f&quot;{name:42s} {s:6.1f} {u:5.1f} {sm:9.0f} {tr:5.1f} {b:5.1f} {(s+tr+b)/(GPUS*24):6.0%} {sw:5d}&quot;)
+print(&quot;(GPU-hours per day; 'useful' = served + training + batch over 384 GPU-h)&quot;)
+assert res[&quot;preemptible + batch backfill&quot;][1] &lt;= res[&quot;static 12 serve / 4 train&quot;][1] + 1e-9
+</code></pre>
+<pre><code class="language-console">$ python3 share_sim.py
+serving need: mean 6.8 GPUs, peak 13.1, trough 3.2; day = 384 GPU-h
+policy                                     served unmet short min train batch useful moves
+static 12 serve / 4 train                   162.7   1.1       130  96.0   0.0    67%     0
+night training (00-08: 4 serve / 12 train)  160.7   3.1        60  96.0   0.0    67%     1
+preemptible, cold serving start 13.6 min    163.6   0.2        25 103.8   0.0    70%    10
+preemptible, no checkpoint-on-preempt       163.8   0.0         0  96.9   0.0    68%    10
+preemptible, pre-staged start 2.3 min       163.8   0.0         0 103.8   0.0    70%    10
+preemptible + batch backfill                163.8   0.0         0 103.8  79.9    90%    10
+(GPU-hours per day; 'useful' = served + training + batch over 384 GPU-h)
+</code></pre>
+<p><code>served</code> and <code>unmet</code> are GPU-hours of serving demand met and missed; <code>short min</code> is the minutes in which serving had less capacity than it needed, which is what an SLO sees; <code>train</code> is useful training GPU-hours after restarts and lost work; <code>useful</code> is everything useful over the 384 GPU-hours in a day.</p>
+<p>What it says:</p>
+<ul>
+<li><strong>The static split misses its SLO for 130 minutes a day</strong> while giving training only 4 GPUs. Twelve serving GPUs cover most of the day, but the afternoon peak and the bursts land on a fixed size. Only 1.1 GPU-hours go unmet, which looks small, and is spread over two hours of degraded service.</li>
+<li><strong>Night training is worse for the 3 a.m. burst</strong> (3.1 GPU-hours unmet, all in the hour when serving is at night size) and gives training no more GPU-hours than the static split. A schedule can't react.</li>
+<li><strong>Preemptible training with pre-staged serving meets every minute of demand and gives training 8% more</strong> (103.8 vs 96 GPU-hours). With cold serving starts the bursts catch the fleet short for 25 minutes; pre-staging weights and compile caches on every node is what makes preemption safe for the SLO. Without checkpoint-on-preempt, training loses 6.9 GPU-hours a day to work it has to redo, which wipes out most of preemption's gain.</li>
+<li><strong>Training's gain is small; batch's is large.</strong> Preemption moves whole 4-GPU blocks, keeps a 2-GPU margin and waits 30 minutes before giving capacity back, so much of the idle serving capacity stays idle: average demand is 6.8 GPUs, but serving holds about 11.7 on average (<span class="math inline"><span class="math-inline">16 - 103.8/24</span></span>, counting GPUs mid-switch as serving). Batch work on the serving replicas uses that idle fraction request by request, and takes the day from 70% useful to 90%. On 16 GPUs, the order of priorities is: pre-stage serving (so preemption is safe), add checkpoint-on-preempt (so it is cheap), and fill serving's idle time with batch and evals (where most of the gain is).</li>
+</ul>
+<p>The block size is the lever this simulator holds fixed. With TP1 serving replicas, blocks could be single GPUs, and training jobs that fit on 1-2 GPUs (most LoRA fine-tunes of an 8B model, and a 70B LoRA with the base in FP8) could take GPUs one at a time. Try <code>BLOCK = 1</code> with a matching <code>want</code>; the simulator is short enough to change.</p>
+<h2 id="6-customer-isolation">6. Customer isolation</h2>
+<p>Customers are startups who are often competitors of each other. Every piece of shared state between them is a possible leak, and on a multi-tenant fleet almost everything is shared. The controls, in the order a small provider should build them:</p>
+<h3 id="prefix-caches-salt-per-tenant">Prefix caches: salt per tenant</h3>
+<p>A prefix-cache hit has a lower TTFT, so a client that can time its requests can test whether some prefix is in the cache, which means someone else sent it. Song et al. built this into an attack: &quot;a token-by-token search algorithm to efficiently recover shared prompt prefixes in the caches&quot;, and showed &quot;the feasibility of stealing system prompts and those produced by peer users&quot; (<a href="https://arxiv.org/abs/2409.20002">arXiv 2409.20002</a>). The fix is a per-tenant salt mixed into the first block hash, which vLLM exposes as a per-request <code>cache_salt</code> that &quot;prevents timing-based attacks where an adversary could infer cached content by observing latency differences&quot; (<a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html">vLLM prefix caching design</a>). <a href="../platform/operating-inference.html#isolation-between-tenants-adapters-and-caches">Operating Inference</a> has the mechanism and a runnable demo (<code>cache_salt.py</code>).</p>
+<p>For this company: the gateway sets <code>cache_salt</code> from the organization ID on every request and ignores any value the client sends. LoRA pools need it as much as base-model pools: the adapter ID is already part of the block hash (<a href="../inference/serving-efficiently.html#multi-lora-many-fine-tunes-on-one-base">Serving Efficiently</a>), which separates tenants on different adapters but not two keys of the same organization, nor two tenants on the base model. The cost is losing cross-tenant cache sharing of identical prefixes, such as a popular agent framework's system prompt. Share across tenants only prefixes the company publishes itself. Salt CPU-offloaded KV (<a href="../inference/serving-efficiently.html#kv-offloading-to-cpu-or-disk">KV offloading</a>) the same way: it is the same cache on slower memory.</p>
+<h3 id="weights-separate-storage-and-encryption">Weights: separate storage and encryption</h3>
+<p>A customer's fine-tuned weights are their product. Treat them like customer data, not like build artifacts:</p>
+<ul>
+<li><strong>One storage prefix per customer, one encryption key per customer</strong>, in an object store with server-side encryption under customer-specific keys, and an access policy that lets only the deploy pipeline's role read it. A per-customer key makes deletion at contract end a key deletion that you can prove (&quot;crypto-shredding&quot;), and limits what one leaked credential exposes.</li>
+<li><strong>On the nodes</strong>, keep <code>/mnt/nvme/models</code> and <code>/mnt/nvme/adapters</code> on an encrypted volume (dm-crypt/LUKS), so a drive returned in an RMA (<a href="../platform/getting-compute.html#dealing-with-accelerator-failures">dealing with accelerator failures</a>) carries no readable weights. Ask the provider what happens to drives when a node is swapped; it belongs in the contract (<a href="../platform/getting-compute.html#security">security questions</a>).</li>
+<li><strong>Load adapters only from your own storage</strong>, by an ID the gateway resolves from the customer's key, never from a path or URL in the request (<a href="../platform/operating-inference.html#isolation-between-tenants-adapters-and-caches">adapters</a>). Namespace adapter names by organization (<code>acme/support-v8</code>), so two tenants can't collide and an error message for another tenant's adapter is a 404.</li>
+<li><strong>Know where each customer's weights are allowed to go.</strong> The overflow plan in <a href="#7-planning-for-the-loss-of-a-node">section 7</a> moves models to another provider during an outage. That is a transfer of the customer's weights to a third party and needs to be in their contract, or excluded for them.</li>
+</ul>
+<h3 id="logging-and-retention-per-contract">Logging and retention per contract</h3>
+<p><a href="../platform/operating-inference.html#prompt-and-response-logging-and-retention">Operating Inference</a> sets the default: log metadata (token counts, timings, finish reasons, adapter, replica), not content. On a small provider, the contract decides the exceptions, so make them configuration rather than code: a per-organization record with <code>log_content</code> (off by default; on only for a time-limited debugging window the customer requested), <code>retention_days</code> for each store (request log, batch inputs and outputs, traces, idempotency records), and <code>training_use</code> (whether their prompts may be used for calibration or anything else; default no). The pipeline in <a href="#convert-and-quantize">section 4</a> reads <code>training_use</code> before it takes a calibration sample from production logs. Test deletion: a script that, for a given organization, finds every copy in every store and checks that its age is under the retention period.</p>
+<h3 id="api-keys-and-scopes">API keys and scopes</h3>
+<p>Keys are stored as hashes, carry a public ID, and are scoped by endpoint and by model, as in <a href="../platform/operating-inference.html#api-keys-and-their-scope">api_keys.py</a>. For this company, add two scopes on top of that chapter's list: <code>train</code> (start fine-tuning jobs, which spend GPU-hours, the scarcest thing it has) and <code>weights:download</code> (export a customer's own fine-tuned weights, if the contract allows it). A CI key gets <code>inference</code> on one model and nothing else. Every key belongs to an organization, and the organization ID is what drives the cache salt, the adapter namespace, the rate limits and the logging policy, so the gateway never trusts any of those from the request itself.</p>
+<h3 id="noisy-neighbour-limits">Noisy-neighbour limits</h3>
+<p>On a shared pool, one customer's traffic changes everyone's latency (<a href="../platform/operating-inference.html#dedicated-vs-shared-deployments-noisy-neighbours">noisy neighbours</a>). With 16 GPUs there is no spare pool to move a noisy customer to, so the limits have to be in place before the first one appears:</p>
+<ul>
+<li><strong>Per-organization limits on in-flight tokens</strong>, not just requests, so a tenant's long contexts can't fill a pool's KV cache (<a href="../platform/operating-inference.html#dedicated-vs-shared-deployments-noisy-neighbours">KV pressure</a>). For the 70B LoRA pool, with 5 replicas of 59 × 16k-token sequences, a cap of one fifth of the pool's KV per organization leaves any single customer able to fill at most one replica's worth.</li>
+<li><strong>A cap on prompt length per tier</strong> and chunked prefill sized so a 100k-token prompt can't stall a shared batch for seconds (<a href="../platform/operating-inference.html#dedicated-vs-shared-deployments-noisy-neighbours">neighbour.py</a> showed one long prompt making 32 other streams' ITL 3.6-11x worse for over two seconds).</li>
+<li><strong>Fair queuing across organizations</strong> at the gateway instead of FCFS, keyed on organization (<a href="../platform/operating-inference.html#virtual-token-counter">Virtual Token Counter</a>), and per-organization TPM limits with reserve-and-refund (<a href="../platform/operating-inference.html#estimating-tokens-before-generation-reservation-and-refund">tpm_limiter.py</a>).</li>
+<li><strong>Ramp limits</strong> for new customers and for step changes in traffic, so one launch can't take a pool (<a href="../platform/operating-inference.html#operations-checklist-for-a-leased-fleet">operations checklist</a>, item 4).</li>
+<li><strong>Per-adapter concurrency in LoRA pools</strong>: <code>--max-loras</code> caps distinct adapters per step, so a burst from many small customers' adapters at once queues requests; give the pool <code>--max-loras</code> at least the number of adapters active in a typical second of your trace (<a href="../inference/serving-efficiently.html#multi-lora-many-fine-tunes-on-one-base">Serving Efficiently</a>).</li>
+</ul>
+<h2 id="7-planning-for-the-loss-of-a-node">7. Planning for the loss of a node</h2>
+<h3 id="what-a-node-failure-costs">What a node failure costs</h3>
+<p>With two nodes, one failure is half the fleet. The deploy chapter's <a href="../platform/deploys-recovery-autoscaling.html#mttr-arithmetic">MTTR arithmetic</a> uses about one interruption per 50,000 GPU-hours (the Llama 3 training run, via the <a href="../orchestration/internals.html#failure-rate-arithmetic">failure-rate arithmetic</a>), and treats any GPU's failure as taking its node out, since a node with a faulty GPU is drained whole (<a href="../platform/deploys-recovery-autoscaling.html#drain-the-whole-host-or-replace-one-gpu">drain the whole host</a>). For two 8-GPU nodes that is a node MTBF of 6,250 hours and 2.8 node failures a year: a 21% chance of at least one in any given month.</p>
+<p>How long the node stays out depends on the provider's replacement process, which is the first of the <a href="../platform/getting-compute.html#the-three-most-important-questions">three most important questions</a> to ask before signing. The script below prices the three ways to cover the gap: a third node (N+1), bursting to someone else's GPUs, and degrading by customer tier.</p>
+<pre><code class="language-python"># failure_plan.py - two nodes, one fails: what each mitigation costs per year, and what uptime to promise.
+#   python3 failure_plan.py
+# Failure rate: ~1 interruption per 50,000 GPU-hours (Llama 3, via the deploys chapter's recovery.py).
+# Prices: lease is an ASSUMPTION; burst prices are list prices read November 2026 (links in the text).
+import math
+
+GPUS_PER_NODE, NODES = 8, 2
+MTBF_NODE_H = 50_000 / GPUS_PER_NODE             # any one GPU failing takes its node's replicas out
+LEASE = 4.00                                      # $/GPU-hour, 1-year B300 lease (assumption)
+BURST = {&quot;per-second serverless B300 (Modal list)&quot;: 0.001972 * 3600,
+         &quot;on-demand B300 (Prime Intellect list)&quot;: 6.64,
+         &quot;dedicated endpoint B300 (Together list)&quot;: 11.49}
+HOURS = 8760
+
+fails = NODES * HOURS / MTBF_NODE_H
+print(f&quot;node MTBF {MTBF_NODE_H:,.0f} h -&gt; {fails:.1f} node failures/year on {NODES} nodes; &quot;
+      f&quot;P(&gt;=1 in a 30-day month) = {1 - math.exp(-NODES * 720 / MTBF_NODE_H):.0%}&quot;)
+
+print(&quot;\nhours per year with only one node, by provider repair turnaround&quot;)
+for repair in (24, 72, 168):
+    down = fails * repair
+    both = fails * (repair / MTBF_NODE_H) * repair / 2     # the other node fails mid-repair; mean overlap repair/2
+    print(f&quot;  repair {repair:3d} h: {down:5.0f} h at half capacity ({down/HOURS:.2%} of the year); &quot;
+          f&quot;both down ~{both*60:.1f} min/year&quot;)
+
+print(&quot;\ncost per year of covering the lost node (8 GPUs) for the whole repair&quot;)
+node3 = GPUS_PER_NODE * LEASE * HOURS
+print(f&quot;  N+1: a third leased node                     ${node3:&gt;9,.0f}  (fixed; it can run training and batch meanwhile)&quot;)
+for name, price in BURST.items():
+    for repair in (24, 168):
+        hrs = fails * repair
+        print(f&quot;  burst, {name:40s} repair {repair:3d} h: ${GPUS_PER_NODE * price * hrs:&gt;8,.0f}&quot;)
+
+# degradation tiers: with 8 GPUs left, who gets served? (peak GPU needs from planner.py's LORA_FIRST)
+tiers = [(&quot;tier 1: dedicated + SLA&quot;, [&quot;70b-ft-kestrel&quot;, &quot;3b-ft-rook&quot;, &quot;1.5b-ft-sable&quot;], 2 + 0.29 + 0.29),
+         (&quot;tier 2: shared API, LoRA pools&quot;, [&quot;8b-lora-pool&quot;, &quot;70b-lora-pool&quot;, &quot;glm-air-api&quot;], 2 + 5 + 4),
+         (&quot;tier 3: best effort, batch&quot;, [&quot;1.5b-ft-wren&quot;, &quot;batch/eval&quot;], 0.14)]
+left = GPUS_PER_NODE
+print(&quot;\none node down at peak: 8 GPUs left, filled in tier order&quot;)
+for name, who, gpus in tiers:
+    got = min(left, gpus); left -= got
+    print(f&quot;  {name:32s} needs {gpus:5.2f} GPUs at peak, gets {got:5.2f} ({got/gpus:.0%})&quot;)
+
+# what a single site can promise: node failures are covered, the site is not
+print(&quot;\nmonthly uptime of 'some capacity is serving' if a site-wide outage (power, network, a bad&quot;)
+print(&quot;fleet-wide deploy) happens k times a year for h hours each:&quot;)
+for k, h in ((1, 4), (2, 8), (4, 12)):
+    print(f&quot;  {k} x {h:2d} h/year -&gt; worst affected month {1 - h / 720:.3%}, annual {1 - k * h / HOURS:.3%}&quot;)
+
+# Modal's rule from the deploys chapter: reserve capacity b only while P(demand &gt; b) &gt;= R_r / R_s
+for name, price in BURST.items():
+    print(f&quot;node 3 pays for itself vs {name:40s} if needed &gt; {LEASE / price:.0%} of hours&quot;)
+assert node3 &gt; GPUS_PER_NODE * max(BURST.values()) * fails * 168   # burst is cheaper even at week-long repairs
+</code></pre>
+<pre><code class="language-console">$ python3 failure_plan.py
+node MTBF 6,250 h -&gt; 2.8 node failures/year on 2 nodes; P(&gt;=1 in a 30-day month) = 21%
+
+hours per year with only one node, by provider repair turnaround
+  repair  24 h:    67 h at half capacity (0.77% of the year); both down ~7.8 min/year
+  repair  72 h:   202 h at half capacity (2.30% of the year); both down ~69.8 min/year
+  repair 168 h:   471 h at half capacity (5.38% of the year); both down ~379.8 min/year
+
+cost per year of covering the lost node (8 GPUs) for the whole repair
+  N+1: a third leased node                     $  280,320  (fixed; it can run training and batch meanwhile)
+  burst, per-second serverless B300 (Modal list)  repair  24 h: $   3,821
+  burst, per-second serverless B300 (Modal list)  repair 168 h: $  26,746
+  burst, on-demand B300 (Prime Intellect list)    repair  24 h: $   3,574
+  burst, on-demand B300 (Prime Intellect list)    repair 168 h: $  25,016
+  burst, dedicated endpoint B300 (Together list)  repair  24 h: $   6,184
+  burst, dedicated endpoint B300 (Together list)  repair 168 h: $  43,289
+
+one node down at peak: 8 GPUs left, filled in tier order
+  tier 1: dedicated + SLA          needs  2.58 GPUs at peak, gets  2.58 (100%)
+  tier 2: shared API, LoRA pools   needs 11.00 GPUs at peak, gets  5.42 (49%)
+  tier 3: best effort, batch       needs  0.14 GPUs at peak, gets  0.00 (0%)
+
+monthly uptime of 'some capacity is serving' if a site-wide outage (power, network, a bad
+fleet-wide deploy) happens k times a year for h hours each:
+  1 x  4 h/year -&gt; worst affected month 99.444%, annual 99.954%
+  2 x  8 h/year -&gt; worst affected month 98.889%, annual 99.817%
+  4 x 12 h/year -&gt; worst affected month 98.333%, annual 99.452%
+node 3 pays for itself vs per-second serverless B300 (Modal list)  if needed &gt; 56% of hours
+node 3 pays for itself vs on-demand B300 (Prime Intellect list)    if needed &gt; 60% of hours
+node 3 pays for itself vs dedicated endpoint B300 (Together list)  if needed &gt; 35% of hours
+</code></pre>
+<h3 id="the-three-options-priced">The three options, priced</h3>
+<p><strong>N+1, a third node.</strong> At the assumed lease price it costs $280,320 a year, half again the current fleet, and covers a node failure completely: MTTR becomes a router ejection (<a href="../platform/deploys-recovery-autoscaling.html#mttr-arithmetic">N+1 replicas</a>). It isn't idle meanwhile; it runs training and batch. As insurance alone it is the most expensive option by a factor of 10 to 78. It makes sense when there is enough work to keep it busy anyway, which is <a href="#9-what-to-lease-next">section 9</a>'s question.</p>
+<p><strong>Overflow to rented GPUs.</strong> Covering 8 GPUs for the whole repair costs $3,600 to $6,200 a year at a 24-hour turnaround and $25,000 to $43,000 at a week, at the list prices in the script. Even at the worst combination it is a sixth of the third node. This is the <a href="../platform/deploys-recovery-autoscaling.html#when-serverless-beats-reserved">deploy chapter's burst rule</a> applied to failures: capacity needed a few percent of the time should be rented when needed. The catches are not in the price:</p>
+<ul>
+<li><strong>Availability isn't guaranteed.</strong> Per-second and on-demand B300 capacity may not be there at the moment a node fails. Have accounts and quotas set up at two providers in advance, and test that you can get 8 GPUs.</li>
+<li><strong>Cold start, paid by users.</strong> A fresh cloud GPU has none of your caches. Together measured 145 s from create to READY for an 18 GB custom fine-tune plus 26-40 s more until the first token through routing (<a href="../platform/deploys-recovery-autoscaling.html#what-published-breakdowns-say">deploys chapter</a>); a 70B model from object storage takes longer. Keep a pre-built image and the weights of tier-2 pools in the burst provider's region, encrypted, so the burst start is minutes and not an hour.</li>
+<li><strong>Weights leave your infrastructure.</strong> For LoRA pools and the base-model API that's your own base weights plus customer adapters; for dedicated customers it's their model. The contract has to allow it (<a href="#weights-separate-storage-and-encryption">section 6</a>). Customers who don't allow it get the degradation tier instead.</li>
+<li><strong>The same model, exactly.</strong> Same revision, same quantization, same chat template, same tokenizer, checked with the canary prompts (<a href="../platform/operating-inference.html#multi-region-and-failover">multi-region and failover</a>). A fallback that serves a subtly different model is a silent quality incident.</li>
+<li><strong>For base-model traffic, per-token serverless may be cheaper than GPUs.</strong> If the GLM-4.5-Air API's traffic can go to a provider that serves the same model per token, the failover costs only the tokens it carries. Check the model is on their list; Together's serverless page, for example, lists gpt-oss-120b at $0.15 per million input tokens and $0.60 per million output tokens, but not GLM-4.5-Air (<a href="https://www.together.ai/pricing">pricing</a>).</li>
+</ul>
+<p><strong>Degradation by tier.</strong> With one node down at peak, 8 GPUs are left. Tier-1 customers (dedicated replicas and paid SLAs) need 2.58 GPUs and get all of them, because the planner put one of each of their replicas on each node. The shared pools need 11 GPUs and get 5.42: about half their peak capacity, enforced by the gateway's per-organization limits (customers get 429s with <code>Retry-After</code> past their reduced share, not timeouts; <a href="../platform/operating-inference.html#what-the-client-sees-on-overload-429-vs-503">429 vs 503</a>). Best effort gets nothing until the node is back. Peak lasts a few hours a day; at the 3 a.m. trough the surviving node carries everything. Degradation costs nothing extra in GPUs and costs goodput, SLO budget and possibly SLA credits for tier 2 at peak, which is why the tiers have to be in the contracts before the first failure.</p>
+<p>The combination that fits a 2-node company: <strong>tier-1 customers placed across both nodes (survive on their own), overflow for tier-2 pools to rented GPUs where contracts allow, degradation for everything else, and no third node bought as insurance.</strong></p>
+<h3 id="what-to-put-in-customer-slas">What to put in customer SLAs</h3>
+<p>The second half of the script is the important one for contracts. A node failure is covered, because tier-1 replicas are on both nodes. A <em>site</em> failure is not: both nodes are in one data center, on one provider's network, behind one gateway the company runs. Power, network, the provider's control plane or a bad fleet-wide deploy of your own take everything down at once. One 4-hour site outage in a year leaves the affected month at 99.44%; two 8-hour outages leave it at 98.9%.</p>
+<p>That matches what <a href="../platform/operating-inference.html#what-999-vs-9999-means-and-the-capacity-it-needs">Operating Inference</a> concluded for one data center, &quot;A fleet in one data center can honestly offer 99%, maybe 99.5%&quot;, and what Together contracts for its own single-data-center deployments, an SLA of 99% (the 99.9% tier needs two facilities). What the company can offer, written in the language of <a href="../platform/operating-inference.html#slos-per-tier">SLOs per tier</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Who</th>
+<th>Availability SLA (monthly)</th>
+<th>Capacity during a node failure</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>dedicated replicas, enterprise</td>
+<td>99.5%</td>
+<td>100% of contracted replicas</td>
+<td>replicas on both nodes; credits if missed</td>
+</tr>
+<tr>
+<td>2</td>
+<td>shared API and LoRA pools</td>
+<td>99%</td>
+<td>best effort, at least ~50% of peak rate limits</td>
+<td>per-org limits shrink proportionally</td>
+</tr>
+<tr>
+<td>3</td>
+<td>best effort, batch</td>
+<td>none</td>
+<td>none until repair</td>
+<td>batch deadlines in days, not hours</td>
+</tr>
+</tbody>
+</table>
+<p>Define availability on the <a href="../platform/operating-inference.html#measure-at-completion-not-at-the-gateway">goodput SLI measured at completion</a>, not on &quot;the endpoint answered&quot;, so a degraded hour counts honestly. Exclude announced maintenance windows, and announce them: driver and engine upgrades on two nodes mean one node at a time in the trough. And write the provider's own SLA into the analysis: if the GPU provider credits only after a node is down for 24 hours (<a href="../platform/getting-compute.html#service-level-agreement">Service Level Agreement</a>), the 24-hour repair row is the best case, not the typical one.</p>
+<h2 id="8-the-first-30-days">8. The first 30 days</h2>
+<p>The order matters: each step makes the next one measurable. Effort is engineer-days for a team of two or three, rough.</p>
+<table>
+<thead>
+<tr>
+<th>Days</th>
+<th>Step</th>
+<th>What &quot;done&quot; means</th>
+<th>Teaches it</th>
+<th>Effort</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1-2</td>
+<td>Preflight and inventory: record every GPU's serial and UUID, driver, firmware, NIC and NVMe layout; confirm <code>memory.total</code> and the MIG profiles</td>
+<td>an inventory file per node, in git</td>
+<td><a href="../platform/getting-compute.html#preflight-what-to-collect-before-you-start">preflight</a>, <a href="../compute/gpu-software-stack.html#taking-inventory-of-a-node-layer-by-layer">taking inventory</a>, <a href="../platform/getting-compute.html#the-three-most-important-questions">the three questions</a></td>
+<td>1</td>
+</tr>
+<tr>
+<td>2-3</td>
+<td>Software stack: pinned driver, Fabric Manager, DCGM, a fresh venv with the newest PyTorch</td>
+<td><code>nvidia-smi</code>, <code>dcgmi discovery -l</code> and NCCL versions recorded</td>
+<td><a href="../compute/gpu-software-stack.html#9-bring-up-order-the-runbook">bring-up runbook</a>, <a href="../platform/getting-compute.html#a-current-isolated-software-stack">a current, isolated software stack</a></td>
+<td>1-2</td>
+</tr>
+<tr>
+<td>3-5</td>
+<td>Burn-in: DCGM diag level 3-4 on every GPU, the node acceptance script, a sustained matmul on all 16 GPUs for 48 hours</td>
+<td>no Xid, no row remaps, no GPU slower than the median by more than a few percent</td>
+<td><a href="../platform/getting-compute.html#accelerators-need-to-be-burned-in">burn-in</a>, <a href="../compute/gpu-software-stack.html#10-a-node-acceptance-script">acceptance script</a>, <a href="../compute/gpu-software-stack.html#running-diagnostics-with-dcgmi-diag"><code>dcgmi diag</code></a></td>
+<td>1 (48 h of wall time)</td>
+</tr>
+<tr>
+<td>4-6</td>
+<td>NCCL tests: intra-node all-reduce on each node, then the two-node pair; small-message latency for the all-reduce floor</td>
+<td><code>busbw</code> and latency tables, compared with the provider's numbers</td>
+<td><a href="../compute/gpu-software-stack.html#nccl-tests-single-node-then-two-then-all">nccl-tests</a>, <a href="../platform/getting-compute.html#a-network">network</a>, <a href="../platform/getting-compute.html#latency-every-collective-no-target">latency</a></td>
+<td>1</td>
+</tr>
+<tr>
+<td>5-7</td>
+<td>MAMF and MSMF on every GPU, BF16, FP8 and NVFP4, siblings busy</td>
+<td>per-GPU table; replace the book's B300 numbers in <code>capacity.py</code> with yours</td>
+<td><a href="../platform/getting-compute.html#b-compute">compute</a>, <a href="../compute/accelerators.html#the-mamf-finder-mamf-finderpy">the MAMF finder</a></td>
+<td>1</td>
+</tr>
+<tr>
+<td>6-7</td>
+<td>Storage: <code>fio</code> on local NVMe and on the provider's object store; encrypted volumes for model and adapter directories</td>
+<td>read/write GB/s; <code>loadmath.py</code> re-run with your numbers</td>
+<td><a href="../platform/getting-compute.html#c-storage">storage</a>, <a href="../platform/deploys-recovery-autoscaling.html#weights">weights</a></td>
+<td>1</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Write the verdict; escalate anything that missed; keep good nodes on reboot</td>
+<td>a signed-off cluster report</td>
+<td><a href="../platform/getting-compute.html#write-the-verdict">write the verdict</a>, <a href="../platform/getting-compute.html#keep-your-good-accelerators-on-reboot">keep your good accelerators</a></td>
+<td>0.5</td>
+</tr>
+<tr>
+<td>8-10</td>
+<td>First engine: one 70B FP8 replica on one GPU and one 8B pool; measure startup stages; persist compile caches; pre-stage weights</td>
+<td>per-stage startup times; <span class="math inline"><span class="math-inline">T_{\text{start}}</span></span> from NVMe under 3 min</td>
+<td><a href="../platform/deploys-recovery-autoscaling.html#startup-time-checklist-for-a-leased-fleet">startup checklist</a> items 1-6</td>
+<td>2-3</td>
+</tr>
+<tr>
+<td>9-12</td>
+<td>Measure the real roofline fraction: replay a synthetic trace at several batch sizes; back out achieved HBM fraction; set <code>EFF</code> in the planner</td>
+<td>measured TPOT and tok/s per replica, not bounds</td>
+<td><a href="../inference/serving-efficiently.html#a-replayable-benchmark">a replayable benchmark</a>, <a href="../inference/serving-efficiently.html#a-methodical-sweep-one-variable-at-a-time">sweep</a>, <a href="../inference/arithmetic.html#what-the-bounds-leave-out">achieved.py</a></td>
+<td>3</td>
+</tr>
+<tr>
+<td>10-14</td>
+<td>Gateway: keys with scopes, per-org salt, TPM limits with reserve-and-refund, fair queuing, 429/503 with <code>Retry-After</code>, per-request log at completion</td>
+<td>the <a href="../platform/operating-inference.html#operations-checklist-for-a-leased-fleet">operations checklist</a> items 1-3, 8, 11</td>
+<td><a href="../platform/operating-inference.html">Operating Inference</a> sections 1-3 and 9</td>
+<td>4</td>
+</tr>
+<tr>
+<td>12-16</td>
+<td>Observability: engine and DCGM metrics, the SLO report, burn-rate alerts, the watchdog runbook, canary prompts per replica and per adapter</td>
+<td>a dashboard and a pager that would have fired on each injected fault</td>
+<td><a href="../platform/operating-inference.html#metrics">metrics</a>, <a href="../platform/operating-inference.html#measure-at-completion-not-at-the-gateway">slo_report.py</a>, <a href="../platform/operating-inference.html#8-incidents-and-on-call">incidents</a>, <a href="../platform/operating-inference.html#continuous-evals-and-canary-prompts-in-production">quality probes</a></td>
+<td>3</td>
+</tr>
+<tr>
+<td>15-18</td>
+<td>The deploy pipeline: merge/convert/quantize jobs, <code>quality_gate.py</code> on real engine outputs, staging with <code>.complete</code>, LoRA canaries, drain, rollback drill</td>
+<td>one adapter and one full model shipped and rolled back end to end</td>
+<td><a href="#4-from-a-training-checkpoint-to-a-served-model">section 4</a>, <a href="../platform/deploys-recovery-autoscaling.html#4-deploying-a-new-model-version-on-a-fixed-fleet">deploys</a></td>
+<td>3-4</td>
+</tr>
+<tr>
+<td>17-20</td>
+<td>Failure drills: kill a replica, drain a node, burst one pool to the overflow provider and back</td>
+<td>measured MTTR per path; a tested failover runbook</td>
+<td><a href="../platform/deploys-recovery-autoscaling.html#5-recovery">recovery</a>, <a href="#7-planning-for-the-loss-of-a-node">section 7</a></td>
+<td>2</td>
+</tr>
+<tr>
+<td>18-22</td>
+<td>Training on the fleet: preemptible LoRA training with save-on-SIGUSR1, the reclaim control loop, backfill queue for evals</td>
+<td>a training job preempted and resumed with no lost steps</td>
+<td><a href="#5-training-and-serving-on-the-same-16-gpus">section 5</a>, <a href="../training/fault-tolerance-and-reproducibility.html#graceful-stops-kill-and-save-switches">graceful stops</a>, <a href="../inference/serving-efficiently.html#priority-filling-idle-capacity-with-batch-work">backfill</a></td>
+<td>3</td>
+</tr>
+<tr>
+<td>21-25</td>
+<td>First customers: one LoRA customer and one dedicated customer, with evals agreed, the gate run, tiers and retention in the contract</td>
+<td>two customers in production with SLO reports</td>
+<td><a href="#deciding-with-evals">section 3</a>, <a href="#6-customer-isolation">section 6</a></td>
+<td>3</td>
+</tr>
+<tr>
+<td>25-30</td>
+<td>Tuning from real traffic: trace stats, prefix-aware routing, FP8 KV, batch knobs, re-plan with measured numbers</td>
+<td>a re-run <code>planner.py</code> with measured rates and the real customer list</td>
+<td><a href="../inference/serving-efficiently.html#tuning-checklist-for-a-leased-fleet">tuning checklist</a> items 1-6</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<p>That is about 35-40 engineer-days in 30 calendar days, which a team of two can do only if nothing goes wrong in burn-in. Things will. The parts that can slip without hurting customers are the training integration (days 18-22) and tuning (25-30); the parts that can't are burn-in, the gateway's isolation controls and the quality gate, because they protect the first customers.</p>
+<h2 id="9-what-to-lease-next">9. What to lease next</h2>
+<p>The <a href="../platform/deploys-recovery-autoscaling.html#when-serverless-beats-reserved">burst rule</a> gives the threshold: a reserved GPU at price <span class="math inline"><span class="math-inline">R_r</span></span> beats a rented one at <span class="math inline"><span class="math-inline">R_s</span></span> when you'd need it more than <span class="math inline"><span class="math-inline">R_r/R_s</span></span> of the time. At the assumed $4.00 lease against $7.10 per-second B300s or $6.64 on demand, that's 56-60% of hours (<a href="#what-a-node-failure-costs">failure_plan.py</a>). Against dedicated endpoints at $11.49, 35%. So node 3 is justified when the company would otherwise rent a node's worth of GPUs for more than about half of all hours. Signals that it's getting close:</p>
+<ul>
+<li><strong>The planner stops fitting the pipeline of signed customers.</strong> Re-run <code>planner.py</code> with measured rates and next quarter's contracted traffic. When the plan places 16 of 16 GPUs with no free GPU and the pools above 70% busy at peak, the next customer doesn't fit.</li>
+<li><strong>Serving is short at peak on normal days.</strong> The SLO report shows latency-budget burn at peak with no incident behind it, and the gateway sheds tier-2 traffic with 503s weekly.</li>
+<li><strong>Bursting stops being occasional.</strong> Overflow hours are logged per month; when they climb past a third of the hours in a month, the burst rule is about to flip.</li>
+<li><strong>Training is starved.</strong> Preemptible training gets fewer GPU-hours than the customers' fine-tune queue needs, and fine-tunes wait days to start. In <code>share_sim.py</code> terms, <code>train</code> falls below the queue's demand.</li>
+<li><strong>Tier-1 demand outgrows one node.</strong> If dedicated customers' replicas no longer fit on one node, a node failure takes some tier-1 capacity down, and the SLA in <a href="#what-to-put-in-customer-slas">section 7</a> no longer holds.</li>
+<li><strong>A customer needs a model that doesn't fit with redundancy</strong>: a 671B MoE as a dedicated deployment, or a 70B at 128k context on TP2 pairs.</li>
+</ul>
+<p>When the signals line up, the lease terms decide most of the cost. <a href="../platform/getting-compute.html#contracts">Getting Compute</a> has the full list; the items that matter most at this size:</p>
+<ul>
+<li><strong>Same spine, same region, same generation.</strong> Node 3 should be on the same network spine as the first two (<a href="../platform/getting-compute.html#all-your-nodes-on-the-same-network-spine">same network spine</a>) and in the same region, so the weights, NVMe staging and the two-node NCCL baseline carry over (<a href="../platform/getting-compute.html#keep-all-accelerators-in-the-same-region">same region</a>). Ask about expansion when signing the first lease (<a href="../platform/getting-compute.html#do-you-think-you-will-need-to-expand">do you think you will need to expand?</a>), not a year later.</li>
+<li><strong>Coterminous terms.</strong> Align node 3's end date with the first two, so the next decision (renew, move to the next generation, buy) is made once for the whole fleet. A new node with a three-year term on a one-year fleet is a commitment to a generation that may be obsolete halfway through (<a href="../platform/getting-compute.html#next-generation-accelerator-migration">next-generation migration</a>).</li>
+<li><strong>Replacement terms in hours.</strong> For a 3-node fleet a one-week RMA is a third of capacity for a week. Negotiate replacement time and credits per node (<a href="../platform/getting-compute.html#dealing-with-accelerator-failures">dealing with accelerator failures</a>, <a href="../platform/getting-compute.html#service-level-agreement">SLA</a>); it's worth more than a lower hourly price.</li>
+<li><strong>A break clause</strong> (<a href="../platform/getting-compute.html#a-contract-breaking-clause">contract-breaking clause</a>), and the right to move to the next generation (<a href="../platform/getting-compute.html#when-is-it-worth-upgrading-gpus">when it is worth upgrading</a>).</li>
+<li><strong>Burn-in before acceptance</strong>, as for the first two (<a href="../platform/getting-compute.html#accelerators-need-to-be-burned-in">burn-in</a>).</li>
+</ul>
+<p>There is also the third answer: not a node but a bigger burst arrangement, such as reserved hours with the overflow provider, or a provider's dedicated endpoint for the one large model that doesn't fit. On 16 GPUs, the cheapest capacity is often the capacity you didn't lease.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li>Any GPU provider's spec sheet, and turn it into a capacity table for your own model mix: per-GPU budgets, KV room, roofline rates, and which MIG slices exist.</li>
+<li>Vendor posts on multi-LoRA serving (<a href="https://fireworks.ai/blog/multi-lora">Fireworks</a>, <a href="https://www.baseten.co/blog/how-to-serve-10-000-fine-tuned-llms-from-a-single-gpu/">Baseten</a>, <a href="https://www.primeintellect.ai/blog/lab">Prime Intellect Lab</a>) as statements about per-deployment floors and pricing, not only about kernels.</li>
+<li>Quantization announcements (<a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/">NVIDIA NVFP4</a>, <a href="https://fireworks.ai/blog/fireattention-v4-fp4-b200">FireAttention V4</a>) critically: what model, what eval, and whether the result would pass a gate on your customer's eval.</li>
+<li>GPU lease offers and SLAs, with the failure, burst and tier arithmetic to say what an extra node or a shorter replacement time is worth to you.</li>
+<li>Customer contracts for an inference product: what availability a single site supports, what the tiers promise during a failure, and where the customer's weights and logs may go.</li>
+</ul>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>NVIDIA, <a href="https://docs.nvidia.com/datacenter/tesla/mig-user-guide/supported-mig-profiles.html">MIG user guide: supported profiles</a>; <a href="https://www.nvidia.com/en-us/data-center/hgx/">HGX platform specifications</a>; <a href="https://www.nvidia.com/en-us/data-center/dgx-b300/">DGX B300</a>; <a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/">&quot;Introducing NVFP4 for Efficient and Accurate Low-Precision Inference&quot;</a>.</li>
+<li>vLLM, <a href="https://docs.vllm.ai/en/latest/features/lora.html">LoRA adapters</a> and <a href="https://docs.vllm.ai/en/latest/design/prefix_caching.html">prefix caching design</a>; <a href="https://github.com/vllm-project/llm-compressor/tree/main/examples">llm-compressor examples</a>.</li>
+<li>Song et al., <a href="https://arxiv.org/abs/2409.20002">&quot;The Early Bird Catches the Leak: Unveiling Timing Side Channels in LLM Serving Systems&quot;</a>, arXiv 2409.20002.</li>
+<li>Chen et al., &quot;Punica: Multi-Tenant LoRA Serving&quot;, arXiv 2310.18547; Sheng et al., &quot;S-LoRA: Serving Thousands of Concurrent LoRA Adapters&quot;, arXiv 2311.03285.</li>
+<li>Fireworks, <a href="https://fireworks.ai/blog/multi-lora">&quot;Multi-LoRA&quot;</a> and <a href="https://fireworks.ai/blog/fireattention-v4-fp4-b200">&quot;FireAttention V4&quot;</a>; Prime Intellect, <a href="https://www.primeintellect.ai/blog/lab">&quot;Introducing Lab&quot;</a>; Together, <a href="https://www.together.ai/blog/99-9-uptime-for-inference">&quot;What does 99.9% uptime mean for inference?&quot;</a>; Modal, <a href="https://modal.com/blog/how-to-price-serverless">&quot;How to price serverless GPUs&quot;</a>.</li>
+<li>Price pages read in November 2026: <a href="https://modal.com/pricing">Modal</a>, <a href="https://www.primeintellect.ai/compute">Prime Intellect compute</a>, <a href="https://www.together.ai/pricing">Together</a>.</li>
+<li>Zhipu AI, <a href="https://huggingface.co/zai-org/GLM-4.5-Air">GLM-4.5-Air model card</a>.</li>
+<li>In this repo: <a href="../compute/accelerators.html">Accelerators</a>, <a href="../compute/gpu-software-stack.html">The GPU node software stack</a>, <a href="../inference/arithmetic.html">Inference Internals I</a> and <a href="../inference/serving-engine-internals.html">II</a>, <a href="../inference/serving-efficiently.html">Serving Efficiently</a>, <a href="../platform/deploys-recovery-autoscaling.html">Deploys, Recovery and Autoscaling</a>, <a href="../platform/operating-inference.html">Operating an Inference Service</a>, <a href="../platform/rl-infrastructure.html">RL Infrastructure</a> and <a href="../platform/getting-compute.html">Getting Compute</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../platform/getting-compute.html">&larr; Getting Compute: Clouds, Clusters and When to Upgrade</a><a class="next" href="../development/debugging-pytorch.html">Debugging PyTorch Programs &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

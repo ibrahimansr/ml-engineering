@@ -34,10 +34,14 @@ training/decentralized-training.md
 inference/arithmetic.md
 inference/serving-engine-internals.md
 inference/serving-hands-on.md
+inference/serving-efficiently.md
 
 platform/control-planes.md
+platform/deploys-recovery-autoscaling.md
+platform/operating-inference.md
 platform/rl-infrastructure.md
 platform/getting-compute.md
+platform/small-inference-provider.md
 
 development/debugging-pytorch.md
 development/debugging-distributed.md
