@@ -9,7 +9,7 @@ Forward links (later chapters that teach things this one only uses by name): [Co
 
 You know backprop, you know what `loss.backward()` does, and you can write a training loop in your sleep. But the first time you `ssh` into a GPU cluster you meet a different world: your job dies with `exit code 137`, a checkpoint you "saved" is zero bytes after a node crash, the DataLoader eats 200GB of RAM, `nvidia-smi` says CUDA 12.4 while `torch` says 12.1, and SLURM "sent SIGUSR1" to something. None of this is ML. It is the operating system.
 
-This chapter starts from zero and builds up exactly the Linux and OS knowledge needed to work productively on a GPU cluster and to read the rest of this book, in particular the [Debugging](../debug/README.md), [SLURM](../orchestration/slurm/README.md) and [Storage](../storage/README.md) chapters. The emphasis is on *why* things behave the way they do, because the "why" is what lets you debug a failure you have never seen before.
+This chapter starts from zero and builds up exactly the Linux and OS knowledge needed to work productively on a GPU cluster and to read the rest of this book, in particular the [Debugging](../development/debugging-pytorch.md), [SLURM](../orchestration/slurm/from-zero.md) and [Storage](storage-and-data.md) chapters. The emphasis is on *why* things behave the way they do, because the "why" is what lets you debug a failure you have never seen before.
 
 All commands assume a modern Ubuntu (22.04 or 24.04) server. Most work on any recent Linux distribution. Unless a block says otherwise, output shown is sketched and trimmed; your numbers will differ.
 
@@ -444,7 +444,7 @@ srun bash -c "python train.py --rank $SLURM_PROCID"    # expanded NOW, on the ba
 srun bash -c "python train.py --rank \$SLURM_PROCID"   # escaped -> expanded by each task -> correct
 ```
 
-The book discusses this in [SLURM_PROCID early interpolation](../orchestration/slurm/users.md#slurm_procid-early-interpolation).
+The book discusses this in [SLURM_PROCID early interpolation](../orchestration/slurm/from-zero.md#slurm_procid-early-interpolation).
 
 ### Scripting essentials
 
@@ -915,7 +915,7 @@ Don't panic at `free: 20Gi`. The `buff/cache` RAM is reclaimable on demand; **`a
 
 Why you care:
 
-- **Benchmarks lie unless you account for it.** Reading a dataset the second time measures RAM, not storage. To measure cold reads: `sync; echo 3 | sudo tee /proc/sys/vm/drop_caches` (root only), or use files larger than RAM, or use `O_DIRECT` (e.g. `fio --direct=1`). See the [Storage chapter](../storage/README.md) for benchmarking with `fio`.
+- **Benchmarks lie unless you account for it.** Reading a dataset the second time measures RAM, not storage. To measure cold reads: `sync; echo 3 | sudo tee /proc/sys/vm/drop_caches` (root only), or use files larger than RAM, or use `O_DIRECT` (e.g. `fio --direct=1`). See the [Storage chapter](storage-and-data.md) for benchmarking with `fio`.
 - **Epoch 1 slow, epoch 2+ fast** is often the page cache, not a data-loading bug.
 - **Writes go to the cache first**, which leads to the next topic.
 
@@ -950,7 +950,7 @@ Why each step:
 - `fsync` on the file makes the bytes durable; `fsync` on the directory makes the new name durable.
 - Also write a "latest" marker or a final `done` file *after* everything else is synced, and have the resume logic trust only complete checkpoints.
 
-On parallel/network filesystems (Lustre, GPFS, NFS, object-store FUSE mounts, i.e. cloud storage buckets such as S3 made to look like a directory) the semantics of `fsync` and `rename` vary; some FUSE mounts for object stores don't support atomic rename at all. Check your filesystem's documentation. Also note `fsync` on a multi-GB file can take seconds - that's the honest cost of durability, and it's why [frequent checkpoint saving](../training/fault-tolerance/README.md#frequent-checkpoint-saving) needs a fast filesystem.
+On parallel/network filesystems (Lustre, GPFS, NFS, object-store FUSE mounts, i.e. cloud storage buckets such as S3 made to look like a directory) the semantics of `fsync` and `rename` vary; some FUSE mounts for object stores don't support atomic rename at all. Check your filesystem's documentation. Also note `fsync` on a multi-GB file can take seconds - that's the honest cost of durability, and it's why [frequent checkpoint saving](../training/fault-tolerance-and-reproducibility.md#frequent-checkpoint-saving) needs a fast filesystem.
 
 ### Local vs network filesystems
 
@@ -962,7 +962,7 @@ On parallel/network filesystems (Lustre, GPFS, NFS, object-store FUSE mounts, i.
 | Big sequential throughput | a few GB/s per drive | limited | can be 100s of GB/s aggregate |
 | Survives node loss | no | yes | yes |
 
-Typical cluster layout: `/home` on NFS (small, backed up, slow), `/scratch` or `/data` on a parallel FS (big, fast, often *not* backed up, sometimes auto-purged), and a node-local NVMe at `/tmp` or `/local` (fast, wiped after the job). Put code on a shared FS, stream data from the parallel FS or stage it to local NVMe, and write checkpoints to the parallel FS. The [Storage chapter](../storage/README.md) covers this in depth.
+Typical cluster layout: `/home` on NFS (small, backed up, slow), `/scratch` or `/data` on a parallel FS (big, fast, often *not* backed up, sometimes auto-purged), and a node-local NVMe at `/tmp` or `/local` (fast, wiped after the job). Put code on a shared FS, stream data from the parallel FS or stage it to local NVMe, and write checkpoints to the parallel FS. The [Storage chapter](storage-and-data.md) covers this in depth.
 
 Two habits that save a shared filesystem (and your colleagues' sanity): don't put conda environments with 100k small files on a slow NFS `/home` if you can avoid it, and never run `find` / `du` / `ls -R` over the whole parallel FS.
 
@@ -1133,7 +1133,7 @@ nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv
 sudo fuser -v /dev/nvidia*           # every process with a GPU device open
 ```
 
-The book's SLURM chapter has a section on [zombies](../orchestration/slurm/users.md#zombies) in exactly this sense.
+The book's SLURM chapter has a section on [zombies](../orchestration/slurm/from-zero.md#killing-leftover-processes) in exactly this sense.
 
 ### Signals
 
@@ -1195,7 +1195,7 @@ Two subtleties: Python runs signal handlers only in the main thread, between byt
 #SBATCH --signal=B:USR1@600      # B: send it only to the batch shell script instead
 ```
 
-Your training code traps `SIGUSR1`, saves, and exits. The book covers the full pattern, including which process actually receives the signal, in [Dealing with forced job preemption](../training/fault-tolerance/README.md#dealing-with-forced-job-preemption). Note SLURM's timing is approximate - the signal can arrive up to a minute or so off the requested time.
+Your training code traps `SIGUSR1`, saves, and exits. The book covers the full pattern, including which process actually receives the signal, in [Dealing with forced job preemption](../training/fault-tolerance-and-reproducibility.md#dealing-with-forced-job-preemption). Note SLURM's timing is approximate - the signal can arrive up to a minute or so off the requested time.
 
 A bash gotcha relevant to the `B:` variant: while bash is waiting for a foreground child, it does not run its `trap` handlers until the child exits, and it does not forward signals to the child. If your batch script needs to react to a signal, run the main command in the background and `wait`:
 
@@ -1595,7 +1595,7 @@ Another fork gotcha: never fork after initializing CUDA. A forked child can't us
 
 At any moment there are far more threads than cores. The kernel's scheduler (CFS, replaced by EEVDF since kernel 6.6 - Ubuntu 24.04 ships 6.8) time-slices runnable threads across cores, aiming for fairness weighted by priority.
 
-Practical consequence: if 8 training ranks each spawn 8 DataLoader workers, each of which spawns `nproc` OpenMP threads for NumPy/torch CPU ops, you can have thousands of runnable threads fighting over 96 cores, and everything slows down. Set `OMP_NUM_THREADS` sensibly (`torchrun` sets it to 1 by default and prints a warning about it), and see [How many CPU cores do you need for DataLoader work](../compute/cpu/README.md#how-many-cpu-cores-do-you-need-for-dataloader-work).
+Practical consequence: if 8 training ranks each spawn 8 DataLoader workers, each of which spawns `nproc` OpenMP threads for NumPy/torch CPU ops, you can have thousands of runnable threads fighting over 96 cores, and everything slows down. Set `OMP_NUM_THREADS` sensibly (`torchrun` sets it to 1 by default and prints a warning about it), and see [How many CPU cores do you need for DataLoader work](computer-architecture.md#how-many-cpu-cores-the-dataloader-needs).
 
 Oversubscription doesn't make anything faster. Every process gets a proportionally smaller slice of a core, plus extra context switches (the kernel taking one thread off a core and putting another on, which costs time and cache contents). Demonstrate it by pinning a container to 2 cores and running 2, 4 and 8 CPU-bound processes. (In the `docker run` below, `--cpuset-cpus 0-1` lets the container use only CPUs 0 and 1, `-v $PWD:/w` shares the current directory as `/w`, and `-w /w` starts in it.)
 
@@ -1679,7 +1679,7 @@ Binding a process to the right node:
 numactl --cpunodebind=0 --membind=0 python train.py --local-rank 0
 ```
 
-For GPU training, rank `i` should run on cores and allocate its host memory (pinned buffers!) on the NUMA node closest to GPU `i`; otherwise host-to-device copies cross the socket link. See [NUMA affinity](../compute/cpu/README.md#numa-affinity) for how to do this per rank. `lscpu` gives a quick summary of sockets, cores, threads and NUMA nodes.
+For GPU training, rank `i` should run on cores and allocate its host memory (pinned buffers!) on the NUMA node closest to GPU `i`; otherwise host-to-device copies cross the socket link. See [NUMA affinity](computer-architecture.md#numa-affinity-and-hyper-threads) for how to do this per rank. `lscpu` gives a quick summary of sockets, cores, threads and NUMA nodes.
 
 ### cgroups: limits for groups of processes
 
@@ -2100,7 +2100,7 @@ sudo dmesg -T | grep -i -E "oom|killed process"
 sudo dmesg -T | grep -i -E "nfs|lustre|lnet"   # network FS trouble
 ```
 
-The kernel log is where hardware and driver problems appear that your program never sees: GPU **Xid** errors (`NVRM: Xid (PCI:0000:3b:00): 79, GPU has fallen off the bus`), ECC errors (memory bit-flips caught by error-correcting memory), PCIe errors, OOM kills, network filesystem timeouts, NIC link flaps. When a job dies mysteriously, `dmesg` on the node is the second place to look (after your own stderr). Interpreting Xids is covered in [Troubleshooting NVIDIA GPUs](../compute/accelerator/nvidia/debug.md#xid-errors).
+The kernel log is where hardware and driver problems appear that your program never sees: GPU **Xid** errors (`NVRM: Xid (PCI:0000:3b:00): 79, GPU has fallen off the bus`), ECC errors (memory bit-flips caught by error-correcting memory), PCIe errors, OOM kills, network filesystem timeouts, NIC link flaps. When a job dies mysteriously, `dmesg` on the node is the second place to look (after your own stderr). Interpreting Xids is covered in [Troubleshooting NVIDIA GPUs](../compute/gpu-software-stack.md#xid-errors-reading-finding-and-looking-them-up).
 
 Plain-text logs also still live in `/var/log/` (`syslog`, `kern.log`, sometimes `slurm/`).
 
@@ -2197,7 +2197,7 @@ Normalized form: *-*-* 03:00:00
 
 (real output, systemd 257 in a Linux container, for the uncommented versions of these files.) Then `sudo systemctl enable --now ckpt-cleanup.timer`, and `systemctl list-timers` shows the last and next run of every timer (untested).
 
-On clusters you often can't use cron on login nodes; SLURM offers `scrontab` and self-resubmitting jobs instead. See [the book's cron-style SLURM jobs](../orchestration/slurm/cron-daily.slurm) and the fault-tolerance chapter's [scheduled watchdogs](../training/fault-tolerance/README.md#scheduled-watchdogs).
+On clusters you often can't use cron on login nodes; SLURM offers `scrontab` and self-resubmitting jobs instead. See [the book's cron-style SLURM jobs](../orchestration/slurm/cron-daily.slurm) and the fault-tolerance chapter's [scheduled watchdogs](../training/fault-tolerance-and-reproducibility.md#scheduled-watchdogs).
 
 ### Try this
 
@@ -2226,7 +2226,7 @@ nvidia-smi -L                                      # list GPUs and UUIDs
 nvidia-smi topo -m                                 # interconnect and CPU/NUMA affinity
 ```
 
-The "GPU-Util" column is the fraction of time *any* kernel was running, not how busy the SMs are - 100% can still mean poor efficiency. See [How to get the real GPU utilization metrics](../compute/accelerator/nvidia/debug.md#how-to-get-the-real-gpu-utilization-metrics). Inside a SLURM job or container, you'll see only your allocated GPUs, renumbered from 0.
+The "GPU-Util" column is the fraction of time *any* kernel was running, not how busy the SMs are - 100% can still mean poor efficiency. See [How to get the real GPU utilization metrics](../compute/gpu-software-stack.md#real-gpu-utilization-dcgm-exporter). Inside a SLURM job or container, you'll see only your allocated GPUs, renumbered from 0.
 
 ### top / htop
 
@@ -2283,7 +2283,7 @@ Dump every rank on a node: `pgrep -f train.py | xargs -I{} py-spy dump --pid {}`
 
 Permissions: these tools use `ptrace`, the kernel interface that lets one process inspect another. On Ubuntu, `kernel.yama.ptrace_scope=1` by default, which only allows tracing your own *descendant* processes. So `py-spy dump --pid` on a process you didn't start from this shell needs `sudo`, or an admin setting `ptrace_scope=0`; in Docker add `--cap-add=SYS_PTRACE`. The same applies to `strace -p` and `gdb -p`.
 
-The book's [Diagnosing Hangings and Deadlocks](../debug/pytorch.md#diagnosing-crashes-hangs-and-tracing-execution) and [torch-distributed-hanging-solutions](../debug/torch-distributed-hanging-solutions.md) build on this.
+The book's [Diagnosing Hangings and Deadlocks](../development/debugging-pytorch.md#crashes-hangs-and-tracing-execution) and [torch-distributed-hanging-solutions](../development/debugging-distributed.md) build on this.
 
 ### strace: what is the process asking the kernel for?
 
@@ -2460,7 +2460,7 @@ exit $status
 
 The single quotes around the `bash -c '...'` body matter: `$SLURM_PROCID` must be expanded once per task, not once in the batch script (the quoting section's trap). The `exec` makes `python` replace the per-task bash so that it receives SLURM's `SIGUSR1` directly, and `train.py` traps `SIGUSR1` as in the Signals section. `|| status=$?` records the failure without `set -e` aborting the script first.
 
-This version launches one process per GPU with `srun` instead of `torchrun`, which keeps the signal path simple: SLURM signals every task, and every task is a training process. With `torchrun` in between, the signal first reaches the torchrun agent. Whether it gets to your workers depends on which signals your PyTorch version's agent forwards. As far as I know, the elastic agent handles `SIGTERM`, `SIGINT`, `SIGHUP` and `SIGQUIT` but not `SIGUSR1`, so check `torch/distributed/elastic/` before relying on it. [Dealing with forced job preemption](../training/fault-tolerance/README.md#dealing-with-forced-job-preemption) covers the variants.
+This version launches one process per GPU with `srun` instead of `torchrun`, which keeps the signal path simple: SLURM signals every task, and every task is a training process. With `torchrun` in between, the signal first reaches the torchrun agent. Whether it gets to your workers depends on which signals your PyTorch version's agent forwards. As far as I know, the elastic agent handles `SIGTERM`, `SIGINT`, `SIGHUP` and `SIGQUIT` but not `SIGUSR1`, so check `torch/distributed/elastic/` before relying on it. [Dealing with forced job preemption](../training/fault-tolerance-and-reproducibility.md#dealing-with-forced-job-preemption) covers the variants.
 
 ### Try this
 
@@ -2471,16 +2471,16 @@ This version launches one process per GPU with `srun` instead of `torchrun`, whi
 
 ## You can now read
 
-- [Storage: File Systems and IO](../storage/README.md) - local vs network filesystems, `fio` benchmarking, page cache effects, inode/metadata limits.
-- [SLURM for Users](../orchestration/slurm/users.md) - partitions, `srun`/`sbatch`, environment variable export, signals, zombies, job arrays.
-- [SLURM Administration](../orchestration/slurm/admin.md) and [SLURM performance](../orchestration/slurm/performance.md) - cgroups, CPU binding, node states.
+- [Storage: File Systems and IO](storage-and-data.md) - local vs network filesystems, `fio` benchmarking, page cache effects, inode/metadata limits.
+- [SLURM for Users](../orchestration/slurm/from-zero.md#day-to-day-user-recipes) - partitions, `srun`/`sbatch`, environment variable export, signals, zombies, job arrays.
+- [SLURM Administration](../orchestration/slurm/from-zero.md#a-small-cluster-admin-intro) and [SLURM performance](../orchestration/slurm/from-zero.md#cpu-cores-per-task-and-hyper-threads) - cgroups, CPU binding, node states.
 - [Containers and Virtualization](containers-and-virtualization.md) - namespaces, cgroups and images in depth, building on sections 4-6.
 - [Storage and Data](storage-and-data.md) - filesystems, page cache and data formats for training at scale, building on section 3.
 - [Concurrency and Parallelism](concurrency.md) - threads, processes, the GIL and async, building on sections 4-6.
-- [Fault tolerance](../training/fault-tolerance/README.md) - preemption signals, watchdogs, checkpoint frequency, slow memory leaks.
-- [Debugging and Troubleshooting](../debug/README.md), [Debugging PyTorch programs](../debug/pytorch.md), [Hanging solutions](../debug/torch-distributed-hanging-solutions.md), [Debug Tools](../debug/tools.md) - `py-spy`, `strace`, `gdb` applied to distributed training.
-- [CPU](../compute/cpu/README.md) and [CPU memory](../compute/cpu-memory/README.md) - cores for DataLoaders, NUMA affinity, hyperthreads, host RAM needs.
-- [Troubleshooting NVIDIA GPUs](../compute/accelerator/nvidia/debug.md) - Xid errors from `dmesg`, diagnostics, health checks.
+- [Fault tolerance](../training/fault-tolerance-and-reproducibility.md) - preemption signals, watchdogs, checkpoint frequency, slow memory leaks.
+- [Debugging and Troubleshooting](../development/debugging-pytorch.md), [Debugging PyTorch programs](../development/debugging-pytorch.md), [Hanging solutions](../development/debugging-distributed.md), [Debug Tools](../development/debugging-pytorch.md#finding-the-commit-that-broke-it-git-bisect) - `py-spy`, `strace`, `gdb` applied to distributed training.
+- [CPU](computer-architecture.md#sizing-the-cpu-side-of-a-gpu-node) and [CPU memory](computer-architecture.md#host-memory-how-much-and-what-for) - cores for DataLoaders, NUMA affinity, hyperthreads, host RAM needs.
+- [Troubleshooting NVIDIA GPUs](../compute/gpu-software-stack.md#11-troubleshooting-gpus-errors-diagnostics-and-health-checks) - Xid errors from `dmesg`, diagnostics, health checks.
 
 
 ## Further reading

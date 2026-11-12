@@ -16,7 +16,7 @@ This chapter assumes you know the math of transformers and backprop. It does not
 
 Forward links (later chapters, not needed to follow this one): [Inference arithmetic](../inference/arithmetic.md) applies the same counting to serving a model.
 
-This chapter goes below the rules of thumb in [Software Tune Up For The Best Performance](performance/README.md), [Tensor Precision / Data Types](dtype.md), [Selecting Training Hyper-Parameters](hparams.md) and [Instabilities](instabilities/README.md). It derives the constants those chapters quote and shows where they break. How the work is split across devices is covered in [Model Parallelism: Derivations](model-parallelism/derivations.md). What happens inside a single GPU kernel is covered in [Accelerator Execution Model](../compute/accelerator/execution-model.md). How to measure where time goes on a real run is in [Profiling and optimization](profiling-and-optimization.md). None of these topics is repeated here.
+This chapter goes below the rules of thumb in [Software Tune Up For The Best Performance](profiling-and-optimization.md), [Selecting Training Hyper-Parameters](stability.md) and [Instabilities](stability.md). It derives the constants those chapters quote and shows where they break. It also holds the reference material on data types: the dtype zoo and naming, TF32, FP8 and FP4 formats, integer quantization formats, and the fp32-accumulation rules. How the work is split across devices is covered in [Model Parallelism: Derivations](model-parallelism/derivations.md). What happens inside a single GPU kernel is covered in [Accelerator Execution Model](../compute/accelerator/execution-model.md). How to measure where time goes on a real run is in [Profiling and optimization](profiling-and-optimization.md). None of these topics is repeated here.
 
 Every formula in this chapter comes with a small program that checks it. Numbers about Llama-sized models come from arithmetic (no GPU was used). Numbers about the tiny model are measurements made on a laptop CPU, and the text says which is which.
 
@@ -31,6 +31,8 @@ mkdir -p /tmp/arith-code && cd /tmp/arith-code
 # save each block below under the file name in its first comment, then:
 /tmp/arith-venv/bin/python count_flops.py
 ```
+
+All blocks in this chapter are single-process. If you adapt one to run under `torchrun` with several processes, their `print` output will interleave, sometimes two ranks on one line. Two tiny tools in `training/tools` fix that by taking an exclusive file lock (`fcntl.flock`) around each `print`: [`printflock.py`](tools/printflock.py) is an importable drop-in (`from printflock import printflock as print`), and [`multi-gpu-non-interleaved-print.py`](tools/multi-gpu-non-interleaved-print.py) is the same wrapper plus a runnable NCCL example (`torchrun --nproc_per_node 2 multi-gpu-non-interleaved-print.py`). The lock only serializes processes on one node, which is where interleaving happens; output from different nodes arrives through the launcher line by line. Rank prefixes and per-rank log files are covered in [Per-rank logs and rank-prefixed printing](../foundations/distributed-systems.md#per-rank-logs-and-rank-prefixed-printing).
 
 Several scripts import a tiny Llama-style model from `tinylm.py`. It has the same structure as Llama-3 (RMSNorm, GQA attention through PyTorch's fused `scaled_dot_product_attention`, SwiGLU MLP, untied embedding and head) but is small enough to run on a CPU in a fraction of a second. Save it first:
 
@@ -109,7 +111,7 @@ The two reference models (from their public `config.json`) are:
 | Llama-3-8B   | 4096 | 32  | 32  | 8   | 128 | 14336 | 128256 | no |
 | Llama-3-70B  | 8192 | 80  | 64  | 8   | 128 | 28672 | 128256 | no |
 
-Units: parameter and optimizer memory is in GB ($10^9$ bytes), activation memory is in GiB ($2^{30}$ bytes), and FLOP means a single multiply or add (1 MAC = 2 FLOP, see [MACs vs FLOP](performance/README.md#macs-vs-flop-vs-flops-vs-flops)). FLOP/s (with "/s") is a rate: FLOPs per second.
+Units: parameter and optimizer memory is in GB ($10^9$ bytes), activation memory is in GiB ($2^{30}$ bytes), and FLOP means a single multiply or add (1 MAC = 2 FLOP, see [MACs vs FLOP](profiling-and-optimization.md#macs-vs-flop-vs-flops-vs-flops)). FLOP/s (with "/s") is a rate: FLOPs per second.
 
 ## FLOPs of a decoder transformer
 
@@ -430,7 +432,7 @@ Llama-3-70B: N=70.554B N'=69.502B 6N=423.32 6N'=417.01 attn12=64.42 attn6=32.21 
 
 ## MFU and HFU, properly
 
-MFU (model FLOPs utilization) is the fraction of the hardware's peak arithmetic rate that went into the FLOPs the model mathematically needs. HFU (hardware FLOPs utilization) counts everything the hardware executed, including recomputation. [MFU vs HFU](performance/README.md#mfu-vs-hfu) gives the definitions. The precise version is:
+MFU (model FLOPs utilization) is the fraction of the hardware's peak arithmetic rate that went into the FLOPs the model mathematically needs. HFU (hardware FLOPs utilization) counts everything the hardware executed, including recomputation. [MFU vs HFU](profiling-and-optimization.md#mfu-vs-hfu) gives the definitions. The precise version is:
 
 $$
 \text{MFU} = \frac{\text{tokens/s/GPU} \times \text{model FLOP per token}}{\text{peak FLOP/s}}
@@ -472,7 +474,7 @@ So with full recompute, $\text{HFU} \approx (1.19\text{-}1.25) \times \text{MFU}
 
 ### MFU from a measured tokens/s
 
-Inverting the formula gives the throughput a target MFU requires. With H100 SXM dense bf16 peak = 989.4 TFLOP/s (derivation in [How To Calculate Theoretical TFLOPS](../compute/accelerator/README.md#how-to-calculate-theoretical-tflops)) and the 12 convention at $s = 8192$:
+Inverting the formula gives the throughput a target MFU requires. With H100 SXM dense bf16 peak = 989.4 TFLOP/s (derivation in [How To Calculate Theoretical TFLOPS](../compute/accelerators.md#how-to-calculate-theoretical-tflops)) and the 12 convention at $s = 8192$:
 
 ```python
 # mfu.py
@@ -496,7 +498,7 @@ Llama-3-70B: 40% MFU needs 822 tok/s/GPU
 example: 6.5M tok/s on 1024 GPUs, 8B -> MFU 37.2%
 ```
 
-The denominator has two choices, and they mean different things. The spec peak (989) measures distance from a number no kernel reaches. The [maximum achievable matmul FLOPS](../compute/accelerator/README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) for H100 SXM is 853 bf16 TFLOPS in this repo's measurements (86.2% of spec), and MFU against that number measures distance from what your matmuls could realistically do. Report MFU against the spec peak, since that is the convention, and use the ratio to maximum achievable matmul FLOPS (MAMF) internally to tell how much is left to gain.
+The denominator has two choices, and they mean different things. The spec peak (989) measures distance from a number no kernel reaches. The [maximum achievable matmul FLOPS](../compute/accelerators.md#mamf-and-msmf-comparison-table) for H100 SXM is 853 bf16 TFLOPS in this repo's measurements (86.2% of spec), and MFU against that number measures distance from what your matmuls could realistically do. Report MFU against the spec peak, since that is the convention, and use the ratio to maximum achievable matmul FLOPS (MAMF) internally to tell how much is left to gain.
 
 You can practise the whole measurement loop on a CPU: measure the achievable matmul rate, time a training step, divide the counted FLOPs by the step time.
 
@@ -565,7 +567,7 @@ DeepSeek-V3: bf16 peak 34.6%, fp8 peak 17.3%
 
 During the forward pass, autograd keeps some intermediate tensors alive because the backward pass needs them (for example, $dW = X^\top dY$ needs the layer's input $X$). Those saved tensors are the *activations*, and at long context they are usually the largest thing in GPU memory.
 
-[Anatomy of Model's Memory Usage](performance/README.md#anatomy-of-models-memory-usage) measures "copies of `hidden_states`" empirically. This section derives what autograd actually saves for backward, term by term, and then measures it. The two quantities differ. The measured coefficient in that chapter is peak working memory inside one layer's forward, temporaries included. The coefficient below is what stays resident after the forward pass until backward runs.
+[Anatomy of Model's Memory Usage](profiling-and-optimization.md#anatomy-of-models-memory-usage) measures "copies of `hidden_states`" empirically. This section derives what autograd actually saves for backward, term by term, and then measures it. The two quantities differ. The measured coefficient in that chapter is peak working memory inside one layer's forward, temporaries included. The coefficient below is what stays resident after the forward pass until backward runs.
 
 Why activations dominate at scale - memory per GPU split into parameters+optimizer state and activations (Korthikanti et al.):
 
@@ -853,8 +855,8 @@ The 70B model does not fit even fully sharded on one 8-GPU node (141 GB of state
 ### Everything else
 
 - **Temporary buffers**: the all-gather destination buffer for each FSDP unit (an all-gather is the collective in which every GPU ends up holding the concatenation of everyone's shards), the reduce-scatter source buffer (the inverse: inputs are summed and each GPU receives one shard of the sum), fp32 upcasts of bf16 gradients for reduction, cuBLAS workspaces (cuBLAS is NVIDIA's matmul library, and it requests scratch space per call), the logits pair above, and optimizer temporaries: PyTorch's default `foreach` AdamW implementation batches the update over a whole list of parameters at once and allocates intermediates the size of that list, while `fused=True` does the update in one kernel and avoids most of them.
-- **CUDA context and kernel images**: 0.5-2 GiB before you allocate anything. The CUDA context is the per-process driver state, including the loaded GPU kernel binaries; a kernel is a single function launched on the GPU. See [Preloaded CUDA kernels memory usage](performance/README.md#preloaded-cuda-kernels-memory-usage).
-- **NCCL** (NVIDIA's library for collectives between GPUs): 1-2 GiB of communicator buffers, more with many process groups. See [`torch.distributed` memory usage](performance/README.md#torchdistributed-memory-usage).
+- **CUDA context and kernel images**: 0.5-2 GiB before you allocate anything. The CUDA context is the per-process driver state, including the loaded GPU kernel binaries; a kernel is a single function launched on the GPU. See [Preloaded CUDA kernels memory usage](profiling-and-optimization.md#preloaded-cuda-kernels-memory-usage).
+- **NCCL** (NVIDIA's library for collectives between GPUs): 1-2 GiB of communicator buffers, more with many process groups. See [`torch.distributed` memory usage](profiling-and-optimization.md#torchdistributed-memory-usage).
 - **Fragmentation**: memory the allocator has reserved from the driver but cannot hand out for the request at hand. It typically costs from a few percent to tens of percent. The mechanism follows.
 
 None of the context, NCCL or fragmentation memory shows up in `torch.cuda.memory_allocated()`. `nvidia-smi` shows reserved memory plus context plus NCCL. On a GPU machine (untested here) you can see the gap directly:
@@ -878,7 +880,7 @@ print(subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv"], 
 - **Streams**: a CUDA stream is an ordered queue of GPU work, and different streams run concurrently. Blocks belong to the stream they were allocated on. A block freed on stream A is reused only by requests on stream A, because the allocator cannot know whether work queued on stream B still reads it. Code that hands a tensor to another stream (NCCL communication streams, FSDP prefetch) calls `tensor.record_stream(s)`. The block's free is then deferred until an event recorded on `s` completes. Until then it is in state `active_pending_free`, and that is where much of the "mysterious" reserved memory under FSDP sits.
 - **OOM path**: when no cached block fits and `cudaMalloc` fails, the allocator frees every cached block that is not split and retries. This increments `num_alloc_retries`. If the retry fails you get the OOM message showing "reserved but unallocated" memory. That number is your fragmentation.
 - **`max_split_size_mb`**: blocks larger than this are never split, so a large free block is not chewed into fragments by small requests.
-- **`expandable_segments:True`**: instead of a fixed-size `cudaMalloc` per segment, the allocator reserves a large range of *virtual* addresses once per stream and maps physical memory pages into it on demand with the CUDA virtual memory API (`cuMemCreate`/`cuMemMap`). Virtual memory means a pointer refers to an address range that the hardware translates to physical memory in fixed-size chunks called pages, so contiguous addresses do not need contiguous physical memory. The segment grows at its end, and a freed tail can be unmapped. Allocations whose size varies step to step (variable sequence lengths, the SP reshapes in [Overcoming CUDA OOM due to memory fragmentation](../debug/pytorch.md#overcoming-cuda-oom-due-to-memory-fragmentation)) stop leaving holes the size of last step's tensor.
+- **`expandable_segments:True`**: instead of a fixed-size `cudaMalloc` per segment, the allocator reserves a large range of *virtual* addresses once per stream and maps physical memory pages into it on demand with the CUDA virtual memory API (`cuMemCreate`/`cuMemMap`). Virtual memory means a pointer refers to an address range that the hardware translates to physical memory in fixed-size chunks called pages, so contiguous addresses do not need contiguous physical memory. The segment grows at its end, and a freed tail can be unmapped. Allocations whose size varies step to step (variable sequence lengths, the SP reshapes in [Overcoming CUDA OOM due to memory fragmentation](../development/debugging-pytorch.md#fragmentation-and-expandable-segments)) stop leaving holes the size of last step's tensor.
 
 The size rules are easy to get wrong in your head, so here they are as code. This is a model of the rules listed above, not the allocator, and it ignores block splitting and reuse:
 
@@ -934,7 +936,7 @@ The counters to watch in `torch.cuda.memory_stats()`:
 
 ### Reading `torch.cuda.memory._snapshot()`
 
-[PyTorch memory profiler](../debug/pytorch.md#pytorch-memory-profiler) shows how to record and visualize the history. The snapshot is also a plain dict you can analyze yourself. It is a private API and its keys may change between versions. This needs a CUDA GPU and was not run for this chapter (untested):
+[PyTorch memory profiler](../development/debugging-pytorch.md#the-pytorch-memory-profiler) shows how to record and visualize the history. The snapshot is also a plain dict you can analyze yourself. It is a private API and its keys may change between versions. This needs a CUDA GPU and was not run for this chapter (untested):
 
 ```python
 # snapshot_frag.py  (needs a CUDA GPU; untested)
@@ -1151,6 +1153,193 @@ bf16(0.999) = 1.0   0.999*bf16(1.0) in bf16 = 1.0
 - **bf16 loses integers above 256.** The spacing is 2 at 256, 32 at 4096 and 64 at 8192. `bf16(8191) = 8192` and `bf16(4097) = 4096`. Position ids stored in bf16 are therefore wrong by up to 16 positions below 8192 (half the spacing of 32), and RoPE angles computed as $\text{position} \times \text{inv\_freq}$ in bf16 are off by tens of radians for the highest frequencies, i.e. meaningless. Compute positions and angles in fp32 and cast `cos`/`sin` afterwards.
 - **bf16 cannot represent typical Adam $\beta_2$.** `bf16(0.999) = 1.0`. Even with an fp32 multiplier, $0.999\,v$ rounds back to $v$, because a 0.1% change is below bf16's half-spacing there (just under 1.0 the spacing is $2^{-8} \approx 0.39\%$, so half a spacing is about 0.2%).
 
+### The dtype zoo and how to read its names
+
+A tensor's element type is called its *dtype*. As of 2026-08 these floating-point dtypes are in use in ML:
+
+| dtype | bits | notes |
+| :-- | --: | :-- |
+| fp32 | 32 | the reference format |
+| tf32 | 19 | a compute mode of NVIDIA tensor cores (Ampere and later), not a storage format; see [TF32](#tf32) |
+| fp16 | 16 | |
+| bf16 | 16 | |
+| fp8 | 8 | E4M3 and E5M2, see [FP8 training](#fp8-training) |
+| fp6 | 6 | E2M3 and E3M2, Blackwell and later |
+| fp4 | 4 | E2M1, only usable block-scaled, see [FP4 formats](#fp4-formats) |
+
+The sign/exponent/mantissa layout behind all of them, and why the exponent sets the range and the mantissa the precision, is in [Floating point: IEEE 754](../foundations/computer-architecture.md#floating-point-ieee-754). The 16- and 8-bit layouts side by side:
+
+![fp16, bf16 and fp8 bit layouts](images/fp16-bf16-fp8.png)
+
+([source](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html))
+
+Newer hardware and libraries name the sub-16-bit formats with a compact code. The ones in circulation:
+
+- fp4: `float4_e2m1fn`
+- fp6: `float6_e2m3fn`, `float6_e3m2fn`
+- fp8: `float8_e3m4`, `float8_e4m3`, `float8_e4m3b11fnuz`, `float8_e4m3fn`, `float8_e4m3fnuz`, `float8_e5m2`, `float8_e5m2fnuz`, `float8_e8m0fnu`
+
+How to decode a name:
+
+- `e<N>` is the number of exponent bits, `m<N>` the number of mantissa bits, and `b<N>` (if present) a non-standard exponent bias.
+- Suffix `f`: finite values only, no infinities.
+- Suffix `n`: NaNs exist, but only as special encodings at the outer end of the range (not the IEEE "all-ones exponent" block of NaNs).
+- Suffix `u`: unsigned.
+- Suffix `uz`: unsigned zero, i.e. there is no $-0$; the bit pattern IEEE uses for $-0$ is the NaN instead.
+
+So `float8_e4m3b11fnuz` is an 8-bit float with a 4-bit exponent, 3-bit mantissa, exponent bias 11, finite values only, NaN only at the outer range, and no negative zero. The [ml_dtypes specification table](https://github.com/jax-ml/ml_dtypes?tab=readme-ov-file#specifications-of-implemented-floating-point-formats) gives the exact range and special values of every one of them.
+
+`float8_e8m0fnu` is the odd one out: it is not an element format but a *scale*. It has 8 exponent bits, no mantissa and no sign, so it can only hold powers of two. Block-scaled formats store a group of low-bit elements plus one shared scale, and pairing an `E8M0` scale per 32 elements with a 4-, 6- or 8-bit element gives the `MXFP4`/`MXFP6`/`MXFP8` names you see in accelerator specs (MX is the Open Compute Project's Microscaling spec). How many bytes per parameter that costs a stored model is worked out in [Inference arithmetic](../inference/arithmetic.md). NVIDIA's [`NVFP4`](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) is the same idea tuned differently: the same `E2M1` element, a block of 16 with an `E4M3` scale, plus one fp32 scale for the whole tensor. An `E4M3` scale can sit between powers of two, so it tracks each block's range more closely than `E8M0`. [FP4 formats](#fp4-formats) measures the difference.
+
+PyTorch exposes a subset of these as real dtypes. On torch 2.15:
+
+```python
+# dtypes.py
+import torch
+print([d for d in dir(torch) if d.startswith(("float8", "float4"))])
+```
+
+```
+$ python dtypes.py
+['float4_e2m1fn_x2', 'float8_e4m3fn', 'float8_e4m3fnuz', 'float8_e5m2', 'float8_e5m2fnuz', 'float8_e8m0fnu']
+```
+
+`float4_e2m1fn_x2` is two fp4 values packed into one byte, since PyTorch has no sub-byte element storage. The `fnuz` variants are the fp8 encodings AMD's MI300 generation uses; NVIDIA uses `e4m3fn` and `e5m2`.
+
+### Integer formats for quantization
+
+*Quantization* stores weights (and sometimes activations) as low-bit integers plus a floating-point scale, and dequantizes them (multiplies back by the scale) for the math. The common widths:
+
+- int8: 8 bits
+- int4: 4 bits
+- int1: 1 bit (binary weights)
+
+The scale is what makes this work, and how many elements share one scale decides the error. A symmetric "absmax" quantizer, per row and per group:
+
+```python
+# intquant.py
+import torch
+torch.manual_seed(0)
+w = torch.randn(4096, 4096) * 0.02                               # (out, in) a linear layer's weight
+
+def quant(w, bits, group=None):                                  # symmetric absmax, one fp scale per row or per group
+    qmax = 2 ** (bits - 1) - 1                                   # int8: 127, int4: 7
+    g = w if group is None else w.view(w.shape[0], -1, group)    # (out, in) or (out, in/group, group)
+    s = g.abs().amax(-1, keepdim=True) / qmax                    # fp scale per row / per group
+    q = torch.clamp(torch.round(g / s), -qmax - 1, qmax)         # integers that would be stored
+    return (q * s).view_as(w)                                    # dequantized for the math
+
+for name, wq in [("int8 per-row", quant(w, 8)), ("int4 per-row", quant(w, 4)),
+                 ("int4 group=128", quant(w, 4, 128)), ("int4 group=32", quant(w, 4, 32))]:
+    print(f"{name:15s} rel err {((wq - w).norm() / w.norm()).item():.4f}")
+```
+
+```
+$ python intquant.py
+int8 per-row    rel err 0.0087
+int4 per-row    rel err 0.1575
+int4 group=128  rel err 0.1173
+int4 group=32   rel err 0.0970
+```
+
+How to read it: the relative error is $\lVert w_q - w \rVert / \lVert w \rVert$. int8 with one scale per row loses under 1%. int4 per row loses 16%, because the single largest element in a 4096-wide row sets the step size for all of them. Smaller groups cut that to 10% at the cost of more scales to store, which is the same trade the block-scaled fp4 formats make in hardware. Gaussian weights are a friendly case; real checkpoints have outlier channels that make per-row int4 worse still.
+
+### ML dtype progression
+
+Training precision has moved down one format at a time:
+
+1. **fp32.** The original default. Correct, but slow.
+2. **fp16 [mixed precision](https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/).** The `forward` and `backward` matmuls run in fp16, an fp32 "master" copy of the weights and the optimizer states receive the update, and the loss is scaled so that small gradients do not underflow. This sped training up enormously. The loop:
+
+   ![fp32/fp16 mixed precision](images/mixed-precision-fp16.png)
+
+   ([source](https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/))
+
+   Why each piece is needed is in [Why range vs precision is the ML tradeoff](../foundations/computer-architecture.md#why-range-vs-precision-is-the-ml-tradeoff); the mechanics are the [Loss scaling](#loss-scaling-fp16-only) and [What must stay fp32](#what-must-stay-fp32-and-why) sections below. But fp16 proved unstable for LLMs: its 65504 maximum makes activation and loss overflows routine, and training large models in it was extremely difficult.
+3. **bf16 mixed precision.** The same protocol with bf16 instead of fp16. bf16 has fp32's range, so overflow goes away (and loss scaling with it), and LLM training became much more stable.
+4. **fp8 mixed precision.** The matmuls drop to [fp8](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html) for another speedup ([FP8 Formats for Deep Learning](https://arxiv.org/abs/2209.05433)). As of 2026-08 bf16 mixed precision is still the default for most runs, but fp8 training is no longer experimental: [DeepSeek-V3](https://arxiv.org/abs/2412.19437) was trained in fp8. See [FP8 training](#fp8-training).
+5. **fp6, fp4 and nvfp4** arrived with Blackwell. So far these are mostly inference formats, though nvfp4 pretraining recipes have started to appear; see [FP4 formats](#fp4-formats).
+
+What each step buys, as NVIDIA B200 dense (no sparsity) peak throughput, with the first non-CPU hardware to support each dtype. Sorted by B200 TFLOPS, then by year of first support:
+
+| Data type | B200 TFLOPS | First hardware support                               |
+| :-------- | ----------: | :--------------------------------------------------- |
+| fp32      |          80 | predates ML accelerators                             |
+| tf32      |        1125 | NVIDIA A100 (Ampere, 2020)                           |
+| fp16      |        2250 | NVIDIA P100 (Pascal, 2016)                           |
+| bf16      |        2250 | Google TPU v2 (2017)<br>NVIDIA A100 (Ampere, 2020)   |
+| int8      |        4500 | Google TPU v1 (2015)<br>NVIDIA P4/P40 (Pascal, 2016) |
+| fp8       |        4500 | NVIDIA H100 (Hopper, 2022)<br>Intel Gaudi 2 (2022)   |
+| fp6       |        4500 | NVIDIA B200 (Blackwell, 2024)                        |
+| mxfp4     |        9000 | NVIDIA B200 (Blackwell, 2024)                        |
+| nvfp4     |        9000 | NVIDIA B200 (Blackwell, 2024)                        |
+
+How to read it:
+
+- int8 is TOPS (integer ops per second), not TFLOPS.
+- Some dates mark when a dtype became *usable*, not *fast*. P100 ran fp16 at 2x its fp32 rate, but fp16 matmuls only became fast with V100's tensor cores in 2017. Pascal's int8 was the `DP4A` dot-product instruction; int8 tensor cores arrived with Turing in 2018.
+- Each halving of element width doubles throughput down to fp8. Then the pattern breaks: fp6 runs at fp8's 4500 TFLOPS, so it saves memory and bandwidth but no compute. fp4 doubles again over fp8, and on GB300 it is 3x (15000 vs 5000). Check the spec for the dtype you plan to use rather than extrapolating. The full per-accelerator tables are in [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table).
+
+In parallel with mixed-precision training, the community built quantization libraries for storing and running models in fewer bits. Tim Dettmers' [bitsandbytes](https://github.com/bitsandbytes-foundation/bitsandbytes) provides many 4- and 8-bit quantization methods (including the 8-bit Adam in [Optimizer-state memory](#optimizer-state-memory)); DeepSpeed has its own [model compression and quantization tools](https://www.deepspeed.ai/tutorials/model-compression/).
+
+### TF32
+
+TF32 lets NVIDIA tensor cores (Ampere and later) run fp32 matmuls much faster, at a small precision cost. The fp32 inputs are rounded to a 10-bit mantissa (fp16's precision) while keeping fp32's 8-bit exponent (fp32's range), multiplied, and accumulated in fp32. Tensors in memory stay 32 bits; your code still sees fp32. The bit budgets side by side: TF32 takes fp32's exponent and fp16's mantissa, and bf16 is the same exponent with a mantissa cut to 7 bits:
+
+![fp32, tf32, fp16 and bf16 bit layouts](images/fp32-tf32-fp16-bf16.png)
+
+([source](https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/))
+
+A100 dense numbers:
+
+| Data type              | A100 TFLOPS |
+| :---                   |        --: |
+| FP32                   |       19.5 |
+| Tensor Float 32 (TF32) |        156 |
+
+That is 8x for changing a flag. The precision cost, emulated on CPU by rounding the inputs' mantissas exactly as the tensor core does:
+
+```python
+# tf32_emul.py
+import torch
+torch.manual_seed(0)
+
+def to_tf32(x):                                  # keep fp32's 8-bit exponent, round mantissa 23 -> 10 bits
+    bits = x.view(torch.int32)
+    bits = (bits + 0x1000 + ((bits >> 13) & 1)) & ~0x1FFF   # round-to-nearest-even on the 13 dropped bits
+    return bits.view(torch.float32)
+
+a, b = torch.randn(1024, 4096), torch.randn(4096, 1024)       # (M, K), (K, N)
+ref = a.double() @ b.double()
+for name, y in [("fp32", a @ b), ("tf32 inputs, fp32 accumulate", to_tf32(a) @ to_tf32(b)),
+                ("bf16 inputs, fp32 accumulate", a.bfloat16().float() @ b.bfloat16().float())]:
+    print(f"{name:30s} rel err {((y.double() - ref).norm() / ref.norm()).item():.1e}")
+
+print("defaults: matmul.allow_tf32 =", torch.backends.cuda.matmul.allow_tf32,
+      "| cudnn.allow_tf32 =", torch.backends.cudnn.allow_tf32,
+      "| float32_matmul_precision =", torch.get_float32_matmul_precision())
+```
+
+```
+$ python tf32_emul.py
+fp32                           rel err 1.1e-06
+tf32 inputs, fp32 accumulate   rel err 2.9e-04
+bf16 inputs, fp32 accumulate   rel err 2.3e-03
+defaults: matmul.allow_tf32 = False | cudnn.allow_tf32 = True | float32_matmul_precision = highest
+```
+
+How to read it: TF32 is about 250x less accurate than true fp32 on this matmul, but 8x more accurate than bf16 inputs (3 more mantissa bits). For training that already tolerates bf16, that is noise. For a numerics test comparing against a reference, it is not.
+
+The last line is the nuance in the defaults: **the two TF32 flags have different defaults.** `torch.backends.cuda.matmul.allow_tf32` (matmuls and linear layers, which go to cuBLAS) is `False`, so plain fp32 matmuls are *not* TF32 unless you ask. `torch.backends.cudnn.allow_tf32` (the ops PyTorch sends to cuDNN, mainly convolutions) is `True`, so fp32 convolutions on Ampere+ already *are* TF32. To get TF32 for matmuls, put this at the start of the program:
+
+```python
+torch.backends.cuda.matmul.allow_tf32 = True      # cuBLAS: matmul, linear
+torch.backends.cudnn.allow_tf32 = True            # cuDNN: convolutions (already the default)
+# equivalent for matmuls: torch.set_float32_matmul_precision("high")
+```
+
+`torch.set_float32_matmul_precision("high")` is the other way to say the same thing for matmuls ("highest" is the fp32 default, "medium" additionally allows bf16-based internal compute). Recent PyTorch releases also added a newer per-backend setting, `torch.backends.cuda.matmul.fp32_precision` / `torch.backends.cudnn.fp32_precision` (values `"ieee"` or `"tf32"`; it prints `none` when unset, as on our torch 2.15), intended to replace `allow_tf32`. I have not checked how the old and new flags interact on a GPU; set one style consistently. If you train in bf16 autocast, these flags only affect the ops that run in fp32 anyway. The PyTorch notes on [TF32 on Ampere and later](https://docs.pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices) quantify the precision loss on GPUs.
+
 ### Loss scaling (fp16 only)
 
 Multiply the loss by $S$ so that the gradients $Sg$ land in fp16's normal range, then unscale in fp32 before the optimizer step. Dynamic scaling (`torch.amp.GradScaler` defaults: `init_scale=2**16`, `growth_factor=2`, `backoff_factor=0.5`, `growth_interval=2000`) halves $S$ and skips the step on any inf/NaN, and doubles $S$ after 2000 clean steps. bf16 needs none of this, because its range equals fp32's. Loss scaling with bf16 does nothing useful. If your bf16 run "needs" it, the problem is elsewhere.
@@ -1326,6 +1515,18 @@ $ python autocast_dtypes.py
 
 On CPU only `cross_entropy` was upcast; softmax, layer_norm, exp, pow and sum stayed in bf16. Don't assume a numerics bug you reproduce on CPU behaves the same on GPU, and vice versa. A hand-written RMSNorm with `x * torch.rsqrt(x.pow(2).mean(-1))` under CUDA autocast does the `pow` (and therefore the `mean` of its fp32 output) in fp32, but only because autocast is active and `pow` is on its CUDA list. Outside autocast, or on CPU where `pow` stayed bf16 above, a bf16 `x` is squared and averaged in bf16. That is the reason for HuggingFace's explicit `.float()`, and the activation cost measured earlier.
 
+### When to use fp32 accumulators
+
+The common thread of the last two sections: whenever you compute in a low-precision dtype, do not *accumulate* intermediate results in it. Correct kernels for `LayerNorm`-like ops read and write the input dtype but do their internal sums in fp32 registers and downcast only the output. Generally it is only the accumulation that needs fp32; adding up many low-precision numbers is what loses the information. By operation:
+
+1. **Reduction collectives** - the collectives that sum tensors across GPUs, [all-reduce](../network/collectives-internals.md#all-reduce) and [reduce-scatter](../network/collectives-internals.md#reduce-scatter), used to sync data-parallel gradients.
+   - fp16: acceptable in fp16 if loss scaling is in place (the scaled gradients sit in fp16's normal range).
+   - bf16: only acceptable in fp32 (the `bf16 ring reduce` lines of `accum.py` show why).
+2. **Gradient accumulation** - running several micro-batches through `forward` and `backward` and summing their gradients in a buffer before one optimizer step (the practical side is in [Profiling and optimization](profiling-and-optimization.md)).
+   - Best done in fp32 for both fp16 and bf16, and a must for bf16 (`accum.py`: 7.7e-3 vs 1.2e-7 relative error).
+3. **Optimizer step.** Adding a tiny update to a large weight is often nullified (`1 + 1e-3` is `1.0` in bf16), so fp32 master weights and fp32 optimizer states are the norm.
+   - fp16/bf16 master weights and optimizer states are viable only with [Kahan summation](https://en.wikipedia.org/wiki/Kahan_summation_algorithm) or [stochastic rounding](https://en.wikipedia.org/wiki/Rounding) ([Revisiting BFloat16 Training](https://arxiv.org/abs/2010.06192)). Kahan summation keeps a second low-precision buffer holding what each addition rounded off and feeds it back into the next one. Stochastic rounding is derived and measured in the next section. A ready-made optimizer doing this is the [AnyPrecision optimizer](https://github.com/pytorch/torchdistx/pull/52), whose latest version lives [in torchmultimodal](https://github.com/facebookresearch/multimodal/blob/6bf3779a064dc72cde48793521a5be151695fc62/torchmultimodal/modules/optimizers/anyprecision.py#L17) (untested here).
+
 ### Stochastic rounding
 
 Round-to-nearest is biased whenever the increment is smaller than half the spacing: the update is always rounded away. Stochastic rounding (SR) rounds up with probability equal to the fractional distance, so $E[\operatorname{SR}(x)] = x$. For fp32 to bf16 it is a single integer add: bf16 is exactly the top 16 bits of fp32, so adding uniform noise to the low 16 bits and truncating rounds up with the right probability.
@@ -1365,6 +1566,44 @@ x = 1.0009766  RNE -> 1.0000000  mean SR -> 1.0009735
 ```
 
 The first line checks unbiasedness: $1 + 2^{-10}$ lies between bf16 neighbours 1.0 and 1.0078; round-to-nearest always gives 1.0, while the mean of a million stochastic roundings recovers the true value to 3e-6. The table is a bf16 weight at 0.02 receiving 1000 constant updates of size $\text{lr}$. Round-to-nearest stalls as soon as $\text{lr}$ drops below about half the spacing at the weight's magnitude, which is exactly what happens during LR decay. SR tracks fp32 in expectation, with variance about $\text{ulp}^2/4$ per step (ulp, "unit in the last place", is the spacing between adjacent representable values at that magnitude). That is why pure-bf16 training (no fp32 master weights) needs SR or Kahan summation (keeping a second low-precision variable that holds the rounding error of each add and feeds it back into the next one) ("Revisiting BFloat16 Training", arXiv:2010.06192). NVIDIA tensor cores do not stochastically round matmul outputs. Recent PTX ISA versions expose an `.rs` rounding mode for some down-conversions on Blackwell, which NVFP4 training recipes use for gradients (NVFP4 is NVIDIA's 4-bit floating-point format on Blackwell: E2M1 values with an FP8 scale per block of 16 elements). I have not verified which conversions support it on which architectures.
+
+### Changing precision post training
+
+Sometimes you can run a model in a different precision than it was trained in, sometimes not:
+
+- **bf16-pretrained model run in fp16: usually fails.** bf16's range let activations grow well past fp16's maximum of 65504 during training, and nothing pushed back. They overflow to `inf` in fp16. For an in-depth discussion of the T5 case and a workaround (clamping inside the affected layers), see [this transformers PR](https://github.com/huggingface/transformers/pull/10956).
+- **fp16-pretrained model run in bf16: usually works.** Every fp16 value is in bf16's range; you lose 3 mantissa bits, so quality drops a little. Fine-tune briefly in bf16 before relying on it.
+
+Before switching a model to fp16, measure the activation peaks with forward hooks on a representative batch:
+
+```python
+# fp16_headroom.py
+import torch, torch.nn as nn
+torch.manual_seed(0)
+model = nn.Sequential(nn.Linear(64, 256), nn.GELU(), nn.Linear(256, 64))   # stand-in for a bf16-trained model
+with torch.no_grad():
+    model[2].weight.mul_(100000)                # pretend training grew one layer's outputs large (bf16 doesn't mind)
+
+peak = {}                                       # module name -> max |output| seen
+for name, m in model.named_modules():
+    if name:
+        m.register_forward_hook(lambda m, i, o, name=name: peak.__setitem__(name, o.abs().max().item()))
+x = torch.randn(32, 64)                         # (B, h_in) a representative batch
+model(x)
+for name, v in peak.items():
+    print(f"layer {name}: max|out| = {v:9.1f}  {'OVERFLOWS fp16 (max 65504)' if v > 65504 else 'fits fp16'}")
+print("same output cast to fp16:", model(x).to(torch.float16).isinf().any().item())
+```
+
+```
+$ python fp16_headroom.py
+layer 0: max|out| =       2.3  fits fp16
+layer 1: max|out| =       2.2  fits fp16
+layer 2: max|out| =   74129.7  OVERFLOWS fp16 (max 65504)
+same output cast to fp16: True
+```
+
+Any layer whose peak is within a factor of a few of 65504 on your sample will overflow on some other input; leave margin. The weight scaling here is artificial, but large activations in specific layers of bf16-trained models are real (T5's feed-forward outputs were the case in the PR above).
 
 ## FP8 training
 
@@ -1628,6 +1867,67 @@ y.sum().backward()
 
 The recipe classes in TE 2.x are `DelayedScaling`, `Float8CurrentScaling`, `Float8BlockScaling` (DeepSeek-style) and `MXFP8BlockScaling`. An NVFP4 recipe also exists. Exact names and defaults vary by release, so check the docs for your version.
 
+## FP4 formats
+
+An fp4 `E2M1` element has 16 bit patterns: ±0, ±0.5, ±1, ±1.5, ±2, ±3, ±4 and ±6. That is far too few to cover a tensor's range with one scale, so fp4 is only usable *block-scaled*: every small block of elements shares a scale that stretches those 15 distinct values over the block's actual range. There are two block-scaled fp4 formats, and they differ only in that scale. Sorted by block size, descending:
+
+| Format | Block<br>size | Block<br>scale                 | Bits per<br>element | Defined by  | Hardware                                                     |
+| :----- | ------------: | :----------------------------- | ------------------: | :---------- | :----------------------------------------------------------- |
+| mxfp4  |            32 | `E8M0`                         |                4.25 | OCP MX spec | NVIDIA Blackwell<br>AMD MI350X/MI355X<br>Huawei Ascend 950DT |
+| nvfp4  |            16 | `E4M3`<br>+ FP32<br>per tensor |                 4.5 | NVIDIA      | NVIDIA only,<br>Blackwell<br>and newer                       |
+
+Block size is in elements, and bits per element include the block's share of its scale ($4 + 8/32$ and $4 + 8/16$). An `E8M0` scale is a power of two; nvfp4 adds one fp32 scale per tensor on top of its `E4M3` block scales, so the block scales can use E4M3's limited range where it is most precise.
+
+**Speed does not separate them.** Blackwell tensor cores run both through the same instruction at the same peak, which is why the [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table) lists one number for both. [Measured](../compute/accelerators.md#mamf-and-msmf-comparison-table) on B200 with torch 2.14, nvfp4 came out 8-9% faster than mxfp4 on both MAMF (6746 vs 6183 TFLOPS) and MSMF (5627 vs 5222 TFLOPS), the maximum achievable and maximum sustainable matmul FLOPS defined in [MAMF and MSMF](../compute/accelerators.md#mamf-and-msmf). That gap is a software difference, not a hardware one.
+
+**Accuracy does.** A smaller block means one outlier distorts the scale of 15 neighbours rather than 31, and an `E4M3` scale can sit between powers of two where `E8M0` has to round up to the next one, wasting up to half of the fp4 grid. Both effects, simulated on CPU (the fp4 rounding is done by table lookup; only the `E4M3` scale rounding uses a real PyTorch fp8 cast):
+
+```python
+# fp4_blocks.py
+import torch
+torch.manual_seed(0)
+E2M1 = torch.tensor([0, 0.5, 1, 1.5, 2, 3, 4, 6])               # the 8 magnitudes fp4 e2m1 can hold
+GRID = torch.cat([-E2M1.flip(0)[:-1], E2M1])                     # (15,) signed grid, one zero
+
+def round_to(x, grid):                                           # nearest grid point, elementwise
+    return grid[(x[..., None] - grid).abs().argmin(-1)]
+
+def e4m3(x):                                                     # round a positive fp32 scale to fp8 e4m3
+    return x.to(torch.float8_e4m3fn).float()
+
+def q_mxfp4(x, blk=32):                                          # x: (n,) -> (n,)
+    b = x.view(-1, blk)                                          # (n/blk, blk)
+    amax = b.abs().amax(1, keepdim=True)
+    s = 2.0 ** torch.ceil(torch.log2(amax / 6))                  # E8M0: power-of-two scale, rounded up
+    return (round_to(b / s, GRID) * s).view(-1)
+
+def q_nvfp4(x, blk=16):
+    t = x.abs().max() / (6 * 448)                                # per-tensor fp32 scale: block scales fit e4m3
+    b = x.view(-1, blk)
+    s = e4m3(b.abs().amax(1, keepdim=True) / 6 / t) * t          # E4M3 block scale (times tensor scale)
+    return (round_to(b / s, GRID) * s).view(-1)
+
+x = torch.randn(1 << 16)                                         # (65536,) "weights"
+x[torch.randint(0, x.numel(), (64,))] *= 20                      # a few outliers
+for name, q in [("mxfp4", q_mxfp4), ("nvfp4", q_nvfp4)]:
+    err = (q(x) - x).norm() / x.norm()
+    print(f"{name}: relative error {err:.4f}")
+```
+
+```
+$ python fp4_blocks.py
+mxfp4: relative error 0.1405
+nvfp4: relative error 0.0943
+```
+
+How to read it: on the same data, nvfp4's quantization error is a third lower than mxfp4's. This is a simplified simulation (real kernels differ in scale rounding details, and mxfp4 recipes may round the scale differently), so treat the ratio as illustrative. On real training, NVIDIA's [8B-parameter, 1T-token pretraining comparison](https://developer.nvidia.com/blog/train-models-faster-with-jax-and-maxtext-using-nvfp4-on-nvidia-blackwell/) found MXFP4 needed ~36% more tokens to reach NVFP4's final loss; see also [Introducing NVFP4](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) for the inference side. Both claims are NVIDIA's own.
+
+So:
+
+- On NVIDIA Blackwell or newer, use nvfp4: the same compute and better accuracy, for 0.25 extra bits per element.
+- Use mxfp4 where nvfp4 does not exist (AMD MI355X and the other non-NVIDIA accelerators that implement OCP MX), or when one checkpoint has to run on more than one vendor's hardware.
+- When a model is released in one of them, as OpenAI's gpt-oss ships its [MoE](../models/architectures.md#mixture-of-experts) expert weights in MXFP4, running it in that format saves you requantizing it.
+
 ## Optimizer internals
 
 ### Adam's epsilon
@@ -1638,7 +1938,7 @@ $$
 \Delta = -\text{lr} \cdot \frac{\hat m}{\sqrt{\hat v} + \varepsilon}
 $$
 
-For a parameter whose gradient is steady, $\hat m \approx g$ and $\sqrt{\hat v} \approx \lvert g \rvert$, so the step is $\text{lr}$ in size regardless of how big the gradient is. That normalization is the whole point of Adam. When $\sqrt{\hat v}$ is comparable to $\varepsilon$, the denominator stops normalizing: the step becomes $\text{lr} \cdot g/\varepsilon$, i.e. momentum SGD with learning rate $\text{lr}/\varepsilon$, and parameters with tiny gradients take steps far smaller than $\text{lr}$. This hits exactly the parameters with the smallest gradients: rare-token embedding rows, and late in training, everything. Wortsman et al. ("Small-scale proxies for large-scale Transformer training instabilities", arXiv:2309.14322) show that gradient RMS falls with model scale until the default $\varepsilon = 10^{-8}$ dominates, and recommend about $10^{-15}$. The time-domain correlation theory linked from [Instabilities](instabilities/README.md#time-domain-correlation-divergence-in-adam) is a related failure mode through the same term.
+For a parameter whose gradient is steady, $\hat m \approx g$ and $\sqrt{\hat v} \approx \lvert g \rvert$, so the step is $\text{lr}$ in size regardless of how big the gradient is. That normalization is the whole point of Adam. When $\sqrt{\hat v}$ is comparable to $\varepsilon$, the denominator stops normalizing: the step becomes $\text{lr} \cdot g/\varepsilon$, i.e. momentum SGD with learning rate $\text{lr}/\varepsilon$, and parameters with tiny gradients take steps far smaller than $\text{lr}$. This hits exactly the parameters with the smallest gradients: rare-token embedding rows, and late in training, everything. Wortsman et al. ("Small-scale proxies for large-scale Transformer training instabilities", arXiv:2309.14322) show that gradient RMS falls with model scale until the default $\varepsilon = 10^{-8}$ dominates, and recommend about $10^{-15}$. The time-domain correlation theory linked from [Instabilities](stability.md#time-domain-correlation-divergence-in-adam) is a related failure mode through the same term.
 
 The effect in steady state, where $\hat m = g$ and $\hat v = g^2$:
 
@@ -1884,7 +2184,7 @@ $$
 B_\text{crit} = \frac{E_\text{min}}{S_\text{min}} \approx B_\text{noise}
 $$
 
-Intuitively, $B_\text{noise}$ is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below $B_\text{crit}$, doubling $B$ halves the number of steps at constant data (perfect data parallelism). Above it, doubling $B$ doubles the data needed for almost no reduction in steps. $B_\text{crit}$ grows as the loss falls, which is the justification for batch-size ramps ([Global Batch Size Ramp Up](hparams.md#global-batch-size-ramp-up)). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit $B_\text{crit}(L) \approx B_* / L^{1/\alpha_B}$ with $B_* \approx 2 \times 10^8$ tokens and $\alpha_B \approx 0.21$. That fit is specific to their data and tokenizer. More recent work ("How Does Critical Batch Size Scale in Pre-training?", arXiv:2410.21676 finds $B_\text{crit}$ tracks data size more than model size.
+Intuitively, $B_\text{noise}$ is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below $B_\text{crit}$, doubling $B$ halves the number of steps at constant data (perfect data parallelism). Above it, doubling $B$ doubles the data needed for almost no reduction in steps. $B_\text{crit}$ grows as the loss falls, which is the justification for batch-size ramps ([Global Batch Size Ramp Up](stability.md#global-batch-size-ramp-up)). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit $B_\text{crit}(L) \approx B_* / L^{1/\alpha_B}$ with $B_* \approx 2 \times 10^8$ tokens and $\alpha_B \approx 0.21$. That fit is specific to their data and tokenizer. More recent work ("How Does Critical Batch Size Scale in Pre-training?", arXiv:2410.21676 finds $B_\text{crit}$ tracks data size more than model size.
 
 You can measure it for free using two batch sizes you already have, the per-micro-batch gradient and the accumulated or all-reduced one, because $E\lVert G_B \rVert^2 = \lVert G \rVert^2 + \operatorname{tr}(\Sigma)/B$ (McCandlish appendix A). Here it is on a linear regression where the true noise scale can be computed exactly from all per-example gradients:
 
@@ -2147,7 +2447,7 @@ $ python entropy.py
 max logit per head: [4.8, 4.7, 4.8, 309.8]  mean entropy: [4.76, 4.77, 4.76, 0.07]
 ```
 
-The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output $\log Z$, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near $\text{lr}$. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see [Instabilities](instabilities/README.md) and [Numerical instabilities](instabilities/README.md#numerical-instabilities).
+The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output $\log Z$, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near $\text{lr}$. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see [Instabilities](stability.md) and [Numerical instabilities](stability.md#numerical-instabilities).
 
 ## You can now read
 
@@ -2155,6 +2455,8 @@ The sick head is obvious from either statistic: max logit 310 against ~5, mean e
 - [Profiling and optimization](profiling-and-optimization.md) - measuring where the step time goes, to compare against the MFU arithmetic here.
 - [Inference arithmetic](../inference/arithmetic.md) - the same counting applied to prefill and decode.
 - [Decentralized training](decentralized-training.md) - what changes when $\beta$, the per-byte link cost of the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model), is a WAN link instead of InfiniBand.
+
+Parts of this chapter are adapted from Stas Bekman's [Machine Learning Engineering Open Book](https://github.com/stas00/ml-engineering) (CC BY-SA 4.0).
 
 ## Further reading
 
@@ -2185,3 +2487,9 @@ The sick head is obvious from either statistic: max logit 310 against ~5, mean e
 - [Transformer Engine FP8 primer](https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html)
 - [PyTorch CUDA memory management notes](https://docs.pytorch.org/docs/stable/notes/cuda.html#memory-management)
 - [Transformer Math 101 (EleutherAI)](https://blog.eleuther.ai/transformer-math/)
+- [ml_dtypes: specifications of implemented floating-point formats](https://github.com/jax-ml/ml_dtypes?tab=readme-ov-file#specifications-of-implemented-floating-point-formats)
+- [NVIDIA, Accelerating AI Training with TF32 Tensor Cores](https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/)
+- [NVIDIA, Mixed-precision techniques with Tensor Cores (video)](https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/)
+- [NVIDIA, Introducing NVFP4](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/)
+- [NVIDIA, NVFP4 pretraining with JAX and MaxText](https://developer.nvidia.com/blog/train-models-faster-with-jax-and-maxtext-using-nvfp4-on-nvidia-blackwell/)
+- [bitsandbytes](https://github.com/bitsandbytes-foundation/bitsandbytes); [DeepSpeed model compression](https://www.deepspeed.ai/tutorials/model-compression/)

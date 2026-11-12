@@ -8,11 +8,12 @@ This chapter assumes you know transformer math and PyTorch, and nothing about th
 - [Networking](../foundations/networking.md) - links, latency vs bandwidth, what an interconnect is. Needed for the tensor-parallel and expert-parallel communication sections.
 - [Distributed systems](../foundations/distributed-systems.md) - collectives (all-reduce, all-to-all), sharding, load balancing. Needed for the TP and MoE sections.
 - [Model architectures](../models/architectures.md) - MHA, GQA, MQA, MLA, sliding-window attention and MoE, whose KV cache and FLOPs we size here.
+- [Parallelism From First Principles](../training/model-parallelism/derivations.md) - tensor and pipeline parallelism, used in [Model parallelism for inference](#model-parallelism-for-inference).
 - Helpful: [GPU execution model](../compute/accelerator/execution-model.md) - tensor cores and the [per-op roofline](../compute/accelerator/execution-model.md#roofline-per-op), which this chapter re-derives briefly; [Collective communication internals](../network/collectives-internals.md) - the [alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model) and [busbw](../network/collectives-internals.md#algbw-vs-busbw) used in the TP communication section; [Training arithmetic](../training/arithmetic.md) - the $2N$ FLOPs-per-token forward-pass count.
 
 You do not need the Linux, concurrency or beyond-transformers chapters for this one.
 
-This chapter does the arithmetic the [inference overview](README.md) only gestures at: why decode is memory-bound, how big the KV cache really is, what the lower bound on per-token latency is, what tensor parallelism costs, what MoE and quantization do to bytes and FLOPs, and how to size a deployment against an SLO (service-level objective: a latency or throughput target you promise users, such as "p99 time to first token under 2 s"). How a serving engine actually schedules work - PagedAttention, continuous batching, chunked prefill, speculative decoding, prefix caching - is in the sibling chapter [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md).
+This chapter opens Part 6 with the vocabulary of inference - [prefill and decode](#prefill-and-decode), the KV cache, batching, decoding methods, guided and speculative decoding, and the [key performance metrics](#key-inference-performance-metrics) - and then does the arithmetic behind it: why decode is memory-bound, how big the KV cache really is, what the lower bound on per-token latency is, what tensor parallelism costs, what MoE and quantization do to bytes and FLOPs, and how to size a deployment against an SLO (service-level objective: a latency or throughput target you promise users, such as "p99 time to first token under 2 s"). How a serving engine actually schedules work - PagedAttention, continuous batching, chunked prefill, speculative decoding, prefix caching - is in the sibling chapter [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md).
 
 Every number below comes with the arithmetic that produced it; all non-trivial calculations were checked with Python. Numbers labelled **bound** are theoretical roofline limits, not measurements. Real systems are slower than every bound here. The only measured numbers used are ones the repo already publishes (matmul ceilings and all-reduce latencies) and ones from cited papers.
 
@@ -58,6 +59,716 @@ B=256: math  36.5 ms vs weight read 42 ms
 
 
 
+## Glossary
+
+Inference has its own vocabulary of abbreviations. The ones used in this part of the book:
+
+- **CLA**: Cross-Layer Attention - adjacent layers share one set of KV heads, shrinking the KV cache.
+- **FHE**: Fully Homomorphic Encryption - see [Privacy-preserving inference](#privacy-preserving-inference).
+- **GQA**: Grouped-Query Attention - see [MHA to MQA to GQA](../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic).
+- **ITL**: Inter-Token Latency - the time between two consecutive output tokens of one request. Its mean is essentially TPOT; the distinction is made precise in [Definitions](#definitions).
+- **KV**: Key Value - see [The KV cache](../models/architectures.md#the-kv-cache) and [KV caching](#kv-caching) below.
+- **LPU**: Language Processing Unit™ - Groq's inference-only chip, see [Inference chips](serving-hands-on.md#inference-chips).
+- **MHA**: Multi-Head Attention.
+- **MLA**: Multi-head Latent Attention - see [MLA: Multi-head Latent Attention](../models/architectures.md#mla-multi-head-latent-attention-deepseek-v2v3).
+- **MPC**: Secure Multi-Party Computation.
+- **MQA**: Multi-Query Attention.
+- **PPML**: Privacy-Preserving Machine Learning.
+- **QPS**: Queries Per Second - requests arriving (or served) per second.
+- **TPOT**: Time Per Output Token - see [Time per output token](#time-per-output-token).
+- **TTFT**: Time To First Token - see [Time to first token](#time-to-first-token).
+
+The [Concepts](#concepts) section below defines the rest of the terms as it goes.
+
+
+
+## Concepts
+
+This section is the vocabulary of inference: what happens when a trained model answers a request, which knobs exist, and what each one costs. Each idea gets a short explanation here. The rest of this chapter does the arithmetic, and [Inside a Serving Engine](serving-engine-internals.md) shows the machinery.
+
+### Prefill and decode
+
+When a model answers a prompt, the work happens in two stages, and almost everything in this part of the book is about how differently they behave.
+
+#### Prefill
+
+During **prefill**, the model processes all the prompt tokens in parallel, just as in a training forward pass, and builds the KV cache that generation will use (see [KV caching](#kv-caching)). Prefill is usually compute-bound: each weight that is read is used once per prompt token, so a 2,000-token prompt does 2,000 multiply-adds per weight read. Its latency contributes directly to TTFT and grows with input length; long prompts or too little compute can make prefill a major part of request latency.
+
+#### Decode
+
+During ordinary autoregressive **decoding**, the model generates one output token at a time from the prompt and the tokens generated so far. Token $t+1$ depends on token $t$, so the output steps of one sequence cannot run in parallel, and each step does one multiply-add per weight read. That is why decode is usually memory-bandwidth-bound ([idea 2 above](#three-ideas-the-whole-chapter-rests-on)).
+
+Which stage matters most depends on the workload and the metric. TTFT is sensitive to prompt length, prefill efficiency, scheduling and queueing. TPOT/ITL characterizes decode. End-to-end latency depends on input length, output length, batching, load and hardware. The two stages are measured against each other in [What this means for prefill vs decode](#what-this-means-for-prefill-vs-decode).
+
+A one-line way to see the two stages in code, with a Hugging Face model (untested here; any causal LM works):
+
+```python
+# prefill_decode.py - the two stages, spelled out (untested sketch)
+out = model(input_ids=prompt_ids, use_cache=True)            # prefill: (1, T_in) tokens in one pass
+past, next_id = out.past_key_values, out.logits[:, -1].argmax(-1, keepdim=True)
+for _ in range(max_new_tokens):                              # decode: one (1, 1) token per pass
+    out = model(input_ids=next_id, past_key_values=past, use_cache=True)
+    past, next_id = out.past_key_values, out.logits[:, -1].argmax(-1, keepdim=True)
+```
+
+Further reading: [NVIDIA's inference optimization overview](https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/) and [LLM benchmarking metric definitions](https://developer.nvidia.com/blog/llm-benchmarking-fundamental-concepts/).
+
+### Anatomy of inference memory usage
+
+Inference memory is quite different from [training memory](../training/profiling-and-optimization.md#anatomy-of-models-memory-usage): there are no gradients and no optimizer states. What occupies accelerator memory is:
+
+1. **Model weights.**
+2. **KV cache** - the keys and values of every past token, kept so they need not be recomputed for each new token.
+3. **Activation memory** - temporary buffers for the forward pass in flight, which depend on the batch size and the number of tokens processed in the step.
+
+#### Model weights
+
+Weight memory is bytes per parameter times the number of parameters. Bytes per parameter for each [dtype](../training/arithmetic.md#the-dtype-zoo-and-how-to-read-its-names):
+
+- 4 bytes for fp32
+- 2 bytes for fp16/bf16
+- 1 byte for fp8/int8
+- 0.75 bytes for fp6 or 6-bit quantization
+- 0.625 bytes for 5-bit quantization
+- 0.5 bytes for fp4/int4
+- 0.375 bytes for 3-bit quantization
+- 0.25 bytes for 2-bit quantization
+- 0.125 bytes for 1-bit quantization
+
+These are densely packed payload sizes. Real weight storage is somewhat larger, because quantized formats also store scales, zero points, codebooks, padding/alignment, and keep selected tensors in a wider format ([Bits per weight including metadata](#bits-per-weight-including-metadata) counts this exactly).
+
+The [OCP microscaling (MX) formats](https://github.com/openxla/xla/discussions/18085) use one 8-bit E8M0 scale (a power of two) per block of 32 values. Including that shared scale, their packed sizes are 1.03125 bytes for MXFP8/MXINT8, 0.78125 for MXFP6 and 0.53125 for MXFP4 ([NVFP4 and MXFP4](#nvfp4-and-mxfp4) shows how they work).
+
+```python
+# weight_bytes.py - weight memory of an 8B-parameter model in each dtype (dense payload only)
+N = 8.03e9                                                   # Meta-Llama-3.1-8B
+bytes_per_param = {"fp32": 4, "fp16/bf16": 2, "fp8/int8": 1, "fp6 / 6-bit": 6/8, "5-bit": 5/8,
+                   "fp4/int4": 4/8, "3-bit": 3/8, "2-bit": 2/8, "1-bit": 1/8,
+                   # OCP MX formats: one 8-bit E8M0 scale shared by each block of 32 elements
+                   "MXFP8/MXINT8": 1 + 1/32, "MXFP6": 6/8 + 1/32, "MXFP4": 4/8 + 1/32}
+for name, b in bytes_per_param.items():
+    print(f"{name:14s} {b:8.5f} B/param  -> {N * b / 1e9:5.1f} GB")
+```
+
+Output of `python weight_bytes.py`:
+
+```text
+fp32            4.00000 B/param  ->  32.1 GB
+fp16/bf16       2.00000 B/param  ->  16.1 GB
+fp8/int8        1.00000 B/param  ->   8.0 GB
+fp6 / 6-bit     0.75000 B/param  ->   6.0 GB
+5-bit           0.62500 B/param  ->   5.0 GB
+fp4/int4        0.50000 B/param  ->   4.0 GB
+3-bit           0.37500 B/param  ->   3.0 GB
+2-bit           0.25000 B/param  ->   2.0 GB
+1-bit           0.12500 B/param  ->   1.0 GB
+MXFP8/MXINT8    1.03125 B/param  ->   8.3 GB
+MXFP6           0.78125 B/param  ->   6.3 GB
+MXFP4           0.53125 B/param  ->   4.3 GB
+```
+
+How to read it: Meta-Llama-3.1-8B in bf16 needs about $2\ \text{bytes} \times 8\text{B params} = 16\ \text{GB}$ just for weights, before any KV cache. The MX rows are 3% larger than their plain counterparts (one extra byte per 32 elements).
+
+#### KV caching
+
+It would be very expensive to recompute the keys and values (KV) of all previous tokens before each new token is generated, so they are cached in accelerator memory, and each step appends the newly computed K and V to the cache:
+
+![computation process with caching inference](images/infer-kv-cache.png)
+
+([source](https://developer.nvidia.com/blog/accelerated-inference-for-large-transformer-models-using-nvidia-fastertransformer-and-nvidia-triton-inference-server/))
+
+Past *queries* are never used again by attention, so they are not cached. KV cache size is directly proportional to sequence length and batch size. One token needs
+
+$$
+\text{dtype\_bytes} \cdot 2 \cdot \text{num\_hidden\_layers} \cdot \text{hidden\_size} \cdot \frac{\text{num\_key\_value\_heads}}{\text{num\_attention\_heads}}
+$$
+
+bytes, where `dtype_bytes` is 4 for fp32 and 2 for bf16/fp16, the `2` is keys plus values, and the ratio `num_key_value_heads / num_attention_heads` is 1 for MHA, $1/\text{num\_attention\_heads}$ for MQA and in between for GQA. (`hidden_size` times that ratio equals $n_{kv} \cdot d$ in the notation of [Formulas](#formulas), which derives the same thing and checks it against real tensors.) You can read all these values from the model's `config.json`, e.g. [meta-llama/Meta-Llama-3.1-8B](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B/blob/main/config.json).
+
+```python
+# kv_llama31.py - KV cache of Meta-Llama-3.1-8B in bf16
+per_tok = 2 * 2 * 32 * 4096 * 8 / 32           # bf16 bytes * (K,V) * layers * hidden * kv_heads/heads
+print(f"1 token: {per_tok/1e6:.3f} MB")
+print(f"batch 1 x 1024 tokens:   {per_tok*1024/1e6:.0f} MB")
+print(f"batch 128 x 1024 tokens: {per_tok*1024*128/1e9:.1f} GB")
+print(f"as MHA: {per_tok*4/1e6:.3f} MB/token   as MQA: {per_tok/8/1e6:.4f} MB/token")
+```
+
+Output of `python kv_llama31.py`:
+
+```text
+1 token: 0.131 MB
+batch 1 x 1024 tokens:   134 MB
+batch 128 x 1024 tokens: 17.2 GB
+as MHA: 0.524 MB/token   as MQA: 0.0164 MB/token
+```
+
+This model uses GQA with `num_key_value_heads=8` and `num_attention_heads=32`, so it needs 1/4 of the MHA cache; MQA would need 1/32 of MHA, i.e. 8x less than GQA. At batch 128 the KV cache (17.2 GB) is already larger than the bf16 weights (16 GB).
+
+[DeepSeek-V2](https://arxiv.org/abs/2405.04434) introduced Multi-head Latent Attention (MLA), also used in [DeepSeek-V3](https://arxiv.org/abs/2412.19437) (section 2.1.1), which compresses keys and values into one latent vector per token and shrinks the KV cache further. The MHA/GQA/MQA/MLA comparison diagram and the MLA byte counts are in [Formulas](#formulas) and [Real configs](#real-configs).
+
+[SwiftKV](https://arxiv.org/abs/2410.03960) attacks a different part of the problem. Enterprise workloads often have a 10:1 ratio of prompt (prefill) tokens to generated tokens, so SwiftKV reduces prefill *computation* rather than just compressing memory: it rewires the model so later layers' KV is computed from an earlier layer's output and uses knowledge-preserving self-distillation to recover accuracy. The paper reports up to 2x better throughput, latency and cost with minimal accuracy loss.
+
+The KV cache saves recomputation, but reading it costs bandwidth on every decode step. [Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference](https://arxiv.org/abs/2403.09636) puts it this way:
+
+> 2.3. Memory-Bound and Compute-Bound Operations
+>
+> Every operation performed with a GPU accelerator, such as General Matrix Multiply (GEMM), is either memory-bound or compute-bound. In the former case, the overall runtime is dominated by high bandwidth memory (HBM) access, while in the latter by the actual computations. Auto-regressive generation with Transformer LLMs, where the sequence length for every forward pass is n = 1, tends to be memory-bound rather than compute-bound. The vast majority of a forward pass is spent either processing linear layers (in MHSA, Feed-Forward, and output vocabulary projection) or calculating attention scores and outputs from Equation (4). For linear layers, the ratio of FLOPS to memory accesses improves as the batch size increases, and more FLOPS are performed with the set of layer weights retrieved from the HBM. Eventually, with a large enough batch size, linear layers become compute-bound. On the other hand, for the calculation of Equation (4) inside MHSA layers during auto-regressive inference, the ratio of FLOPS to input size remains constant, and MHSA layers are memory-bound regardless of the batch size. It follows that for those layers, latency scales linearly with the size of the KV cache.
+
+Equation (4) is ordinary self-attention, $\operatorname{softmax}(QK^\top/\sqrt{d})V$, and MHSA is multi-head self-attention. [Attention in decode](#attention-in-decode) derives the "memory-bound regardless of batch size" claim.
+
+So a smaller KV cache means faster generation and more sequences per GPU. Techniques that shrink it include gisting (training the model to compress a prompt into a few special "gist" tokens), context distillation (fine-tuning the model to behave as if a long prompt were present without it), key-value eviction policies (dropping tokens), memory compression, multi-query attention, grouped-query attention, cross-layer attention, anchor-based self-attention, [quantization](#kv-cache-quantization) and many others.
+
+### Online vs offline inference
+
+When users send queries in real time, that is **online** inference, also called deployment or interactive inference. Examples: chatbots, search engines, general REST APIs. Here you always run an **inference server** (a long-running process that keeps the model loaded on the accelerators and answers requests over HTTP, usually with an [OpenAI-compatible API](serving-hands-on.md#the-openai-compatible-api-and-streaming)), and many clients query it.
+
+When you have a file with hundreds or thousands of prompts to run, that is **offline** inference, also called batch inference. Examples: benchmark evaluation and synthetic data generation. A server is often unnecessary; the inference runs directly in the program that holds the prompts (client and server in one application):
+
+```python
+# offline.py - offline (batch) inference with vLLM: no server, one call (untested here; needs a GPU)
+from vllm import LLM, SamplingParams
+llm = LLM(model="Qwen/Qwen3-8B")
+outputs = llm.generate(open("prompts.txt").read().splitlines(), SamplingParams(max_tokens=256))
+```
+
+The two cases are optimized for different metrics. Online inference needs low TTFT and low latency; offline inference needs high throughput. Combined prefill-plus-decode token throughput matters for both, because it sets the total cost of the service: online, better throughput means more users served on the same hardware; offline, the faster the job finishes, the less compute it costs.
+
+### Batching
+
+Decoding one sequence at a time is extremely inefficient, because each step reads all the weights to do one multiply-add per weight. Batching several requests together lets one weight read serve all of them ([idea 3](#three-ideas-the-whole-chapter-rests-on)). The maximum batch size is limited by the memory left after the weights and the KV cache ([Max concurrent sequences](#max-concurrent-sequences)).
+
+#### Static batching
+
+The naive approach: batch the first $N$ queries together and run them to completion. Requests that finish early have to wait for the longest one in the batch before they are returned, and new requests wait for the whole batch, which greatly increases latency.
+
+#### Continuous batching or in-flight batching
+
+With **continuous batching** (also called **in-flight batching**), the engine removes each sequence as soon as it finishes and replaces it with a new request, without waiting for the rest of the batch. This works because every decode step is a separate forward pass that produces one token per sequence, so the batch can be re-formed between any two steps. Position 0 in the batch might be generating its 10th token while position 1 is generating its first and position 3 its last.
+
+This improves response time: a finished sequence is returned immediately and a new prompt does not wait for a batch boundary. If the compute is fully busy and no batch slot is free, new requests still wait. [The difference in numbers](serving-engine-internals.md#a-scheduler-you-can-run):
+
+```text
+static: 16 requests -> 1 step of 16 sequences ... all wait for the longest -> next 16
+continuous: step k = {seq 3 token 10, seq 7 token 1 (new), seq 9 token 412 (last)} -> seq 9 leaves, a new one joins
+```
+
+The scheduler that does this is covered in [Continuous batching and the scheduler](serving-engine-internals.md#continuous-batching-and-the-scheduler).
+
+### Paged attention
+
+**PagedAttention** is used by essentially every inference server because it uses accelerator memory very efficiently: it manages the KV cache the way an operating system manages RAM with paging, which allows dynamic allocation and prevents fragmentation. The KV cache is split into fixed-size blocks (e.g. 16 tokens each), and each sequence keeps a **block table** mapping its logical token positions to physical blocks, so a sequence holds only as many blocks as it has tokens instead of a contiguous region reserved for the maximum length:
+
+```text
+seq A block table: [7, 2, 9]   -> tokens 0-15 in block 7, 16-31 in block 2, 32-40 in block 9 (partly full)
+seq B block table: [4]         -> 5 tokens, one block, no reservation for its max length
+```
+
+The mechanics (slot mapping, block size tradeoffs, copy-on-write sharing) are in [PagedAttention](serving-engine-internals.md#pagedattention).
+
+### Decoding methods
+
+The model outputs a vector of logits over the vocabulary at each step; a **decoding method** turns it into the next token. The main ones are [greedy decoding](#greedy-decoding), [beam search](#beam-search) and [sampling](#sampling). The script below applies the ones that act on a single step to a toy six-word distribution; the subsections explain each line of its output.
+
+```python
+# decoding.py - greedy, top-k, top-p and temperature on one toy next-token distribution
+import math
+vocab  = ["tree", "pie", "juice", "drop", "grove", "car"]
+logits = [3.0, 2.0, 1.5, 0.5, 0.0, -2.0]                    # (V,) scores for "another lemon ..."
+
+def softmax(z):
+    m = max(z); e = [math.exp(x - m) for x in z]; s = sum(e)
+    return [x / s for x in e]
+
+def show(title, probs):
+    print(f"{title:22s}" + "  ".join(f"{w}={p:.3f}" for w, p in zip(vocab, probs) if p > 0))
+
+p = softmax(logits)
+show("t=1.0 (unchanged)", p)
+print("greedy picks:", vocab[max(range(len(p)), key=p.__getitem__)])
+
+k = 3                                                         # top-k: keep k best, renormalize
+keep = sorted(range(len(p)), key=p.__getitem__, reverse=True)[:k]
+s = sum(p[i] for i in keep)
+show(f"top-k k={k}", [p[i] / s if i in keep else 0 for i in range(len(p))])
+
+def top_p_filter(p, top_p):                                   # smallest set whose mass reaches top_p
+    cum, nucleus = 0.0, []
+    for i in sorted(range(len(p)), key=p.__getitem__, reverse=True):
+        nucleus.append(i); cum += p[i]
+        if cum >= top_p: break
+    s = sum(p[i] for i in nucleus)
+    return [p[i] / s if i in nucleus else 0 for i in range(len(p))]
+show("top-p p=0.75", top_p_filter(p, 0.75))
+
+for t in (0.25, 0.5, 2.0, 5.0):                               # temperature: divide logits, then softmax
+    show(f"t={t}", softmax([x / t for x in logits]))
+
+# temperature applied before top-p changes which tokens enter the nucleus
+show("t=2.0 then top-p 0.75", top_p_filter(softmax([x / 2.0 for x in logits]), 0.75))
+```
+
+Output of `python decoding.py`:
+
+```text
+t=1.0 (unchanged)     tree=0.578  pie=0.213  juice=0.129  drop=0.047  grove=0.029  car=0.004
+greedy picks: tree
+top-k k=3             tree=0.629  pie=0.231  juice=0.140
+top-p p=0.75          tree=0.731  pie=0.269
+t=0.25                tree=0.980  pie=0.018  juice=0.002  drop=0.000  grove=0.000  car=0.000
+t=0.5                 tree=0.837  pie=0.113  juice=0.042  drop=0.006  grove=0.002  car=0.000
+t=2.0                 tree=0.374  pie=0.227  juice=0.177  drop=0.107  grove=0.084  car=0.031
+t=5.0                 tree=0.245  pie=0.201  juice=0.181  drop=0.149  grove=0.134  car=0.090
+t=2.0 then top-p 0.75 tree=0.481  pie=0.292  juice=0.227
+```
+
+How the production versions avoid a full sort and a GPU-CPU sync, and why the order of these filters matters, is in [Sampling on the GPU](serving-engine-internals.md#sampling-on-the-gpu).
+
+#### Greedy decoding
+
+**Greedy decoding** always picks the most probable token ("tree" above). It is the fastest method, but it does not always produce the best sequence: a locally best token can lead away from a much better continuation. A well-known failure is looping, where the same sentence repeats again and again.
+
+#### Beam search
+
+**Beam search** follows several candidate sequences at once instead of only the single best token. With beam size 3 it extends each of the 3 current candidates by its top 3 next tokens, keeps the 3 of those 9 ($3 \times 3$) sub-paths with the highest total probability, and repeats. At the end it returns the path with the highest probability over all its tokens:
+
+```text
+step 1 beams: "another lemon"  "another lime"  "another apple"
+step 2: 3 beams x 3 tokens = 9 candidates, scored by log p(whole path) -> keep best 3
+```
+
+It is slower than greedy decoding: with beam size $n$ it generates $n$ times as many tokens and needs $n$ times the KV memory.
+
+#### Sampling
+
+**Sampling** introduces randomness: the next token is drawn from the probability distribution. Drawing from the whole vocabulary would occasionally pick nonsense from the long tail, so practical sampling keeps greedy-like reliability and adds controlled randomness by first cutting the tail:
+
+- **Top-k sampling** keeps the $k$ most probable tokens and draws one with probability proportional to their renormalized softmax probabilities ("top-k k=3": tree, pie, juice).
+- **Top-p sampling** (also called **nucleus sampling**) is like top-k, but $k$ varies per step: it keeps the most probable tokens until their cumulative probability reaches the threshold $p$. When the model is confident, only a few tokens qualify ("top-p p=0.75" keeps just tree and pie, whose mass is $0.578+0.213 = 0.79$).
+
+#### Temperature
+
+**Temperature** $t$ is an independent transformation of the logits that can be combined with top-k, top-p, both, or neither. It divides the logits before the softmax:
+
+```text
+scaled_logits = logits / temperature
+probs = softmax(scaled_logits)
+```
+
+Its effect by value:
+
+- $t=0.0$: literal division by zero is undefined. Some APIs treat zero as shorthand for greedy decoding and others reject it, so use the API's explicit greedy mode when there is one.
+- $0.0 < t < 1.0$: probabilities are pushed further apart, so the closer to 0 the less randomness ("t=0.25" gives tree 0.98) - for precise to balanced use cases.
+- $t=1.0$: no change; the model's trained distribution is preserved - balanced relevance and diversity.
+- $t>1.0$: probabilities are pushed closer together, giving much more randomness ("t=5.0" is almost uniform) - for creative use cases.
+
+![softmax temperature](images/softmax-temperature.png)
+
+([source](https://www.hopsworks.ai/dictionary/llm-temperature))
+
+Why it works: softmax turns logit *differences* into probability *ratios* ($p_i/p_j = e^{(z_i - z_j)/t}$). Dividing by $t<1$ enlarges the differences, giving more extreme ratios and a more peaked distribution; dividing by $t>1$ shrinks them, giving a flatter one. As $t \to 0^+$ the highest logit dominates.
+
+For any positive temperature the rank order of logits is unchanged, so pure greedy argmax picks the same token. Sampling probabilities do change. With top-k the same $k$ candidates stay eligible but their relative probabilities change. With top-p, temperature changes both which tokens enter the nucleus and their probabilities: the last output line keeps juice too, because at $t=2$ tree and pie hold only 0.60 of the mass. Beam search depends on the implementation's sequence scoring, so don't assume it is temperature-invariant. See the Transformers [`TemperatureLogitsWarper` documentation](https://huggingface.co/docs/transformers/main/en/internal/generation_utils#transformers.TemperatureLogitsWarper).
+
+There are no universal temperature values to copy; experiment for each use case, starting from the baselines people publish for similar tasks. For more on decoding methods, see the HuggingFace blog [How to generate text](https://huggingface.co/blog/how-to-generate).
+
+### Guided text generation
+
+Also known as **structured text generation** or constrained decoding.
+
+If the model must return its output in a specific format, you don't want it to produce an invalid one. If you ask for a JSON dict, you should get a JSON dict. **Guided generation** enforces that: instead of the most probable token overall, it picks the most probable token among those that fit the format at this position. For example, a JSON list of strings like `["apples", "oranges"]` has the shape
+
+```text
+["string", "string", ..., "string"]
+123...
+```
+
+1. The first token must be `[`. If the model's top choice is `"` and `[` has lower probability, we still pick `[`.
+2. The next token must be `"`. If it is not the top choice, go down the list until `"` is found and pick that.
+3. The third token must be part of a valid string (not `[` or `"`), and so on.
+
+So for every next token we need the subset of allowed tokens, and we choose the most probable token from that subset. Rather than trying to repair malformed output afterwards, which is not always possible, the model generates valid output in the first place.
+
+The technique has costs:
+
+- It slows generation down, more so the more complex the schema. Measured generation speed differs a lot between structured-generation libraries.
+- It may contribute to hallucination, because the model is forced down paths it did not prefer.
+
+There are several implementations. As of 2026-08 vLLM supports four as [structured output backends](https://docs.vllm.ai/en/latest/features/structured_outputs/) and picks one automatically unless you override it:
+
+- https://github.com/mlc-ai/xgrammar
+- https://github.com/guidance-ai/llguidance
+- https://github.com/dottxt-ai/outlines
+- https://github.com/noamgat/lm-format-enforcer
+
+Prefer implementations already integrated into inference frameworks like vLLM. How a grammar becomes a per-step token mask, built and run end to end, is in [Structured decoding](serving-engine-internals.md#structured-decoding).
+
+#### Faster inference with guided generation
+
+The schema can also make inference *faster*. Consider this simple "profile" schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string"},
+    "age": { "type": "integer"}
+  },
+  "required": ["name", "age"]
+}
+```
+
+The keys are fixed, so once the model has produced `{"n` or `{"a`, the continuation `ame": ` or `ge": ` is completely determined. There is no need to decode those tokens one at a time: the engine can append them and process them in one prefill-like pass, saving several slow decode steps. This pays off most when the schema has many pre-determined keys and short generated values. SGLang calls this jump-forward decoding; [Structured decoding](serving-engine-internals.md#structured-decoding) implements it.
+
+### Speculative decoding
+
+Also known as **speculative inference** or **assisted generation**.
+
+Generating one token at a time is slow, so we can cheat: a much smaller and faster **draft model** guesses several tokens, and the big model checks all the guesses in one forward pass. For example, the normal model is Llama-70B and the draft is Llama-7B.
+
+Take the prompt `I'm turnin', turnin', turnin', turnin', turnin' around and all that I can see is just` and:
+
+1. Use Llama-7B to predict `another lemon tree` autoregressively, in 3 steps, much faster than Llama-70B could.
+2. Run Llama-70B once on a batch of 3 prompts (shortened with `...` here; the full prompt is really there, and each word is pretended to be one token):
+
+```text
+[...I can see is just]
+[...I can see is just another]
+[...I can see is just another lemon]
+```
+
+In that single step Llama-70B produces:
+
+```text
+[...I can see is just] another
+[...I can see is just another] lemon
+[...I can see is just another lemon] tree
+```
+
+(In practice this is one sequence of $k+1$ positions, not 3 separate prompts; the causal mask gives the same answers.) Possible outcomes:
+
+- Everything matches: 3 short steps and 1 long step produced the result instead of 3 long steps.
+- Only `another lemon` matches: we may still come out ahead.
+- Nothing or little matches: we wasted some time.
+
+With more than 3 drafted tokens the potential savings grow. Note that the big model did the same amount of compute as normal generation and then some, but the *latency* can be much better, so users get faster responses on average - provided the draft model is much smaller and still predicts well.
+
+On a partial mismatch, feed the draft model all matched tokens plus the big model's correct token at the first mismatch, and let it draft the tail again.
+
+The variant above accepts draft tokens only if they exactly match the big model's choice. Production engines use a rejection-sampling acceptance rule instead, which provably samples from the big model's distribution even at non-zero temperature - see [Speculative decoding](serving-engine-internals.md#speculative-decoding) in the next chapter, which also derives the expected speedup.
+
+The draft model should be trained on the same data (or at least data from a similar distribution), and its tokenizer must be the same as the big model's.
+
+Speculative decoding pays off most on [input-grounded tasks](#input-grounded-tasks) such as translation, summarization, document QA and multi-turn chat, because the range of plausible outputs is narrow and the draft is much more likely to match. For the same reason it works best with [greedy decoding](#greedy-decoding), which has the least variation; when sampling, keep the [temperature](#temperature) close to 0.
+
+An in-depth introduction: [Assisted Generation: a new direction toward low-latency text generation](https://huggingface.co/blog/assisted-generation).
+
+A much simpler option for input-grounded tasks is [n-gram prompt lookup decoding](https://github.com/apoorvumang/prompt-lookup-decoding): no draft model at all; candidates come from finding the last few generated tokens earlier in the prompt and copying what followed. In some situations it is reported to speed decoding up by 2x or more. [Draft variants](serving-engine-internals.md#draft-variants) has a runnable version.
+
+### Privacy-preserving inference
+
+Most companies serving inference eventually face a privacy requirement: a user should be able to submit a query without anyone snooping on it. One answer is on-premise deployment, where the client runs the server themselves, but that most likely exposes the provider's IP - the model weights and possibly code and algorithms. Hence the need for fully encrypted generation, where computation happens on client-encrypted data.
+
+Solutions to this are called **Privacy-Preserving Machine Learning (PPML)**. One is [Fully Homomorphic Encryption](https://en.wikipedia.org/wiki/Homomorphic_encryption) (FHE), which allows computing on encrypted values without decrypting them.
+
+One implementation is [concrete-ml](https://github.com/zama-ai/concrete-ml). It rewrites the model so that the client runs part of it themselves; the encrypted intermediate activations are sent to the server, which performs the attention on them and sends the result back. The provider keeps part of the IP on the server, and presumably that part is what stops the client from stealing the whole model, since partial weights aren't enough to reconstruct it. [This article](https://huggingface.co/blog/encrypted-llm) goes into more detail.
+
+```text
+client: embed + first layers (plaintext, client's weights) -> encrypt
+server: attention on ciphertext (server's weights)          -> encrypted result
+client: decrypt -> remaining layers -> token
+```
+
+Other approaches exist; for example [LLMs Can Understand Encrypted Prompt: Towards Privacy-Computing Friendly Transformers](https://arxiv.org/abs/2305.18396v3) builds a custom solution on Secure Multi-Party Computation (MPC) and FHE and has a good reference list.
+
+The problem with current solutions is the huge computational overhead, which hurts both cost and latency. Dedicated ASICs may address this in the future.
+
+### Model parallelism for inference
+
+When a model doesn't fit on one accelerator, or fits only barely, the [model parallelism techniques](../training/model-parallelism/derivations.md#why-parallelize-and-the-map-of-techniques) from training apply to inference too. The arithmetic is in [Tensor-parallel communication in decode](#tensor-parallel-communication-in-decode) and the engine side in [Serving-time parallelism](serving-engine-internals.md#serving-time-parallelism); these are the practical rules of thumb.
+
+#### Tensor parallelism
+
+You will mostly use [tensor parallelism](../training/model-parallelism/derivations.md#tensor-parallelism-megatron) (TP), with the weights sharded across 2 to 8 accelerators. Ideally the model fits on one accelerator, since that has the least overhead per generated token. But you will often get *higher decode throughput* with TP: it frees memory for much larger batches (each GPU holds $1/P$ of the weights), and the `forward` call can be faster despite the extra communication. You pay with more accelerators, so experiment: some use cases get better total throughput from a higher TP degree on the same number of accelerators.
+
+From the original author's experiments, comparing TP=1 with TP>1: TP=1 gave the lowest decode throughput, and the recommendation drawn from them was: if you are asked to make TTFT faster and the model fits, use a smaller TP or TP=1; if you are asked to make decode throughput faster, add accelerators with a higher TP degree. (The original note says TP=1 "leads to the highest TTFT", which contradicts its own recommendation; treat the TTFT direction as unverified and measure it on your model, since prefill is compute-bound and TP adds compute but also an all-reduce per layer.)
+
+#### Pipeline parallelism
+
+Tensor parallelism helps latency; [pipeline parallelism](../training/model-parallelism/derivations.md#from-naive-model-parallelism-to-a-pipeline) (PP) can help throughput. This matters especially for very large models that need many accelerators just to hold the weights. With Llama 405B on TP=8, each accelerator all-reduces with 7 others at every layer; with PP=8, each talks to only 2 neighbours (`recv` the input from the previous stage, `send` the output to the next), which puts far less pressure on the network and can speed things up dramatically if the hardware supports it.
+
+```text
+TP=8: per layer, all-reduce among 8 GPUs (twice)       -> 252 collectives per step for 126 layers
+PP=8: per step, GPU i: recv from i-1, compute 1/8 of layers, send to i+1  -> 7 point-to-point hops
+```
+
+PP beats TP only with real pipelining, not naive PP. In [naive model parallelism](../training/model-parallelism/derivations.md#from-naive-model-parallelism-to-a-pipeline) only one stage works at a time, so it performs worse than TP. The inference framework must keep all PP stages busy in parallel by feeding them different micro-batches.
+
+Unlike training, inference has no `backward` pass, so there is no bubble problem to solve: the only overhead is filling the pipeline with the first few micro-batches ([pp_bubble.py](serving-engine-internals.md#pipeline-parallelism) quantifies it).
+
+As in training, a mix of TP and PP may be best (e.g. TP=4 + PP=4 for Llama 405B). Measure different layouts and pick the one that meets your needs.
+
+### Grounding
+
+**Grounding** means giving the pre-trained model information that wasn't available during its training. [Input-grounded tasks](#input-grounded-tasks) give the model a lot of information in the prompt. Few-shot (non-zero-shot) prompts ground the model in examples that change its default behaviour. Prompt engineering is all about grounding the model to behave a certain way at inference time.
+
+**Retrieval-Augmented Generation (RAG)** - looking up documents relevant to the query, typically by embedding similarity search over a document store, and pasting them into the prompt - is one of the main grounding techniques. The intention is that the model gives this information more weight than the vast compressed knowledge it was trained on.
+
+Fine-tuning on a different knowledge domain is another grounding approach: the model is updated to be grounded in a new dataset that may be quite different from the foundation model's original training domain.
+
+Grounding can be thought of as providing context. It is easier to answer a question when you understand its context, and the same applies to generation: the better the context, the more relevant the output. In multi-modal use, an image or video supplied with the text prompt can be that context.
+
+```text
+RAG prompt = system instructions + retrieved passages (say 3 x 500 tokens) + user question
+-> prefill-heavy: ~1,500 grounding tokens for a ~100-token answer
+```
+
+This matters for serving: grounded prompts are long, so they shift cost toward prefill and benefit from [prefix caching](serving-engine-internals.md#prefix-caching) when passages repeat.
+
+### Tasks
+
+#### Input-grounded tasks
+
+**Input-grounded tasks** are those where the response is derived mainly from the prompt, i.e. the main source of knowledge is in the prompt. They include:
+
+- Translation
+- Summarization
+- Document QA
+- Multi-turn chat
+- Code editing
+- Speech recognition (audio transcription)
+
+Their outputs overlap heavily with their inputs, which is why speculative decoding and prompt lookup work so well on them.
+
+
+
+## Key inference performance metrics
+
+There are two ways to look at serving performance: the usual system metrics, **latency** and **throughput**, and the user-experience metrics, **Time To First Token (TTFT)** and **Time Per Output Token (TPOT)**. This section defines them in words; [Latency metrics, Little's law and capacity planning](#latency-metrics-littles-law-and-capacity-planning) gives the exact formulas and uses them to size a deployment.
+
+### System performance metrics
+
+#### Latency
+
+**Latency is the time from sending a request until the complete response has been received.** It includes the time to:
+
+1. receive the request,
+2. process the prompt (the prefill stage),
+3. generate the response tokens (the decode stage),
+4. send the response back to the client.
+
+Receiving the request and sending the response take roughly the same time for every request, with small variations due to prompt and response length; these are negligible in the total.
+
+Prefill processes prompt tokens in parallel, but longer prompts need more computation and more KV-cache memory, so they generally increase TTFT and reduce throughput. How much depends on the model, batching, hardware and server load.
+
+Decode is the stage most affected by response length, since every new token is a separate step: the longer the response, the longer decode takes.
+
+If the server cannot process all current requests at once and has to queue some, the time spent in the queue adds to the latency.
+
+An analogy: in car traffic, latency is the time it takes one car to drive from A to B (say home to office), including slowdowns from traffic lights, jams and speed limits.
+
+#### Throughput
+
+Throughput measures a server's ability to process many requests in parallel and batch them efficiently.
+
+It could be defined as how many requests are served concurrently, but some requests finish much faster than others (several short ones can complete during one long one), so it makes more sense to count tokens. **Inference throughput is usually defined as the total tokens generated per second across the whole system.**
+
+In the traffic analogy, throughput is how many cars pass along a road per unit of time. More lanes and a higher speed limit give more throughput. But vehicles differ in length, so some normalization is needed - ferries, for example, charge by vehicle length because they sell metres of deck. Tokens are the metres of deck here.
+
+### User experience metrics
+
+A server can be judged by many characteristics - power use, efficiency, cost - but when it talks to humans the most important ones are about a smooth user experience. If the experience is slow and choppy, users go to a competitor. So the key metrics are:
+
+#### Time to first token
+
+**Time To First Token (TTFT) is the time from when the user hit Submit (or Enter) to when they receive the first word or part of a word.**
+
+You want a very low TTFT. Users expect any application to start responding in well under a second, and this matters even more for chatbots, which are expected to be interactive. TTFT is driven mainly by the [prefill](#prefill) computation and by whether the request was processed immediately or had to wait in a queue.
+
+TTFT on an idle server can be very different from TTFT under heavy load. If the server normally sends the first token in 1 second but is already busy with all the requests it can handle, every request beyond the first few waits in the queue and its TTFT can be far longer. So always report TTFT together with the number of concurrent requests used in the benchmark, and preferably as percentiles rather than an average.
+
+TTFT also varies with prompt length, so ideally you normalize it by the number of prompt tokens when comparing different workloads.
+
+#### Time per output token
+
+**Time Per Output Token (TPOT)** is a per-user metric: how long it takes to generate each new token for one request.
+
+TPOT should be low, but it doesn't have to be extremely low. Ideally it keeps up with the reading speed of the person who sent the request. If you serve first graders TPOT can be relatively high; the faster the reader, the lower it must be for smooth reading.
+
+According to Wikipedia there are [3 types of reading](https://en.wikipedia.org/wiki/Speed_reading#Types_of_reading), with speed measured in words per minute (WPM). The average number of tokens per word varies with the language, somewhat with the tokenizer, and most of all with the kind of text. Take an English tokenizer at about 1.5 tokens per word: then tokens per minute (TPM) is $1.5 \times \text{WPM}$, tokens per second (TPS) is $\text{TPM}/60$, and TPOT is $1/\text{TPS}$:
+
+$$
+\text{TPOT} = \frac{60}{\text{WPM} \times 1.5}\ \text{s}
+$$
+
+```python
+# reading_speed.py - the TPOT a reader needs, from words per minute and tokens per word
+for tok_per_word in (1.5, 1.1, 3.3):                          # rule of thumb, prose, code-heavy
+    print(f"tokens/word = {tok_per_word}")
+    for reader, wpm in (("Subvocal", 250), ("Auditory", 450), ("Visual", 700)):
+        tpm = wpm * tok_per_word                              # tokens per minute
+        tps = tpm / 60                                        # tokens per second
+        print(f"  {reader:8s} {wpm:3d} WPM  {tpm:6.0f} TPM  {tps:5.2f} TPS  TPOT {1/tps:.3f} s")
+```
+
+Output of `python reading_speed.py`:
+
+```text
+tokens/word = 1.5
+  Subvocal 250 WPM     375 TPM   6.25 TPS  TPOT 0.160 s
+  Auditory 450 WPM     675 TPM  11.25 TPS  TPOT 0.089 s
+  Visual   700 WPM    1050 TPM  17.50 TPS  TPOT 0.057 s
+tokens/word = 1.1
+  Subvocal 250 WPM     275 TPM   4.58 TPS  TPOT 0.218 s
+  Auditory 450 WPM     495 TPM   8.25 TPS  TPOT 0.121 s
+  Visual   700 WPM     770 TPM  12.83 TPS  TPOT 0.078 s
+tokens/word = 3.3
+  Subvocal 250 WPM     825 TPM  13.75 TPS  TPOT 0.073 s
+  Auditory 450 WPM    1485 TPM  24.75 TPS  TPOT 0.040 s
+  Visual   700 WPM    2310 TPM  38.50 TPS  TPOT 0.026 s
+```
+
+The 1.5 block is the classic table:
+
+| Reader   | WPM |  TPM |   TPS |  TPOT |
+| :-----   | --: | ---: | ----: | ----: |
+| Subvocal | 250 |  375 |  6.25 |  0.16 |
+| Auditory | 450 |  675 | 11.25 | 0.089 |
+| Visual   | 700 | 1050 | 17.50 | 0.057 |
+
+(Earlier versions of this table had 18.75 TPS for visual readers; $1050/60 = 17.5$.)
+
+Replace the 1.5 coefficient with the real tokens-per-word ratio of your tokenizer on your own text. [`tiktoken`](https://github.com/openai/tiktoken) is OpenAI's tokenizer library (`pip install tiktoken`); for an open model, use its HF tokenizer instead. `re.findall(r"\S+", text)` counts whitespace-separated words:
+
+```python
+# tok_per_word.py - tokens per whitespace-separated word for prose and for code
+import re, tiktoken
+prose = ("When you have users that send queries in real time, the server must answer each one quickly, "
+         "while a nightly job that scores a million prompts only cares how much the whole batch costs. "
+         "The two cases are optimized for different metrics, and confusing them leads to the wrong hardware.")
+code = open(__file__).read()                                  # this script itself as a code sample
+for name in ("cl100k_base", "o200k_base", "gpt2"):
+    enc = tiktoken.get_encoding(name)
+    for kind, text in (("prose", prose), ("code", code)):
+        print(f"{name:12s} {kind:5s} tokens per word: {len(enc.encode(text)) / len(re.findall(r'\S+', text)):.2f}")
+```
+
+Output of `python tok_per_word.py` (tiktoken 0.14.0):
+
+```text
+cl100k_base  prose tokens per word: 1.10
+cl100k_base  code  tokens per word: 1.80
+o200k_base   prose tokens per word: 1.10
+o200k_base   code  tokens per word: 1.83
+gpt2         prose tokens per word: 1.10
+gpt2         code  tokens per word: 2.72
+```
+
+How to read it: for English prose the tokenizer barely matters (1.1 on all three, and about 1.2 on the longer paragraph the original author measured). The kind of text matters much more: code is 1.8-2.7 tokens per word here, and the original measurement on Python code gave about 3.3. If you serve code completions rather than prose, a 1.5 coefficient sets your TPOT target more than 2x too lax: you would budget 0.16 s per token for a 250 WPM reader when the code case needs closer to 0.07 s (the 3.3 block above).
+
+TPOT is an awkward number to think about, so **once you know your target TPOT, convert it to tokens per second (TPS) per request and track that instead.** In this example, a system that sustains 20 tokens per second per request keeps up even with 700 WPM visual readers of prose.
+
+Some users prefer to wait until generation is complete before reading; for them faster is simply better. Depending on the type of output:
+
+1. Image - all at once.
+2. Text - as fast as the user's reading speed, or all at once if they don't want moving text while reading.
+3. Audio - as fast as the user's listening speed.
+4. Video - as fast as the user's watching speed.
+
+For an offline system that serves batches rather than individual humans, these metrics don't matter; latency and throughput do.
+
+### Simplified performance metrics
+
+The [metrics above](#key-inference-performance-metrics) overlap a lot. In practice they reduce to two: **prefill throughput** and **decode throughput** - plus how many parallel requests per second the system can handle.
+
+#### Prefill throughput
+
+How fast the system processes the prompt, in tokens per second.
+
+If the overhead of receiving and sending is negligible and there is no queue, [TTFT](#time-to-first-token) is the number of prompt tokens divided by the prefill throughput, plus the time to generate the first token (which is small enough to ignore). With a queue, prefill throughput isn't enough: TTFT also includes the time the request spent waiting.
+
+#### Decode throughput
+
+How fast the system generates response tokens, in tokens per second. It covers both throughput (summed over requests) and TPOT (per request).
+
+Response latency is then
+
+$$
+\text{latency} \approx \frac{n_\text{prompt tokens}}{\text{prefill throughput}} + \frac{n_\text{generated tokens}}{\text{decode throughput}}
+$$
+
+```python
+# simple_latency.py - latency from the two throughputs (no queue)
+n_in, n_out, prefill_tps, decode_tps = 2048, 256, 20_000, 40     # decode_tps is per request
+print(f"TTFT ~ {n_in/prefill_tps*1e3:.0f} ms, decode {n_out/decode_tps:.1f} s, "
+      f"latency ~ {n_in/prefill_tps + n_out/decode_tps:.2f} s")
+```
+
+Output of `python simple_latency.py`:
+
+```text
+TTFT ~ 102 ms, decode 6.4 s, latency ~ 6.50 s
+```
+
+For a chat-sized request decode dominates the latency; the bounds on both rates are derived in [Decode latency lower bound](#decode-latency-lower-bound) and [What this means for prefill vs decode](#what-this-means-for-prefill-vs-decode).
+
+### More metric notes
+
+#### Accelerator utilization
+
+Accelerator utilization, as a percentage or as power draw, is a good indicator of whether your setup uses the accelerators efficiently. On NVIDIA GPUs, if you run
+
+```bash
+watch -n 0.5 nvidia-smi
+```
+
+and see 10% "GPU util" while bombarding the server with requests, either the server is very inefficient (e.g. spends a lot of time copying data back and forth) or the clients are inefficient at receiving data (too much blocking IO).
+
+A lesson from the original author: a first simple benchmark written with the `openai` client worked fine at low concurrency, but at higher concurrency the server's GPU util dropped to 6-7%. After replacing the client with `aiohttp` (an asyncio-based HTTP client library) it rose to 75%. Your benchmark can be the culprit behind a bad performance report, not the server. [Benchmarking](serving-hands-on.md#benchmarking-tools-and-a-minimal-ttft-probe) has more on this.
+
+Utilization plays roughly the role for inference that [TFLOPS as a performance metric](../training/profiling-and-optimization.md#tflops-as-a-performance-metric) plays for training. You want it as high as possible. Beware that NVIDIA's `GPU util` [is not what you might think](../compute/gpu-software-stack.md) - it only says a kernel was running, not how busy the SMs were - but a very low value is a reliable signal of an inefficiency.
+
+#### Percentiles
+
+Benchmarks report p50, p75, p90, p95 and p99. These are **percentiles**: values in the sorted distribution of measurements. p95 is the threshold at or below which 95% of observations fall; the other 5% are above it. Which tail you care about depends on the metric. For latency, lower is better, so p95 describes the slow tail. For throughput, higher is better, so p5 is the useful lower-tail guarantee: about 95% of observations are at or above it. See the [Grafana k6 percentile documentation](https://grafana.com/docs/k6/latest/javascript-api/k6-metrics/trend/).
+
+```python
+# percentiles.py - p50/p90/p95/p99 of a latency sample, and why the max is not a percentile
+import random, statistics as st
+random.seed(0)
+lat = [random.lognormvariate(0, 0.5) for _ in range(10_000)]    # request latencies, seconds
+q = st.quantiles(lat, n=100)                                      # q[k-1] is the k-th percentile
+print(f"mean {st.mean(lat):.2f}  p50 {q[49]:.2f}  p90 {q[89]:.2f}  p95 {q[94]:.2f}  "
+      f"p99 {q[98]:.2f}  max {max(lat):.2f}")
+print(f"requests slower than p95: {sum(x > q[94] for x in lat)} of {len(lat)}")
+tput = [1 / x for x in lat]                                       # per-request tokens/s: higher is better
+print(f"throughput p5 (95% of requests are at least this fast): {st.quantiles(tput, n=100)[4]:.2f}")
+```
+
+Output of `python percentiles.py`:
+
+```text
+mean 1.14  p50 1.01  p90 1.91  p95 2.30  p99 3.20  max 7.30
+requests slower than p95: 500 of 10000
+throughput p5 (95% of requests are at least this fast): 0.43
+```
+
+How to read it: the mean (1.14 s) sits above the median (1.01 s) because a long tail pulls it up; p99 is 3x the median and the single worst request is 7.3 s. Exactly 5% of requests (500) are slower than p95.
+
+The same reading applies to real reports. Here is part of the output of [k6](https://github.com/grafana/k6) (a load-testing tool that fires many concurrent HTTP requests from JavaScript test scripts) against an inference server. Each line is one per-request timing: `http_req_duration` is the whole request, `http_req_sending`/`http_req_receiving` just the upload and download of the bytes, and `med` is the median, i.e. p50:
+
+```text
+http_req_duration..: avg=13.36s   min=12.54s  med=13.31s   max=14.12s   p(90)=13.79s   p(95)=13.83s
+http_req_receiving.: avg=27.98µs  min=15.16µs med=21.6µs   max=98.13µs  p(90)=44.98µs  p(95)=59.2µs
+http_req_sending...: avg=133.8µs  min=20.47µs med=75.39µs  max=598.04µs p(90)=327.73µs p(95)=449.65µs
+```
+
+In the first line, 50% of responses completed in at most 13.31 s, 90% in at most 13.79 s and 95% in at most 13.83 s. The slowest 5% took longer than 13.83 s, up to the observed maximum of 14.12 s. The other lines read the same way. For any metric, a correctly ordered sample satisfies $\text{min} \le \text{p50} \le \text{p90} \le \text{p95} \le \text{max}$; whether higher is better or worse depends on what is measured.
+
+Percentiles summarize tails without letting one extreme observation dominate. They do not make the omitted tail unimportant: p95 latency still means 5% of requests were slower, which is many users at production scale. See [Percentile](https://en.wikipedia.org/wiki/Percentile) for a fuller treatment.
+
+
+
 ## Notation and hardware numbers
 
 | Symbol | Meaning |
@@ -81,7 +792,7 @@ Some hardware terms used throughout:
 - A **kernel** is one function launched on the GPU (one matmul, one attention call). A decode step of a 70B model is a few hundred to a few thousand kernels.
 - An **SM** (streaming multiprocessor) is one of the ~100-150 independent compute units on an NVIDIA GPU; each has **tensor cores** (fixed-function matrix-multiply units, where the advertised TFLOPS live) and **CUDA cores** (general-purpose scalar ALUs, ~15-30x slower for math).
 
-The spec numbers used everywhere below are dense (no sparsity) peaks, taken from the repo's [accelerator chapter](../compute/accelerator/README.md#tflops-comparison-table) and [memory table](../compute/accelerator/README.md):
+The spec numbers used everywhere below are dense (no sparsity) peaks, taken from the repo's [accelerator chapter](../compute/accelerators.md#tflops-comparison-table) and [memory table](../compute/accelerators.md#memory-comparison-table):
 
 | Accelerator | BF16 TFLOPS | FP8 TFLOPS | FP4 TFLOPS | HBM | HBM TB/s |
 | :---------- | ----------: | ---------: | ---------: | --: | -------: |
@@ -90,7 +801,7 @@ The spec numbers used everywhere below are dense (no sparsity) peaks, taken from
 | NVIDIA B200 SXM | 2250 | 4500 | 9000 | 180GB HBM3e | 8.0 |
 | AMD MI300X | 1300 | 2610 | - | 192GB HBM3 | 5.3 |
 
-Achievable is lower. The repo's [measured matmul ceilings](../compute/accelerator/README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) (MAMF) are 853 BF16 / 1535 FP8 TFLOPS on H100 SXM (86% / 78% of spec), 1737 / 3350 on B200, and 634 / 1230 on MI300X (~48%). The MAMF numbers are for large, well-shaped matmuls; decode-shaped matmuls get less. Wherever a calculation needs a realistic compute number it uses MAMF and says so.
+Achievable is lower. The repo's [measured matmul ceilings](../compute/accelerators.md#mamf-and-msmf-comparison-table) (MAMF) are 853 BF16 / 1535 FP8 TFLOPS on H100 SXM (86% / 78% of spec), 1737 / 3350 on B200, and 634 / 1230 on MI300X (~48%). The MAMF numbers are for large, well-shaped matmuls; decode-shaped matmuls get less. Wherever a calculation needs a realistic compute number it uses MAMF and says so.
 
 
 
@@ -419,7 +1130,7 @@ The two phases want different hardware, different parallelism and different batc
 
 ## KV cache sizing
 
-The KV cache (introduced in the [overview](README.md#kv-caching)) stores every past token's keys and values so they need not be recomputed.
+The KV cache (introduced in [KV caching](#kv-caching)) stores every past token's keys and values so they need not be recomputed.
 
 Why it exists: attention at position $t$ needs the keys and values of every position $0..t$. Without a cache, generating token $t$ would recompute K and V for the whole prefix, which makes generation quadratic. With a cache, each step computes K and V only for the new token and appends them. The price is memory. The cache grows by one entry per token per layer, it lives in HBM next to the weights, and it is the thing that limits how many users a GPU can serve at once.
 
@@ -700,7 +1411,7 @@ Assumptions, all stated:
 
 - H100 SXM spec: 3.35 TB/s, 989 BF16 / 1979 FP8 TFLOPS. Bound uses 100% of spec bandwidth; real kernels typically reach less, so scale $t_\text{mem}$ by $1 / \text{achieved fraction}$ once you have measured it.
 - $T$ is the KV length of every sequence in the batch at this step (steady state).
-- $t_\text{comm} = 160 \cdot t_\text{allreduce}(B \cdot 8192 \cdot 2\ \text{bytes})$, with $t_\text{allreduce}$ from the repo's [measured 8x H200 latencies](../network/benchmarks/README.md#latency): 20 µs at 16 KiB ($B=1$), 27.7 µs at 1 MiB ($B=64$), and ~53 µs at 4 MiB ($B=256$, linearly extrapolated from the 256 KiB-1 MiB slope, not measured). H200 and H100 use the same NVLink 4 / NVSwitch fabric, so the H200 measurement is used as a proxy.
+- $t_\text{comm} = 160 \cdot t_\text{allreduce}(B \cdot 8192 \cdot 2\ \text{bytes})$, with $t_\text{allreduce}$ from the repo's [measured 8x H200 latencies](../network/measuring-and-debugging.md#latency): 20 µs at 16 KiB ($B=1$), 27.7 µs at 1 MiB ($B=64$), and ~53 µs at 4 MiB ($B=256$, linearly extrapolated from the 256 KiB-1 MiB slope, not measured). H200 and H100 use the same NVLink 4 / NVSwitch fabric, so the H200 measurement is used as a proxy.
 - Cost at **\$2.00 per GPU-hour** (the rate DeepSeek used in its own cost statement, cited below). $\$\text{/1M} = \$2 \cdot 8 / 3600 / \text{throughput} \cdot 10^6$.
 - "fits" means $\text{weights} + \text{KV} \le 8 \cdot 80\ \text{GB} \cdot 0.9 = 576\ \text{GB}$.
 
@@ -888,7 +1599,7 @@ At $B=1$ the real step is within ~5% of the bandwidth bound: decode really is "r
 
 ## Tensor-parallel communication in decode
 
-**Tensor parallelism** (TP) splits every weight matrix across $P$ GPUs so each GPU reads $1/P$ of the weights per step. In the Megatron layout each transformer layer has two points where the partial outputs on the $P$ GPUs must be summed: after the attention output projection and after the MLP down projection. That sum is an **all-reduce** - a collective operation in which every GPU contributes a tensor and every GPU receives the elementwise sum. A **collective** is any communication operation that all participating GPUs call together; on NVIDIA hardware they are implemented by **NCCL** (NVIDIA's collective communication library). Inside an 8-GPU node the traffic travels over **NVLink** (NVIDIA's direct GPU-to-GPU link, 450 GB/s per direction per GPU on H100/H200, 900 GB/s on B200 - see the [network chapter](../network/README.md#intra-node-networking)) through an **NVSwitch** (a switch chip that gives every GPU full NVLink bandwidth to every other GPU).
+**Tensor parallelism** (TP) splits every weight matrix across $P$ GPUs so each GPU reads $1/P$ of the weights per step. In the Megatron layout each transformer layer has two points where the partial outputs on the $P$ GPUs must be summed: after the attention output projection and after the MLP down projection. That sum is an **all-reduce** - a collective operation in which every GPU contributes a tensor and every GPU receives the elementwise sum. A **collective** is any communication operation that all participating GPUs call together; on NVIDIA hardware they are implemented by **NCCL** (NVIDIA's collective communication library). Inside an 8-GPU node the traffic travels over **NVLink** (NVIDIA's direct GPU-to-GPU link, 450 GB/s per direction per GPU on H100/H200, 900 GB/s on B200 - see the [network chapter](../network/interconnects.md#intra-node-networking)) through an **NVSwitch** (a switch chip that gives every GPU full NVLink bandwidth to every other GPU).
 
 Per decode step, there are $n_\text{allreduce} = 2L$ all-reduces (160 for Llama-3-70B), each of a $(B, h)$ activation tensor ($16\ \text{KiB}$ at $B=1$, $1\ \text{MiB}$ at $B=64$, BF16, $h=8192$):
 
@@ -904,7 +1615,7 @@ $$
 t_\text{allreduce}(m) \approx \alpha + \frac{m \cdot 2(P-1)/P}{\text{busbw}}
 $$
 
-$\alpha$ is the fixed per-call latency; $\text{busbw}$ is the bus bandwidth NCCL reports (defined and derived in [algbw vs busbw](../network/collectives-internals.md#algbw-vs-busbw); the alpha-beta model itself is [the alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). For decode-sized messages $\alpha$ dominates completely: the repo measures an 8-byte all-reduce on 8x H200 at 15.2 µs, and everything up to 256 KiB at 15-22 µs ([source](../network/benchmarks/README.md#latency)). Pure bandwidth time for 16 KiB at 450 GB/s is $16384 \cdot 1.75 / (450 \times 10^9) = 0.06\ \mu\text{s}$ - the link is idle 99.7% of the call. A faster link does nothing for decode TP; fewer or cheaper calls do.
+$\alpha$ is the fixed per-call latency; $\text{busbw}$ is the bus bandwidth NCCL reports (defined and derived in [algbw vs busbw](../network/collectives-internals.md#algbw-vs-busbw); the alpha-beta model itself is [the alpha-beta model](../network/collectives-internals.md#the-alpha-beta-model)). For decode-sized messages $\alpha$ dominates completely: the repo measures an 8-byte all-reduce on 8x H200 at 15.2 µs, and everything up to 256 KiB at 15-22 µs ([source](../network/measuring-and-debugging.md#latency)). Pure bandwidth time for 16 KiB at 450 GB/s is $16384 \cdot 1.75 / (450 \times 10^9) = 0.06\ \mu\text{s}$ - the link is idle 99.7% of the call. A faster link does nothing for decode TP; fewer or cheaper calls do.
 
 Consequences:
 
@@ -1219,7 +1930,7 @@ print(f"{per_token_layer/1e3:.0f} KB/token/layer, {per_token_layer*layers/1e6:.1
 
 ## Quantization internals
 
-Every scheme below is judged by three questions: how many bytes per weight (and per KV element) it moves, which tensor-core rate the matmul runs at, and how many CUDA-core instructions it spends unpacking. See [dtypes](../training/dtype.md) for the bit layouts.
+Every scheme below is judged by three questions: how many bytes per weight (and per KV element) it moves, which tensor-core rate the matmul runs at, and how many CUDA-core instructions it spends unpacking. See [dtypes](../training/arithmetic.md#the-dtype-zoo-and-how-to-read-its-names) for the bit layouts.
 
 ### Quantization from scratch: scales, zero points, groups
 
@@ -1756,7 +2467,7 @@ Quantizing keys per-token lets each token's outlier channels set its scale, whic
 
 ### NVFP4 and MXFP4
 
-Both use an E2M1 element (values $\pm\lbrace 0, 0.5, 1, 1.5, 2, 3, 4, 6 \rbrace$) with a block scale; see [fp4 formats](../training/dtype.md#fp4-formats).
+Both use an E2M1 element (values $\pm\lbrace 0, 0.5, 1, 1.5, 2, 3, 4, 6 \rbrace$) with a block scale; see [fp4 formats](../training/arithmetic.md#fp4-formats).
 
 - **MXFP4** ([OCP microscaling, arXiv:2310.10537](https://arxiv.org/abs/2310.10537)): block 32, E8M0 (power-of-two) scale -> 4.25 bits/weight. Power-of-two scales waste up to one binade (the span between two consecutive powers of two) of the E2M1 range per block.
 - **NVFP4**: block 16, E4M3 scale, plus an FP32 per-tensor scale -> 4.5 bits/weight. Finer blocks and a fractional scale give lower quantization error at +6% bytes. NVIDIA reports pretraining in NVFP4 in [arXiv:2509.25149](https://arxiv.org/abs/2509.25149).
@@ -1822,7 +2533,7 @@ On B200 both run on FP4 tensor cores at 9000 dense TFLOPS with scaling inside th
 - **E2E latency** $= \text{TTFT} + (n_\text{out} - 1) \cdot \text{TPOT}$.
 - **Goodput** = requests per second completed *within* SLO (term from DistServe).
 
-User-experience framing of these metrics is in the [overview](README.md#key-inference-performance-metrics).
+User-experience framing of these metrics is in [Key inference performance metrics](#key-inference-performance-metrics).
 
 All of these come from one list per request: the wall-clock time each output token reached the client. The example shows why a mean (TPOT) is not enough. Two streams with identical TTFT and TPOT feel completely different if one of them freezes every 50 tokens while someone else's prompt is prefilled:
 
@@ -2083,7 +2794,7 @@ Things that make real numbers worse than this chapter's bounds, roughly in order
 
 1. **Achieved HBM bandwidth** below spec, and worse for small or irregular reads (paged KV with small blocks, many short sequences).
 2. **Per-kernel fixed overhead**: a decode step has ~10-20 kernels per layer; at a few µs each, an 80-layer model has a ~2-5 ms floor even with CUDA graphs if kernels are not fused.
-3. **TP communication**, already included above, but sensitive to NCCL algorithm/protocol choice (see [protocols](../network/comms.md#protocols)).
+3. **TP communication**, already included above, but sensitive to NCCL algorithm/protocol choice (see [protocols](../network/collectives-internals.md#protocols-simple-ll-ll128)).
 4. **Host-side scheduling and sampling** in Python between steps, unless overlapped with the GPU.
 5. **Prefill interference** on ITL in colocated serving.
 6. **Variable-length batches**: attention time is set by the sum of context lengths, but many kernels pad or load-imbalance across SMs with uneven sequences.
@@ -2118,6 +2829,8 @@ Things that make real numbers *better*: speculative decoding (several tokens per
 - [Serving LLMs in Practice](serving-hands-on.md) - measuring the real numbers against these bounds
 - [Infrastructure for Large-Scale RL](../platform/rl-infrastructure.md) - generation is most of an RL step
 
+Parts of this chapter are adapted from Stas Bekman's [Machine Learning Engineering Open Book](https://github.com/stas00/ml-engineering) (CC BY-SA 4.0).
+
 ## Further reading
 
 Papers (arXiv ids verified):
@@ -2142,4 +2855,4 @@ Other:
 - [DeepSeek-V3/R1 Inference System Overview](https://github.com/deepseek-ai/open-infra-index/blob/main/202502OpenSourceWeek/day_6_one_more_thing_deepseekV3R1_inference_system_overview.md) - the only public production-scale MoE serving numbers with enough detail to cross-check arithmetic.
 - [FlashMLA](https://github.com/deepseek-ai/FlashMLA)
 - Williams, Waterman, Patterson, "Roofline: An Insightful Visual Performance Model for Multicore Architectures", CACM 52(4), 2009.
-- In this repo: [accelerator specs and measured matmul ceilings](../compute/accelerator/README.md), [all-reduce latency measurements](../network/benchmarks/README.md#latency), [dtypes](../training/dtype.md), [inference overview](README.md), [Inference Internals II](serving-engine-internals.md).
+- In this repo: [accelerator specs and measured matmul ceilings](../compute/accelerators.md), [all-reduce latency measurements](../network/measuring-and-debugging.md#latency), [dtypes](../training/arithmetic.md#the-dtype-zoo-and-how-to-read-its-names), [Inference Internals II](serving-engine-internals.md).

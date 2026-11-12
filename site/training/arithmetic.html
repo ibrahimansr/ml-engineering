@@ -10,23 +10,16 @@
 <nav id="sidebar">
   <a class="home" href="../index.html">Machine Learning Engineering</a>
   <input id="filter" type="search" placeholder="Filter pages...">
-  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
 <details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
 <details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
-<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
-<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
-<details open><summary>Part 5. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/arithmetic.html" class="current">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
-<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
-<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
-<details><summary>Part 8. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
-<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
-<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
-<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
-<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
-<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
-<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
-<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
-<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details open><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html" class="current">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
 </nav>
 <main>
 <article>
@@ -45,7 +38,7 @@
 <li><a href="../network/collectives-internals.html">Collective communication internals</a> - the <a href="../network/collectives-internals.html#the-alpha-beta-model">alpha-beta model</a> and <a href="../network/collectives-internals.html#ring-all-reduce">ring all-reduce</a>, behind the bf16 reduction and FSDP memory discussions.</li>
 </ul>
 <p>Forward links (later chapters, not needed to follow this one): <a href="../inference/arithmetic.html">Inference arithmetic</a> applies the same counting to serving a model.</p>
-<p>This chapter goes below the rules of thumb in <a href="../training/performance/README.html">Software Tune Up For The Best Performance</a>, <a href="../training/dtype.html">Tensor Precision / Data Types</a>, <a href="../training/hparams.html">Selecting Training Hyper-Parameters</a> and <a href="../training/instabilities/README.html">Instabilities</a>. It derives the constants those chapters quote and shows where they break. How the work is split across devices is covered in <a href="../training/model-parallelism/derivations.html">Model Parallelism: Derivations</a>. What happens inside a single GPU kernel is covered in <a href="../compute/accelerator/execution-model.html">Accelerator Execution Model</a>. How to measure where time goes on a real run is in <a href="../training/profiling-and-optimization.html">Profiling and optimization</a>. None of these topics is repeated here.</p>
+<p>This chapter goes below the rules of thumb in <a href="../training/profiling-and-optimization.html">Software Tune Up For The Best Performance</a>, <a href="../training/stability.html">Selecting Training Hyper-Parameters</a> and <a href="../training/stability.html">Instabilities</a>. It derives the constants those chapters quote and shows where they break. It also holds the reference material on data types: the dtype zoo and naming, TF32, FP8 and FP4 formats, integer quantization formats, and the fp32-accumulation rules. How the work is split across devices is covered in <a href="../training/model-parallelism/derivations.html">Model Parallelism: Derivations</a>. What happens inside a single GPU kernel is covered in <a href="../compute/accelerator/execution-model.html">Accelerator Execution Model</a>. How to measure where time goes on a real run is in <a href="../training/profiling-and-optimization.html">Profiling and optimization</a>. None of these topics is repeated here.</p>
 <p>Every formula in this chapter comes with a small program that checks it. Numbers about Llama-sized models come from arithmetic (no GPU was used). Numbers about the tiny model are measurements made on a laptop CPU, and the text says which is which.</p>
 <h2 id="running-the-code">Running the code</h2>
 <p>Every Python block in this chapter is a complete file. They were run on macOS (Apple Silicon, CPU only) with PyTorch 2.15.0 and NumPy 2.5.4 in a throwaway virtual environment. A <em>virtual environment</em> (venv) is a private directory of Python packages, so nothing is installed system-wide:</p>
@@ -55,6 +48,7 @@ mkdir -p /tmp/arith-code &amp;&amp; cd /tmp/arith-code
 # save each block below under the file name in its first comment, then:
 /tmp/arith-venv/bin/python count_flops.py
 </code></pre>
+<p>All blocks in this chapter are single-process. If you adapt one to run under <code>torchrun</code> with several processes, their <code>print</code> output will interleave, sometimes two ranks on one line. Two tiny tools in <code>training/tools</code> fix that by taking an exclusive file lock (<code>fcntl.flock</code>) around each <code>print</code>: <a href="tools/printflock.py"><code>printflock.py</code></a> is an importable drop-in (<code>from printflock import printflock as print</code>), and <a href="tools/multi-gpu-non-interleaved-print.py"><code>multi-gpu-non-interleaved-print.py</code></a> is the same wrapper plus a runnable NCCL example (<code>torchrun --nproc_per_node 2 multi-gpu-non-interleaved-print.py</code>). The lock only serializes processes on one node, which is where interleaving happens; output from different nodes arrives through the launcher line by line. Rank prefixes and per-rank log files are covered in <a href="../foundations/distributed-systems.html#per-rank-logs-and-rank-prefixed-printing">Per-rank logs and rank-prefixed printing</a>.</p>
 <p>Several scripts import a tiny Llama-style model from <code>tinylm.py</code>. It has the same structure as Llama-3 (RMSNorm, GQA attention through PyTorch's fused <code>scaled_dot_product_attention</code>, SwiGLU MLP, untied embedding and head) but is small enough to run on a CPU in a fraction of a second. Save it first:</p>
 <pre><code class="language-python"># tinylm.py
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -203,7 +197,7 @@ def flops_per_token(h, L, a, k, f, V, s, causal=False):
 </tr>
 </tbody>
 </table>
-<p>Units: parameter and optimizer memory is in GB (<span class="math inline"><span class="math-inline">10^9</span></span> bytes), activation memory is in GiB (<span class="math inline"><span class="math-inline">2^{30}</span></span> bytes), and FLOP means a single multiply or add (1 MAC = 2 FLOP, see <a href="../training/performance/README.html#macs-vs-flop-vs-flops-vs-flops">MACs vs FLOP</a>). FLOP/s (with &quot;/s&quot;) is a rate: FLOPs per second.</p>
+<p>Units: parameter and optimizer memory is in GB (<span class="math inline"><span class="math-inline">10^9</span></span> bytes), activation memory is in GiB (<span class="math inline"><span class="math-inline">2^{30}</span></span> bytes), and FLOP means a single multiply or add (1 MAC = 2 FLOP, see <a href="../training/profiling-and-optimization.html#macs-vs-flop-vs-flops-vs-flops">MACs vs FLOP</a>). FLOP/s (with &quot;/s&quot;) is a rate: FLOPs per second.</p>
 <h2 id="flops-of-a-decoder-transformer">FLOPs of a decoder transformer</h2>
 <p>Why count FLOPs at all? Because the GPU's arithmetic rate is the one number you can't buy your way around. If you know how many FLOPs a training step needs, and how many FLOP/s the hardware can deliver, you know the best possible step time before writing any code. Every &quot;how long will this run take&quot; and &quot;is my code slow&quot; question starts here.</p>
 <h3 id="per-matmul-breakdown">Per-matmul breakdown</h3>
@@ -558,7 +552,7 @@ Llama-3-70B: N=70.554B N'=69.502B 6N=423.32 6N'=417.01 attn12=64.42 attn6=32.21 
    executed (full recompute, causal FA) = 602.23 GF, ratio 1.251
 </code></pre>
 <h2 id="mfu-and-hfu-properly">MFU and HFU, properly</h2>
-<p>MFU (model FLOPs utilization) is the fraction of the hardware's peak arithmetic rate that went into the FLOPs the model mathematically needs. HFU (hardware FLOPs utilization) counts everything the hardware executed, including recomputation. <a href="../training/performance/README.html#mfu-vs-hfu">MFU vs HFU</a> gives the definitions. The precise version is:</p>
+<p>MFU (model FLOPs utilization) is the fraction of the hardware's peak arithmetic rate that went into the FLOPs the model mathematically needs. HFU (hardware FLOPs utilization) counts everything the hardware executed, including recomputation. <a href="../training/profiling-and-optimization.html#mfu-vs-hfu">MFU vs HFU</a> gives the definitions. The precise version is:</p>
 <div class="math block">
 <div class="math-display">\text{MFU} = \frac{\text{tokens/s/GPU} \times \text{model FLOP per token}}{\text{peak FLOP/s}}</div>
 </div>
@@ -623,7 +617,7 @@ Llama-3-70B: N=70.554B N'=69.502B 6N=423.32 6N'=417.01 attn12=64.42 attn6=32.21 
 <p>(Output of <code>worked.py</code> above. An earlier version of this chapter wrote <span class="math inline"><span class="math-inline">8N&#x27;</span></span> here, which silently recomputes the head and gives 69.70 / 604.33 GF.)</p>
 <p>So with full recompute, <span class="math inline"><span class="math-inline">\text{HFU} \approx (1.19\text{-}1.25) \times \text{MFU}</span></span> (12 convention). The ratio is lower than the textbook 4/3 because the 12 convention counts causal attention FLOPs that the kernel does not execute, while HFU adds the recompute FLOPs that it does.</p>
 <h3 id="mfu-from-a-measured-tokenss">MFU from a measured tokens/s</h3>
-<p>Inverting the formula gives the throughput a target MFU requires. With H100 SXM dense bf16 peak = 989.4 TFLOP/s (derivation in <a href="../compute/accelerator/README.html#how-to-calculate-theoretical-tflops">How To Calculate Theoretical TFLOPS</a>) and the 12 convention at <span class="math inline"><span class="math-inline">s = 8192</span></span>:</p>
+<p>Inverting the formula gives the throughput a target MFU requires. With H100 SXM dense bf16 peak = 989.4 TFLOP/s (derivation in <a href="../compute/accelerators.html#how-to-calculate-theoretical-tflops">How To Calculate Theoretical TFLOPS</a>) and the 12 convention at <span class="math inline"><span class="math-inline">s = 8192</span></span>:</p>
 <pre><code class="language-python"># mfu.py
 PEAK_H100, PEAK_A100 = 989.4e12, 312e12
 
@@ -642,7 +636,7 @@ Llama-3-8B: 40% MFU needs 6,834 tok/s/GPU
 Llama-3-70B: 40% MFU needs 822 tok/s/GPU
 example: 6.5M tok/s on 1024 GPUs, 8B -&gt; MFU 37.2%
 </code></pre>
-<p>The denominator has two choices, and they mean different things. The spec peak (989) measures distance from a number no kernel reaches. The <a href="../compute/accelerator/README.html#maximum-achievable-and-sustainable-matmul-flops-comparison-table">maximum achievable matmul FLOPS</a> for H100 SXM is 853 bf16 TFLOPS in this repo's measurements (86.2% of spec), and MFU against that number measures distance from what your matmuls could realistically do. Report MFU against the spec peak, since that is the convention, and use the ratio to maximum achievable matmul FLOPS (MAMF) internally to tell how much is left to gain.</p>
+<p>The denominator has two choices, and they mean different things. The spec peak (989) measures distance from a number no kernel reaches. The <a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">maximum achievable matmul FLOPS</a> for H100 SXM is 853 bf16 TFLOPS in this repo's measurements (86.2% of spec), and MFU against that number measures distance from what your matmuls could realistically do. Report MFU against the spec peak, since that is the convention, and use the ratio to maximum achievable matmul FLOPS (MAMF) internally to tell how much is left to gain.</p>
 <p>You can practise the whole measurement loop on a CPU: measure the achievable matmul rate, time a training step, divide the counted FLOPs by the step time.</p>
 <pre><code class="language-python"># cpu_mfu.py
 import time, torch
@@ -696,7 +690,7 @@ DeepSeek-V3: bf16 peak 34.6%, fp8 peak 17.3%
 </ul>
 <h2 id="activation-memory">Activation memory</h2>
 <p>During the forward pass, autograd keeps some intermediate tensors alive because the backward pass needs them (for example, <span class="math inline"><span class="math-inline">dW = X^\top dY</span></span> needs the layer's input <span class="math inline"><span class="math-inline">X</span></span>). Those saved tensors are the <em>activations</em>, and at long context they are usually the largest thing in GPU memory.</p>
-<p><a href="../training/performance/README.html#anatomy-of-models-memory-usage">Anatomy of Model's Memory Usage</a> measures &quot;copies of <code>hidden_states</code>&quot; empirically. This section derives what autograd actually saves for backward, term by term, and then measures it. The two quantities differ. The measured coefficient in that chapter is peak working memory inside one layer's forward, temporaries included. The coefficient below is what stays resident after the forward pass until backward runs.</p>
+<p><a href="../training/profiling-and-optimization.html#anatomy-of-models-memory-usage">Anatomy of Model's Memory Usage</a> measures &quot;copies of <code>hidden_states</code>&quot; empirically. This section derives what autograd actually saves for backward, term by term, and then measures it. The two quantities differ. The measured coefficient in that chapter is peak working memory inside one layer's forward, temporaries included. The coefficient below is what stays resident after the forward pass until backward runs.</p>
 <p>Why activations dominate at scale - memory per GPU split into parameters+optimizer state and activations (Korthikanti et al.):</p>
 <p><img src="images/korthikanti-memory-breakdown.jpg" alt="parameters, optimizer state and activation memory" /></p>
 <p>(<a href="https://arxiv.org/abs/2205.05198">source</a>)</p>
@@ -1091,8 +1085,8 @@ Llama-3-70B: 1 GPU 1128.9-1270.0 GB | ZeRO-1 x8 388.0 GB | ZeRO-2 x8 264.6 GB | 
 <h3 id="everything-else">Everything else</h3>
 <ul>
 <li><strong>Temporary buffers</strong>: the all-gather destination buffer for each FSDP unit (an all-gather is the collective in which every GPU ends up holding the concatenation of everyone's shards), the reduce-scatter source buffer (the inverse: inputs are summed and each GPU receives one shard of the sum), fp32 upcasts of bf16 gradients for reduction, cuBLAS workspaces (cuBLAS is NVIDIA's matmul library, and it requests scratch space per call), the logits pair above, and optimizer temporaries: PyTorch's default <code>foreach</code> AdamW implementation batches the update over a whole list of parameters at once and allocates intermediates the size of that list, while <code>fused=True</code> does the update in one kernel and avoids most of them.</li>
-<li><strong>CUDA context and kernel images</strong>: 0.5-2 GiB before you allocate anything. The CUDA context is the per-process driver state, including the loaded GPU kernel binaries; a kernel is a single function launched on the GPU. See <a href="../training/performance/README.html#preloaded-cuda-kernels-memory-usage">Preloaded CUDA kernels memory usage</a>.</li>
-<li><strong>NCCL</strong> (NVIDIA's library for collectives between GPUs): 1-2 GiB of communicator buffers, more with many process groups. See <a href="../training/performance/README.html#torchdistributed-memory-usage"><code>torch.distributed</code> memory usage</a>.</li>
+<li><strong>CUDA context and kernel images</strong>: 0.5-2 GiB before you allocate anything. The CUDA context is the per-process driver state, including the loaded GPU kernel binaries; a kernel is a single function launched on the GPU. See <a href="../training/profiling-and-optimization.html#preloaded-cuda-kernels-memory-usage">Preloaded CUDA kernels memory usage</a>.</li>
+<li><strong>NCCL</strong> (NVIDIA's library for collectives between GPUs): 1-2 GiB of communicator buffers, more with many process groups. See <a href="../training/profiling-and-optimization.html#torchdistributed-memory-usage"><code>torch.distributed</code> memory usage</a>.</li>
 <li><strong>Fragmentation</strong>: memory the allocator has reserved from the driver but cannot hand out for the request at hand. It typically costs from a few percent to tens of percent. The mechanism follows.</li>
 </ul>
 <p>None of the context, NCCL or fragmentation memory shows up in <code>torch.cuda.memory_allocated()</code>. <code>nvidia-smi</code> shows reserved memory plus context plus NCCL. On a GPU machine (untested here) you can see the gap directly:</p>
@@ -1112,7 +1106,7 @@ print(subprocess.run([&quot;nvidia-smi&quot;, &quot;--query-gpu=memory.used&quot
 <li><strong>Streams</strong>: a CUDA stream is an ordered queue of GPU work, and different streams run concurrently. Blocks belong to the stream they were allocated on. A block freed on stream A is reused only by requests on stream A, because the allocator cannot know whether work queued on stream B still reads it. Code that hands a tensor to another stream (NCCL communication streams, FSDP prefetch) calls <code>tensor.record_stream(s)</code>. The block's free is then deferred until an event recorded on <code>s</code> completes. Until then it is in state <code>active_pending_free</code>, and that is where much of the &quot;mysterious&quot; reserved memory under FSDP sits.</li>
 <li><strong>OOM path</strong>: when no cached block fits and <code>cudaMalloc</code> fails, the allocator frees every cached block that is not split and retries. This increments <code>num_alloc_retries</code>. If the retry fails you get the OOM message showing &quot;reserved but unallocated&quot; memory. That number is your fragmentation.</li>
 <li><strong><code>max_split_size_mb</code></strong>: blocks larger than this are never split, so a large free block is not chewed into fragments by small requests.</li>
-<li><strong><code>expandable_segments:True</code></strong>: instead of a fixed-size <code>cudaMalloc</code> per segment, the allocator reserves a large range of <em>virtual</em> addresses once per stream and maps physical memory pages into it on demand with the CUDA virtual memory API (<code>cuMemCreate</code>/<code>cuMemMap</code>). Virtual memory means a pointer refers to an address range that the hardware translates to physical memory in fixed-size chunks called pages, so contiguous addresses do not need contiguous physical memory. The segment grows at its end, and a freed tail can be unmapped. Allocations whose size varies step to step (variable sequence lengths, the SP reshapes in <a href="../debug/pytorch.html#overcoming-cuda-oom-due-to-memory-fragmentation">Overcoming CUDA OOM due to memory fragmentation</a>) stop leaving holes the size of last step's tensor.</li>
+<li><strong><code>expandable_segments:True</code></strong>: instead of a fixed-size <code>cudaMalloc</code> per segment, the allocator reserves a large range of <em>virtual</em> addresses once per stream and maps physical memory pages into it on demand with the CUDA virtual memory API (<code>cuMemCreate</code>/<code>cuMemMap</code>). Virtual memory means a pointer refers to an address range that the hardware translates to physical memory in fixed-size chunks called pages, so contiguous addresses do not need contiguous physical memory. The segment grows at its end, and a freed tail can be unmapped. Allocations whose size varies step to step (variable sequence lengths, the SP reshapes in <a href="../development/debugging-pytorch.html#fragmentation-and-expandable-segments">Overcoming CUDA OOM due to memory fragmentation</a>) stop leaving holes the size of last step's tensor.</li>
 </ul>
 <p>The size rules are easy to get wrong in your head, so here they are as code. This is a model of the rules listed above, not the allocator, and it ignores block splitting and reuse:</p>
 <pre><code class="language-python"># alloc_model.py
@@ -1179,7 +1173,7 @@ PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 python train.py
 </tbody>
 </table>
 <h3 id="reading-torchcudamemory_snapshot">Reading <code>torch.cuda.memory._snapshot()</code></h3>
-<p><a href="../debug/pytorch.html#pytorch-memory-profiler">PyTorch memory profiler</a> shows how to record and visualize the history. The snapshot is also a plain dict you can analyze yourself. It is a private API and its keys may change between versions. This needs a CUDA GPU and was not run for this chapter (untested):</p>
+<p><a href="../development/debugging-pytorch.html#the-pytorch-memory-profiler">PyTorch memory profiler</a> shows how to record and visualize the history. The snapshot is also a plain dict you can analyze yourself. It is a private API and its keys may change between versions. This needs a CUDA GPU and was not run for this chapter (untested):</p>
 <pre><code class="language-python"># snapshot_frag.py  (needs a CUDA GPU; untested)
 import torch
 from collections import defaultdict
@@ -1382,6 +1376,255 @@ bf16(0.999) = 1.0   0.999*bf16(1.0) in bf16 = 1.0
 <li><strong>bf16 loses integers above 256.</strong> The spacing is 2 at 256, 32 at 4096 and 64 at 8192. <code>bf16(8191) = 8192</code> and <code>bf16(4097) = 4096</code>. Position ids stored in bf16 are therefore wrong by up to 16 positions below 8192 (half the spacing of 32), and RoPE angles computed as <span class="math inline"><span class="math-inline">\text{position} \times \text{inv\_freq}</span></span> in bf16 are off by tens of radians for the highest frequencies, i.e. meaningless. Compute positions and angles in fp32 and cast <code>cos</code>/<code>sin</code> afterwards.</li>
 <li><strong>bf16 cannot represent typical Adam <span class="math inline"><span class="math-inline">\beta_2</span></span>.</strong> <code>bf16(0.999) = 1.0</code>. Even with an fp32 multiplier, <span class="math inline"><span class="math-inline">0.999\,v</span></span> rounds back to <span class="math inline"><span class="math-inline">v</span></span>, because a 0.1% change is below bf16's half-spacing there (just under 1.0 the spacing is <span class="math inline"><span class="math-inline">2^{-8} \approx 0.39\%</span></span>, so half a spacing is about 0.2%).</li>
 </ul>
+<h3 id="the-dtype-zoo-and-how-to-read-its-names">The dtype zoo and how to read its names</h3>
+<p>A tensor's element type is called its <em>dtype</em>. As of 2026-08 these floating-point dtypes are in use in ML:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">dtype</th>
+<th style="text-align:right">bits</th>
+<th style="text-align:left">notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">fp32</td>
+<td style="text-align:right">32</td>
+<td style="text-align:left">the reference format</td>
+</tr>
+<tr>
+<td style="text-align:left">tf32</td>
+<td style="text-align:right">19</td>
+<td style="text-align:left">a compute mode of NVIDIA tensor cores (Ampere and later), not a storage format; see <a href="#tf32">TF32</a></td>
+</tr>
+<tr>
+<td style="text-align:left">fp16</td>
+<td style="text-align:right">16</td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:left">bf16</td>
+<td style="text-align:right">16</td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:left">fp8</td>
+<td style="text-align:right">8</td>
+<td style="text-align:left">E4M3 and E5M2, see <a href="#fp8-training">FP8 training</a></td>
+</tr>
+<tr>
+<td style="text-align:left">fp6</td>
+<td style="text-align:right">6</td>
+<td style="text-align:left">E2M3 and E3M2, Blackwell and later</td>
+</tr>
+<tr>
+<td style="text-align:left">fp4</td>
+<td style="text-align:right">4</td>
+<td style="text-align:left">E2M1, only usable block-scaled, see <a href="#fp4-formats">FP4 formats</a></td>
+</tr>
+</tbody>
+</table>
+<p>The sign/exponent/mantissa layout behind all of them, and why the exponent sets the range and the mantissa the precision, is in <a href="../foundations/computer-architecture.html#floating-point-ieee-754">Floating point: IEEE 754</a>. The 16- and 8-bit layouts side by side:</p>
+<p><img src="images/fp16-bf16-fp8.png" alt="fp16, bf16 and fp8 bit layouts" /></p>
+<p>(<a href="https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html">source</a>)</p>
+<p>Newer hardware and libraries name the sub-16-bit formats with a compact code. The ones in circulation:</p>
+<ul>
+<li>fp4: <code>float4_e2m1fn</code></li>
+<li>fp6: <code>float6_e2m3fn</code>, <code>float6_e3m2fn</code></li>
+<li>fp8: <code>float8_e3m4</code>, <code>float8_e4m3</code>, <code>float8_e4m3b11fnuz</code>, <code>float8_e4m3fn</code>, <code>float8_e4m3fnuz</code>, <code>float8_e5m2</code>, <code>float8_e5m2fnuz</code>, <code>float8_e8m0fnu</code></li>
+</ul>
+<p>How to decode a name:</p>
+<ul>
+<li><code>e&lt;N&gt;</code> is the number of exponent bits, <code>m&lt;N&gt;</code> the number of mantissa bits, and <code>b&lt;N&gt;</code> (if present) a non-standard exponent bias.</li>
+<li>Suffix <code>f</code>: finite values only, no infinities.</li>
+<li>Suffix <code>n</code>: NaNs exist, but only as special encodings at the outer end of the range (not the IEEE &quot;all-ones exponent&quot; block of NaNs).</li>
+<li>Suffix <code>u</code>: unsigned.</li>
+<li>Suffix <code>uz</code>: unsigned zero, i.e. there is no <span class="math inline"><span class="math-inline">-0</span></span>; the bit pattern IEEE uses for <span class="math inline"><span class="math-inline">-0</span></span> is the NaN instead.</li>
+</ul>
+<p>So <code>float8_e4m3b11fnuz</code> is an 8-bit float with a 4-bit exponent, 3-bit mantissa, exponent bias 11, finite values only, NaN only at the outer range, and no negative zero. The <a href="https://github.com/jax-ml/ml_dtypes?tab=readme-ov-file#specifications-of-implemented-floating-point-formats">ml_dtypes specification table</a> gives the exact range and special values of every one of them.</p>
+<p><code>float8_e8m0fnu</code> is the odd one out: it is not an element format but a <em>scale</em>. It has 8 exponent bits, no mantissa and no sign, so it can only hold powers of two. Block-scaled formats store a group of low-bit elements plus one shared scale, and pairing an <code>E8M0</code> scale per 32 elements with a 4-, 6- or 8-bit element gives the <code>MXFP4</code>/<code>MXFP6</code>/<code>MXFP8</code> names you see in accelerator specs (MX is the Open Compute Project's Microscaling spec). How many bytes per parameter that costs a stored model is worked out in <a href="../inference/arithmetic.html">Inference arithmetic</a>. NVIDIA's <a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/"><code>NVFP4</code></a> is the same idea tuned differently: the same <code>E2M1</code> element, a block of 16 with an <code>E4M3</code> scale, plus one fp32 scale for the whole tensor. An <code>E4M3</code> scale can sit between powers of two, so it tracks each block's range more closely than <code>E8M0</code>. <a href="#fp4-formats">FP4 formats</a> measures the difference.</p>
+<p>PyTorch exposes a subset of these as real dtypes. On torch 2.15:</p>
+<pre><code class="language-python"># dtypes.py
+import torch
+print([d for d in dir(torch) if d.startswith((&quot;float8&quot;, &quot;float4&quot;))])
+</code></pre>
+<pre><code>$ python dtypes.py
+['float4_e2m1fn_x2', 'float8_e4m3fn', 'float8_e4m3fnuz', 'float8_e5m2', 'float8_e5m2fnuz', 'float8_e8m0fnu']
+</code></pre>
+<p><code>float4_e2m1fn_x2</code> is two fp4 values packed into one byte, since PyTorch has no sub-byte element storage. The <code>fnuz</code> variants are the fp8 encodings AMD's MI300 generation uses; NVIDIA uses <code>e4m3fn</code> and <code>e5m2</code>.</p>
+<h3 id="integer-formats-for-quantization">Integer formats for quantization</h3>
+<p><em>Quantization</em> stores weights (and sometimes activations) as low-bit integers plus a floating-point scale, and dequantizes them (multiplies back by the scale) for the math. The common widths:</p>
+<ul>
+<li>int8: 8 bits</li>
+<li>int4: 4 bits</li>
+<li>int1: 1 bit (binary weights)</li>
+</ul>
+<p>The scale is what makes this work, and how many elements share one scale decides the error. A symmetric &quot;absmax&quot; quantizer, per row and per group:</p>
+<pre><code class="language-python"># intquant.py
+import torch
+torch.manual_seed(0)
+w = torch.randn(4096, 4096) * 0.02                               # (out, in) a linear layer's weight
+
+def quant(w, bits, group=None):                                  # symmetric absmax, one fp scale per row or per group
+    qmax = 2 ** (bits - 1) - 1                                   # int8: 127, int4: 7
+    g = w if group is None else w.view(w.shape[0], -1, group)    # (out, in) or (out, in/group, group)
+    s = g.abs().amax(-1, keepdim=True) / qmax                    # fp scale per row / per group
+    q = torch.clamp(torch.round(g / s), -qmax - 1, qmax)         # integers that would be stored
+    return (q * s).view_as(w)                                    # dequantized for the math
+
+for name, wq in [(&quot;int8 per-row&quot;, quant(w, 8)), (&quot;int4 per-row&quot;, quant(w, 4)),
+                 (&quot;int4 group=128&quot;, quant(w, 4, 128)), (&quot;int4 group=32&quot;, quant(w, 4, 32))]:
+    print(f&quot;{name:15s} rel err {((wq - w).norm() / w.norm()).item():.4f}&quot;)
+</code></pre>
+<pre><code>$ python intquant.py
+int8 per-row    rel err 0.0087
+int4 per-row    rel err 0.1575
+int4 group=128  rel err 0.1173
+int4 group=32   rel err 0.0970
+</code></pre>
+<p>How to read it: the relative error is <span class="math inline"><span class="math-inline">\lVert w_q - w \rVert / \lVert w \rVert</span></span>. int8 with one scale per row loses under 1%. int4 per row loses 16%, because the single largest element in a 4096-wide row sets the step size for all of them. Smaller groups cut that to 10% at the cost of more scales to store, which is the same trade the block-scaled fp4 formats make in hardware. Gaussian weights are a friendly case; real checkpoints have outlier channels that make per-row int4 worse still.</p>
+<h3 id="ml-dtype-progression">ML dtype progression</h3>
+<p>Training precision has moved down one format at a time:</p>
+<ol>
+<li>
+<p><strong>fp32.</strong> The original default. Correct, but slow.</p>
+</li>
+<li>
+<p><strong>fp16 <a href="https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/">mixed precision</a>.</strong> The <code>forward</code> and <code>backward</code> matmuls run in fp16, an fp32 &quot;master&quot; copy of the weights and the optimizer states receive the update, and the loss is scaled so that small gradients do not underflow. This sped training up enormously. The loop:</p>
+<p><img src="images/mixed-precision-fp16.png" alt="fp32/fp16 mixed precision" /></p>
+<p>(<a href="https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/">source</a>)</p>
+<p>Why each piece is needed is in <a href="../foundations/computer-architecture.html#why-range-vs-precision-is-the-ml-tradeoff">Why range vs precision is the ML tradeoff</a>; the mechanics are the <a href="#loss-scaling-fp16-only">Loss scaling</a> and <a href="#what-must-stay-fp32-and-why">What must stay fp32</a> sections below. But fp16 proved unstable for LLMs: its 65504 maximum makes activation and loss overflows routine, and training large models in it was extremely difficult.</p>
+</li>
+<li>
+<p><strong>bf16 mixed precision.</strong> The same protocol with bf16 instead of fp16. bf16 has fp32's range, so overflow goes away (and loss scaling with it), and LLM training became much more stable.</p>
+</li>
+<li>
+<p><strong>fp8 mixed precision.</strong> The matmuls drop to <a href="https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html">fp8</a> for another speedup (<a href="https://arxiv.org/abs/2209.05433">FP8 Formats for Deep Learning</a>). As of 2026-08 bf16 mixed precision is still the default for most runs, but fp8 training is no longer experimental: <a href="https://arxiv.org/abs/2412.19437">DeepSeek-V3</a> was trained in fp8. See <a href="#fp8-training">FP8 training</a>.</p>
+</li>
+<li>
+<p><strong>fp6, fp4 and nvfp4</strong> arrived with Blackwell. So far these are mostly inference formats, though nvfp4 pretraining recipes have started to appear; see <a href="#fp4-formats">FP4 formats</a>.</p>
+</li>
+</ol>
+<p>What each step buys, as NVIDIA B200 dense (no sparsity) peak throughput, with the first non-CPU hardware to support each dtype. Sorted by B200 TFLOPS, then by year of first support:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Data type</th>
+<th style="text-align:right">B200 TFLOPS</th>
+<th style="text-align:left">First hardware support</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">fp32</td>
+<td style="text-align:right">80</td>
+<td style="text-align:left">predates ML accelerators</td>
+</tr>
+<tr>
+<td style="text-align:left">tf32</td>
+<td style="text-align:right">1125</td>
+<td style="text-align:left">NVIDIA A100 (Ampere, 2020)</td>
+</tr>
+<tr>
+<td style="text-align:left">fp16</td>
+<td style="text-align:right">2250</td>
+<td style="text-align:left">NVIDIA P100 (Pascal, 2016)</td>
+</tr>
+<tr>
+<td style="text-align:left">bf16</td>
+<td style="text-align:right">2250</td>
+<td style="text-align:left">Google TPU v2 (2017)<br>NVIDIA A100 (Ampere, 2020)</td>
+</tr>
+<tr>
+<td style="text-align:left">int8</td>
+<td style="text-align:right">4500</td>
+<td style="text-align:left">Google TPU v1 (2015)<br>NVIDIA P4/P40 (Pascal, 2016)</td>
+</tr>
+<tr>
+<td style="text-align:left">fp8</td>
+<td style="text-align:right">4500</td>
+<td style="text-align:left">NVIDIA H100 (Hopper, 2022)<br>Intel Gaudi 2 (2022)</td>
+</tr>
+<tr>
+<td style="text-align:left">fp6</td>
+<td style="text-align:right">4500</td>
+<td style="text-align:left">NVIDIA B200 (Blackwell, 2024)</td>
+</tr>
+<tr>
+<td style="text-align:left">mxfp4</td>
+<td style="text-align:right">9000</td>
+<td style="text-align:left">NVIDIA B200 (Blackwell, 2024)</td>
+</tr>
+<tr>
+<td style="text-align:left">nvfp4</td>
+<td style="text-align:right">9000</td>
+<td style="text-align:left">NVIDIA B200 (Blackwell, 2024)</td>
+</tr>
+</tbody>
+</table>
+<p>How to read it:</p>
+<ul>
+<li>int8 is TOPS (integer ops per second), not TFLOPS.</li>
+<li>Some dates mark when a dtype became <em>usable</em>, not <em>fast</em>. P100 ran fp16 at 2x its fp32 rate, but fp16 matmuls only became fast with V100's tensor cores in 2017. Pascal's int8 was the <code>DP4A</code> dot-product instruction; int8 tensor cores arrived with Turing in 2018.</li>
+<li>Each halving of element width doubles throughput down to fp8. Then the pattern breaks: fp6 runs at fp8's 4500 TFLOPS, so it saves memory and bandwidth but no compute. fp4 doubles again over fp8, and on GB300 it is 3x (15000 vs 5000). Check the spec for the dtype you plan to use rather than extrapolating. The full per-accelerator tables are in <a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS comparison table</a>.</li>
+</ul>
+<p>In parallel with mixed-precision training, the community built quantization libraries for storing and running models in fewer bits. Tim Dettmers' <a href="https://github.com/bitsandbytes-foundation/bitsandbytes">bitsandbytes</a> provides many 4- and 8-bit quantization methods (including the 8-bit Adam in <a href="#optimizer-state-memory">Optimizer-state memory</a>); DeepSpeed has its own <a href="https://www.deepspeed.ai/tutorials/model-compression/">model compression and quantization tools</a>.</p>
+<h3 id="tf32">TF32</h3>
+<p>TF32 lets NVIDIA tensor cores (Ampere and later) run fp32 matmuls much faster, at a small precision cost. The fp32 inputs are rounded to a 10-bit mantissa (fp16's precision) while keeping fp32's 8-bit exponent (fp32's range), multiplied, and accumulated in fp32. Tensors in memory stay 32 bits; your code still sees fp32. The bit budgets side by side: TF32 takes fp32's exponent and fp16's mantissa, and bf16 is the same exponent with a mantissa cut to 7 bits:</p>
+<p><img src="images/fp32-tf32-fp16-bf16.png" alt="fp32, tf32, fp16 and bf16 bit layouts" /></p>
+<p>(<a href="https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/">source</a>)</p>
+<p>A100 dense numbers:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Data type</th>
+<th style="text-align:right">A100 TFLOPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">FP32</td>
+<td style="text-align:right">19.5</td>
+</tr>
+<tr>
+<td style="text-align:left">Tensor Float 32 (TF32)</td>
+<td style="text-align:right">156</td>
+</tr>
+</tbody>
+</table>
+<p>That is 8x for changing a flag. The precision cost, emulated on CPU by rounding the inputs' mantissas exactly as the tensor core does:</p>
+<pre><code class="language-python"># tf32_emul.py
+import torch
+torch.manual_seed(0)
+
+def to_tf32(x):                                  # keep fp32's 8-bit exponent, round mantissa 23 -&gt; 10 bits
+    bits = x.view(torch.int32)
+    bits = (bits + 0x1000 + ((bits &gt;&gt; 13) &amp; 1)) &amp; ~0x1FFF   # round-to-nearest-even on the 13 dropped bits
+    return bits.view(torch.float32)
+
+a, b = torch.randn(1024, 4096), torch.randn(4096, 1024)       # (M, K), (K, N)
+ref = a.double() @ b.double()
+for name, y in [(&quot;fp32&quot;, a @ b), (&quot;tf32 inputs, fp32 accumulate&quot;, to_tf32(a) @ to_tf32(b)),
+                (&quot;bf16 inputs, fp32 accumulate&quot;, a.bfloat16().float() @ b.bfloat16().float())]:
+    print(f&quot;{name:30s} rel err {((y.double() - ref).norm() / ref.norm()).item():.1e}&quot;)
+
+print(&quot;defaults: matmul.allow_tf32 =&quot;, torch.backends.cuda.matmul.allow_tf32,
+      &quot;| cudnn.allow_tf32 =&quot;, torch.backends.cudnn.allow_tf32,
+      &quot;| float32_matmul_precision =&quot;, torch.get_float32_matmul_precision())
+</code></pre>
+<pre><code>$ python tf32_emul.py
+fp32                           rel err 1.1e-06
+tf32 inputs, fp32 accumulate   rel err 2.9e-04
+bf16 inputs, fp32 accumulate   rel err 2.3e-03
+defaults: matmul.allow_tf32 = False | cudnn.allow_tf32 = True | float32_matmul_precision = highest
+</code></pre>
+<p>How to read it: TF32 is about 250x less accurate than true fp32 on this matmul, but 8x more accurate than bf16 inputs (3 more mantissa bits). For training that already tolerates bf16, that is noise. For a numerics test comparing against a reference, it is not.</p>
+<p>The last line is the nuance in the defaults: <strong>the two TF32 flags have different defaults.</strong> <code>torch.backends.cuda.matmul.allow_tf32</code> (matmuls and linear layers, which go to cuBLAS) is <code>False</code>, so plain fp32 matmuls are <em>not</em> TF32 unless you ask. <code>torch.backends.cudnn.allow_tf32</code> (the ops PyTorch sends to cuDNN, mainly convolutions) is <code>True</code>, so fp32 convolutions on Ampere+ already <em>are</em> TF32. To get TF32 for matmuls, put this at the start of the program:</p>
+<pre><code class="language-python">torch.backends.cuda.matmul.allow_tf32 = True      # cuBLAS: matmul, linear
+torch.backends.cudnn.allow_tf32 = True            # cuDNN: convolutions (already the default)
+# equivalent for matmuls: torch.set_float32_matmul_precision(&quot;high&quot;)
+</code></pre>
+<p><code>torch.set_float32_matmul_precision(&quot;high&quot;)</code> is the other way to say the same thing for matmuls (&quot;highest&quot; is the fp32 default, &quot;medium&quot; additionally allows bf16-based internal compute). Recent PyTorch releases also added a newer per-backend setting, <code>torch.backends.cuda.matmul.fp32_precision</code> / <code>torch.backends.cudnn.fp32_precision</code> (values <code>&quot;ieee&quot;</code> or <code>&quot;tf32&quot;</code>; it prints <code>none</code> when unset, as on our torch 2.15), intended to replace <code>allow_tf32</code>. I have not checked how the old and new flags interact on a GPU; set one style consistently. If you train in bf16 autocast, these flags only affect the ops that run in fp32 anyway. The PyTorch notes on <a href="https://docs.pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices">TF32 on Ampere and later</a> quantify the precision loss on GPUs.</p>
 <h3 id="loss-scaling-fp16-only">Loss scaling (fp16 only)</h3>
 <p>Multiply the loss by <span class="math inline"><span class="math-inline">S</span></span> so that the gradients <span class="math inline"><span class="math-inline">Sg</span></span> land in fp16's normal range, then unscale in fp32 before the optimizer step. Dynamic scaling (<code>torch.amp.GradScaler</code> defaults: <code>init_scale=2**16</code>, <code>growth_factor=2</code>, <code>backoff_factor=0.5</code>, <code>growth_interval=2000</code>) halves <span class="math inline"><span class="math-inline">S</span></span> and skips the step on any inf/NaN, and doubles <span class="math inline"><span class="math-inline">S</span></span> after 2000 clean steps. bf16 needs none of this, because its range equals fp32's. Loss scaling with bf16 does nothing useful. If your bf16 run &quot;needs&quot; it, the problem is elsewhere.</p>
 <p>Both halves, demonstrated: a small loss whose fp16 gradients underflow entirely without scaling, and <code>GradScaler</code> skipping a step that produced <code>inf</code> (here with <code>growth_interval=2</code> so the regrowth is visible):</p>
@@ -1560,6 +1803,26 @@ print({k: str(v.dtype)[6:] for k, v in out.items()})
 {'matmul': 'bfloat16', 'linear': 'bfloat16', 'softmax': 'bfloat16', 'log_softmax': 'bfloat16', 'layer_norm': 'bfloat16', 'cross_entropy': 'float32', 'exp': 'bfloat16', 'pow': 'bfloat16', 'sum': 'bfloat16'}
 </code></pre>
 <p>On CPU only <code>cross_entropy</code> was upcast; softmax, layer_norm, exp, pow and sum stayed in bf16. Don't assume a numerics bug you reproduce on CPU behaves the same on GPU, and vice versa. A hand-written RMSNorm with <code>x * torch.rsqrt(x.pow(2).mean(-1))</code> under CUDA autocast does the <code>pow</code> (and therefore the <code>mean</code> of its fp32 output) in fp32, but only because autocast is active and <code>pow</code> is on its CUDA list. Outside autocast, or on CPU where <code>pow</code> stayed bf16 above, a bf16 <code>x</code> is squared and averaged in bf16. That is the reason for HuggingFace's explicit <code>.float()</code>, and the activation cost measured earlier.</p>
+<h3 id="when-to-use-fp32-accumulators">When to use fp32 accumulators</h3>
+<p>The common thread of the last two sections: whenever you compute in a low-precision dtype, do not <em>accumulate</em> intermediate results in it. Correct kernels for <code>LayerNorm</code>-like ops read and write the input dtype but do their internal sums in fp32 registers and downcast only the output. Generally it is only the accumulation that needs fp32; adding up many low-precision numbers is what loses the information. By operation:</p>
+<ol>
+<li><strong>Reduction collectives</strong> - the collectives that sum tensors across GPUs, <a href="../network/collectives-internals.html#all-reduce">all-reduce</a> and <a href="../network/collectives-internals.html#reduce-scatter">reduce-scatter</a>, used to sync data-parallel gradients.
+<ul>
+<li>fp16: acceptable in fp16 if loss scaling is in place (the scaled gradients sit in fp16's normal range).</li>
+<li>bf16: only acceptable in fp32 (the <code>bf16 ring reduce</code> lines of <code>accum.py</code> show why).</li>
+</ul>
+</li>
+<li><strong>Gradient accumulation</strong> - running several micro-batches through <code>forward</code> and <code>backward</code> and summing their gradients in a buffer before one optimizer step (the practical side is in <a href="../training/profiling-and-optimization.html">Profiling and optimization</a>).
+<ul>
+<li>Best done in fp32 for both fp16 and bf16, and a must for bf16 (<code>accum.py</code>: 7.7e-3 vs 1.2e-7 relative error).</li>
+</ul>
+</li>
+<li><strong>Optimizer step.</strong> Adding a tiny update to a large weight is often nullified (<code>1 + 1e-3</code> is <code>1.0</code> in bf16), so fp32 master weights and fp32 optimizer states are the norm.
+<ul>
+<li>fp16/bf16 master weights and optimizer states are viable only with <a href="https://en.wikipedia.org/wiki/Kahan_summation_algorithm">Kahan summation</a> or <a href="https://en.wikipedia.org/wiki/Rounding">stochastic rounding</a> (<a href="https://arxiv.org/abs/2010.06192">Revisiting BFloat16 Training</a>). Kahan summation keeps a second low-precision buffer holding what each addition rounded off and feeds it back into the next one. Stochastic rounding is derived and measured in the next section. A ready-made optimizer doing this is the <a href="https://github.com/pytorch/torchdistx/pull/52">AnyPrecision optimizer</a>, whose latest version lives <a href="https://github.com/facebookresearch/multimodal/blob/6bf3779a064dc72cde48793521a5be151695fc62/torchmultimodal/modules/optimizers/anyprecision.py#L17">in torchmultimodal</a> (untested here).</li>
+</ul>
+</li>
+</ol>
 <h3 id="stochastic-rounding">Stochastic rounding</h3>
 <p>Round-to-nearest is biased whenever the increment is smaller than half the spacing: the update is always rounded away. Stochastic rounding (SR) rounds up with probability equal to the fractional distance, so <span class="math inline"><span class="math-inline">E[\operatorname{SR}(x)] = x</span></span>. For fp32 to bf16 it is a single integer add: bf16 is exactly the top 16 bits of fp32, so adding uniform noise to the low 16 bits and truncating rounds up with the right probability.</p>
 <pre><code class="language-python"># sr.py
@@ -1593,6 +1856,37 @@ x = 1.0009766  RNE -&gt; 1.0000000  mean SR -&gt; 1.0009735
  3e-06   0.0230    0.0200   0.0229
 </code></pre>
 <p>The first line checks unbiasedness: <span class="math inline"><span class="math-inline">1 + 2^{-10}</span></span> lies between bf16 neighbours 1.0 and 1.0078; round-to-nearest always gives 1.0, while the mean of a million stochastic roundings recovers the true value to 3e-6. The table is a bf16 weight at 0.02 receiving 1000 constant updates of size <span class="math inline"><span class="math-inline">\text{lr}</span></span>. Round-to-nearest stalls as soon as <span class="math inline"><span class="math-inline">\text{lr}</span></span> drops below about half the spacing at the weight's magnitude, which is exactly what happens during LR decay. SR tracks fp32 in expectation, with variance about <span class="math inline"><span class="math-inline">\text{ulp}^2/4</span></span> per step (ulp, &quot;unit in the last place&quot;, is the spacing between adjacent representable values at that magnitude). That is why pure-bf16 training (no fp32 master weights) needs SR or Kahan summation (keeping a second low-precision variable that holds the rounding error of each add and feeds it back into the next one) (&quot;Revisiting BFloat16 Training&quot;, arXiv:2010.06192). NVIDIA tensor cores do not stochastically round matmul outputs. Recent PTX ISA versions expose an <code>.rs</code> rounding mode for some down-conversions on Blackwell, which NVFP4 training recipes use for gradients (NVFP4 is NVIDIA's 4-bit floating-point format on Blackwell: E2M1 values with an FP8 scale per block of 16 elements). I have not verified which conversions support it on which architectures.</p>
+<h3 id="changing-precision-post-training">Changing precision post training</h3>
+<p>Sometimes you can run a model in a different precision than it was trained in, sometimes not:</p>
+<ul>
+<li><strong>bf16-pretrained model run in fp16: usually fails.</strong> bf16's range let activations grow well past fp16's maximum of 65504 during training, and nothing pushed back. They overflow to <code>inf</code> in fp16. For an in-depth discussion of the T5 case and a workaround (clamping inside the affected layers), see <a href="https://github.com/huggingface/transformers/pull/10956">this transformers PR</a>.</li>
+<li><strong>fp16-pretrained model run in bf16: usually works.</strong> Every fp16 value is in bf16's range; you lose 3 mantissa bits, so quality drops a little. Fine-tune briefly in bf16 before relying on it.</li>
+</ul>
+<p>Before switching a model to fp16, measure the activation peaks with forward hooks on a representative batch:</p>
+<pre><code class="language-python"># fp16_headroom.py
+import torch, torch.nn as nn
+torch.manual_seed(0)
+model = nn.Sequential(nn.Linear(64, 256), nn.GELU(), nn.Linear(256, 64))   # stand-in for a bf16-trained model
+with torch.no_grad():
+    model[2].weight.mul_(100000)                # pretend training grew one layer's outputs large (bf16 doesn't mind)
+
+peak = {}                                       # module name -&gt; max |output| seen
+for name, m in model.named_modules():
+    if name:
+        m.register_forward_hook(lambda m, i, o, name=name: peak.__setitem__(name, o.abs().max().item()))
+x = torch.randn(32, 64)                         # (B, h_in) a representative batch
+model(x)
+for name, v in peak.items():
+    print(f&quot;layer {name}: max|out| = {v:9.1f}  {'OVERFLOWS fp16 (max 65504)' if v &gt; 65504 else 'fits fp16'}&quot;)
+print(&quot;same output cast to fp16:&quot;, model(x).to(torch.float16).isinf().any().item())
+</code></pre>
+<pre><code>$ python fp16_headroom.py
+layer 0: max|out| =       2.3  fits fp16
+layer 1: max|out| =       2.2  fits fp16
+layer 2: max|out| =   74129.7  OVERFLOWS fp16 (max 65504)
+same output cast to fp16: True
+</code></pre>
+<p>Any layer whose peak is within a factor of a few of 65504 on your sample will overflow on some other input; leave margin. The weight scaling here is artificial, but large activations in specific layers of bf16-trained models are real (T5's feed-forward outputs were the case in the PR above).</p>
 <h2 id="fp8-training">FP8 training</h2>
 <p>FP8 halves bytes and doubles tensor-core throughput again relative to bf16 on Hopper and later GPUs. With only 8 bits there is no format that has both enough range and enough precision, so FP8 training is mostly about <em>scaling</em>: multiplying each tensor by a factor that maps its actual values onto the narrow range the format can represent.</p>
 <h3 id="formats">Formats</h3>
@@ -1849,13 +2143,89 @@ with te.fp8_autocast(enabled=True, fp8_recipe=DelayedScaling(fp8_format=Format.H
 y.sum().backward()
 </code></pre>
 <p>The recipe classes in TE 2.x are <code>DelayedScaling</code>, <code>Float8CurrentScaling</code>, <code>Float8BlockScaling</code> (DeepSeek-style) and <code>MXFP8BlockScaling</code>. An NVFP4 recipe also exists. Exact names and defaults vary by release, so check the docs for your version.</p>
+<h2 id="fp4-formats">FP4 formats</h2>
+<p>An fp4 <code>E2M1</code> element has 16 bit patterns: ±0, ±0.5, ±1, ±1.5, ±2, ±3, ±4 and ±6. That is far too few to cover a tensor's range with one scale, so fp4 is only usable <em>block-scaled</em>: every small block of elements shares a scale that stretches those 15 distinct values over the block's actual range. There are two block-scaled fp4 formats, and they differ only in that scale. Sorted by block size, descending:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Format</th>
+<th style="text-align:right">Block<br>size</th>
+<th style="text-align:left">Block<br>scale</th>
+<th style="text-align:right">Bits per<br>element</th>
+<th style="text-align:left">Defined by</th>
+<th style="text-align:left">Hardware</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">mxfp4</td>
+<td style="text-align:right">32</td>
+<td style="text-align:left"><code>E8M0</code></td>
+<td style="text-align:right">4.25</td>
+<td style="text-align:left">OCP MX spec</td>
+<td style="text-align:left">NVIDIA Blackwell<br>AMD MI350X/MI355X<br>Huawei Ascend 950DT</td>
+</tr>
+<tr>
+<td style="text-align:left">nvfp4</td>
+<td style="text-align:right">16</td>
+<td style="text-align:left"><code>E4M3</code><br>+ FP32<br>per tensor</td>
+<td style="text-align:right">4.5</td>
+<td style="text-align:left">NVIDIA</td>
+<td style="text-align:left">NVIDIA only,<br>Blackwell<br>and newer</td>
+</tr>
+</tbody>
+</table>
+<p>Block size is in elements, and bits per element include the block's share of its scale (<span class="math inline"><span class="math-inline">4 + 8/32</span></span> and <span class="math inline"><span class="math-inline">4 + 8/16</span></span>). An <code>E8M0</code> scale is a power of two; nvfp4 adds one fp32 scale per tensor on top of its <code>E4M3</code> block scales, so the block scales can use E4M3's limited range where it is most precise.</p>
+<p><strong>Speed does not separate them.</strong> Blackwell tensor cores run both through the same instruction at the same peak, which is why the <a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS comparison table</a> lists one number for both. <a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">Measured</a> on B200 with torch 2.14, nvfp4 came out 8-9% faster than mxfp4 on both MAMF (6746 vs 6183 TFLOPS) and MSMF (5627 vs 5222 TFLOPS), the maximum achievable and maximum sustainable matmul FLOPS defined in <a href="../compute/accelerators.html#mamf-and-msmf">MAMF and MSMF</a>. That gap is a software difference, not a hardware one.</p>
+<p><strong>Accuracy does.</strong> A smaller block means one outlier distorts the scale of 15 neighbours rather than 31, and an <code>E4M3</code> scale can sit between powers of two where <code>E8M0</code> has to round up to the next one, wasting up to half of the fp4 grid. Both effects, simulated on CPU (the fp4 rounding is done by table lookup; only the <code>E4M3</code> scale rounding uses a real PyTorch fp8 cast):</p>
+<pre><code class="language-python"># fp4_blocks.py
+import torch
+torch.manual_seed(0)
+E2M1 = torch.tensor([0, 0.5, 1, 1.5, 2, 3, 4, 6])               # the 8 magnitudes fp4 e2m1 can hold
+GRID = torch.cat([-E2M1.flip(0)[:-1], E2M1])                     # (15,) signed grid, one zero
+
+def round_to(x, grid):                                           # nearest grid point, elementwise
+    return grid[(x[..., None] - grid).abs().argmin(-1)]
+
+def e4m3(x):                                                     # round a positive fp32 scale to fp8 e4m3
+    return x.to(torch.float8_e4m3fn).float()
+
+def q_mxfp4(x, blk=32):                                          # x: (n,) -&gt; (n,)
+    b = x.view(-1, blk)                                          # (n/blk, blk)
+    amax = b.abs().amax(1, keepdim=True)
+    s = 2.0 ** torch.ceil(torch.log2(amax / 6))                  # E8M0: power-of-two scale, rounded up
+    return (round_to(b / s, GRID) * s).view(-1)
+
+def q_nvfp4(x, blk=16):
+    t = x.abs().max() / (6 * 448)                                # per-tensor fp32 scale: block scales fit e4m3
+    b = x.view(-1, blk)
+    s = e4m3(b.abs().amax(1, keepdim=True) / 6 / t) * t          # E4M3 block scale (times tensor scale)
+    return (round_to(b / s, GRID) * s).view(-1)
+
+x = torch.randn(1 &lt;&lt; 16)                                         # (65536,) &quot;weights&quot;
+x[torch.randint(0, x.numel(), (64,))] *= 20                      # a few outliers
+for name, q in [(&quot;mxfp4&quot;, q_mxfp4), (&quot;nvfp4&quot;, q_nvfp4)]:
+    err = (q(x) - x).norm() / x.norm()
+    print(f&quot;{name}: relative error {err:.4f}&quot;)
+</code></pre>
+<pre><code>$ python fp4_blocks.py
+mxfp4: relative error 0.1405
+nvfp4: relative error 0.0943
+</code></pre>
+<p>How to read it: on the same data, nvfp4's quantization error is a third lower than mxfp4's. This is a simplified simulation (real kernels differ in scale rounding details, and mxfp4 recipes may round the scale differently), so treat the ratio as illustrative. On real training, NVIDIA's <a href="https://developer.nvidia.com/blog/train-models-faster-with-jax-and-maxtext-using-nvfp4-on-nvidia-blackwell/">8B-parameter, 1T-token pretraining comparison</a> found MXFP4 needed ~36% more tokens to reach NVFP4's final loss; see also <a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/">Introducing NVFP4</a> for the inference side. Both claims are NVIDIA's own.</p>
+<p>So:</p>
+<ul>
+<li>On NVIDIA Blackwell or newer, use nvfp4: the same compute and better accuracy, for 0.25 extra bits per element.</li>
+<li>Use mxfp4 where nvfp4 does not exist (AMD MI355X and the other non-NVIDIA accelerators that implement OCP MX), or when one checkpoint has to run on more than one vendor's hardware.</li>
+<li>When a model is released in one of them, as OpenAI's gpt-oss ships its <a href="../models/architectures.html#mixture-of-experts">MoE</a> expert weights in MXFP4, running it in that format saves you requantizing it.</li>
+</ul>
 <h2 id="optimizer-internals">Optimizer internals</h2>
 <h3 id="adams-epsilon">Adam's epsilon</h3>
 <p>The update is</p>
 <div class="math block">
 <div class="math-display">\Delta = -\text{lr} \cdot \frac{\hat m}{\sqrt{\hat v} + \varepsilon}</div>
 </div>
-<p>For a parameter whose gradient is steady, <span class="math inline"><span class="math-inline">\hat m \approx g</span></span> and <span class="math inline"><span class="math-inline">\sqrt{\hat v} \approx \lvert g \rvert</span></span>, so the step is <span class="math inline"><span class="math-inline">\text{lr}</span></span> in size regardless of how big the gradient is. That normalization is the whole point of Adam. When <span class="math inline"><span class="math-inline">\sqrt{\hat v}</span></span> is comparable to <span class="math inline"><span class="math-inline">\varepsilon</span></span>, the denominator stops normalizing: the step becomes <span class="math inline"><span class="math-inline">\text{lr} \cdot g/\varepsilon</span></span>, i.e. momentum SGD with learning rate <span class="math inline"><span class="math-inline">\text{lr}/\varepsilon</span></span>, and parameters with tiny gradients take steps far smaller than <span class="math inline"><span class="math-inline">\text{lr}</span></span>. This hits exactly the parameters with the smallest gradients: rare-token embedding rows, and late in training, everything. Wortsman et al. (&quot;Small-scale proxies for large-scale Transformer training instabilities&quot;, arXiv:2309.14322) show that gradient RMS falls with model scale until the default <span class="math inline"><span class="math-inline">\varepsilon = 10^{-8}</span></span> dominates, and recommend about <span class="math inline"><span class="math-inline">10^{-15}</span></span>. The time-domain correlation theory linked from <a href="../training/instabilities/README.html#time-domain-correlation-divergence-in-adam">Instabilities</a> is a related failure mode through the same term.</p>
+<p>For a parameter whose gradient is steady, <span class="math inline"><span class="math-inline">\hat m \approx g</span></span> and <span class="math inline"><span class="math-inline">\sqrt{\hat v} \approx \lvert g \rvert</span></span>, so the step is <span class="math inline"><span class="math-inline">\text{lr}</span></span> in size regardless of how big the gradient is. That normalization is the whole point of Adam. When <span class="math inline"><span class="math-inline">\sqrt{\hat v}</span></span> is comparable to <span class="math inline"><span class="math-inline">\varepsilon</span></span>, the denominator stops normalizing: the step becomes <span class="math inline"><span class="math-inline">\text{lr} \cdot g/\varepsilon</span></span>, i.e. momentum SGD with learning rate <span class="math inline"><span class="math-inline">\text{lr}/\varepsilon</span></span>, and parameters with tiny gradients take steps far smaller than <span class="math inline"><span class="math-inline">\text{lr}</span></span>. This hits exactly the parameters with the smallest gradients: rare-token embedding rows, and late in training, everything. Wortsman et al. (&quot;Small-scale proxies for large-scale Transformer training instabilities&quot;, arXiv:2309.14322) show that gradient RMS falls with model scale until the default <span class="math inline"><span class="math-inline">\varepsilon = 10^{-8}</span></span> dominates, and recommend about <span class="math inline"><span class="math-inline">10^{-15}</span></span>. The time-domain correlation theory linked from <a href="../training/stability.html#time-domain-correlation-divergence-in-adam">Instabilities</a> is a related failure mode through the same term.</p>
 <p>The effect in steady state, where <span class="math inline"><span class="math-inline">\hat m = g</span></span> and <span class="math inline"><span class="math-inline">\hat v = g^2</span></span>:</p>
 <pre><code class="language-python"># adam_eps.py
 import torch
@@ -2111,7 +2481,7 @@ Shampoo blocked + Adam            192.7 GB     1693.3 GB
 <div class="math block">
 <div class="math-display">B_\text{crit} = \frac{E_\text{min}}{S_\text{min}} \approx B_\text{noise}</div>
 </div>
-<p>Intuitively, <span class="math inline"><span class="math-inline">B_\text{noise}</span></span> is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below <span class="math inline"><span class="math-inline">B_\text{crit}</span></span>, doubling <span class="math inline"><span class="math-inline">B</span></span> halves the number of steps at constant data (perfect data parallelism). Above it, doubling <span class="math inline"><span class="math-inline">B</span></span> doubles the data needed for almost no reduction in steps. <span class="math inline"><span class="math-inline">B_\text{crit}</span></span> grows as the loss falls, which is the justification for batch-size ramps (<a href="../training/hparams.html#global-batch-size-ramp-up">Global Batch Size Ramp Up</a>). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit <span class="math inline"><span class="math-inline">B_\text{crit}(L) \approx B_* / L^{1/\alpha_B}</span></span> with <span class="math inline"><span class="math-inline">B_* \approx 2 \times 10^8</span></span> tokens and <span class="math inline"><span class="math-inline">\alpha_B \approx 0.21</span></span>. That fit is specific to their data and tokenizer. More recent work (&quot;How Does Critical Batch Size Scale in Pre-training?&quot;, arXiv:2410.21676 finds <span class="math inline"><span class="math-inline">B_\text{crit}</span></span> tracks data size more than model size.</p>
+<p>Intuitively, <span class="math inline"><span class="math-inline">B_\text{noise}</span></span> is the batch size at which the noise in a mini-batch gradient is about as large as the gradient itself. Below <span class="math inline"><span class="math-inline">B_\text{crit}</span></span>, doubling <span class="math inline"><span class="math-inline">B</span></span> halves the number of steps at constant data (perfect data parallelism). Above it, doubling <span class="math inline"><span class="math-inline">B</span></span> doubles the data needed for almost no reduction in steps. <span class="math inline"><span class="math-inline">B_\text{crit}</span></span> grows as the loss falls, which is the justification for batch-size ramps (<a href="../training/stability.html#global-batch-size-ramp-up">Global Batch Size Ramp Up</a>). Llama 3 405B, per its paper (arXiv:2407.21783), went from 4M to 8M to 16M tokens per step. Kaplan et al. fit <span class="math inline"><span class="math-inline">B_\text{crit}(L) \approx B_* / L^{1/\alpha_B}</span></span> with <span class="math inline"><span class="math-inline">B_* \approx 2 \times 10^8</span></span> tokens and <span class="math inline"><span class="math-inline">\alpha_B \approx 0.21</span></span>. That fit is specific to their data and tokenizer. More recent work (&quot;How Does Critical Batch Size Scale in Pre-training?&quot;, arXiv:2410.21676 finds <span class="math inline"><span class="math-inline">B_\text{crit}</span></span> tracks data size more than model size.</p>
 <p>You can measure it for free using two batch sizes you already have, the per-micro-batch gradient and the accumulated or all-reduced one, because <span class="math inline"><span class="math-inline">E\lVert G_B \rVert^2 = \lVert G \rVert^2 + \operatorname{tr}(\Sigma)/B</span></span> (McCandlish appendix A). Here it is on a linear regression where the true noise scale can be computed exactly from all per-example gradients:</p>
 <pre><code class="language-python"># noise_scale.py
 import torch
@@ -2363,7 +2733,7 @@ print(&quot;max logit per head:&quot;, [round(v, 1) for v in mx.tolist()], &quot
 <pre><code>$ python entropy.py
 max logit per head: [4.8, 4.7, 4.8, 309.8]  mean entropy: [4.76, 4.77, 4.76, 0.07]
 </code></pre>
-<p>The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output <span class="math inline"><span class="math-inline">\log Z</span></span>, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near <span class="math inline"><span class="math-inline">\text{lr}</span></span>. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see <a href="../training/instabilities/README.html">Instabilities</a> and <a href="../training/instabilities/README.html#numerical-instabilities">Numerical instabilities</a>.</p>
+<p>The sick head is obvious from either statistic: max logit 310 against ~5, mean entropy 0.07 nats against 4.8. Log per-head max logit, mean entropy, the output <span class="math inline"><span class="math-inline">\log Z</span></span>, and per-layer update-to-weight RMS ratios. Under μP and well-tuned Adam the last of these sits near <span class="math inline"><span class="math-inline">\text{lr}</span></span>. Spikes tend to be preceded by one of these drifting, often thousands of steps earlier, which is cheaper to catch than a loss spike after it happens. For how to recover once a spike occurs, see <a href="../training/stability.html">Instabilities</a> and <a href="../training/stability.html#numerical-instabilities">Numerical instabilities</a>.</p>
 <h2 id="you-can-now-read">You can now read</h2>
 <ul>
 <li><a href="../training/model-parallelism/derivations.html">Model Parallelism: Derivations</a> - how the FLOPs and bytes computed here are split across GPUs, with runnable collective demos.</li>
@@ -2371,6 +2741,7 @@ max logit per head: [4.8, 4.7, 4.8, 309.8]  mean entropy: [4.76, 4.77, 4.76, 0.0
 <li><a href="../inference/arithmetic.html">Inference arithmetic</a> - the same counting applied to prefill and decode.</li>
 <li><a href="../training/decentralized-training.html">Decentralized training</a> - what changes when <span class="math inline"><span class="math-inline">\beta</span></span>, the per-byte link cost of the <a href="../network/collectives-internals.html#the-alpha-beta-model">alpha-beta model</a>, is a WAN link instead of InfiniBand.</li>
 </ul>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
 <h2 id="further-reading">Further reading</h2>
 <ul>
 <li>Kaplan et al., Scaling Laws for Neural Language Models, arXiv:2001.08361</li>
@@ -2400,10 +2771,16 @@ max logit per head: [4.8, 4.7, 4.8, 309.8]  mean entropy: [4.76, 4.77, 4.76, 0.0
 <li><a href="https://docs.nvidia.com/deeplearning/transformer-engine/user-guide/examples/fp8_primer.html">Transformer Engine FP8 primer</a></li>
 <li><a href="https://docs.pytorch.org/docs/stable/notes/cuda.html#memory-management">PyTorch CUDA memory management notes</a></li>
 <li><a href="https://blog.eleuther.ai/transformer-math/">Transformer Math 101 (EleutherAI)</a></li>
+<li><a href="https://github.com/jax-ml/ml_dtypes?tab=readme-ov-file#specifications-of-implemented-floating-point-formats">ml_dtypes: specifications of implemented floating-point formats</a></li>
+<li><a href="https://developer.nvidia.com/blog/accelerating-ai-training-with-tf32-tensor-cores/">NVIDIA, Accelerating AI Training with TF32 Tensor Cores</a></li>
+<li><a href="https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/">NVIDIA, Mixed-precision techniques with Tensor Cores (video)</a></li>
+<li><a href="https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/">NVIDIA, Introducing NVFP4</a></li>
+<li><a href="https://developer.nvidia.com/blog/train-models-faster-with-jax-and-maxtext-using-nvfp4-on-nvidia-blackwell/">NVIDIA, NVFP4 pretraining with JAX and MaxText</a></li>
+<li><a href="https://github.com/bitsandbytes-foundation/bitsandbytes">bitsandbytes</a>; <a href="https://www.deepspeed.ai/tutorials/model-compression/">DeepSpeed model compression</a></li>
 </ul>
 
 </article>
-<footer><a class="prev" href="../training/dtype.html">&larr; Tensor Precision / Data Types</a><a class="next" href="../training/model-parallelism/README.html">Model Parallelism &rarr;</a></footer>
+<footer><a class="prev" href="../orchestration/internals.html">&larr; Orchestration Internals for ML Workloads</a><a class="next" href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models &rarr;</a></footer>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>

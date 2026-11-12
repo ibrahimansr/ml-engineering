@@ -287,7 +287,7 @@ numpy>=2.0
 pyyaml
 ```
 
-`pip install -r requirements.txt` (or `uv pip install -r requirements.txt`) installs all of them. `==` pins an exact version, `>=` a minimum. `pip freeze > requirements.txt` writes out exactly what's installed now, which is how you make an environment reproducible (the book's [Reproducibility](../training/reproducibility/README.md) chapter covers why).
+`pip install -r requirements.txt` (or `uv pip install -r requirements.txt`) installs all of them. `==` pins an exact version, `>=` a minimum. `pip freeze > requirements.txt` writes out exactly what's installed now, which is how you make an environment reproducible (the book's [Reproducibility](../training/fault-tolerance-and-reproducibility.md#reproducibility) chapter covers why).
 
 ### One setup block for the whole book
 

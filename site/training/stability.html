@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Stability: Hyperparameters, Instabilities and Reading Loss Curves - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details open><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html" class="current">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="training-stability-hyperparameters-instabilities-and-reading-loss-curves">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</h1>
+<p>A large training run fails in two ways. The cluster can break, which the <a href="../training/fault-tolerance-and-reproducibility.html">next chapter</a> covers. The math can break: the loss spikes, drifts upward, or quietly reports a number that isn't true. This chapter is about the second kind. It covers how to pick the starting hyperparameters that most influence stability (batch-size ramp-up and initialization std), what is known about why large runs diverge (low-precision numerics, unlucky combinations of data and weights, Adam's epsilon), how teams recover, and then a gallery of real loss curves from 13B to 176B-parameter runs, with what each shape usually means and what to do about it.</p>
+<p>Much of this material is experience rather than theory. Very often nobody knows exactly why a given spike happened. The useful skill is recognizing the pattern and knowing which remedy usually works. Where something is an educated guess, this chapter says so.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../training/arithmetic.html#numerics-diagnostics">Training arithmetic: Numerics diagnostics</a> is the mechanistic half of this chapter. It derives <a href="../training/arithmetic.html#output-logit-growth--z-loss">z-loss</a> for output-logit growth, <a href="../training/arithmetic.html#attention-logit-growth-and-entropy-collapse--qk-norm">QK-norm</a> for attention-logit growth and entropy collapse, and <a href="../training/arithmetic.html#monitoring-them-cheaply">what to monitor cheaply</a> so that you see a spike coming thousands of steps early. Those are not repeated here. This chapter is the empirical half: what the curves look like and what people did.</li>
+<li><a href="../training/arithmetic.html#mixed-precision-internals">Training arithmetic: Mixed precision internals</a> for fp16 vs bf16 range, <a href="../training/arithmetic.html#loss-scaling-fp16-only">loss scaling</a> and why fp16 overflows. <a href="../training/arithmetic.html#adams-epsilon">Adam's epsilon</a> is used in the Adam section below. <a href="../training/arithmetic.html#critical-batch-size">Critical batch size</a> and <a href="../training/arithmetic.html#mup-essentials">μP</a> give the theory behind batch-size ramp-up and width-dependent init.</li>
+<li><a href="../training/model-parallelism/derivations.html">Model parallelism derivations</a>: <a href="../training/model-parallelism/derivations.html#pipeline-parallelism">pipeline parallelism</a> and <a href="../training/model-parallelism/derivations.html#gpipe-and-1f1b-the-bubble">the bubble</a>, <a href="../training/model-parallelism/derivations.html#zero-and-fsdp">ZeRO and FSDP</a>, and the <code>mbs × chunks × dp</code> batch-size nesting.</li>
+<li><a href="../training/profiling-and-optimization.html">Profiling and optimization</a> for what TFLOPS-per-GPU numbers mean in practice and how they are measured.</li>
+<li><a href="../models/architectures.html">Transformer architectures</a>: <a href="../models/architectures.html#normalization">normalization</a> (pre-LN, LayerNorm, RMSNorm) and <a href="../models/architectures.html#alibi">ALiBi</a>, both used below.</li>
+<li><a href="../foundations/storage-and-data.html#deterministic-resumable-data-loading">Storage and data: deterministic, resumable data loading</a> for samplers that save their position. The resume-related spikes section shows what happens when they don't.</li>
+</ul>
+<p><strong>Conventions.</strong> Blocks marked <strong>[ran]</strong> were executed on an Apple M4 laptop (Python 3.14, PyTorch 2.15.0, CPU) and the output shown is real. Everything at the scale of the loss-curve images is from real multi-hundred-GPU runs reported by the people who ran them; none of it was reproduced for this chapter. To run the demos:</p>
+<pre><code class="language-bash">python3 -m venv /tmp/stab-venv &amp;&amp; /tmp/stab-venv/bin/pip install torch
+mkdir -p /tmp/stab &amp;&amp; cd /tmp/stab
+cat ~/ml-engineering/training/*.md &gt; data.bin     # training text for init_spike.py: this book's own markdown
+head -c 120 data.bin                               # look at it before you train on it
+</code></pre>
+<h2 id="where-good-hyperparameters-come-from">Where good hyperparameters come from</h2>
+<p>The easiest way to get a good starting set of hyperparameters and model init is to copy them from a similar training run that you know succeeded. Three sources, in order of usefulness:</p>
+<ol>
+<li><strong>Public training logbooks.</strong> Some teams published the day-by-day chronicle of a large run: every crash, every divergence, every config change and why. The BigScience pre-BLOOM 104B experiments and BLOOM-176B, Meta's OPT-175B, THUDM's GLM-130B and Hugging Face's IDEFICS-80B all have one. The full list is in <a href="../appendix/further-reading.html">Further reading: public training logbooks</a>. They are the best way to learn about instabilities because you see exactly what happened and how it was overcome; most of the loss curves in this chapter come from them.</li>
+<li><strong>Papers and technical reports</strong>, if they disclose their hyperparameters. Recent reports increasingly have a section on infrastructure, scaling and engineering challenges that covers the same ground as a logbook.</li>
+<li><strong>The authors.</strong> If a paper did not publish its hyperparameters, ask them.</li>
+</ol>
+<p>Then scale them correctly. Learning rate and init std don't transfer unchanged across widths under standard parametrization; <a href="../training/arithmetic.html#mup-essentials">μP</a> is the systematic fix, and the init-std formulas below are the simpler, older one.</p>
+<h2 id="glossary">Glossary</h2>
+<p>Training jargon uses many abbreviations. These are the ones this chapter uses:</p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BS / MBS</td>
+<td>Batch size per GPU, i.e. the micro-batch size: samples in one forward/backward on one GPU.</td>
+</tr>
+<tr>
+<td>GAS</td>
+<td>Gradient accumulation steps: how many forward/backward passes run before one optimizer step. In pipeline parallelism this is the number of micro-batches per step (PyTorch calls it <code>chunks</code>).</td>
+</tr>
+<tr>
+<td>DP</td>
+<td>Number of data-parallel replicas.</td>
+</tr>
+<tr>
+<td>GBS</td>
+<td>Global batch size: samples per optimizer step across the whole job, <span class="math inline"><span class="math-inline">\text{GBS} = \text{MBS} \times \text{GAS} \times \text{DP}</span></span>.</td>
+</tr>
+<tr>
+<td>PP</td>
+<td>Pipeline parallelism: the model's layers split into stages on different GPUs, see <a href="../training/model-parallelism/derivations.html#pipeline-parallelism">Pipeline parallelism</a>.</td>
+</tr>
+<tr>
+<td>TFLOPS</td>
+<td>Trillion floating-point operations per second (<a href="https://en.wikipedia.org/wiki/FLOPS">FLOPS</a>). Below, this is the <em>achieved</em> throughput per GPU, not the hardware peak. See <a href="../training/arithmetic.html#mfu-and-hfu-properly">MFU and HFU, properly</a>.</td>
+</tr>
+<tr>
+<td>init std</td>
+<td>The standard deviation <span class="math inline"><span class="math-inline">\sigma</span></span> of the normal distribution <span class="math inline"><span class="math-inline">\mathcal{N}(0, \sigma^2)</span></span> that weight matrices are sampled from at initialization.</td>
+</tr>
+<tr>
+<td>loss spike</td>
+<td>A sudden rise in training loss over a few steps, followed by recovery, partial recovery, or divergence.</td>
+</tr>
+<tr>
+<td>divergence</td>
+<td>The loss rises and does not come back, often ending in <code>inf</code>/<code>nan</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>For example, with MBS = 2, GAS = 128 and DP = 8, <span class="math inline"><span class="math-inline">\text{GBS} = 2 \times 128 \times 8 = 2048</span></span> samples per optimizer step, which was BLOOM-176B's final batch size.</p>
+<h2 id="global-batch-size-ramp-up">Global batch size ramp-up</h2>
+<p>If you intend to train with a very large GBS, say 1024, 2048 or more samples, it is wasteful to use it from step 0. At the start the model is random. It cannot benefit from a very precisely averaged gradient, because almost any direction downhill is a good one. A small batch gives an equally useful step for far fewer samples. The <a href="../training/arithmetic.html#critical-batch-size">critical batch size</a> section gives the theory: the gradient noise scale, which sets the batch size beyond which extra samples stop helping, is small early in training and grows as the loss falls. So to save data and compute, GBS is usually <em>ramped up</em> over the first part of training.</p>
+<p>Don't start with a GBS that is too small either. Too little work per step makes the GPUs inefficient (low TFLOPS) and slows everything down. This is especially bad with pipeline parallelism, because the main thing to tune in PP is the <em>bubble</em>: the time pipeline stages sit idle while micro-batches fill and drain the pipeline. With <span class="math inline"><span class="math-inline">p</span></span> stages and <span class="math inline"><span class="math-inline">m</span></span> micro-batches per step, the 1F1B bubble fraction is <span class="math inline"><span class="math-inline">(p-1)/(m+p-1)</span></span> (<a href="../training/model-parallelism/derivations.html#gpipe-and-1f1b-the-bubble">derived here</a>). With DP and MBS fixed, <span class="math inline"><span class="math-inline">m = \text{GBS}/(\text{MBS} \times \text{DP})</span></span>, so a smaller GBS means fewer micro-batches and a bigger idle fraction.</p>
+<p>During BLOOM-176B training, which used PP, throughput benchmarking showed that starting at GBS = 16 was very slow (8 TFLOPS per GPU). The team started at GBS = 192 (73 TFLOPS) and ramped up to GBS = 2048 (150 TFLOPS). In Megatron-LM (NVIDIA's large-model training framework; BLOOM used its Megatron-DeepSpeed fork) this is one flag, <code>--rampup-batch-size 192 16 9765625</code>: start at 192, grow in increments of 16, and reach the final <code>--global-batch-size</code> after 9,765,625 samples in total.</p>
+<p>The third number is easy to misread as &quot;add 16 every 9,765,625 samples&quot;. It is the length of the whole ramp. Megatron's help text gives the example <code>--rampup-batch-size 16 8 300000 --global-batch-size 1024</code>: <span class="math inline"><span class="math-inline">(1024-16)/8 = 126</span></span> increments, about <span class="math inline"><span class="math-inline">300000/126 \approx 2380</span></span> samples each. The script below reproduces the BLOOM schedule with that rule, and also shows why the throughput moved the way it did. BLOOM-176B ran on 384 GPUs as TP = 4 × PP = 12 × DP = 8 with MBS = 2 and sequence length 2048.</p>
+<pre><code class="language-python"># gbs_ramp.py - Megatron-style GBS ramp-up (--rampup-batch-size START INCR SAMPLES) and the pipeline bubble it implies  [ran]
+start, incr, ramp_samples, gbs_final = 192, 16, 9_765_625, 2048     # BLOOM-176B
+mbs, dp, pp, seqlen = 2, 8, 12, 2048                                 # BLOOM-176B layout: TP=4 x PP=12 x DP=8 = 384 GPUs
+
+n_incr = (gbs_final - start) // incr                                  # 116 increments
+per_incr = ramp_samples / n_incr                                      # samples spent at each GBS value
+def gbs_at(consumed):                                                 # same rule as Megatron's RampupBatchsizeNumMicroBatches
+    return min(gbs_final, start + int(consumed / per_incr) * incr)
+
+steps = samples = 0
+while samples &lt; ramp_samples:
+    samples += gbs_at(samples); steps += 1
+print(f&quot;{n_incr} increments of {incr}, {per_incr:,.0f} samples each; ramp = {ramp_samples:,} samples &quot;
+      f&quot;= {ramp_samples * seqlen / 1e9:.1f}B tokens, {steps:,} optimizer steps&quot;)
+
+for gbs in (16, 192, 1024, 2048):
+    m = gbs // (mbs * dp)                                             # micro-batches per pipeline per step
+    print(f&quot;GBS {gbs:5d}: GAS = {m:4d} micro-batches, 1F1B bubble (pp-1)/(m+pp-1) = {(pp - 1) / (m + pp - 1):5.1%}&quot;)
+</code></pre>
+<pre><code class="language-text">116 increments of 16, 84,186 samples each; ramp = 9,765,625 samples = 20.0B tokens, 12,658 optimizer steps
+GBS    16: GAS =    1 micro-batches, 1F1B bubble (pp-1)/(m+pp-1) = 91.7%
+GBS   192: GAS =   12 micro-batches, 1F1B bubble (pp-1)/(m+pp-1) = 47.8%
+GBS  1024: GAS =   64 micro-batches, 1F1B bubble (pp-1)/(m+pp-1) = 14.7%
+GBS  2048: GAS =  128 micro-batches, 1F1B bubble (pp-1)/(m+pp-1) =  7.9%
+</code></pre>
+<p>How to read this output:</p>
+<ul>
+<li>The ramp spent about 84k samples at each of 116 batch sizes and covered the first 20B tokens, roughly 5% of BLOOM's ~366B-token run, in 12,658 optimizer steps.</li>
+<li>At GBS = 16 each pipeline gets a single micro-batch, so 11 of the 12 stages idle at any moment: a 92% bubble. That alone explains most of the 8 TFLOPS.</li>
+<li>The measured TFLOPS track <span class="math inline"><span class="math-inline">1 - \text{bubble}</span></span>: <span class="math inline"><span class="math-inline">8 : 73 : 150</span></span> against <span class="math inline"><span class="math-inline">0.08 : 0.52 : 0.92</span></span>. The fit isn't exact, because larger GAS also amortizes per-step overheads, but the bubble is the first-order effect.</li>
+</ul>
+<p>If your framework has no ramp-up built in, the same rule is a few lines in the training loop: compute <code>gbs_at(samples_consumed)</code>, derive GAS from it, and accumulate that many micro-batches before each optimizer step. Keep the learning-rate schedule in terms of samples or tokens rather than steps, since a ramp changes the number of samples per step.</p>
+<h2 id="initialization-std">Initialization std</h2>
+<p>The std of the normal distribution that weights are initialized from has a large effect on stability, and the right value is not a constant. It depends on the hidden size.</p>
+<p>During the pre-BLOOM 104B experiments, the team could not get past the first few thousand iterations until they found that Megatron-LM's default <code>--init-method-std</code> of 0.02 (the command-line flag that sets that std) was far too big for their model. Hugging Face Transformers has the same default under another name: <code>initializer_range = 0.02</code> in most model configs.</p>
+<p>They used two sources:</p>
+<ol>
+<li>&quot;Transformers without Tears&quot; (<a href="https://arxiv.org/abs/1910.05895">arXiv:1910.05895</a>) prescribes <span class="math inline"><span class="math-inline">\sigma = \sqrt{2/(5 \cdot d_\text{model})}</span></span>, where <span class="math inline"><span class="math-inline">d_\text{model}</span></span> (<code>NHIDDEN</code> in the BLOOM configs) is the hidden size.</li>
+<li>The Megatron-Turing NLG 530B paper (<a href="https://arxiv.org/abs/2201.11990">arXiv:2201.11990</a>) uses an even smaller <span class="math inline"><span class="math-inline">\sigma = \sqrt{1/(3 \cdot d_\text{model})}</span></span>.</li>
+</ol>
+<p>They went with the 530B formula because it gives the smaller value. Written in the same form, the two are</p>
+<div class="math block">
+<div class="math-display">\sigma_1 = \sqrt{\frac{0.4000}{d_\text{model}}}, \qquad \sigma_2 = \sqrt{\frac{0.3333}{d_\text{model}}}</div>
+</div>
+<p>so they differ by only 9%. Both shrink as <span class="math inline"><span class="math-inline">1/\sqrt{d_\text{model}}</span></span>: the wider the model, the smaller the std. For BLOOM-176B, <span class="math inline"><span class="math-inline">d_\text{model} = 14336</span></span> and <span class="math inline"><span class="math-inline">\sqrt{1/(3 \cdot 14336)} = 0.00482</span></span>, which is what they used. It surely wasn't the only reason BLOOM-176B had no stability problems, but in the BLOOM team's judgement it was one of the crucial ones.</p>
+<p>Why <span class="math inline"><span class="math-inline">1/\sqrt{d}</span></span>: a matmul <span class="math inline"><span class="math-inline">y = Wx</span></span> with <span class="math inline"><span class="math-inline">W \in \mathbb{R}^{d \times d}</span></span> sums <span class="math inline"><span class="math-inline">d</span></span> products, so if entries of <span class="math inline"><span class="math-inline">W</span></span> have std <span class="math inline"><span class="math-inline">\sigma</span></span> and <span class="math inline"><span class="math-inline">x</span></span> has unit-scale entries, each <span class="math inline"><span class="math-inline">y_i</span></span> has std <span class="math inline"><span class="math-inline">\sigma\sqrt{d}</span></span>. Keeping <span class="math inline"><span class="math-inline">\sigma\sqrt{d}</span></span> constant as the model widens keeps activations, and therefore the size of the residual stream that every layer adds to, at the same scale. A fixed <span class="math inline"><span class="math-inline">\sigma = 0.02</span></span> makes <span class="math inline"><span class="math-inline">\sigma\sqrt{d}</span></span> grow with width. The table below shows how far off 0.02 is at common widths.</p>
+<pre><code class="language-python"># init_std.py - the two small-init formulas vs Megatron's fixed 0.02 default  [ran]
+import math
+print(f&quot;{'d_model':&gt;8} {'sqrt(2/(5d))':&gt;13} {'sqrt(1/(3d))':&gt;13} {'0.02 / sqrt(1/(3d))':&gt;20}&quot;)
+for d in (128, 768, 1024, 2048, 4096, 8192, 11600, 14336, 20480):
+    small = math.sqrt(1 / (3 * d))
+    print(f&quot;{d:&gt;8} {math.sqrt(2 / (5 * d)):&gt;13.5f} {small:&gt;13.5f} {0.02 / small:&gt;19.2f}x&quot;)
+print(f&quot;crossover where sqrt(1/(3d)) = 0.02: d = {1 / (3 * 0.02**2):.0f}&quot;)
+</code></pre>
+<pre><code class="language-text"> d_model  sqrt(2/(5d))  sqrt(1/(3d))  0.02 / sqrt(1/(3d))
+     128       0.05590       0.05103                0.39x
+     768       0.02282       0.02083                0.96x
+    1024       0.01976       0.01804                1.11x
+    2048       0.01398       0.01276                1.57x
+    4096       0.00988       0.00902                2.22x
+    8192       0.00699       0.00638                3.14x
+   11600       0.00587       0.00536                3.73x
+   14336       0.00528       0.00482                4.15x
+   20480       0.00442       0.00403                4.96x
+crossover where sqrt(1/(3d)) = 0.02: d = 833
+</code></pre>
+<p>How to read this: 0.02 is the right value for <span class="math inline"><span class="math-inline">d_\text{model} \approx 800</span></span>, which is GPT-2-small territory and probably where the default came from. At BLOOM-176B's width it is 4.15× too large. At 104B's width (11600) it is 3.7× too large.</p>
+<h3 id="demo-what-a-too-large-init-does-to-a-small-model-ran">Demo: what a too-large init does to a small model [ran]</h3>
+<p>To see the mechanism on a laptop, take a tiny pre-LN GPT (<span class="math inline"><span class="math-inline">d = 128</span></span>, 8 layers) and initialize every weight matrix from <span class="math inline"><span class="math-inline">\mathcal{N}(0, \sigma^2)</span></span> with <span class="math inline"><span class="math-inline">\sigma</span></span> at 1×, 4× and 16× the <span class="math inline"><span class="math-inline">\sqrt{1/(3d)}</span></span> value. The 4× row is the same mismatch BLOOM-176B would have had at 0.02. Same seed, same batches, same optimizer; only <span class="math inline"><span class="math-inline">\sigma</span></span> changes.</p>
+<pre><code class="language-python"># init_spike.py - same tiny pre-LN GPT, same data, same seed; only the init std changes.  [ran, CPU, ~70 s]
+# usage: python init_spike.py data.bin [lr]
+import math, sys, torch, torch.nn as nn, torch.nn.functional as F
+torch.manual_seed(0)
+data = torch.frombuffer(bytearray(open(sys.argv[1], &quot;rb&quot;).read()), dtype=torch.uint8).long()
+V, d, L, H, T, B, steps = 256, 128, 8, 4, 64, 32, 400
+lr = float(sys.argv[2]) if len(sys.argv) &gt; 2 else 3e-3
+
+class Block(nn.Module):
+    def __init__(s):
+        super().__init__()
+        s.ln1, s.ln2 = nn.LayerNorm(d), nn.LayerNorm(d)
+        s.qkv, s.proj = nn.Linear(d, 3 * d), nn.Linear(d, d)
+        s.fc, s.out = nn.Linear(d, 4 * d), nn.Linear(4 * d, d)
+    def forward(s, x):                                            # x: (B, T, d)
+        q, k, v = s.qkv(s.ln1(x)).view(B, T, 3, H, d // H).transpose(1, 3).unbind(2)  # each (B, H, T, d/H)
+        a = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        x = x + s.proj(a.transpose(1, 2).reshape(B, T, d))
+        return x + s.out(F.gelu(s.fc(s.ln2(x))))
+
+def run(std):
+    torch.manual_seed(0)
+    emb, blocks, lnf, head = nn.Embedding(V, d), nn.Sequential(*[Block() for _ in range(L)]), nn.LayerNorm(d), nn.Linear(d, V)
+    model = nn.ModuleList([emb, blocks, lnf, head])
+    for n, p in model.named_parameters():
+        if p.dim() == 2: nn.init.normal_(p, 0.0, std)               # every matrix ~ N(0, std^2)
+        elif &quot;bias&quot; in n: nn.init.zeros_(p)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.1)
+    g = torch.Generator().manual_seed(1)                             # identical batches for every run
+    losses, x0 = [], None
+    for step in range(steps):
+        i = torch.randint(len(data) - T - 1, (B,), generator=g)
+        x = torch.stack([data[j:j + T] for j in i]); y = torch.stack([data[j + 1:j + T + 1] for j in i])
+        h = blocks(emb(x))                                           # (B, T, d) residual stream after the last block
+        logits = head(lnf(h))                                        # (B, T, V)
+        if step == 0: x0 = (h.pow(2).mean().sqrt().item(), logits.abs().max().item())
+        loss = F.cross_entropy(logits.view(-1, V), y.view(-1))
+        opt.zero_grad(); loss.backward(); opt.step(); losses.append(loss.item())
+    return losses, x0
+
+base = math.sqrt(1 / (3 * d))                                    # the 530B-paper formula
+print(f&quot;ln(V) = {math.log(V):.2f} (loss of a uniform guess)&quot;)
+for mult in (1, 4, 16):
+    l, (rms, maxlogit) = run(base * mult)
+    print(f&quot;std {base*mult:.3f} ({mult:2d}x): init resid RMS {rms:6.2f} max|logit| {maxlogit:6.1f} | &quot;
+          f&quot;loss @0 {l[0]:5.2f} @100 {l[100]:4.2f} @200 {l[200]:4.2f} @399 {l[-1]:4.2f}&quot;)
+</code></pre>
+<pre><code class="language-text">ln(V) = 5.55 (loss of a uniform guess)
+std 0.051 ( 1x): init resid RMS   1.33 max|logit|    2.7 | loss @0  5.70 @100 3.03 @200 2.88 @399 2.63
+std 0.204 ( 4x): init resid RMS  23.99 max|logit|   10.4 | loss @0  8.18 @100 3.03 @200 2.87 @399 2.68
+std 0.816 (16x): init resid RMS 404.53 max|logit|   41.0 | loss @0 26.35 @100 3.66 @200 3.41 @399 3.22
+</code></pre>
+<p>How to read this output:</p>
+<ul>
+<li><strong>Loss at step 0.</strong> A well-initialized model is close to a uniform guess, <span class="math inline"><span class="math-inline">\ln 256 = 5.55</span></span>. The 1× run starts at 5.70. The 4× and 16× runs start at 8.18 and 26.35: the model is confidently wrong before it has seen any data, and the first steps go into undoing the init. &quot;Initial loss far above <span class="math inline"><span class="math-inline">\ln V</span></span>&quot; is a cheap check to run on any new model before training.</li>
+<li><strong>Residual-stream RMS at init</strong> grows from 1.3 to 24 to 405 after 8 layers. Pre-LN normalizes each block's <em>input</em>, but every block adds its unnormalized output to the residual stream, so too-large weights compound with depth. In fp16 (max 65,504), any operation that squares that stream, such as the variance in a hand-written norm, would overflow: <span class="math inline"><span class="math-inline">405^2 \approx 164{,}000</span></span>. This is the mechanism by which a too-large init plus fp16 becomes a divergence at 100B scale.</li>
+<li><strong>Loss at 400 steps</strong>: 2.63 vs 2.68 vs 3.22. 4× costs a little; 16× is still far behind.</li>
+<li><strong>What this demo does <em>not</em> show is a spike.</strong> I also ran it at lr = 1e-2 and 3e-2, and with a post-LN variant; none of these tiny fp32 runs spiked (the post-LN variant stalled at the unigram loss ~3.5 for every init). Spikes from a bad init are a large-model, low-precision phenomenon. At this scale the measurable effects are the starting loss, the activation scale, and slower progress. Treat the BLOOM account above as the evidence for the large-scale claim, not this demo.</li>
+</ul>
+<h2 id="numerical-instabilities">Numerical instabilities</h2>
+<p>Low-precision formats can't represent everything: fp16 overflows above 65,504, and both fp16 and bf16 lose small addends in long sums. The theory and the fixes for the common cases (loss scaling, fp32 accumulation, what must stay fp32, z-loss, QK-norm) are in <a href="../training/arithmetic.html#mixed-precision-internals">Training arithmetic</a> and its <a href="../training/arithmetic.html#numerics-diagnostics">numerics diagnostics</a>. PyTorch's own note on <a href="https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html">numerical accuracy</a> lists many more cases where a mathematically correct operation gives poor results in floating point. Tools that find which layer first produced an <code>inf</code> or <code>nan</code> (detecting problematic tensor values, underflow/overflow detection) are in <a href="../development/debugging-pytorch.html">Debugging PyTorch</a>, later in the book.</p>
+<p>Here is one concrete case from the 104B experiments, which used fp16 mixed precision. <a href="https://github.com/corbyrosset">Corby Rosset</a> proposed a change to make <a href="https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/118">self-attention more stable</a>.</p>
+<p>Scaled dot-product attention computes <span class="math inline"><span class="math-inline">QK^\top/\sqrt{d_\text{head}}</span></span>. In Megatron the divisor is called <code>norm_factor</code>. The original <a href="https://github.com/bigscience-workshop/Megatron-DeepSpeed/blob/c839a8aa30731f71b3738d56009be9668508e366/megatron/model/transformer.py#L303">code</a> applied it <em>after</em> the <span class="math inline"><span class="math-inline">QK^\top</span></span> matrix multiplication. If Q and K have large dimensions or large values, the raw product can blow up before the division gets a chance to bring it back into range.</p>
+<p>The proposal: move the scaling inward, so Q and K are scaled down <em>before</em> the matmul. In the snippet below, <code>torch.baddbmm(input, batch1, batch2, beta, alpha)</code> computes <span class="math inline"><span class="math-inline">\beta \cdot \text{input} + \alpha \cdot (\text{batch1} \mathbin{@} \text{batch2})</span></span> as a batched matmul. With <code>beta=0</code> it is just the matmul. <code>beta=1.0</code> is used to add the <a href="../models/architectures.html#alibi">ALiBi</a> position bias that was pre-loaded into <code>matmul_result</code>. In the shape comments <code>b</code> is batch size, <code>np</code> the number of attention heads on this GPU, <code>sq</code>/<code>sk</code> the query/key sequence lengths and <code>hn</code> the per-head dimension:</p>
+<pre><code class="language-python">        matmul_result = torch.baddbmm(
+            matmul_result,
+            1.0/math.sqrt(self.norm_factor) * query_layer.transpose(0, 1),   # [b * np, sq, hn]
+            1.0/math.sqrt(self.norm_factor) * key_layer.transpose(0, 1).transpose(1, 2),  # [b * np, hn, sk]
+            beta=0.0 if alibi is None else 1.0, alpha=1.0)
+
+        # change view to [b, np, sq, sk]
+        attention_scores = matmul_result.view(*output_size)
+</code></pre>
+<p>To keep the operation mathematically identical, moving a scalar factor <span class="math inline"><span class="math-inline">n</span></span> inward means applying <span class="math inline"><span class="math-inline">\sqrt{n}</span></span> to each of the two matrices:</p>
+<div class="math block">
+<div class="math-display">n (A \cdot B) \equiv (\sqrt{n} A) \cdot (\sqrt{n} B)</div>
+</div>
+<p>Now A and B can have much larger dimensions or values before the result overflows.</p>
+<p>The same post-multiply scaling issue exists one level down, in the CUDA matrix-multiply library. For kernel writers: <a href="https://docs.nvidia.com/cuda/cublas/index.html">cuBLAS</a>'s <code>GemmStridedBatchedEx</code> (at the time the BLOOM team looked) is defined as below. <span class="math inline"><span class="math-inline">A</span></span>, <span class="math inline"><span class="math-inline">B</span></span> and <span class="math inline"><span class="math-inline">C</span></span> point to the first matrix of each batch, <code>strideA</code> etc. are element offsets between consecutive matrices (so <span class="math inline"><span class="math-inline">A + i \cdot \text{strideA}</span></span> is the <span class="math inline"><span class="math-inline">i</span></span>-th matrix), and <span class="math inline"><span class="math-inline">\operatorname{op}</span></span> is an optional transpose:</p>
+<div class="math block">
+<div class="math-display">C+i \cdot \text{strideC}=\alpha \operatorname{op}(A+i \cdot \text{strideA}) \operatorname{op}(B+i \cdot \text{strideB})+\beta (C+i \cdot \text{strideC}), \quad \text{for } i \in [0,\text{batchCount}-1]</div>
+</div>
+<p>The concern is that <code>alpha</code> is applied after the matrix-matrix product is formed, so the product itself has to stay in range.</p>
+<p>Whether that actually overflows depends on the precision the product is held in before <code>alpha</code> is applied. The demo below measures three versions in fp16 on CPU:</p>
+<pre><code class="language-python"># scale_order.py - scaling after the matmul vs before it, in fp16  [ran, CPU]
+import math, torch
+torch.manual_seed(0)
+b, s, hn = 4, 16, 128                                      # (batch*heads, seq, head dim)
+q = (torch.randn(b, s, hn) * 50).half()                    # large activations, as in an unstable fp16 run
+k = (torch.randn(b, s, hn) * 50).half()
+nf = math.sqrt(hn)                                         # norm_factor: QK^T / sqrt(hn)
+exact = (q.double() @ k.double().transpose(1, 2)) / nf    # fp64 reference, (b, s, s)
+
+after  = (q @ k.transpose(1, 2)) / nf                                          # scale after: the raw QK^T must fit in fp16
+alpha  = torch.baddbmm(torch.zeros(b, s, s).half(), q, k.transpose(1, 2), beta=0.0, alpha=1 / nf)  # alpha is applied after the GEMM too
+before = (q / math.sqrt(nf)) @ (k / math.sqrt(nf)).transpose(1, 2)            # n(AB) = (sqrt(n)A)(sqrt(n)B)
+for name, r in ((&quot;scale after&quot;, after), (&quot;baddbmm alpha&quot;, alpha), (&quot;scale before&quot;, before)):
+    print(f&quot;{name:14s} inf entries {r.isinf().sum().item():4d}/{r.numel()}  max abs err (finite) &quot;
+          f&quot;{(r.double() - exact).abs()[r.isfinite()].max().item():.2f}&quot;)
+print(f&quot;largest |exact score| {exact.abs().max().item():.0f}, largest |raw QK^T| {exact.abs().max().item() * nf:.0f}, fp16 max 65504&quot;)
+</code></pre>
+<pre><code class="language-text">scale after    inf entries   31/1024  max abs err (finite) 3.06
+baddbmm alpha  inf entries    0/1024  max abs err (finite) 3.14
+scale before   inf entries    0/1024  max abs err (finite) 3.24
+largest |exact score| 8714, largest |raw QK^T| 98589, fp16 max 65504
+</code></pre>
+<p>How to read this output:</p>
+<ul>
+<li><strong>Scale after, as two PyTorch ops</strong>: the fp16 tensor <code>q @ k.T</code> is materialized, its largest entries (up to 98,589) exceed 65,504, and 31 of 1024 scores become <code>inf</code>. Dividing afterwards cannot bring them back. After softmax, those <code>inf</code>s become <code>nan</code>s.</li>
+<li><strong><code>baddbmm</code> with <code>alpha</code></strong>: no overflow here. The CPU kernel accumulates in fp32 and applies <code>alpha</code> before rounding the result to fp16. On a GPU the outcome depends on cuBLAS's compute type. With fp32 compute (PyTorch's default for fp16 GEMMs) <code>alpha</code> is applied in fp32, as here. With fp16 compute, or with reduced-precision reductions allowed (<code>torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction</code>), the accumulation itself can overflow before <code>alpha</code> is applied. The GPU behaviour is <strong>untested</strong> here.</li>
+<li><strong>Scale before</strong> never forms the large product, so it is safe regardless of the kernel, and here costs no accuracy: all three have the same ~3 absolute error on scores up to 8,714, which is fp16's spacing at that magnitude.</li>
+</ul>
+<p>The lesson generalizes: in low precision, apply shrinking factors before the operation that grows the values, not after. With bf16 (range equal to fp32's) this specific overflow essentially disappears, which is one reason BLOOM-176B switched to it.</p>
+<h2 id="bad-combinations-of-data-batch-and-model-state">&quot;Bad&quot; combinations of data batch and model state</h2>
+<p>The PaLM team observed about 20 loss spikes at &quot;highly irregular intervals&quot; while training the 540B model, despite gradient clipping (<a href="https://arxiv.org/pdf/2204.02311">PaLM, section 5.1 &quot;Training instability&quot;</a>). They couldn't find the root cause. When they fed the same data batches to the model starting from a different, earlier checkpoint, no spike occurred. Their conclusion was that the spikes come from a combination of specific data batches and a particular model parameter state, not from &quot;bad data&quot; alone.</p>
+<p>Their mitigation, which has become the standard first response:</p>
+<ol>
+<li>Restart from a checkpoint about 100 steps before the spike started.</li>
+<li>Skip roughly 200-500 data batches that would have been seen around the spike.</li>
+</ol>
+<p>With this, the spike did not recur at the same point. To do this you need checkpoints frequent enough that &quot;100 steps before the spike&quot; exists (see <a href="../training/fault-tolerance-and-reproducibility.html">checkpointing</a>), and a data pipeline that can resume at an arbitrary sample offset and deliberately skip a range. That is the same capability the <a href="#resume-related-spikes">resume-related spikes</a> section shows you need anyway.</p>
+<p>To trigger the rollback automatically you need a spike detector. A spike is &quot;loss much higher than the recent typical loss&quot;, so compare against a running median, which a single bad step can't move the way it moves a mean:</p>
+<pre><code class="language-python"># spike_watch.py - flag loss spikes against a running median, and classify how they end.  [ran]
+import math, random, statistics
+random.seed(0)
+
+# a synthetic loss curve: smooth decay + noise + three injected events
+loss = [2.0 + 3.0 * math.exp(-t / 300) + random.gauss(0, 0.03) for t in range(2000)]
+for t in range(600, 640): loss[t] += 1.5 * math.exp(-(t - 600) / 5)           # fast-recovering spike
+for t in range(1100, 1400): loss[t] += 1.0 * math.exp(-(t - 1100) / 100)      # slow-recovering spike
+for t in range(1700, 2000): loss[t] += 0.6 + 0.002 * (t - 1700)                # spike that never recovers
+
+W, K = 100, 1.3            # window of recent steps; &quot;spike&quot; = loss &gt; K * median of that window
+start = None
+for t in range(W, len(loss)):
+    med = statistics.median(loss[t - W:t] if start is None else loss[start - W:start])  # freeze baseline during a spike
+    if start is None and loss[t] &gt; K * med:
+        start = t
+    elif start is not None and loss[t] &lt; 1.02 * med:
+        print(f&quot;spike at step {start}: peak {max(loss[start:t]):.2f}, back to baseline {med:.2f} after {t - start} steps&quot;)
+        start = None
+if start is not None:
+    print(f&quot;spike at step {start}: not recovered after {len(loss) - start} steps (now {loss[-1]:.2f}) -&gt; roll back&quot;)
+</code></pre>
+<pre><code class="language-text">spike at step 600: peak 3.95, back to baseline 2.48 after 11 steps
+spike at step 1100: peak 3.12, back to baseline 2.09 after 202 steps
+spike at step 1700: not recovered after 300 steps (now 3.20) -&gt; roll back
+</code></pre>
+<p>How to read this output: the three lines are the three spike types described <a href="#main-types-of-loss-spikes">below</a>. Recovery time is what separates them, and it is the number to log. The baseline is frozen at the pre-spike median while a spike is in progress; otherwise the spike would raise its own baseline and look &quot;recovered&quot;. On a real run, feed it the per-step loss and pick <span class="math inline"><span class="math-inline">K</span></span> from your loss noise: 1.3 is far above the 0.03 noise here. When the third kind fires, apply the PaLM recipe above. The monitoring in <a href="../training/arithmetic.html#monitoring-them-cheaply">arithmetic: monitoring them cheaply</a> (max attention logit, output <span class="math inline"><span class="math-inline">\log Z</span></span>, update/weight ratios) often moves thousands of steps before the loss does, so alert on those too.</p>
+<h2 id="time-domain-correlation-divergence-in-adam">Time-domain correlation divergence in Adam</h2>
+<p>&quot;A Theory on Adam Instability in Large-Scale Machine Learning&quot; (Molybog et al., <a href="https://arxiv.org/abs/2304.09871">arXiv:2304.09871</a>) studies divergence spikes in LLM training at up to 546B parameters and attributes them to Adam. Recall the update <span class="math inline"><span class="math-inline">\Delta = -\text{lr} \cdot \hat m/(\sqrt{\hat v} + \varepsilon)</span></span> from <a href="../training/arithmetic.html#adams-epsilon">Adam's epsilon</a>. In large models, many gradient components become so small that they are comparable to <span class="math inline"><span class="math-inline">\varepsilon</span></span>. For those components the update is no longer normalized. The paper argues that when, in addition, gradient estimates become correlated across consecutive steps (time-domain correlation), the update direction can stop being a descent direction and training diverges. The trigger is an <span class="math inline"><span class="math-inline">\varepsilon</span></span> that is not small enough relative to the gradient components.</p>
+<p>Section 7.1 of the paper gives practical suggestions. The most interesting one is to set <span class="math inline"><span class="math-inline">\varepsilon</span></span> to 0 and handle the division-by-zero case explicitly. The <a href="../training/arithmetic.html#adams-epsilon">Adam's epsilon</a> section measures the same effect from the other side: at <span class="math inline"><span class="math-inline">\varepsilon = 10^{-8}</span></span> a parameter with <span class="math inline"><span class="math-inline">\lvert g \rvert = 10^{-10}</span></span> moves at 1% of the intended step. It also gives Wortsman et al.'s recommendation of about <span class="math inline"><span class="math-inline">10^{-15}</span></span>, a less drastic version of the same fix.</p>
+<h2 id="reading-training-loss-curves">Reading training loss curves</h2>
+<p>A training loss plot is like a heartbeat trace: there are good patterns, bad ones, and ones you should worry about. After studying many loss trajectories you develop an intuition for what various behaviours mean and how to act on them.</p>
+<p>A warning about the word &quot;understanding&quot;: very often nobody knows why a particular kind of spike happens. What follows is pattern recognition: a gallery of real curves, sometimes with a real explanation, more often with an educated guess. Usually there is a technique to get past the bad patterns and finish the run anyway.</p>
+<p>The plots come from many runs, tools and years, so they look very different from each other. In all of them the x-axis is training steps (or samples) and the y-axis is training loss (cross-entropy, in nats per token) unless stated otherwise.</p>
+<h3 id="the-good-the-bad-and-the-unexpected">The good, the bad and the unexpected</h3>
+<h4 id="a-very-failed-training">A very failed training</h4>
+<p>Before starting BLOOM-176B, the BigScience team ran many experiments with a <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide">104B model</a>. They never found a way to stop it diverging early on.</p>
+<p><img src="instabilities/images/pre-bloom-104B-en-fail.png" alt="Loss curves of many pre-BLOOM 104B attempts, each diverging early" /></p>
+<p>Each colour is a restart with a different fix, and every one of them diverges. The <a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md">chronicles</a> record what was tried. The team's view is that the two main causes were fp16 and data with a lot of garbage in it. For BLOOM-176B they:</p>
+<ul>
+<li>switched to bf16, which has the same exponent range as fp32 and so far fewer overflows than fp16 (see <a href="../training/arithmetic.html#mixed-precision-internals">mixed precision internals</a>);</li>
+<li>used much cleaner data;</li>
+<li>added an embedding LayerNorm: a LayerNorm applied right after the token-embedding lookup, before the first transformer block;</li>
+<li>and, from the <a href="#initialization-std">init section</a>, used the small <span class="math inline"><span class="math-inline">\sqrt{1/(3d)}</span></span> init.</li>
+</ul>
+<p>That made all the difference. Note that this was several changes at once, so which one mattered most is not known.</p>
+<h4 id="an-almost-perfect-training">An almost perfect training</h4>
+<p><img src="instabilities/images/bloom-176B-success.png" alt="BLOOM-176B training loss: smooth decline with a single small spike" /></p>
+<p>The <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml">BLOOM-176B</a> loss trajectory was close to perfect, with a single spike that recovered within 200 steps. You can explore the <a href="https://huggingface.co/bigscience/tr11-176B-logs/tensorboard">TensorBoard logs</a> (TensorBoard is a web dashboard of training curves) and zoom into the other plots. Getting a curve like this at that scale took a lot of work.</p>
+<h4 id="the-grokking-moment">The grokking moment</h4>
+<p>While performance-testing, Stas Bekman ran llama-2-7b from scratch with a tiny global batch size of 8 on one 8×A100 node (DeepSpeed <a href="../training/model-parallelism/derivations.html#zero-and-fsdp">ZeRO-3</a> data parallelism with the Hugging Face Transformers <a href="https://github.com/huggingface/transformers/tree/main/src/transformers/models/llama">Llama</a> implementation).</p>
+<p><img src="instabilities/images/llama-7b-grokking-no-zoom.png" alt="llama-2-7b loss with a sudden drop from about 4 to 2.5" /></p>
+<p>After a long, steady, slow improvement, the loss drops rapidly from about 4 to 2.5 in just 480 samples. His colleague <a href="https://github.com/gmittal">Gautam Mittal</a> called it the <a href="https://en.wikipedia.org/wiki/Grok">grokking</a> moment. This is the colloquial &quot;suddenly getting it&quot;, not the <a href="https://arxiv.org/abs/2201.02177">grokking phenomenon</a> from the literature, where validation accuracy jumps long after training loss has converged. In a handful of steps the model suddenly got much better at predicting the next token.</p>
+<p>Zoomed in, it took about 60 steps of 8 samples each:</p>
+<p><img src="instabilities/images/llama-7b-grokking.png" alt="Zoom of the drop: about 60 steps" /></p>
+<p>You normally don't see such a dramatic drop with a much larger batch size: each step averages over more data and the same transition is spread over a few steps that are each larger, so it looks smoother on a per-step plot.</p>
+<h3 id="main-types-of-loss-spikes">Main types of loss spikes</h3>
+<p>There are three main types of loss spikes:</p>
+<ol>
+<li>fast-recovering spikes,</li>
+<li>slow-recovering spikes,</li>
+<li>spikes that don't fully recover.</li>
+</ol>
+<p>Spikes usually come from a <em>bad data pocket</em>: a stretch of data that is unusual, either because the data was badly shuffled (so many similar documents land together) or because it wasn't cleaned of some garbage scraped from the web.</p>
+<p>You would expect the batch just before the spike to be the culprit. If you inspect it you will usually find nothing unusual. Often the problem builds up over many steps and then shows up all at once, which matches PaLM's &quot;data plus parameter state&quot; finding <a href="#bad-combinations-of-data-batch-and-model-state">above</a>. Inspecting the batch is also not easy: at large GBS and sequence length one batch can be the size of a book (BLOOM's 2048 × 2048 tokens is about 4M tokens, around 3M words).</p>
+<h4 id="fast-recovering-spikes">Fast recovering spikes</h4>
+<p>Spikes can happen often, and as long as they bounce back quickly to where they left off, training usually continues as if nothing had happened. This is from <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr1-13B-base">the 13B pre-BLOOM training experiment</a>:</p>
+<p><img src="instabilities/images/pre-bloom-tr1-13B-glitch-1-2.png" alt="13B pre-BLOOM loss with many large but quickly recovering spikes" /></p>
+<p>There are many spikes, some huge, and all recovered quickly. What to do: nothing, other than keep watching. Don't roll back for these.</p>
+<h4 id="slow-recovering-spikes">Slow recovering spikes</h4>
+<p>A slow-recovering spike from the <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">IDEFICS-80B</a> training:</p>
+<p><img src="instabilities/images/idefics-80b-tr-190-01-spike-recover-2023-05-30.png" alt="IDEFICS-80B spike that takes a long time to recover" /></p>
+<p>The loss does get back to its pre-spike trend, but over a long stretch of steps. Each such spike wastes the compute spent recovering. If they become frequent, treat them like the next type.</p>
+<h4 id="not-fully-recovering-spikes">Not fully recovering spikes</h4>
+<p>This <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide">104B attempt</a> spiked, started to recover, then stopped recovering and diverged:</p>
+<p><img src="instabilities/images/pre-bloom-tr8-104B-glitch-1.png" alt="104B: spike, partial recovery, then divergence" /></p>
+<p>Another from the <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">IDEFICS-80B</a> training:</p>
+<p><img src="instabilities/images/idefics-80b-tr-190-01-spike-2023-05-27.png" alt="IDEFICS-80B spike that does not fully recover" /></p>
+<p>What to do: roll back to a checkpoint before the spike and change something. Skip the data around it (the PaLM recipe), lower the learning rate, or apply one of the numerics fixes from <a href="../training/arithmetic.html#numerics-diagnostics">arithmetic</a>. Change one thing at a time where you can, so you learn which fix worked.</p>
+<h4 id="non-spike-diverging">Non-spike diverging</h4>
+<p>Divergence doesn't always go through a spike. Some examples from the <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide">104B attempts</a>:</p>
+<p><img src="instabilities/images/pre-bloom-tr8-104B-glitch-5.png" alt="104B: loss diverging without a spike" /></p>
+<p>and a few more:</p>
+<p><img src="instabilities/images/pre-bloom-tr8-104B-glitch-7-10.png" alt="104B: several restarts, each making a little progress then diverging" /></p>
+<p>Each restart makes a bit of progress and then the model diverges again. If restarts keep failing at roughly the same place, the problem is more likely in the setup (precision, init, learning rate, data quality) than in an unlucky batch. Rolling back and skipping data won't fix it.</p>
+<h4 id="multiple-datasets-spikes">Multiple datasets spikes</h4>
+<p>The <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">IDEFICS-80B</a> training mixed two dataset types. IDEFICS is a vision-language model (an LLM that also takes images as input, see <a href="../models/beyond-transformers.html#multimodal-llms">multimodal LLMs</a>), so it was trained on cm4, a web-scraped dataset of documents with interleaved images and text, and pmd, a dataset of image-caption pairs. Each was logged separately:</p>
+<p><img src="instabilities/images/idefics-80b-tr-190-01-losses-2023-06-04.png" alt="IDEFICS-80B per-dataset losses: cm4 (high), average (mid) and pmd (low)" /></p>
+<p>Legend: cm4 (high), average (mid) and pmd (low).</p>
+<p>Sometimes the spikes hit both datasets at once and sometimes only one. The model was learning two different data distributions, and their losses and spike behaviour differ. pmd was much easier for the model than cm4. The practical point: when you mix datasets, log the loss per dataset (or per data source). A spike on one source only points to that source's data; a spike on all of them points at the model or optimizer state.</p>
+<h3 id="resume-related-spikes">Resume-related spikes</h3>
+<p>Resuming training, after a hardware crash or after rolling back from a divergence, is pretty much guaranteed to happen in a long run. If the training software doesn't resume <em>perfectly</em>, so that the model can't tell there was a restart, various problems appear.</p>
+<p>The hardest parts of a perfect resume are restoring all the random number generators (RNGs), getting the DataLoader back to exactly the sample index where the previous run stopped, and any extra state that complex, setup-specific DataLoaders carry. The full checklist is in <a href="../training/fault-tolerance-and-reproducibility.html">fault tolerance and reproducibility</a>.</p>
+<h4 id="datasampler-related-issues">DataSampler related issues</h4>
+<p>The DataSampler (in PyTorch, the <code>Sampler</code> passed to the <code>DataLoader</code>) decides which sample indices go into which batch and in what order. To resume correctly, its position and shuffling seed must be saved in the checkpoint and restored. <a href="../foundations/storage-and-data.html#deterministic-resumable-data-loading">Deterministic, resumable data loading</a> builds such a sampler.</p>
+<p>During <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">IDEFICS-80B</a> training the DataLoader was very complicated, and the ratio of image to text data fluctuated whenever it was restored on resume. The result was a small spike on every resume, which then recovered:</p>
+<p><img src="instabilities/images/idefics-80b-tr-190-01-image2text.png" alt="IDEFICS-80B: loss and image-to-text ratio, with a small spike at each resume" /></p>
+<p>Compare the loss and ratio plots: they move together. The run had to resume about a dozen times, so there were a lot of these spikes.</p>
+<h4 id="impacts-of-repeat-data">Impacts of repeat data</h4>
+<p>While training a Llama-2 variant, Stas Bekman saw a very unusual spike. It neither diverged nor recovered; the loss switched to a new, higher level:</p>
+<p><img src="instabilities/images/ptl-repeat-data-p1.png" alt="Loss jumps up to a new level and stays there" /></p>
+<p>He rolled back to just before the weird behaviour and restarted. The loss stayed at the same level for a while, then again spiked and shifted higher:</p>
+<p><img src="instabilities/images/ptl-repeat-data-p2.png" alt="After rollback: same level for a while, then the same jump" /></p>
+<p>Nobody on the team had seen this kind of divergence before. The answer came from looking at the bigger picture.</p>
+<p><a href="https://wandb.ai/">wandb</a> (Weights &amp; Biases, a hosted service that plots metrics logged from training) did not plot resumed runs correctly after a rollback: it ignored all new data points until the step count passed the old run's last step. So every resume with a rollback had to start a new wandb plot to see the new data. To see the whole run you had to stitch the plots together, including dead data points that were no longer true. After stitching:</p>
+<p><img src="instabilities/images/ptl-repeat-data-p3.png" alt="Stitched view: each resume starts with a falsely low loss that later returns to the true level" /></p>
+<p>There was no real spike in the two earlier runs. The loss never went up. In both resumes it was <em>under-reporting</em> loss, because the run was seeing exactly the same data again. The model had memorized some of it, so it reported a better loss. When it reached data it hadn't seen before, the loss went back to the true value. The model was overfitting and reporting a false loss.</p>
+<p>The cause was <a href="https://github.com/Lightning-AI/pytorch-lightning">PyTorch Lightning</a> not restoring the DataSampler position on resume: every resume restarted the data stream from the beginning. The user has to fix this. Changing the seed on each resume avoids replaying the exact same sequence but still repeats data. That isn't acceptable for a serious training run, nor for ablation experiments, whose conclusions assume <a href="https://en.wikipedia.org/wiki/Independent_and_identically_distributed_random_variables">IID</a> data. Stas Bekman <a href="https://github.com/Lightning-AI/pytorch-lightning/issues/18780">discussed this with the Lightning developers</a>; they had tried hard to find a generic solution and concluded there isn't one, so it is up to the user.</p>
+<p>The demo below shows the effect on the data stream:</p>
+<pre><code class="language-python"># resume_repeat.py - what a resume does to the data stream if the sampler position is not restored.  [ran]
+import torch
+from torch.utils.data import DataLoader, RandomSampler
+
+N, B, crash_at, total = 1000, 10, 40, 100           # 1000 samples, 10 per batch, crash after 40 of 100 steps
+data = list(range(N))                                # sample i is just the integer i
+
+def loader(seed):
+    g = torch.Generator().manual_seed(seed)
+    return DataLoader(data, batch_size=B, sampler=RandomSampler(data, generator=g))
+
+def train(resume):
+    seen, it = [], iter(loader(seed=42))
+    for step in range(total):
+        if step == crash_at:                         # the job dies here and is restarted from a step-40 checkpoint
+            it = iter(loader(seed=42))               # a fresh DataLoader: same seed, position 0
+            if resume == &quot;skip&quot;:                     # restore the position: fast-forward the 40 consumed batches
+                for _ in range(crash_at): next(it)
+        seen += next(it).tolist()
+    return seen
+
+for mode in (&quot;restart&quot;, &quot;skip&quot;):
+    s = train(mode)
+    print(f&quot;{mode:8s}: {len(s)} samples trained, {len(set(s))} unique, &quot;
+          f&quot;steps 40-79 repeat steps 0-39 exactly: {s[400:800] == s[:400]}&quot;)
+</code></pre>
+<pre><code class="language-text">restart : 1000 samples trained, 600 unique, steps 40-79 repeat steps 0-39 exactly: True
+skip    : 1000 samples trained, 1000 unique, steps 40-79 repeat steps 0-39 exactly: False
+</code></pre>
+<p>How to read this output: after a naive restart, 40% of the &quot;epoch&quot; is a replay of samples the model just trained on, in the same order. That replay is exactly the window in which the loss looked too good. The <code>skip</code> fix here fast-forwards by loading and discarding batches, which is fine for this toy but can take hours at scale. Real fixes save the sampler's index in the checkpoint and jump straight to it: <a href="../foundations/storage-and-data.html#deterministic-resumable-data-loading">the sampler in storage-and-data</a> does this, and <code>torchdata</code>'s <code>StatefulDataLoader</code> provides <code>state_dict()</code>/<code>load_state_dict()</code> for it (not run here).</p>
+<p>Check whether your training framework resumes the DataSampler correctly. Don't find out after the run has finished and you have trained 6 times on the same 50B tokens of a planned 300B, each seen once. A couple of deliberate resumes early on, before the real training begins, will expose the problem, as long as the seed stays the same. If the data is reshuffled with a new seed on each resume, the replay won't be exact and you probably won't see it in the loss, even though data is still repeated. Checking the sample indices directly, as in the demo, catches both cases.</p>
+<p>As of 2025 wandb handles rollbacks: <a href="https://docs.wandb.ai/models/runs/rewind">rewinding a run</a> with <code>wandb.init(resume_from=&quot;&lt;run_id&gt;?_step=N&quot;)</code> truncates the history at step <code>N</code> and lets you log forward under the same run id. <code>fork_from</code> does the same but leaves the original run intact (wandb SDK 0.17.1+; wandb recommends forking over rewinding for performance). Two catches: it's cloud-only (Multi-tenant and Dedicated Cloud, not Self-Managed), and it needs monotonically increasing steps, so it won't work together with a non-monotonic <code>define_metric()</code>. If you self-host, stitching plots by hand as above is still the way.</p>
+<h2 id="summary-a-stability-checklist">Summary: a stability checklist</h2>
+<table>
+<thead>
+<tr>
+<th>Before the run</th>
+<th>During the run</th>
+<th>After a spike</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Copy hparams from a successful similar run (<a href="../appendix/further-reading.html">logbooks</a>)</td>
+<td>Log loss per step and per data source</td>
+<td>Fast recovery: do nothing</td>
+</tr>
+<tr>
+<td>Init std <span class="math inline"><span class="math-inline">\approx\sqrt{1/(3 d_\text{model})}</span></span>, not a fixed 0.02; check step-0 loss <span class="math inline"><span class="math-inline">\approx \ln V</span></span></td>
+<td>Log max attention logit, output <span class="math inline"><span class="math-inline">\log Z</span></span>, update/weight ratio (<a href="../training/arithmetic.html#monitoring-them-cheaply">arithmetic</a>)</td>
+<td>No recovery: roll back ~100 steps, skip 200-500 batches</td>
+</tr>
+<tr>
+<td>bf16 over fp16; z-loss / QK-norm if you see logit growth</td>
+<td>Run a spike detector against a running median</td>
+<td>Repeated failure at the same place: change the setup (lr, precision, init, data), one variable at a time</td>
+</tr>
+<tr>
+<td>Ramp GBS up from a size that keeps the PP bubble small</td>
+<td>Checkpoint often enough that &quot;100 steps before&quot; exists</td>
+<td>Loss too good after a resume: check for repeated data</td>
+</tr>
+<tr>
+<td>Test resume twice before the real run, and verify sample indices</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../training/fault-tolerance-and-reproducibility.html">Fault tolerance and reproducibility</a>: checkpointing, resume and RNG restoration in full. Everything the rollback and resume sections above depend on.</li>
+<li><a href="../development/debugging-pytorch.html">Debugging PyTorch</a> (later): locating the first layer that produces <code>inf</code>/<code>nan</code>, underflow/overflow detection, and making tiny models to reproduce an instability cheaply.</li>
+<li>The public training logbooks in <a href="../appendix/further-reading.html">Further reading</a>, now that you can read their loss curves.</li>
+</ul>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>Nguyen and Salazar, &quot;Transformers without Tears: Improving the Normalization of Self-Attention&quot;, <a href="https://arxiv.org/abs/1910.05895">arXiv:1910.05895</a></li>
+<li>Smith et al., &quot;Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B&quot;, <a href="https://arxiv.org/abs/2201.11990">arXiv:2201.11990</a></li>
+<li>Chowdhery et al., &quot;PaLM: Scaling Language Modeling with Pathways&quot;, section 5.1, <a href="https://arxiv.org/abs/2204.02311">arXiv:2204.02311</a></li>
+<li>Molybog et al., &quot;A Theory on Adam Instability in Large-Scale Machine Learning&quot;, <a href="https://arxiv.org/abs/2304.09871">arXiv:2304.09871</a></li>
+<li>Wortsman et al., &quot;Small-scale proxies for large-scale Transformer training instabilities&quot;, <a href="https://arxiv.org/abs/2309.14322">arXiv:2309.14322</a></li>
+<li>PyTorch, &quot;Numerical accuracy&quot;: https://docs.pytorch.org/docs/stable/notes/numerical_accuracy.html</li>
+<li>BigScience Megatron-DeepSpeed PR #118, attention scaling for fp16: https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/118</li>
+<li>BigScience logbooks: <a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md">104B chronicles</a>, <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr1-13B-base">13B</a>, <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml">BLOOM-176B</a>, <a href="https://huggingface.co/bigscience/tr11-176B-logs/tensorboard">BLOOM-176B TensorBoard</a></li>
+<li>Hugging Face IDEFICS-80B <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">training chronicles</a></li>
+<li>Power et al., &quot;Grokking: Generalization Beyond Overfitting on Small Algorithmic Datasets&quot;, <a href="https://arxiv.org/abs/2201.02177">arXiv:2201.02177</a></li>
+<li>PyTorch Lightning issue on resuming the sampler: https://github.com/Lightning-AI/pytorch-lightning/issues/18780</li>
+<li>wandb, rewinding and forking runs: https://docs.wandb.ai/models/runs/rewind</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../training/profiling-and-optimization.html">&larr; Profiling and Optimizing Training, Hands-On</a><a class="next" href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

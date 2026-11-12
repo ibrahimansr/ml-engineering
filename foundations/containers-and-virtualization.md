@@ -1147,7 +1147,7 @@ srun --container-image=nvcr.io#nvidia/pytorch:24.05-py3 \
      --container-mounts=/lustre/data:/data python train.py        # untested
 ```
 
-Security posture: Apptainer protects the *cluster* from users mostly by ensuring you are never more privileged than yourself. It isn't designed to sandbox hostile code from *you*. Your home directory is mounted in, after all. Use it for reproducible environments on HPC, not as a sandbox. See [orchestration/slurm](../orchestration/slurm/README.md).
+Security posture: Apptainer protects the *cluster* from users mostly by ensuring you are never more privileged than yourself. It isn't designed to sandbox hostile code from *you*. Your home directory is mounted in, after all. Use it for reproducible environments on HPC, not as a sandbox. See [orchestration/slurm](../orchestration/slurm/from-zero.md).
 
 
 
@@ -1244,7 +1244,7 @@ NCCL_DEBUG=INFO torchrun --nproc-per-node 2 your_allreduce_test.py 2>&1 | grep -
 
 ### RDMA and InfiniBand in containers
 
-Multi-node training needs the container to reach the RDMA NICs too: `/dev/infiniband/uverbs*` and `rdma_cm`, the user-space verbs library from the image, `IPC_LOCK` with unlimited memlock for registering memory, and, for GPUDirect RDMA, the host's `nvidia-peermem` module. Kubernetes uses an RDMA shared device plugin or SR-IOV device plugin for this. See [networking.md](networking.md) and [../network/README.md](../network/README.md).
+Multi-node training needs the container to reach the RDMA NICs too: `/dev/infiniband/uverbs*` and `rdma_cm`, the user-space verbs library from the image, `IPC_LOCK` with unlimited memlock for registering memory, and, for GPUDirect RDMA, the host's `nvidia-peermem` module. Kubernetes uses an RDMA shared device plugin or SR-IOV device plugin for this. See [networking.md](networking.md) and [../network/README.md](../network/interconnects.md).
 
 ```bash
 docker run --gpus all --network host --device /dev/infiniband --cap-add IPC_LOCK \
@@ -2199,14 +2199,14 @@ cold start 5.0s -> env time  7.0s, startup share  71%
 ## You can now read
 
 - [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md): pods are the cgroup, namespace and runtime machinery from this chapter, managed by a control plane; RuntimeClass, device plugins and CDI are how GPUs and sandboxes enter.
-- [Orchestration Internals](../orchestration/internals.md) and [SLURM](../orchestration/slurm/README.md): cgroups are how schedulers enforce allocations; Apptainer and pyxis are how containers run there.
+- [Orchestration Internals](../orchestration/internals.md) and [SLURM](../orchestration/slurm/from-zero.md): cgroups are how schedulers enforce allocations; Apptainer and pyxis are how containers run there.
 - [The GPU Software Stack](../compute/gpu-software-stack.md): driver, runtime and libraries, which this chapter split between host and image.
 - [RL Infrastructure](../platform/rl-infrastructure.md): environment servers, sandbox pools and rollout throughput, built on section 10.
 - [Services and Control Planes](../platform/control-planes.md): running the sandbox scheduler and inference servers as services.
 - [Serving Hands-On](../inference/serving-hands-on.md): packaging and running inference servers in containers with the flags from section 3.
 - [Storage and Data](storage-and-data.md): where volumes and bind mounts actually point, and why image distribution is a storage problem.
-- [Network](../network/README.md): RDMA, InfiniBand and why `--network host` and SR-IOV matter for collectives.
-- [Debugging](../debug/README.md): `nsenter`, `py-spy` from the host, and OOM-kill forensics apply directly.
+- [Network](../network/interconnects.md): RDMA, InfiniBand and why `--network host` and SR-IOV matter for collectives.
+- [Debugging](../development/debugging-pytorch.md): `nsenter`, `py-spy` from the host, and OOM-kill forensics apply directly.
 
 
 

@@ -65,15 +65,6 @@ def page_order(md_files):
     return listed, rest
 
 
-# pages that came from Stas Bekman's original repo (the markdown files present when it was forked);
-# the sidebar marks them "(Stas)" to tell them apart from the chapters written for this fork
-STAS_PAGES = {ROOT / l.strip() for l in (Path(__file__).parent / "stas_pages.txt").read_text().splitlines() if l.strip()}
-
-
-def nav_label(p, title):
-    return f"{title} (Stas)" if p in STAS_PAGES else title
-
-
 def sidebar_groups(listed, rest, titles):
     """Sidebar sections = the parts of the README's table of contents.
 
@@ -100,11 +91,11 @@ def sidebar_groups(listed, rest, titles):
     current = "Start here"
     for p in listed:
         current = part_of.get(p.resolve(), current)
-        groups[current].append((p, nav_label(p, titles[p])))
+        groups[current].append((p, titles[p]))
     others = {}
     for p in rest:
         top = p.relative_to(ROOT).parts[0] if len(p.relative_to(ROOT).parts) > 1 else "top level"
-        others.setdefault(top, []).append((p, f"{nav_label(p, titles[p])} - {p.relative_to(ROOT)}"))
+        others.setdefault(top, []).append((p, f"{titles[p]} - {p.relative_to(ROOT)}"))
     out = [(n, pages) for n, pages in groups.items() if pages]
     out += [(f"Other pages: {k}", v) for k, v in sorted(others.items())]
     return out

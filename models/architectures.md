@@ -4,7 +4,7 @@ This chapter goes through the design choices behind the modern decoder-only LLM 
 
 The recurring theme is that many "architecture" choices are really **hardware** choices. Some changes exist because they improve loss per FLOP: pre-LN, SwiGLU, RoPE, MoE. Others exist because they cut bytes moved per generated token: MQA/GQA, MLA, sliding windows, large vocabularies. A third group exists because a run at $10^{25}$ FLOPs must not diverge on day 40: QK-norm, z-loss, no biases, softcapping. Knowing which bucket a choice belongs to tells you when it is safe to drop it.
 
-Out of scope here: state-space models, linear attention, hybrids, diffusion LMs and multimodal architectures. They are covered in the sibling chapter [Model Architectures II: Beyond the Transformer](beyond-transformers.md). For the inference-side arithmetic (prefill vs decode, memory-bandwidth bounds) see [Inference arithmetic](../inference/arithmetic.md) and [Inference](../inference/README.md). For how these architectures get sharded see [Model Parallelism](../training/model-parallelism/README.md).
+Out of scope here: state-space models, linear attention, hybrids, diffusion LMs and multimodal architectures. They are covered in the sibling chapter [Model Architectures II: Beyond the Transformer](beyond-transformers.md). For the inference-side arithmetic (prefill vs decode, memory-bandwidth bounds) see [Inference arithmetic](../inference/arithmetic.md) and [Inference](../inference/arithmetic.md). For how these architectures get sharded see [Model Parallelism](../training/model-parallelism/derivations.md).
 
 ## Prerequisites
 
@@ -1250,7 +1250,7 @@ Llama-3.1-405B  F =  53248 (released 53248) = 3.25 d
 
 So modern models are *not* parameter-matched to a $4d$ ReLU FFN. They spend more on the MLP.
 
-**Evidence:** Shazeer's Table 1 reports held-out log-perplexity on C4 (a large cleaned web-text corpus, the T5 pretraining set) at matched parameters and compute, with GEGLU and SwiGLU lowest (GEGLU 1.942 and SwiGLU 1.944 vs ReLU 1.997 after 65,536 steps; 1.633 / 1.636 vs 1.677 after 524,288 steps), and gains on GLUE/SuperGLUE fine-tuning (suites of English language-understanding tasks such as entailment and sentiment). The paper famously offers no explanation ("we attribute their success ... to divine benevolence"). **Cost:** with the 2/3 adjustment, none in FLOPs. The extra kernel (or a fused gate-up GEMM of width $2F$ followed by an element-wise op) is cheap. **Users:** PaLM, all Llamas, Mistral, Qwen, DeepSeek (SwiGLU), Gemma (GeGLU). See also [SwiGLU-based MLP sizing](../training/performance/README.md#swiglu-based-mlp) for the tile-friendly dimension choices.
+**Evidence:** Shazeer's Table 1 reports held-out log-perplexity on C4 (a large cleaned web-text corpus, the T5 pretraining set) at matched parameters and compute, with GEGLU and SwiGLU lowest (GEGLU 1.942 and SwiGLU 1.944 vs ReLU 1.997 after 65,536 steps; 1.633 / 1.636 vs 1.677 after 524,288 steps), and gains on GLUE/SuperGLUE fine-tuning (suites of English language-understanding tasks such as entailment and sentiment). The paper famously offers no explanation ("we attribute their success ... to divine benevolence"). **Cost:** with the 2/3 adjustment, none in FLOPs. The extra kernel (or a fused gate-up GEMM of width $2F$ followed by an element-wise op) is cheap. **Users:** PaLM, all Llamas, Mistral, Qwen, DeepSeek (SwiGLU), Gemma (GeGLU). See also [SwiGLU-based MLP sizing](../training/profiling-and-optimization.md#swiglu-based-mlp) for the tile-friendly dimension choices.
 
 
 
@@ -1918,7 +1918,7 @@ V3 still keeps a very small sequence-wise auxiliary loss as a safeguard, plus no
 
 - **Memory:** you store all $E$ experts. Mixtral is 93 GB in bf16 to run a 12.9B-active model. DeepSeek-V3 is about 671 GB in FP8. The serving footprint is set by **total** parameters, and compute by **active** ones.
 - **Decode is memory-bound, and MoE makes it worse at small batch.** At batch 1, each token reads $k$ experts' weights per layer. With a large batch, the union of experts touched approaches all $E$, so the bytes read per step approach the full model while FLOPs per token stay at the active count. Arithmetic intensity per expert is about $B \cdot k / E$ tokens per weight load. DeepSeek-V3 has $k/E = 8/256$, so you need a batch of about 32x larger than a dense model needs to reach the same intensity on expert weights. This is why MoE serving relies on large-scale **expert parallelism** (EP) with big global batches (DeepSeek's deployment description in the V3 report uses EP across many GPUs for decode).
-- **Communication:** two all-to-alls per MoE layer (dispatch and combine) in both forward and backward. These are latency-sensitive and topology-sensitive (see [Model Parallelism](../training/model-parallelism/README.md#expert-parallelism) and [Collectives internals](../network/collectives-internals.md)).
+- **Communication:** two all-to-alls per MoE layer (dispatch and combine) in both forward and backward. These are latency-sensitive and topology-sensitive (see [Model Parallelism](../training/model-parallelism/derivations.md#expert-parallelism) and [Collectives internals](../network/collectives-internals.md)).
 - **Training instability:** router logits drift. The fixes are a router in fp32, z-loss, and sometimes dense layers early in the stack (DeepSeek-V3's first 3 layers).
 - **Fine-tuning and quantization:** routing can shift under fine-tuning, and rarely activated experts get few gradient updates and poorly calibrated quantization statistics.
 
@@ -2298,7 +2298,7 @@ Qwen3-0.6B (37) is the deep-and-thin small-model exception discussed above. **Th
 - **Depth gives sequential latency.** Each layer is a serial step in decode, and each layer adds a kernel launch and, under TP, two all-reduces. More layers mean more sync points per token. Depth is also what pipeline parallelism shards, so $L$ is chosen to divide the PP degree (Llama-3.1-405B's 126 = 16 x 8 - 2 layers: the Llama 3 paper describes removing one layer from the first and last pipeline stages to balance the embedding and head, Section 3.3.2).
 - **Head dim** is fixed at 128 for most models (Gemma 2 9B uses 256). Splitting $d$ into more heads is free in FLOPs, but small $\text{hd}$ hurts kernel efficiency.
 
-See [the model sizing section](../training/performance/README.md#final-recommendations-for-model-sizing) for the divisibility rules.
+See [the model sizing section](../training/profiling-and-optimization.md#final-recommendations-for-model-sizing) for the divisibility rules.
 
 
 
@@ -2415,7 +2415,7 @@ Readable code references:
 In this book:
 
 - [Model Architectures II: Beyond the Transformer](beyond-transformers.md): SSMs, linear attention, hybrids, diffusion, multimodal
-- [Inference](../inference/README.md): prefill/decode arithmetic and serving engines
-- [Model Parallelism](../training/model-parallelism/README.md) and [its derivations](../training/model-parallelism/derivations.md): TP/PP/EP and how architecture divisibility constrains them
-- [Training instabilities](../training/instabilities/): what the stability choices above are guarding against
-- [Software Tune Up](../training/performance/README.md): model sizing for hardware efficiency
+- [Inference](../inference/arithmetic.md): prefill/decode arithmetic and serving engines
+- [Model Parallelism](../training/model-parallelism/derivations.md) and [its derivations](../training/model-parallelism/derivations.md): TP/PP/EP and how architecture divisibility constrains them
+- [Training instabilities](../training/stability.md): what the stability choices above are guarding against
+- [Software Tune Up](../training/profiling-and-optimization.md): model sizing for hardware efficiency

@@ -1491,7 +1491,7 @@ The systems design is what makes it work. Selection is shared across all query h
 
 ### Ring attention and context parallelism
 
-When the problem is that one device can't hold the sequence (not that attention is too expensive), shard the sequence. "Ring Attention with Blockwise Transformers for Near-Infinite Context", Liu, Zaharia, Abbeel, arXiv 2310.01889, rotates KV blocks around a ring of devices and overlaps communication with blockwise attention. DeepSpeed-Ulysses instead all-to-alls from sequence sharding to head sharding. Both are exact attention, so they change the memory distribution, not the FLOPs. Causal masking leaves ring attention load-imbalanced, which striped and zigzag orderings fix. Details are in [Model Parallelism](../training/model-parallelism/README.md) and [collectives internals](../network/collectives-internals.md). For SSM and linear layers, the analogue is passing $O(\text{state})$ across devices, which is much cheaper:
+When the problem is that one device can't hold the sequence (not that attention is too expensive), shard the sequence. "Ring Attention with Blockwise Transformers for Near-Infinite Context", Liu, Zaharia, Abbeel, arXiv 2310.01889, rotates KV blocks around a ring of devices and overlaps communication with blockwise attention. DeepSpeed-Ulysses instead all-to-alls from sequence sharding to head sharding. Both are exact attention, so they change the memory distribution, not the FLOPs. Causal masking leaves ring attention load-imbalanced, which striped and zigzag orderings fix. Details are in [Model Parallelism](../training/model-parallelism/derivations.md) and [collectives internals](../network/collectives-internals.md). For SSM and linear layers, the analogue is passing $O(\text{state})$ across devices, which is much cheaper:
 
 ```python
 # Bytes each device receives per layer, forward pass, sequence sharded over P devices
@@ -2269,4 +2269,4 @@ Reasoning and RL:
 
 - DeepSeekMath (GRPO), arXiv 2402.03300; DeepSeek-R1, arXiv 2501.12948; MiniMax-M1, arXiv 2506.13585 (id unverified)
 
-Sibling chapters: [Model Architectures](architectures.md) (transformer, norms, RoPE, GQA/MLA, MoE), [Model Parallelism](../training/model-parallelism/README.md) (context/sequence parallelism), [Inference](../inference/README.md) (KV cache, batching, serving).
+Sibling chapters: [Model Architectures](architectures.md) (transformer, norms, RoPE, GQA/MLA, MoE), [Model Parallelism](../training/model-parallelism/derivations.md) (context/sequence parallelism), [Inference](../inference/arithmetic.md) (KV cache, batching, serving).

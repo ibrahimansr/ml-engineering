@@ -1,0 +1,1473 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing and Running Tests - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details open><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html" class="current">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="writing-and-running-tests">Writing and Running Tests</h1>
+<p>ML code fails quietly. A wrong mask, a scheduler stepped in the wrong order or a seed that isn't really fixed doesn't crash anything. It produces a slightly worse model three days later. Tests are how you catch those bugs in seconds instead of in a loss curve. This chapter has two halves. <strong>Running tests</strong> covers every <code>pytest</code> invocation you will need: selecting a subset, rerunning failures, looping on failure, running in parallel, shuffling and repeating to expose hidden coupling, and producing reports. <strong>Writing tests</strong> covers how to express hardware requirements (&quot;needs 2 GPUs&quot;), parametrize a test, get temporary directories that clean up after themselves, capture stdout, stderr and logs, fake environment variables, seed RNGs, compare tensors and test distributed code that <code>pytest</code> can't run directly. It ends with debugging a failing test and a hack that splits a <code>pytest</code> run into separate report files for CI.</p>
+<p>Many examples use the helper module <a href="../testing/testing_utils.py">testing_utils.py</a>, which lives next to this book's sources in <code>testing/</code>. Stas Bekman developed most of it while at Hugging Face (it's a trimmed relative of <code>transformers.testing_utils</code>). <a href="#what-the-helper-module-provides">What the helper module provides</a> lists what is actually in it, because the module has drifted from its documentation in several places.</p>
+<p><strong>Conventions.</strong> Blocks marked <strong>[ran]</strong> were executed on an Apple laptop with no CUDA GPU: Python 3.14.5, PyTorch 2.15.0 (CPU), pytest 9.2.0, pytest-xdist 3.8.0, pytest-instafail 0.5.0, pytest-random-order 1.2.0, pytest-repeat 0.9.4, pytest-flakefinder 1.1.0 and parameterized 0.9.0. The output shown is real, trimmed only where marked <code>[...]</code>. Everything that needs a GPU, or a plugin not in that list, is labelled <strong>untested</strong>. To follow along:</p>
+<pre><code class="language-bash">python3 -m venv /tmp/test-venv &amp;&amp; source /tmp/test-venv/bin/activate
+pip install torch numpy packaging setuptools pytest parameterized \
+            pytest-xdist pytest-instafail pytest-random-order pytest-repeat pytest-flakefinder
+mkdir -p /tmp/testdemo &amp;&amp; cd /tmp/testdemo
+cp ~/ml-engineering/testing/testing_utils.py .    # the tests below import it from the current dir
+</code></pre>
+<p><code>setuptools</code> is in the list on purpose. See <a href="#caveats-before-you-rely-on-it">the helper module's caveats</a>.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../foundations/toolkit.html">The toolkit</a> for virtual environments, <code>pip</code> and <code>pyproject.toml</code>.</li>
+<li><a href="../foundations/linux-and-os.html">Linux and the OS</a>: <a href="../foundations/linux-and-os.html#environment-variables-and-path">environment variables and PATH</a> (aliases, <code>CUDA_VISIBLE_DEVICES</code>), <a href="../foundations/linux-and-os.html#pipes-and-redirection">pipes and redirection</a> (stdout vs stderr, block buffering), <a href="../foundations/linux-and-os.html#exit-codes">exit codes</a>, <a href="../foundations/linux-and-os.html#scripting-essentials">scripting essentials</a> (command substitution) and <a href="../foundations/linux-and-os.html#how-torchrun-spawns-workers">how torchrun spawns workers</a>.</li>
+<li><a href="../foundations/concurrency.html">Concurrency</a>: <a href="../foundations/concurrency.html#asyncio"><code>asyncio</code></a>, used by the subprocess helper for distributed tests.</li>
+<li><a href="../foundations/networking.html#collective-communication-an-intuitive-introduction">Networking: collective communication</a> for <code>all_reduce</code>, rank and world size, and the gloo backend.</li>
+<li><a href="../training/arithmetic.html#mixed-precision-internals">Training arithmetic: mixed precision internals</a> for why bf16 comparisons need tolerances.</li>
+<li><a href="../training/fault-tolerance-and-reproducibility.html#achieve-determinism-in-randomness-based-software">Fault tolerance and reproducibility: achieving determinism</a> for the full seeding recipe this chapter links to.</li>
+<li><a href="../development/debugging-pytorch.html">Debugging PyTorch programs</a> and <a href="../development/debugging-distributed.html">Debugging distributed training</a>, the two previous chapters. A failing test is often the first sign of one of their bugs.</li>
+</ul>
+<h2 id="pytest-and-unittest-in-five-minutes">pytest and unittest in five minutes</h2>
+<p>Two test frameworks dominate Python. This chapter uses both, often in one suite.</p>
+<ul>
+<li><strong><code>unittest</code></strong> is in the standard library. A test is a method whose name starts with <code>test</code> on a subclass of <code>unittest.TestCase</code>. Optional <code>setUp()</code> and <code>tearDown()</code> methods run before and after every test. <strong>Teardown</strong> is the cleanup after a test, and when it misses something, leftover state leaks into the next test.</li>
+<li><strong><code>pytest</code></strong> is a third-party test runner (<code>pip install pytest</code>). It finds files named <code>test_*.py</code> or <code>*_test.py</code>, runs every function or method in them whose name starts with <code>test</code>, and treats a failing plain <code>assert</code> as a test failure (it rewrites <code>assert</code> so the failure message shows the values involved). It also runs <code>unittest.TestCase</code> classes, which is why the two can be mixed.</li>
+<li>A <strong>plugin</strong> is an extra package (<code>pytest-xdist</code>, <code>pytest-instafail</code>, ...) that adds command-line options or behaviour to <code>pytest</code> as soon as it's installed in the same environment. You don't configure anything to load it. That's convenient, and it's also a trap, see <a href="#run-tests-in-a-random-order">random order</a>.</li>
+<li>A <strong>node id</strong> is a test's full name, <code>path/to/file.py::Class::test_method</code> (or <code>file.py::test_function</code> with no class). You can pass node ids on the command line to run exactly those tests.</li>
+<li>A <strong>fixture</strong> is a function that <code>pytest</code> runs to give a test a resource. The test asks for it by naming it as an argument: <code>def test_x(tmp_path):</code> receives a fresh temporary directory, and <code>def test_y(capsys):</code> receives a handle on captured stdout and stderr. <code>unittest.TestCase</code> methods can't take such arguments, so most fixtures don't work in them. That's the main reason <code>testing_utils.py</code> exists.</li>
+<li><strong><code>conftest.py</code></strong> is a file that <code>pytest</code> imports automatically before collecting the tests in its directory and below. Fixtures and <strong>hooks</strong> defined there apply to all those tests. Hooks are functions with reserved names that <code>pytest</code> calls at fixed points of a run, such as <code>pytest_addoption</code> (register extra command-line options) and <code>pytest_terminal_summary</code> (runs when the final summary is printed).</li>
+<li><strong>Config files.</strong> <code>pytest</code> reads its settings from the first of <code>pytest.ini</code>, <code>pyproject.toml</code> (the <code>[tool.pytest.ini_options]</code> table), <code>tox.ini</code> or <code>setup.cfg</code> (the <code>[tool:pytest]</code> section) that it finds walking up from the test paths. The directory it was found in becomes the <strong>rootdir</strong>, printed at the top of every run.</li>
+</ul>
+<p>The minimal suite used for most of the &quot;Running tests&quot; examples is a <code>unittest</code>-style file with two classes:</p>
+<pre><code class="language-python"># test_optimization.py -- a tiny unittest-style suite to practise test selection on
+import unittest
+import torch
+
+
+class OptimizationTest(unittest.TestCase):
+    def _one_step(self, opt_cls, **kw):
+        w = torch.nn.Parameter(torch.tensor([1.0, -2.0]))
+        opt = opt_cls([w], lr=0.1, **kw)
+        (w ** 2).sum().backward()
+        opt.step()
+        return w.detach()
+
+    def test_adam_w(self):
+        w = self._one_step(torch.optim.AdamW, weight_decay=0.0)
+        # Adam's first step moves every coordinate by ~lr against the sign of the gradient
+        torch.testing.assert_close(w, torch.tensor([0.9, -1.9]))
+
+    def test_adafactor(self):
+        w = self._one_step(torch.optim.Adafactor)
+        self.assertTrue((w.abs() &lt; torch.tensor([1.0, 2.0])).all())
+
+    def test_sgd(self):
+        w = self._one_step(torch.optim.SGD)
+        torch.testing.assert_close(w, torch.tensor([0.8, -1.6]))
+
+
+class SchedulerTest(unittest.TestCase):
+    def test_constant_schedule(self):
+        w = torch.nn.Parameter(torch.zeros(1))
+        opt = torch.optim.SGD([w], lr=0.1)
+        sched = torch.optim.lr_scheduler.ConstantLR(opt, factor=1.0)
+        sched.step()
+        self.assertEqual(opt.param_groups[0][&quot;lr&quot;], 0.1)
+</code></pre>
+<p><code>test_constant_schedule</code> has a deliberate mistake: it calls <code>sched.step()</code> without ever calling <code>opt.step()</code>. PyTorch warns about this, and that warning comes back in <a href="#debugging-tests">Debugging tests</a>.</p>
+<h2 id="what-the-helper-module-provides">What the helper module provides</h2>
+<p><a href="../testing/testing_utils.py">testing_utils.py</a> is a single file with no installation step. Copy it into your <code>tests/</code> directory (or anywhere on <code>sys.path</code>) and import from it. It needs <code>numpy</code>, <code>packaging</code> and <code>parameterized</code>, and <code>torch</code> if you want the torch helpers. Here's everything in it, grouped by purpose, with the section of this chapter that uses each piece:</p>
+<table>
+<thead>
+<tr>
+<th>Purpose</th>
+<th>Names</th>
+<th>Section</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Skip unless hardware or a dependency is present</td>
+<td><code>require_torch</code>, <code>require_torch_no_gpus</code>, <code>require_torch_gpu</code>, <code>require_torch_multi_gpu</code>, <code>require_torch_non_multi_gpu</code>, <code>require_torch_up_to_2_gpus</code>, <code>require_torch_bf16</code>, <code>require_deepspeed</code>, <code>require_bnb</code>, <code>require_bnb_non_decorator()</code></td>
+<td><a href="#hardware-and-dependency-requirements">Hardware and dependency requirements</a></td>
+</tr>
+<tr>
+<td>Probe the machine</td>
+<td><code>torch_device</code> (<code>&quot;cuda&quot;</code>, <code>&quot;cpu&quot;</code> or <code>None</code>), <code>get_gpu_count()</code>, <code>is_torch_available()</code>, <code>is_torch_bf16_available()</code>, <code>is_deepspeed_available()</code>, <code>is_bnb_available()</code></td>
+<td>same</td>
+</tr>
+<tr>
+<td>Parse flags from the environment</td>
+<td><code>parse_flag_from_env(key, default)</code> (<code>yes</code>/<code>no</code>/<code>1</code>/<code>0</code>/... to bool), <code>parse_int_from_env(key, default)</code></td>
+<td><a href="#testing-with-environment-variables">Testing with environment variables</a></td>
+</tr>
+<tr>
+<td>Paths, temp dirs and env for subprocesses</td>
+<td><code>TestCasePlus</code>, <code>get_tests_dir()</code>, <code>ExtendSysPath</code></td>
+<td><a href="#files-and-directories">Files and directories</a></td>
+</tr>
+<tr>
+<td>Parametrized test names</td>
+<td><code>parameterized_custom_name_func_join_params</code></td>
+<td><a href="#parametrization">Parametrization</a></td>
+</tr>
+<tr>
+<td>Capture output</td>
+<td><code>CaptureStd</code>, <code>CaptureStdout</code>, <code>CaptureStderr</code>, <code>CaptureLogger</code>, <code>apply_print_resets()</code></td>
+<td><a href="#capturing-outputs">Capturing outputs</a></td>
+</tr>
+<tr>
+<td>Fake environment variables</td>
+<td><code>mockenv(**kw)</code>, <code>mockenv_context(*remove, **update)</code></td>
+<td><a href="#testing-with-environment-variables">Testing with environment variables</a></td>
+</tr>
+<tr>
+<td>Reproducibility and tensor comparison</td>
+<td><code>set_seed()</code>, <code>torch_assert_equal()</code>, <code>torch_assert_close()</code></td>
+<td><a href="#getting-reproducible-results">Getting reproducible results</a>, <a href="#comparing-tensors">Comparing tensors</a></td>
+</tr>
+<tr>
+<td>Distributed tests</td>
+<td><code>execute_subprocess_async()</code>, <code>get_xdist_worker_id()</code>, <code>get_unique_port_number()</code></td>
+<td><a href="#distributed-tests">Distributed tests</a></td>
+</tr>
+<tr>
+<td>Small file helpers</td>
+<td><code>write_file()</code>, <code>read_json_file()</code>, <code>replace_str_in_file()</code></td>
+<td><a href="#small-file-helpers">Small file helpers</a></td>
+</tr>
+<tr>
+<td>Split reports</td>
+<td><code>pytest_addoption_shared()</code>, <code>pytest_terminal_summary_main()</code></td>
+<td><a href="#a-massive-hack-to-create-multiple-pytest-reports">A massive hack to create multiple pytest reports</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="caveats-before-you-rely-on-it">Caveats before you rely on it</h3>
+<p>Running the module on Python 3.14 turned up these differences from what its docstrings (and older versions of this material) say. Each one was checked:</p>
+<ul>
+<li>
+<p><strong>There is no <code>require_torch_tpu</code>.</strong> Older docs list it, but the module never defines it. What the module has instead, and older docs don't mention, is <code>require_torch_no_gpus</code>, <code>require_torch_bf16</code>, <code>require_deepspeed</code> and <code>require_bnb</code>.</p>
+</li>
+<li>
+<p><strong><code>from distutils.util import strtobool</code> at the top.</strong> <code>distutils</code> was removed from the standard library in Python 3.12. The import only works because <code>setuptools</code> installs a <code>distutils</code> shim. Without <code>setuptools</code>, or with the shim disabled, the whole module fails to import <strong>[ran]</strong>:</p>
+<pre><code class="language-bash">$ SETUPTOOLS_USE_DISTUTILS=stdlib python -c &quot;import testing_utils&quot;
+[...]
+    from distutils.util import strtobool
+ModuleNotFoundError: No module named 'distutils'
+</code></pre>
+</li>
+<li>
+<p><strong><code>execute_subprocess_async</code> is broken on Python 3.11 and newer.</strong> It passes bare coroutines to <code>asyncio.wait()</code> (a <code>TypeError</code> since 3.11) and calls <code>asyncio.get_event_loop()</code> with no loop running (a <code>RuntimeError</code> on 3.14). <a href="#distributed-tests">Distributed tests</a> has a working replacement.</p>
+</li>
+<li>
+<p><strong><code>TestCasePlus</code> looks for a repo root containing <code>m4/</code> and <code>tests/</code>.</strong> <code>m4</code> was the Hugging Face project this copy came from. In any other repo it silently picks the directory three levels above the test file. <a href="#files-and-directories">Files and directories</a> shows the consequence and the fix. It has a <code>data_dir</code> (<code>tests/test_data</code>) and no <code>examples_dir</code>.</p>
+</li>
+<li>
+<p><strong><code>require_torch_no_gpus</code> imports <code>torch</code> before checking whether torch is installed</strong>, so on a machine without torch it raises <code>ImportError</code> instead of skipping.</p>
+</li>
+<li>
+<p><code>apply_print_resets</code> (used by the <code>Capture*</code> classes) calls <code>re.sub</code> with a positional <code>count</code>, which emits a <code>DeprecationWarning</code> on Python 3.13 and newer. It's harmless, but it shows up in your warnings summary.</p>
+</li>
+</ul>
+<h2 id="running-tests">Running tests</h2>
+<h3 id="run-all-tests">Run all tests</h3>
+<pre><code class="language-bash">pytest
+</code></pre>
+<p>With no arguments, <code>pytest</code> collects tests starting from the current directory, or from the <code>testpaths</code> set in its config file.</p>
+<p>A useful alias (a short name for a longer command, put in <code>~/.bashrc</code>, see <a href="../foundations/linux-and-os.html#environment-variables-and-path">Environment variables and PATH</a>):</p>
+<pre><code class="language-bash">alias pyt=&quot;pytest --disable-warnings --instafail -rA&quot;
+</code></pre>
+<p>It tells <code>pytest</code> to:</p>
+<ul>
+<li><code>--disable-warnings</code>: not print the warnings summary.</li>
+<li><code>--instafail</code>: show each failure as it happens, not at the end (needs <code>pip install pytest-instafail</code>).</li>
+<li><code>-rA</code>: add a line per test to the &quot;short test summary info&quot; at the end. <code>-r</code> picks which outcomes get a line and <code>A</code> means all of them (passed, failed, skipped, xfailed, xpassed, errors). The default is <code>-rfE</code>, failures and errors only.</li>
+</ul>
+<p><strong>[ran]</strong></p>
+<pre><code class="language-text">$ pytest --disable-warnings --instafail -rA test_optimization.py
+============================= test session starts ==============================
+platform darwin -- Python 3.14.5, pytest-9.2.0, pluggy-1.7.0
+Test order randomisation NOT enabled. Enable with --random-order or --random-order-bucket=&lt;bucket_type&gt;
+rootdir: /private/tmp/absorb-testing/demo
+plugins: repeat-0.9.4, instafail-0.5.0, xdist-3.8.0, random-order-1.2.0, flakefinder-1.1.0, anyio-4.16.0
+collected 4 items
+
+test_optimization.py ....                                                [100%]
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED test_optimization.py::OptimizationTest::test_adafactor
+PASSED test_optimization.py::OptimizationTest::test_adam_w
+PASSED test_optimization.py::OptimizationTest::test_sgd
+PASSED test_optimization.py::SchedulerTest::test_constant_schedule
+========================= 4 passed, 1 warning in 0.92s =========================
+</code></pre>
+<p>How to read this output: the header shows the Python and pytest versions, the rootdir and <strong>every installed plugin</strong>. Check that line first when a run behaves strangely. Each <code>.</code> is one passing test (<code>F</code> failed, <code>s</code> skipped, <code>x</code> xfailed, <code>X</code> xpassed, <code>E</code> error). The last line counts everything. The &quot;1 warning&quot; is still counted even though <code>--disable-warnings</code> hides its text.</p>
+<h3 id="getting-the-list-of-all-tests">Getting the list of all tests</h3>
+<p><code>--collect-only</code> lists the tests without running them, and <code>-q</code> prints one node id per line. <strong>[ran]</strong></p>
+<pre><code class="language-text">$ pytest --collect-only -q
+test_optimization.py::OptimizationTest::test_adafactor
+test_optimization.py::OptimizationTest::test_adam_w
+test_optimization.py::OptimizationTest::test_sgd
+test_optimization.py::SchedulerTest::test_constant_schedule
+
+4 tests collected in 0.47s
+</code></pre>
+<p>For one file, <code>pytest tests/test_optimization.py --collect-only -q</code>. A handy alias:</p>
+<pre><code class="language-bash">alias pytc=&quot;pytest --disable-warnings --collect-only -q&quot;
+</code></pre>
+<h3 id="run-a-specific-test-module">Run a specific test module</h3>
+<pre><code class="language-bash">pytest tests/utils/test_logging.py
+</code></pre>
+<h3 id="run-specific-tests">Run specific tests</h3>
+<p>With <code>unittest</code>-style tests you need the name of the class that holds the test. The node id has three parts:</p>
+<pre><code class="language-bash">pytest tests/test_optimization.py::OptimizationTest::test_adam_w
+#      ^ the file with tests      ^ test class     ^ test method
+</code></pre>
+<p>To run every test in one class, stop after the class name. You can list what that would run with <code>--collect-only</code> <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest test_optimization.py::OptimizationTest --collect-only -q
+test_optimization.py::OptimizationTest::test_adafactor
+test_optimization.py::OptimizationTest::test_adam_w
+test_optimization.py::OptimizationTest::test_sgd
+
+3 tests collected in 0.42s
+</code></pre>
+<p><strong>Keyword expressions.</strong> <code>-k EXPR</code> keeps only the tests whose node id (file, class and function name) matches <code>EXPR</code> as a case-insensitive substring. <code>and</code>, <code>or</code>, <code>not</code> and parentheses combine substrings. <strong>[ran]</strong>, with <code>-q</code> output trimmed to the summary line or the selected ids:</p>
+<pre><code class="language-text">$ pytest -k adam -q test_optimization.py                    # names containing &quot;adam&quot;
+1 passed, 3 deselected in 0.90s
+
+$ pytest -k &quot;not adam&quot; -q test_optimization.py              # everything except those
+3 passed, 1 deselected, 1 warning in 0.81s
+
+$ pytest -k &quot;ada and not adam&quot; -q --collect-only test_optimization.py
+test_optimization.py::OptimizationTest::test_adafactor
+
+$ pytest -k &quot;test_adafactor or test_adam_w&quot; -q --collect-only test_optimization.py
+test_optimization.py::OptimizationTest::test_adafactor
+test_optimization.py::OptimizationTest::test_adam_w
+
+$ pytest -k &quot;test and ada&quot; -q --collect-only test_optimization.py
+test_optimization.py::OptimizationTest::test_adafactor
+test_optimization.py::OptimizationTest::test_adam_w
+</code></pre>
+<p>Use <code>or</code> when either keyword should select a test (here, to get both <code>test_adafactor</code> and <code>test_adam_w</code>), and <code>and</code> when a test must contain both.</p>
+<h3 id="run-only-modified-tests">Run only modified tests</h3>
+<p><a href="https://github.com/anapaulagomes/pytest-picked">pytest-picked</a> runs only the tests in files that Git reports as modified but not yet committed. It's a quick way to check your change didn't break anything nearby, without running tests for code you didn't touch. <strong>Untested here.</strong></p>
+<pre><code class="language-bash">pip install pytest-picked
+pytest --picked
+</code></pre>
+<h3 id="clearing-state">Clearing state</h3>
+<p><code>pytest</code> keeps a cache in <code>.pytest_cache/</code> between runs. The most useful thing in it is the list of tests that failed last time, which <code>--lf</code> (<code>--last-failed</code>) reruns. <strong>[ran]</strong>, using a suite where one test fails:</p>
+<pre><code class="language-text">$ pytest -q -n 2 test_coupled.py
+[...]
+1 failed, 1 passed in 0.23s
+$ cat .pytest_cache/v/cache/lastfailed
+{
+  &quot;test_coupled.py::test_reads_cache&quot;: true
+}
+$ pytest -q --lf test_coupled.py
+[...]
+FAILED test_coupled.py::test_reads_cache - KeyError: 'vocab_size'
+1 failed, 1 deselected in 0.01s
+</code></pre>
+<p>On CI, and whenever isolation matters more than speed, wipe the cache at the start of the run with <code>--cache-clear</code>:</p>
+<pre><code class="language-bash">pytest --cache-clear tests
+</code></pre>
+<p>With the cache cleared, <code>--lf</code> has nothing to go on and runs everything (<code>2 passed</code> in the same run). <code>-p no:cacheprovider</code> goes further and disables the cache entirely. Related flags: <code>-x</code> (<code>--exitfirst</code>) stops at the first failure, <code>--maxfail=N</code> after N, and <code>--sw</code> (<code>--stepwise</code>) stops at the first failure and, on the next run, resumes from that test.</p>
+<h3 id="automatically-rerun-failed-tests-on-source-modification">Automatically rerun failed tests on source modification</h3>
+<p><a href="https://github.com/pytest-dev/pytest-xdist">pytest-xdist</a> has a &quot;loop on fail&quot; mode. It runs the suite, then waits for files to change and reruns only the failing tests, again and again, until they all pass. You don't have to restart <code>pytest</code> after each fix. Once everything passes it does a full run again.</p>
+<pre><code class="language-bash">pip install pytest-xdist
+pytest -f          # or: pytest --looponfail
+</code></pre>
+<p><strong>[ran]</strong>: start the loop with a failing test, then fix the file from another terminal:</p>
+<pre><code class="language-text">$ pytest -f -q
+F                                                                        [100%]
+[...]
+FAILED test_loop.py::test_math - assert (2 + 2) == 5
+1 failed in 0.01s
+################################ LOOPONFAILING #################################
+test_loop.py::test_math
+############################# waiting for changes ##############################
+### Watching:   /private/tmp/absorb-testing/loop
+# MODIFIED /private/tmp/absorb-testing/loop/test_loop.py
+.                                                                        [100%]
+1 passed in 0.00s
+.                                                                        [100%]
+1 passed in 0.00s
+</code></pre>
+<p>How to read it: the first <code>1 passed</code> is the rerun of the previously failing test, and the second is the full run that follows once everything passes.</p>
+<p>Changes are detected by watching the <code>looponfailroots</code> directories recursively. The default is the current directory. That bit me: my first attempt redirected the output to a file inside the watched directory, so every write of the log counted as a modification and the loop reran forever. Set the roots in your config file to just your package and tests. In <code>setup.cfg</code>:</p>
+<pre><code class="language-ini">[tool:pytest]
+looponfailroots = transformers tests
+</code></pre>
+<p>or in <code>pytest.ini</code>/<code>tox.ini</code>:</p>
+<pre><code class="language-ini">[pytest]
+looponfailroots = transformers tests
+</code></pre>
+<p>Paths are relative to the config file's directory.</p>
+<p>The feature is on its way out. pytest-xdist 3.8's source issues a <code>DeprecationWarning</code>: &quot;The --looponfail command line argument and looponfailroots config variable are deprecated. The loop-on-fail feature will be removed in pytest-xdist 4.0.&quot; <a href="https://github.com/olzhasar/pytest-watcher">pytest-watcher</a> is the maintained alternative, which reruns <code>pytest</code> when files change (untested here). The older <code>pytest-watch</code> is still widely linked but has had no commit since 2022.</p>
+<h3 id="skip-a-test-module">Skip a test module</h3>
+<p>To run all test modules except a few, pass an explicit list. For example, everything except <code>test_modeling_*.py</code>:</p>
+<pre><code class="language-bash">pytest $(ls -1 tests/*py | grep -v test_modeling)
+</code></pre>
+<p><code>$(...)</code> is <a href="../foundations/linux-and-os.html#scripting-essentials">command substitution</a>: the shell runs the inner pipeline (list the test files one per line, drop those matching <code>test_modeling</code>) and pastes its output in as <code>pytest</code>'s arguments. <code>pytest --ignore=PATH</code> and <code>--deselect NODEID</code> do the same thing without the shell trick.</p>
+<h3 id="running-tests-in-parallel">Running tests in parallel</h3>
+<p><code>pytest-xdist</code> runs tests in N worker processes with <code>-n N</code> (<code>-n auto</code> uses one per CPU core). If your project has a <code>make test</code> target, it most likely uses <code>-n</code>. Each worker is called <code>gw0</code>, <code>gw1</code>, ... and <strong>imports the test modules separately</strong>, so module globals are not shared between workers. <strong>[ran]</strong>, <code>-v</code> to see which worker ran what:</p>
+<pre><code class="language-text">$ pytest -n 2 -v test_optimization.py test_coupled.py
+created: 2/2 workers
+[gw1] [ 16%] PASSED test_optimization.py::OptimizationTest::test_sgd
+[gw0] [ 33%] PASSED test_optimization.py::OptimizationTest::test_adafactor
+[gw1] [ 50%] PASSED test_optimization.py::SchedulerTest::test_constant_schedule
+[gw0] [ 66%] PASSED test_optimization.py::OptimizationTest::test_adam_w
+[gw1] [ 83%] PASSED test_coupled.py::test_fill_cache
+[gw0] [100%] FAILED test_coupled.py::test_reads_cache
+==================== 1 failed, 5 passed, 1 warning in 1.64s ====================
+</code></pre>
+<p><code>test_coupled.py</code> passes when run serially and fails here. It holds two tests that secretly share state:</p>
+<pre><code class="language-python"># test_coupled.py -- two tests that secretly share state through a module global
+CACHE = {}
+
+
+def test_fill_cache():
+    CACHE[&quot;vocab_size&quot;] = 32000
+    assert CACHE[&quot;vocab_size&quot;] == 32000
+
+
+def test_reads_cache():
+    # passes only if test_fill_cache already ran in this process
+    assert CACHE[&quot;vocab_size&quot;] == 32000
+</code></pre>
+<p><code>test_fill_cache</code> ran on <code>gw1</code> and <code>test_reads_cache</code> on <code>gw0</code>, a different process with its own empty <code>CACHE</code>. The failure is a real bug in the tests, and parallel runs exposed it.</p>
+<p><code>--dist=</code> controls how tests are grouped onto workers. <code>--dist=loadfile</code> puts all the tests of one file on the same worker. <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest -n 2 -v --dist=loadfile test_optimization.py test_coupled.py
+[gw1] [ 16%] PASSED test_coupled.py::test_fill_cache
+[gw1] [ 33%] PASSED test_coupled.py::test_reads_cache
+[gw0] [ 50%] PASSED test_optimization.py::OptimizationTest::test_adafactor
+[...]
+========================= 6 passed, 1 warning in 1.45s =========================
+</code></pre>
+<p><code>loadfile</code> makes the failure go away, but that's a workaround, not a fix. Use it for files whose tests legitimately share an expensive setup (a model loaded once per module), not to hide coupling. Other modes include <code>load</code> (the default with <code>-n</code>: send tests to whichever worker is free), <code>loadscope</code> (group by class or module) and <code>loadgroup</code> (group by <code>@pytest.mark.xdist_group(name=...)</code>).</p>
+<p>Under xdist the execution order is different on every run. When a parallel run fails and serial runs don't, you have coupled tests, and you need the exact sequence each worker ran to reproduce it. <a href="https://github.com/ESSS/pytest-replay">pytest-replay</a> records the per-worker order and replays it, so you can cut the failing sequence down to a minimum (untested here).</p>
+<h3 id="test-order-and-repetition">Test order and repetition</h3>
+<p>Repeat tests several times, in sequence, in random order or in sets, to find inter-dependencies and state bugs such as a teardown that misses something. Plain repetition is also worth doing for DL code, because some bugs only appear for some draws of the RNG.</p>
+<h4 id="repeat-tests">Repeat tests</h4>
+<p><a href="https://github.com/dropbox/pytest-flakefinder">pytest-flakefinder</a> runs every test multiple times (50 by default):</p>
+<pre><code class="language-bash">pip install pytest-flakefinder
+pytest --flake-finder --flake-runs=5 tests/test_failing_test.py
+</code></pre>
+<p>The older advice is that it doesn't work with <code>-n</code>. In my run with flakefinder 1.1.0 and xdist 3.8.0 it did. <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest -v --flake-finder --flake-runs=3 -n 2 test_coupled.py
+[gw1] [ 16%] PASSED test_coupled.py::test_fill_cache[2]
+[gw0] [ 33%] PASSED test_coupled.py::test_fill_cache[0]
+[gw1] [ 50%] PASSED test_coupled.py::test_reads_cache[0]
+[...]
+</code></pre>
+<p>That's one small run, so don't depend on it. The plugin has also had no commit since 2022, so treat it as functional but unmaintained.</p>
+<p><a href="https://github.com/pytest-dev/pytest-repeat">pytest-repeat</a> is actively maintained, with <code>--count=N</code>. But it <strong>cannot repeat <code>unittest.TestCase</code> tests</strong>. They run once regardless of <code>--count</code>. <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest -q --count=5 test_optimization.py test_coupled.py
+[...]
+14 passed, 1 warning in 0.84s
+</code></pre>
+<p>How to read it: 4 <code>unittest</code> tests ×1 + 2 plain functions ×5 = 14. Nothing in the output tells you the 4 <code>unittest</code> tests weren't repeated (version 0.9.4 printed no warning about it). So the two plugins trade off: flakefinder handles <code>unittest</code> classes but is dormant, while pytest-repeat is current but skips them silently. If your suite is built on <code>unittest.TestCase</code>, as most <code>transformers</code>-derived suites are, use flakefinder.</p>
+<h4 id="run-tests-in-a-random-order">Run tests in a random order</h4>
+<pre><code class="language-bash">pip install pytest-random-order
+</code></pre>
+<p>Random order finds coupled tests, where one test's state affects another. <strong>Older docs say that installing the plugin is enough to shuffle every run. That's no longer true.</strong> Since version 1.0 it's opt-in, as its header line says on every run:</p>
+<pre><code class="language-text">Test order randomisation NOT enabled. Enable with --random-order or --random-order-bucket=&lt;bucket_type&gt;
+</code></pre>
+<p>Enable it with <code>--random-order</code>, any <code>--random-order-bucket=...</code> or a <code>--random-order-seed=...</code>. It prints the seed it used. <strong>[ran]</strong>, on the coupled file above, trying seeds until one fails:</p>
+<pre><code class="language-text">$ for s in 1 2 3 4 5 6; do echo &quot;seed $s:&quot;; pytest -q -p no:cacheprovider --random-order-seed=$s test_coupled.py | tail -1; done
+seed 1:
+2 passed in 0.00s
+seed 2:
+2 passed in 0.00s
+seed 3:
+2 passed in 0.00s
+seed 4:
+1 failed, 1 passed in 0.01s
+[...]
+$ pytest --random-order-seed=4 test_coupled.py
+============================= test session starts ==============================
+platform darwin -- Python 3.14.5, pytest-9.2.0, pluggy-1.7.0
+Using --random-order-bucket=module
+Using --random-order-seed=4
+[...]
+test_coupled.py F.                                                       [100%]
+[...]
+E       KeyError: 'vocab_size'
+</code></pre>
+<p>How to read it: <code>F.</code> means the first test to run (<code>test_reads_cache</code>) failed and the second passed. When a CI run fails with random order, copy the <code>Using --random-order-seed=...</code> line from its log and rerun with that seed to get the same order.</p>
+<p>The seed reproduces the exact order only for the exact same list of tests (or no list at all). Once you start narrowing the list by hand, the seed no longer helps. List the tests in the order they failed and turn shuffling off with <code>--random-order-bucket=none</code>. <code>pytest</code> runs node ids in the order given <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest -q --random-order-bucket=none test_coupled.py::test_reads_cache test_coupled.py::test_fill_cache
+FAILED test_coupled.py::test_reads_cache - KeyError: 'vocab_size'
+1 failed, 1 passed in 0.01s
+</code></pre>
+<p><code>--random-order-bucket</code> selects the unit of shuffling: <code>module</code> (the default once enabled: shuffle tests within each module and shuffle the modules), <code>class</code>, <code>package</code>, <code>global</code> (everything together) or <code>none</code>. The full details are in its <a href="https://github.com/pytest-dev/pytest-random-order">documentation</a>.</p>
+<p>An alternative is <a href="https://github.com/pytest-dev/pytest-randomly">pytest-randomly</a>, with a similar interface but no bucket modes. Unlike pytest-random-order it <strong>does</strong> shuffle as soon as it's installed (and also reseeds <code>random</code>, NumPy and others before each test). <code>pytest -p no:randomly</code> turns it off for one run (untested here).</p>
+<h3 id="look-and-feel-variations">Look and feel variations</h3>
+<h4 id="pytest-sugar">pytest-sugar</h4>
+<p><a href="https://github.com/Teemu/pytest-sugar">pytest-sugar</a> adds a progress bar and shows failing tests and their assert right away. It activates on installation. <strong>Untested here.</strong></p>
+<pre><code class="language-bash">pip install pytest-sugar
+pytest -p no:sugar     # run without it, or uninstall it
+</code></pre>
+<p><code>-p no:NAME</code> disables any plugin by name for one run. It's the general way out of &quot;a plugin I installed changed my output.&quot;</p>
+<h4 id="report-each-sub-test-name-and-its-progress">Report each sub-test name and its progress</h4>
+<p>For a single test file or a group of tests, after <code>pip install pytest-pspec</code> (<strong>untested here</strong>):</p>
+<pre><code class="language-bash">pytest --pspec tests/test_optimization.py
+</code></pre>
+<p>Built-in <code>pytest -v</code> gets you most of the way: one line per node id with its result.</p>
+<h4 id="instantly-shows-failed-tests">Instantly shows failed tests</h4>
+<p><a href="https://github.com/pytest-dev/pytest-instafail">pytest-instafail</a> prints failures and errors as they happen instead of at the end of the session. That matters when a suite takes an hour and the first failure tells you to stop.</p>
+<pre><code class="language-bash">pip install pytest-instafail
+pytest --instafail
+</code></pre>
+<h4 id="color-control">Color control</h4>
+<p>To turn colour off (for example, yellow on a white background is unreadable):</p>
+<pre><code class="language-bash">pytest --color=no tests/utils/test_logging.py
+</code></pre>
+<h3 id="to-gpu-or-not-to-gpu">To GPU or not to GPU</h3>
+<p>On a machine with GPUs, <code>CUDA_VISIBLE_DEVICES</code> (taught in <a href="../foundations/linux-and-os.html#environment-variables-and-path">Environment variables and PATH</a>) controls which GPUs a process can see. Empty means none, which forces CPU-only mode:</p>
+<pre><code class="language-bash">CUDA_VISIBLE_DEVICES=&quot;&quot; pytest tests/utils/test_logging.py
+</code></pre>
+<p>To run only on the second GPU of two (<code>0</code> and <code>1</code>):</p>
+<pre><code class="language-bash">CUDA_VISIBLE_DEVICES=&quot;1&quot; pytest tests/utils/test_logging.py
+</code></pre>
+<p>This lets you run different test jobs on different GPUs of one machine at the same time. Set it on the command line, not inside a test. <code>testing_utils.torch_device</code> and the <code>require_*</code> decorators are evaluated when the module is imported, and CUDA reads the variable once when it initializes. <strong>Untested here</strong> (no CUDA GPU).</p>
+<h3 id="output-capture">Output capture</h3>
+<p>During a run, <code>pytest</code> captures everything written to <code>stdout</code> and <code>stderr</code>. If a test fails, its captured output is printed with the traceback under &quot;Captured stdout call&quot; and &quot;Captured stderr call&quot;. Passing tests show their output only with <code>-rA</code> (or <code>-rP</code>).</p>
+<p>To disable capture and see output live, use <code>-s</code> (short for <code>--capture=no</code>):</p>
+<pre><code class="language-bash">pytest -s tests/utils/test_logging.py
+</code></pre>
+<p><code>-s</code> is what you want for anything that prints progress or launches subprocesses, and for <code>pdb</code>.</p>
+<p><strong>JUnit XML.</strong> CI systems read a standard XML format with per-test results. To write it:</p>
+<pre><code class="language-bash">pytest tests --junitxml=result.xml        # older docs write py.test; same program
+</code></pre>
+<p><strong>[ran]</strong>, on a suite with one failing test:</p>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;&lt;testsuites name=&quot;pytest tests&quot;&gt;&lt;testsuite name=&quot;pytest&quot; errors=&quot;0&quot;
+failures=&quot;1&quot; skipped=&quot;0&quot; tests=&quot;3&quot; time=&quot;0.321&quot; [...]&gt;&lt;testcase classname=&quot;test_slow&quot; name=&quot;test_sleepy&quot;
+time=&quot;0.303&quot;&gt;&lt;failure message=&quot;AssertionError: deliberately failing after 0.3s&amp;#10;assert False&quot;&gt;def test_sleepy():
+[...]&lt;/failure&gt;&lt;/testcase&gt;&lt;testcase classname=&quot;test_coupled&quot; name=&quot;test_fill_cache&quot; time=&quot;0.001&quot; /&gt;[...]
+</code></pre>
+<p>(The line breaks were added for this page. The file is one long line.)</p>
+<h3 id="sending-test-report-to-online-pastebin-service">Sending test report to online pastebin service</h3>
+<p><code>--pastebin</code> uploads test output to a public paste service, <a href="https://bpa.st">bpa.st</a>, and prints a URL. It's handy for sharing a failure in an issue. <strong>Don't use it on anything private.</strong> The upload is public, and test output routinely includes paths, hostnames and sometimes tokens taken from the environment.</p>
+<p>To create a URL for each failure:</p>
+<pre><code class="language-bash">pytest --pastebin=failed tests/utils/test_logging.py
+</code></pre>
+<p>Select tests as usual, or add <code>-x</code> to stop at, and send, only the first failure. To create a URL for the whole session log:</p>
+<pre><code class="language-bash">pytest --pastebin=all tests/utils/test_logging.py
+</code></pre>
+<p>In pytest 9.2 the flag still exists in core, but it is deprecated (&quot;The --pastebin option is deprecated. The functionality is now available in an external plugin package, pytest-pastebin.&quot;) Install <a href="https://github.com/pytest-dev/pytest-pastebin"><code>pytest-pastebin</code></a> to keep it. I didn't upload anything, so this is <strong>untested here</strong>.</p>
+<h2 id="writing-tests">Writing tests</h2>
+<h3 id="mixing-pytest-and-unittest">Mixing pytest and unittest</h3>
+<p>Combining <code>pytest</code> and <code>unittest</code> in one suite mostly just works. Which <code>pytest</code> features work on <code>unittest.TestCase</code> classes is listed <a href="https://docs.pytest.org/en/stable/how-to/unittest.html">here</a>. The important limitations are that most fixtures (<code>tmp_path</code>, <code>capsys</code>, <code>monkeypatch</code>, ...) and <code>@pytest.mark.parametrize</code> don't work on <code>TestCase</code> methods. The replacements are the <code>parameterized</code> package (below) and the helpers in <code>testing_utils.py</code>. Markers such as <code>@pytest.mark.skip</code> and <code>xfail</code>, and autouse fixtures, do work.</p>
+<h3 id="hardware-and-dependency-requirements">Hardware and dependency requirements</h3>
+<p>Some tests must run CPU-only, others on CPU or GPU, others only with several GPUs or with an optional library. <code>testing_utils.py</code> provides <strong>skip decorators</strong> for this. Each one marks the test as skipped, not failed, when the machine doesn't meet the requirement, so a laptop and an 8-GPU CI runner can run the same suite. These are all of them:</p>
+<table>
+<thead>
+<tr>
+<th>Decorator</th>
+<th>Runs when</th>
+<th>Skip message</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>@require_torch</code></td>
+<td><code>torch</code> imports</td>
+<td>test requires PyTorch</td>
+</tr>
+<tr>
+<td><code>@require_torch_no_gpus</code></td>
+<td>torch sees 0 GPUs</td>
+<td>test requires an environment w/o GPUs</td>
+</tr>
+<tr>
+<td><code>@require_torch_gpu</code></td>
+<td><code>torch.cuda.is_available()</code> (≥1 GPU)</td>
+<td>test requires CUDA</td>
+</tr>
+<tr>
+<td><code>@require_torch_multi_gpu</code></td>
+<td>≥2 GPUs</td>
+<td>test requires multiple GPUs</td>
+</tr>
+<tr>
+<td><code>@require_torch_non_multi_gpu</code></td>
+<td>0 or 1 GPU</td>
+<td>test requires 0 or 1 GPU</td>
+</tr>
+<tr>
+<td><code>@require_torch_up_to_2_gpus</code></td>
+<td>0, 1 or 2 GPUs</td>
+<td>test requires 0 or 1 or 2 GPUs</td>
+</tr>
+<tr>
+<td><code>@require_torch_bf16</code></td>
+<td>CUDA GPU with compute capability ≥8 (Ampere+), CUDA ≥11, torch ≥1.9</td>
+<td>test requires CUDA hardware supporting bf16 and PyTorch &gt;= 1.9</td>
+</tr>
+<tr>
+<td><code>@require_deepspeed</code></td>
+<td><code>deepspeed</code> is importable</td>
+<td>test requires deepspeed</td>
+</tr>
+<tr>
+<td><code>@require_bnb</code></td>
+<td><code>bitsandbytes</code> is importable</td>
+<td>test requires bitsandbytes ...</td>
+</tr>
+<tr>
+<td><code>require_bnb_non_decorator()</code></td>
+<td>call it inside a test. It raises <code>SkipTest</code> if <code>bitsandbytes</code> is missing</td>
+<td>same</td>
+</tr>
+</tbody>
+</table>
+<p>As a GPU-count table:</p>
+<table>
+<thead>
+<tr>
+<th>n gpus</th>
+<th>decorator</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>== 0</code></td>
+<td><code>@require_torch_no_gpus</code></td>
+</tr>
+<tr>
+<td><code>&gt;= 0</code></td>
+<td><code>@require_torch</code></td>
+</tr>
+<tr>
+<td><code>&gt;= 1</code></td>
+<td><code>@require_torch_gpu</code></td>
+</tr>
+<tr>
+<td><code>&gt;= 2</code></td>
+<td><code>@require_torch_multi_gpu</code></td>
+</tr>
+<tr>
+<td><code>&lt; 2</code></td>
+<td><code>@require_torch_non_multi_gpu</code></td>
+</tr>
+<tr>
+<td><code>&lt; 3</code></td>
+<td><code>@require_torch_up_to_2_gpus</code></td>
+</tr>
+</tbody>
+</table>
+<p>There's no TPU decorator. All GPU checks use <code>torch.cuda</code>, so they count CUDA (and ROCm builds of PyTorch, which reuse the <code>torch.cuda</code> API) devices only. The decision is made <strong>once, at import time</strong>, from what's visible then. That's why <code>CUDA_VISIBLE_DEVICES</code> must be set before <code>pytest</code> starts.</p>
+<p><strong>[ran]</strong>, every decorator on a CPU-only laptop:</p>
+<pre><code class="language-python"># test_helpers.py (first part)
+from testing_utils import (require_bnb, require_deepspeed, require_torch, require_torch_bf16,
+    require_torch_gpu, require_torch_multi_gpu, require_torch_no_gpus,
+    require_torch_non_multi_gpu, require_torch_up_to_2_gpus, torch_device, get_gpu_count)
+
+@require_torch
+def test_require_torch(): pass
+
+@require_torch_no_gpus
+def test_require_torch_no_gpus(): pass
+
+@require_torch_gpu
+def test_require_torch_gpu(): pass
+
+@require_torch_multi_gpu
+def test_require_torch_multi_gpu(): pass
+
+@require_torch_non_multi_gpu
+def test_require_torch_non_multi_gpu(): pass
+
+@require_torch_up_to_2_gpus
+def test_require_torch_up_to_2_gpus(): pass
+
+@require_torch_bf16
+def test_require_torch_bf16(): pass
+
+@require_deepspeed
+def test_require_deepspeed(): pass
+
+@require_bnb
+def test_require_bnb(): pass
+
+
+def test_device_and_count():
+    print(f&quot;torch_device={torch_device} get_gpu_count()={get_gpu_count()}&quot;)
+</code></pre>
+<pre><code class="language-text">$ pytest -rA test_helpers.py
+[...]
+PASSED test_helpers.py::test_require_torch
+PASSED test_helpers.py::test_require_torch_no_gpus
+PASSED test_helpers.py::test_require_torch_non_multi_gpu
+PASSED test_helpers.py::test_require_torch_up_to_2_gpus
+PASSED test_helpers.py::test_device_and_count
+[...]
+SKIPPED [1] .../_pytest/unittest.py:521: test requires CUDA
+SKIPPED [1] .../_pytest/unittest.py:521: test requires multiple GPUs
+SKIPPED [1] .../_pytest/unittest.py:521: test requires CUDA hardware supporting bf16 and PyTorch &gt;= 1.9
+SKIPPED [1] .../_pytest/unittest.py:521: test requires deepspeed
+SKIPPED [1] .../_pytest/unittest.py:521: test requires bitsandbytes from https://github.com/facebookresearch/bitsandbytes
+$ pytest -q -s test_helpers.py -k device
+torch_device=cpu get_gpu_count()=0
+</code></pre>
+<p>How to read it: every <code>SKIPPED</code> line carries the decorator's reason. The file path in it points at pytest's internals, not your test, because the decorators use <code>unittest.skip</code>. Use <code>-rs</code> to see the reasons in any run. A suite that skips everything on CI looks exactly like a suite that passes, so check the skip count. Inside a test, <code>get_gpu_count()</code> gives the number of GPUs and <code>torch_device</code> a ready-made device string.</p>
+<p>To run only one category, put it in the test names and select with <code>-k</code>, e.g. <code>pytest -sv ./tests -k &quot;multi_gpu&quot;</code>. That's the convention the module's docstrings suggest.</p>
+<p><strong>Stacking.</strong> A <code>require_*</code> decorator stacks with other decorators:</p>
+<pre><code class="language-python">from testing_utils import require_torch_gpu
+
+@require_torch_gpu
+@some_other_decorator
+def test_example_slow_on_gpu():
+    ...
+</code></pre>
+<p><strong>Order matters with <code>@parameterized.expand</code>.</strong> <code>parameterized</code> (next section) rewrites a test into several new tests with new names. If a <code>require_*</code> decorator sits above it, it wraps the placeholder <code>parameterized</code> leaves behind, and the generated tests are not skipped. <strong>List <code>require_*</code> last, right above the function.</strong> <strong>[ran]</strong>, on a 0-GPU machine:</p>
+<pre><code class="language-python"># test_order.py -- does a skip decorator survive @parameterized.expand?
+import unittest
+from parameterized import parameterized
+from testing_utils import require_torch_multi_gpu  # skips: this machine has 0 GPUs
+
+
+class OrderTest(unittest.TestCase):
+    @parameterized.expand([(1,), (2,)])
+    @require_torch_multi_gpu            # require_* listed LAST (closest to the function)
+    def test_right_order(self, x):
+        pass
+
+    @require_torch_multi_gpu            # require_* listed FIRST
+    @parameterized.expand([(1,), (2,)])
+    def test_wrong_order(self, x):
+        pass
+</code></pre>
+<pre><code class="language-text">$ pytest -rA test_order.py
+[...]
+PASSED test_order.py::OrderTest::test_wrong_order_0
+PASSED test_order.py::OrderTest::test_wrong_order_1
+SKIPPED [2] .../unittest/case.py:163: test requires multiple GPUs
+SKIPPED [1] .:0: test requires multiple GPUs
+========================= 2 passed, 3 skipped in 0.42s =========================
+</code></pre>
+<p>How to read it: the two <code>test_right_order_*</code> cases were correctly skipped (<code>SKIPPED [2]</code>). The two <code>test_wrong_order_*</code> cases <strong>ran and passed on a machine with no GPUs</strong>. On a real suite they would fail with CUDA errors, or worse, pass vacuously. The stray <code>SKIPPED [1] .:0:</code> is the leftover placeholder.</p>
+<p>With <code>@pytest.mark.parametrize</code> on plain functions (not <code>TestCase</code> methods), the order doesn't matter. Both orders gave <code>4 skipped</code> in the same experiment.</p>
+<h3 id="parametrization">Parametrization</h3>
+<p>Often you want to run the same test several times with different arguments. A loop inside the test would do it, but then you can't run the test for just one set of arguments, and the first failing case hides the rest. Parametrization generates a separate test per argument set.</p>
+<p>With the <a href="https://pypi.org/project/parameterized/">parameterized</a> package, which works for both <code>unittest</code> and <code>pytest</code> tests:</p>
+<pre><code class="language-python"># test_this1.py
+import math
+import unittest
+from parameterized import parameterized
+
+
+class TestMathUnitTest(unittest.TestCase):
+    @parameterized.expand(
+        [
+            (&quot;negative&quot;, -1.5, -2.0),
+            (&quot;integer&quot;, 1, 1.0),
+            (&quot;large fraction&quot;, 1.6, 1),
+        ]
+    )
+    def test_floor(self, name, input, expected):
+        self.assertEqual(math.floor(input), expected)
+</code></pre>
+<p>This runs three times, each time with the last three arguments of <code>test_floor</code> taken from one tuple. Each sub-test gets its own node id, built from the index and the first parameter. <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest test_this1.py --collect-only -q
+test_this1.py::TestMathUnitTest::test_floor_0_negative
+test_this1.py::TestMathUnitTest::test_floor_1_integer
+test_this1.py::TestMathUnitTest::test_floor_2_large_fraction
+
+$ pytest -q -k &quot;negative or integer&quot; test_this1.py      # just those two sets
+2 passed, 1 deselected in 0.00s
+$ pytest -q -k &quot;not negative&quot; test_this1.py             # all but negative
+2 passed, 1 deselected in 0.00s
+$ pytest -q test_this1.py::TestMathUnitTest::test_floor_0_negative test_this1.py::TestMathUnitTest::test_floor_1_integer
+2 passed in 0.00s
+</code></pre>
+<p>By default <code>parameterized</code> puts only the first parameter in the name, and for non-string first parameters just the index. <code>testing_utils.parameterized_custom_name_func_join_params</code> joins all parameters into the name instead. <strong>[ran]</strong>:</p>
+<pre><code class="language-python"># test_names.py -- default vs custom sub-test names with parameterized
+import unittest
+from parameterized import parameterized
+from testing_utils import parameterized_custom_name_func_join_params
+
+PARAMS = [(0, True), (0, False), (1, True)]
+
+
+class NamesTest(unittest.TestCase):
+    @parameterized.expand(PARAMS)
+    def test_default_names(self, num_workers, pad_dataset):
+        pass
+
+    @parameterized.expand(PARAMS, name_func=parameterized_custom_name_func_join_params)
+    def test_determinism_wrt_rank(self, num_workers, pad_dataset):
+        pass
+</code></pre>
+<pre><code class="language-text">$ pytest --collect-only -q test_names.py
+test_names.py::NamesTest::test_default_names_0
+test_names.py::NamesTest::test_default_names_1
+test_names.py::NamesTest::test_default_names_2
+test_names.py::NamesTest::test_determinism_wrt_rank_0_False
+test_names.py::NamesTest::test_determinism_wrt_rank_0_True
+test_names.py::NamesTest::test_determinism_wrt_rank_1_True
+</code></pre>
+<p>Now <code>-k &quot;1_True&quot;</code> selects exactly the <code>num_workers=1, pad_dataset=True</code> case. (The module's docstring claims lowercase <code>_0_true</code>. The real names keep Python's <code>True</code>/<code>False</code>.)</p>
+<p>For tests that are not <code>unittest</code> classes you can use <code>pytest</code>'s own <code>parametrize</code> marker:</p>
+<pre><code class="language-python"># test_this2.py
+import math
+import pytest
+
+
+@pytest.mark.parametrize(
+    &quot;name, input, expected&quot;,
+    [
+        (&quot;negative&quot;, -1.5, -2.0),
+        (&quot;integer&quot;, 1, 1.0),
+        (&quot;large fraction&quot;, 1.6, 1),
+    ],
+)
+def test_floor(name, input, expected):
+    assert math.floor(input) == expected
+</code></pre>
+<p>It names sub-tests differently, by joining all parameter values with <code>-</code> in square brackets. <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest test_this2.py --collect-only -q
+test_this2.py::test_floor[negative--1.5--2.0]
+test_this2.py::test_floor[integer-1-1.0]
+test_this2.py::test_floor[large fraction-1.6-1]
+
+$ pytest -q 'test_this2.py::test_floor[negative--1.5--2.0]' 'test_this2.py::test_floor[integer-1-1.0]'
+2 passed in 0.00s
+</code></pre>
+<p><strong>Quote these ids.</strong> In zsh (the macOS default) <code>[...]</code> is a filename pattern, and unquoted ids fail before <code>pytest</code> even starts <strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest -q test_this2.py::test_floor[integer-1-1.0]
+zsh:1: no matches found: test_this2.py::test_floor[integer-1-1.0]
+</code></pre>
+<p><code>-k</code> works here too, as in the previous example. Pass <code>ids=[...]</code> to <code>parametrize</code> for readable names.</p>
+<h3 id="files-and-directories">Files and directories</h3>
+<p>Tests often need paths relative to the test file, for example to load a fixture file from <code>tests/data</code>. That's harder than it looks, because the test can be invoked from different working directories and can sit in sub-directories at different depths. <code>testing_utils.TestCasePlus</code>, a subclass of <code>unittest.TestCase</code>, works out the basic paths in <code>setUp()</code> and exposes them as properties:</p>
+<ul>
+<li><code>pathlib.Path</code> objects, all fully resolved:
+<ul>
+<li><code>test_file_path</code>: the current test file, i.e. <code>__file__</code></li>
+<li><code>test_file_dir</code>: the directory containing the current test file</li>
+<li><code>tests_dir</code>: the <code>tests</code> directory of the test suite</li>
+<li><code>data_dir</code>: <code>tests/test_data</code></li>
+<li><code>repo_root_dir</code>: the repository root</li>
+<li><code>src_dir</code>: where the package sub-directory lives (here, the same as <code>repo_root_dir</code>)</li>
+</ul>
+</li>
+<li>the same as strings: <code>test_file_path_str</code>, <code>test_file_dir_str</code>, <code>tests_dir_str</code>, <code>data_dir_str</code>, <code>repo_root_dir_str</code>, <code>src_dir_str</code></li>
+</ul>
+<p>To use them, make your test class a subclass of <code>TestCasePlus</code>:</p>
+<pre><code class="language-python">from testing_utils import TestCasePlus
+
+
+class PathExampleTest(TestCasePlus):
+    def test_something_involving_local_locations(self):
+        data_dir = self.tests_dir / &quot;fixtures/tests_samples/wmt_en_ro&quot;
+
+    def test_something_involving_stringified_locations(self):
+        tests_dir = self.tests_dir_str      # or str(self.tests_dir)
+</code></pre>
+<p><strong>How the repo root is found, and how it goes wrong.</strong> <code>setUp()</code> walks up 1, 2 and 3 levels from the test file, looking for a directory containing both <code>m4/</code> and <code>tests/</code>. That's the layout of the project this copy came from. If it finds none, it doesn't raise. It keeps the last candidate, three levels up. <strong>[ran]</strong>, in a repo <code>/tmp/absorb-testing/proj</code> laid out as <code>tests/test_paths.py</code> + <code>mypkg/</code>:</p>
+<pre><code class="language-python"># tests/test_paths.py (first test)
+from testing_utils import TestCasePlus
+
+
+class PathExampleTest(TestCasePlus):
+    def test_show_paths(self):
+        for name in [&quot;test_file_path&quot;, &quot;test_file_dir&quot;, &quot;tests_dir&quot;, &quot;data_dir&quot;, &quot;repo_root_dir&quot;, &quot;src_dir&quot;]:
+            print(f&quot;{name:15} {getattr(self, name)}&quot;)
+        print(&quot;PYTHONPATH     &quot;, self.get_env()[&quot;PYTHONPATH&quot;])
+</code></pre>
+<pre><code class="language-text">$ pytest -q -s tests/test_paths.py::PathExampleTest::test_show_paths
+test_file_path  /private/tmp/absorb-testing/proj/tests/test_paths.py
+test_file_dir   /private/tmp/absorb-testing/proj/tests
+tests_dir       /private/tmp/tests
+data_dir        /private/tmp/tests/test_data
+repo_root_dir   /private/tmp
+src_dir         /private/tmp
+PYTHONPATH      /private/tmp:/private/tmp/tests:
+</code></pre>
+<p><code>repo_root_dir</code> is <code>/tmp</code>, which is wrong. With an (empty) <code>m4/</code> directory added to the repo, the same test prints <code>repo_root_dir /private/tmp/absorb-testing/proj</code> and <code>tests_dir /private/tmp/absorb-testing/proj/tests</code>. When you adopt <code>TestCasePlus</code>, change the <code>&quot;m4&quot;</code> in <code>setUp()</code> to your package directory name (and <code>_src_dir</code> to <code>repo_root / &quot;src&quot;</code> if you use a <code>src/</code> layout). Then assert <code>repo_root_dir</code> once in a test, so a layout change can't silently move it.</p>
+<h4 id="temporary-files-and-directories">Temporary files and directories</h4>
+<p>Parallel tests need unique temporary files and directories, or they overwrite each other's data. Tests should also delete what they create. The <code>tempfile</code> module covers both. When you're debugging a test, though, you want the opposite: a fixed, known path whose contents you can inspect after the test, and that starts empty so a previous run's leftovers don't fool you. <code>TestCasePlus.get_auto_remove_tmp_dir()</code> handles both cases:</p>
+<pre><code class="language-python">from testing_utils import TestCasePlus
+
+
+class ExamplesTests(TestCasePlus):
+    def test_whatever(self):
+        tmp_dir = self.get_auto_remove_tmp_dir()
+</code></pre>
+<ul>
+<li><strong>Unique temp dir</strong>, <code>self.get_auto_remove_tmp_dir()</code>: creates a fresh directory (via <code>tempfile.mkdtemp()</code>) and returns its path. It's deleted at the end of the test.</li>
+<li><strong>Dir of your choice</strong>, <code>self.get_auto_remove_tmp_dir(&quot;./xxx&quot;)</code>: emptied before the test starts if it exists, and left intact after the test. Use it when you want to watch a specific directory and be sure earlier tests left nothing in it.</li>
+<li><strong>Override either default</strong> with the <code>before</code> and <code>after</code> arguments:
+<ul>
+<li><code>before=True</code>: the directory is always emptied at the start of the test.</li>
+<li><code>before=False</code>: if it already exists, existing files stay.</li>
+<li><code>after=True</code>: the directory is always deleted at the end of the test.</li>
+<li><code>after=False</code>: the directory is always left intact at the end of the test.</li>
+</ul>
+</li>
+<li><code>self.get_auto_remove_tmp_dir_str(...)</code> returns a string instead of a <code>Path</code>.</li>
+</ul>
+<p>Two safety rules. Deleting is <code>shutil.rmtree</code>, the equivalent of <code>rm -r</code>, so an explicit <code>tmp_dir</code> <strong>must be a relative path starting with <code>./</code></strong>. Anything else raises, so a typo can't wipe <code>/tmp</code> or your home directory. Note that <code>./</code> is relative to the current working directory, not the repo, and the check is only that prefix: <code>./../..</code> would pass, so don't rely on it beyond typos. Second, a test can register several temporary directories, and all of them are removed in <code>tearDown()</code> unless requested otherwise. If you override <code>tearDown()</code>, call <code>super().tearDown()</code> or the directories leak.</p>
+<p><strong>[ran]</strong>:</p>
+<pre><code class="language-python"># tests/test_paths.py (continued: more methods of PathExampleTest; the file also does
+# `import os` and `from pathlib import Path` at the top)
+    def test_auto_tmp_dir(self):
+        tmp_dir = self.get_auto_remove_tmp_dir()        # unique, deleted after the test
+        (tmp_dir / &quot;ckpt.bin&quot;).write_bytes(b&quot;\0&quot; * 10)
+        print(&quot;auto:&quot;, tmp_dir, os.listdir(tmp_dir))
+        Path(&quot;/tmp/absorb-testing/last_auto_tmp&quot;).write_text(str(tmp_dir))
+
+    def test_debug_tmp_dir(self):
+        tmp_dir = self.get_auto_remove_tmp_dir(&quot;./xxx&quot;)  # fixed, emptied first, kept after
+        print(&quot;debug:&quot;, tmp_dir, &quot;contents at start:&quot;, os.listdir(tmp_dir))
+        (tmp_dir / &quot;out.txt&quot;).write_text(&quot;look at me after the test&quot;)
+
+    def test_refuses_absolute_path(self):
+        with self.assertRaises(ValueError) as cm:
+            self.get_auto_remove_tmp_dir(&quot;/tmp/important&quot;)
+        print(cm.exception)
+</code></pre>
+<pre><code class="language-text">$ pytest -q -s tests/test_paths.py
+auto: /var/folders/l2/lk9_ptv52zjbqdh24y4c64s00000gn/T/tmp7wvdyujq ['ckpt.bin']
+.debug: /private/tmp/absorb-testing/proj/xxx contents at start: []
+.`tmp_dir` can only be a relative path, i.e. `./some/path`, but received `/tmp/important`
+[...]
+4 passed in 0.43s
+$ test -e &quot;$(cat /tmp/absorb-testing/last_auto_tmp)&quot; &amp;&amp; echo yes || echo no
+no
+$ ls xxx
+out.txt
+$ pytest -q -s tests/test_paths.py::PathExampleTest::test_debug_tmp_dir | head -1
+debug: /private/tmp/absorb-testing/proj/xxx contents at start: []
+</code></pre>
+<p>How to read it: the auto directory existed during the test and was gone afterwards (<code>no</code>). <code>./xxx</code> survived the test with <code>out.txt</code> in it, and the second run found it empty again at the start. For plain <code>pytest</code> functions, the built-in <code>tmp_path</code> fixture gives the same unique-and-cleaned-up behaviour.</p>
+<h4 id="temporary-syspath-override">Temporary sys.path override</h4>
+<p><code>sys.path</code> is the list of directories Python searches on <code>import</code>. To import from another test file or a helper directory for one block, without leaving the path modified for every other test, use the <code>ExtendSysPath</code> context manager. It inserts the path at the front and removes it on exit, even on an exception:</p>
+<pre><code class="language-python">import os
+from testing_utils import ExtendSysPath
+
+bindir = os.path.abspath(os.path.dirname(__file__))
+with ExtendSysPath(f&quot;{bindir}/..&quot;):
+    from test_trainer import TrainerIntegrationCommon  # noqa
+</code></pre>
+<p><strong>[ran]</strong> (passes), with a <code>helpers/shared_checks.py</code> next to the test:</p>
+<pre><code class="language-python">from testing_utils import ExtendSysPath, get_tests_dir
+
+def test_extend_sys_path():
+    with ExtendSysPath(os.path.join(get_tests_dir(), &quot;helpers&quot;)):
+        from shared_checks import common_check
+    assert common_check() == &quot;imported from a sibling directory&quot;
+    assert not any(p.endswith(&quot;helpers&quot;) for p in sys.path)   # removed again on exit
+</code></pre>
+<p><code>get_tests_dir(append_path=None)</code> returns the absolute directory of the <em>calling</em> file (it looks at the caller's <code>__file__</code>), optionally joined with <code>append_path</code>. It's the function-level version of <code>TestCasePlus.test_file_dir</code>. The imported module stays in <code>sys.modules</code> after the block, so later imports of the same name get it from there.</p>
+<h3 id="skipping-tests">Skipping tests</h3>
+<p>Skipping is useful when you have found a bug and written a test for it, but the bug isn't fixed yet. To commit the test to the main branch, it has to be skipped (or marked as expected to fail) during <code>make test</code>. There are two mechanisms:</p>
+<ul>
+<li>A <strong>skip</strong> means the test is expected to pass only under some conditions, otherwise it shouldn't run at all. Examples are Windows-only tests on Linux, or tests that need an external resource that's currently unavailable (a database, a GPU).</li>
+<li>An <strong>xfail</strong> means the test is expected to fail, for example a feature not yet implemented or a bug not yet fixed. If an xfail test passes anyway, it's reported as an <strong>xpass</strong>.</li>
+</ul>
+<p>The important difference: <code>skip</code> doesn't run the test and <code>xfail</code> does. If the buggy code leaves bad state behind that affects other tests (a hung CUDA context, a half-written file, a modified global), use <code>skip</code>, not <code>xfail</code>.</p>
+<p>Here is every variant in one file. <strong>[ran]</strong>:</p>
+<pre><code class="language-python"># test_skips.py -- every skip/xfail variant from this chapter, run on one machine
+import sys
+import unittest
+import pytest
+
+torch = pytest.importorskip(&quot;torch&quot;, minversion=&quot;2.0&quot;)   # skip the whole file if torch is missing/too old
+torch_device = &quot;cuda&quot; if torch.cuda.is_available() else &quot;cpu&quot;
+
+
+def has_something():
+    return False
+
+
+@unittest.skip(&quot;this bug needs to be fixed&quot;)                 # unconditional, unittest style
+def test_skip_unittest_style():
+    pass
+
+
+@pytest.mark.skip(reason=&quot;this bug needs to be fixed&quot;)       # unconditional, pytest style
+def test_skip_pytest_style():
+    pass
+
+
+@pytest.mark.xfail
+def test_xfail_still_broken():
+    assert 1 + 1 == 3
+
+
+@pytest.mark.xfail
+def test_xfail_but_passes():           # becomes XPASS
+    assert 1 + 1 == 2
+
+
+@pytest.mark.xfail(strict=True)
+def test_xfail_strict_but_passes():    # strict: an unexpected pass is a FAILURE
+    assert 1 + 1 == 2
+
+
+def test_skip_from_inside():           # decide at run time, inside the test
+    if not has_something():
+        pytest.skip(&quot;unsupported configuration&quot;)
+
+
+def test_xfail_from_inside():
+    pytest.xfail(&quot;expected to fail until bug XYZ is fixed&quot;)
+
+
+@pytest.mark.skipif(sys.version_info &lt; (3, 10), reason=&quot;requires python3.10 or higher&quot;)
+def test_skipif_python():
+    pass
+
+
+@unittest.skipIf(torch_device == &quot;cpu&quot;, &quot;Can't do half precision&quot;)
+def test_skipif_device():
+    pass
+
+
+@pytest.mark.skipif(sys.platform == &quot;darwin&quot;, reason=&quot;does not run on macOS&quot;)
+class TestClass:
+    def test_feature_x(self):
+        pass
+</code></pre>
+<pre><code class="language-text">$ pytest -rA test_skips.py test_flagged.py
+[...]
+PASSED test_skips.py::test_skipif_python
+SKIPPED [1] .../_pytest/unittest.py:521: this bug needs to be fixed
+SKIPPED [1] test_skips.py:19: this bug needs to be fixed
+SKIPPED [1] test_skips.py:41: unsupported configuration
+SKIPPED [1] .../_pytest/unittest.py:521: Can't do half precision
+SKIPPED [1] test_skips.py:60: does not run on macOS
+SKIPPED [1] test_flagged.py:11: --custom-flag is missing, skipping tests
+SKIPPED [1] test_flagged.py:15: --custom-flag is missing, skipping tests
+XFAIL test_skips.py::test_xfail_still_broken
+XFAIL test_skips.py::test_xfail_from_inside - expected to fail until bug XYZ is fixed
+XPASS test_skips.py::test_xfail_but_passes
+FAILED test_skips.py::test_xfail_strict_but_passes - [XPASS(strict)]
+========= 1 failed, 1 passed, 7 skipped, 2 xfailed, 1 xpassed in 0.41s =========
+</code></pre>
+<p>How to read it:</p>
+<ul>
+<li>
+<p>A plain <code>xfail</code> that starts passing is only an <code>XPASS</code> line, and the run stays green. Nobody notices that the bug got fixed and the marker should go. <code>strict=True</code> turns that into a failure. Set <code>xfail_strict = true</code> in your config to make it the default.</p>
+</li>
+<li>
+<p><code>pytest.importorskip(&quot;torch&quot;, minversion=&quot;2.0&quot;)</code> at module level skips <strong>every test in the file</strong> if the import fails or the version is too low (<code>docutils = pytest.importorskip(&quot;docutils&quot;, minversion=&quot;0.3&quot;)</code> is the classic example). It also returns the module.</p>
+</li>
+<li>
+<p><code>torch_device</code> in the <code>skipIf</code> example is the same string that <code>testing_utils.torch_device</code> provides.</p>
+</li>
+<li>
+<p>A <code>skipif</code> on a class skips every test in the class. To skip every test <strong>in a file</strong> with one condition, assign the marker to a module-level <code>pytestmark</code> variable. <strong>[ran]</strong>:</p>
+<pre><code class="language-python">import sys
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == &quot;darwin&quot;, reason=&quot;does not run on macOS&quot;)
+# ... every test below is skipped on macOS (2 skipped in the run)
+</code></pre>
+</li>
+</ul>
+<p><strong>Skipping a whole module unless a command-line flag is given.</strong> Older material used <code>pytest.config.getoption(...)</code> at module level. <code>pytest.config</code> was removed in pytest 4.0, so use an autouse fixture. <code>scope=&quot;module&quot;</code> runs the fixture once per test file, <code>autouse=True</code> applies it to every test without them asking for it, and <code>pytestconfig</code> is a built-in fixture that gives access to command-line options. The option itself has to be registered with the <code>pytest_addoption</code> hook in a <code>conftest.py</code>:</p>
+<pre><code class="language-python"># conftest.py -- registers --custom-flag so test_flagged.py can check it
+def pytest_addoption(parser):
+    parser.addoption(&quot;--custom-flag&quot;, action=&quot;store_true&quot;, default=False, help=&quot;run the flagged tests&quot;)
+</code></pre>
+<pre><code class="language-python"># test_flagged.py -- the whole file is skipped unless --custom-flag is given
+import pytest
+
+
+@pytest.fixture(scope=&quot;module&quot;, autouse=True)
+def _require_custom_flag(pytestconfig):
+    if not pytestconfig.getoption(&quot;--custom-flag&quot;):
+        pytest.skip(&quot;--custom-flag is missing, skipping tests&quot;)
+
+
+def test_one():
+    pass
+
+
+def test_two():
+    pass
+</code></pre>
+<p>Without the flag, both tests are skipped (the two <code>test_flagged.py</code> lines above). With <code>pytest -q --custom-flag test_flagged.py</code> you get <code>2 passed</code>. This is how &quot;slow&quot; or &quot;needs-network&quot; suites are gated. Hugging Face Transformers uses an environment variable for the same job, <code>RUN_SLOW=1</code>, read by its <code>@slow</code> decorator.</p>
+<p>More details, examples and ways to skip are in the <a href="https://docs.pytest.org/en/stable/how-to/skipping.html">pytest skipping docs</a>.</p>
+<h3 id="capturing-outputs">Capturing outputs</h3>
+<h4 id="capturing-the-stdoutstderr-output">Capturing the stdout/stderr output</h4>
+<p>To test functions that write to <code>stdout</code> or <code>stderr</code>, a plain <code>pytest</code> test can request the <a href="https://docs.pytest.org/en/stable/how-to/capture-stdout-stderr.html"><code>capsys</code> fixture</a> by naming it as an argument. All examples in this section are from one file. <strong>[ran]</strong> (<code>10 passed</code>):</p>
+<pre><code class="language-python"># test_capture.py (part 1)
+import sys
+
+
+def print_to_stdout(s):
+    print(s)
+
+
+def print_to_stderr(s):
+    sys.stderr.write(s)
+
+
+def test_capsys(capsys):
+    msg = &quot;Hello&quot;
+    print_to_stdout(msg)
+    print_to_stderr(msg)
+    out, err = capsys.readouterr()  # consume the captured output streams
+    sys.stdout.write(out)           # optional: replay the consumed streams
+    sys.stderr.write(err)
+    assert msg in out
+    assert msg in err
+</code></pre>
+<p><code>readouterr()</code> returns what has been written so far and resets the capture, so a second call only sees new output.</p>
+<p>Error text usually arrives as an exception rather than on <code>stderr</code>. Catch it and check the message. Write the test so that &quot;no exception at all&quot; also fails:</p>
+<pre><code class="language-python">def raise_exception(msg):
+    raise ValueError(msg)
+
+
+def test_exception_message():
+    msg = &quot;Not a good value&quot;
+    try:
+        raise_exception(msg)
+    except Exception as e:
+        assert msg in str(e), f&quot;{msg} is not in the exception:\n{e}&quot;
+    else:
+        raise AssertionError(&quot;no exception raised&quot;)
+</code></pre>
+<p>The idiomatic <code>pytest</code> form is <code>with pytest.raises(ValueError, match=&quot;Not a good value&quot;): raise_exception(msg)</code>. In <code>unittest</code>, use <code>with self.assertRaises(ValueError) as cm:</code>.</p>
+<p>Another way to capture stdout, which works anywhere (including <code>unittest</code> methods), is <code>contextlib.redirect_stdout</code>:</p>
+<pre><code class="language-python">import sys
+from io import StringIO
+from contextlib import redirect_stdout
+
+
+def test_result_and_stdout():
+    msg = &quot;Hello&quot;
+    buffer = StringIO()
+    with redirect_stdout(buffer):
+        print_to_stdout(msg)
+    out = buffer.getvalue()
+    sys.stdout.write(out)           # optional: replay the consumed stream
+    assert msg in out
+</code></pre>
+<p><strong>Carriage returns.</strong> Progress bars redraw a line by printing <code>\r</code>, which moves the cursor back to the start of the line on a terminal. The captured buffer isn't a terminal, so it contains <strong>every</strong> intermediate state. <strong>[ran]</strong>:</p>
+<pre><code class="language-python">import re
+
+
+def progress_bar_then_result():
+    for pct in (10, 50, 100):
+        print(f&quot;progress {pct}%&quot;, end=&quot;\r&quot;)
+    print(&quot;final message&quot;)
+
+
+def test_raw_capture_with_carriage_returns(capsys):
+    progress_bar_then_result()
+    out, _ = capsys.readouterr()
+    print(repr(out), file=sys.stderr)
+    assert re.sub(r&quot;^.*\r&quot;, &quot;&quot;, out, flags=re.M) == &quot;final message\n&quot;
+</code></pre>
+<pre><code class="language-text">----------------------------- Captured stderr call -----------------------------
+'progress 10%\rprogress 50%\rprogress 100%\rfinal message\n'
+</code></pre>
+<p>So <code>out == &quot;final message\n&quot;</code> would fail. The cleanup <code>re.sub(r&quot;^.*\r&quot;, &quot;&quot;, buf, flags=re.M)</code> removes everything up to the last <code>\r</code> on each line, which leaves what a terminal would show. (Older docs said the <code>\r</code>s only show up under <code>pytest -s</code>. In this run they were in the capture both with and without <code>-s</code>, so always clean.)</p>
+<p><code>testing_utils</code> wraps that cleanup and the stream swapping into context managers that work in <code>unittest</code> and <code>pytest</code> tests alike:</p>
+<pre><code class="language-python">from testing_utils import CaptureStdout
+
+with CaptureStdout() as cs:
+    function_that_writes_to_stdout()
+print(cs.out)
+</code></pre>
+<p><strong>[ran]</strong>:</p>
+<pre><code class="language-python">from testing_utils import CaptureLogger, CaptureStd, CaptureStderr, CaptureStdout
+
+
+def test_capture_stdout_helper():
+    with CaptureStdout() as cs:
+        progress_bar_then_result()
+    assert cs.out == &quot;final message\n&quot;, f&quot;captured: {cs.out!r}&quot;   # \r states already removed
+
+
+def test_capture_stderr_and_both():
+    with CaptureStderr() as cs:
+        print(&quot;Warning: disk 91% full&quot;, file=sys.stderr)
+    assert &quot;Warning&quot; in cs.err
+    with CaptureStd(replay=False) as cs:
+        print(&quot;to stdout&quot;)
+        print(&quot;to stderr&quot;, file=sys.stderr)
+    assert cs.out == &quot;to stdout\n&quot; and cs.err == &quot;to stderr\n&quot;
+    assert cs.combined == &quot;to stdout\nto stderr\n&quot;
+</code></pre>
+<ul>
+<li><code>CaptureStdout</code> captures <code>stdout</code> into <code>cs.out</code>, with <code>\r</code> cleanup.</li>
+<li><code>CaptureStderr</code> captures <code>stderr</code> into <code>cs.err</code>. There's <strong>no</strong> <code>\r</code> cleanup on <code>err</code>, so apply <code>apply_print_resets(cs.err)</code> yourself if your progress bars write to <code>stderr</code>, as <code>tqdm</code> does by default.</li>
+<li><code>CaptureStd</code> captures both. <code>CaptureStd(out=False)</code> or <code>(err=False)</code> turns one off, but the single-stream subclasses are clearer. Capturing only the stream you're testing makes it harder to miss things.</li>
+<li><code>cs.combined</code> is <code>out</code> followed by <code>err</code>. Use it when a program sends the same message to <code>stdout</code> in one environment and to <code>stderr</code> in another. Note that it's concatenated, not interleaved in time.</li>
+<li>By default the captured streams are <strong>replayed</strong> to the real stream on exit, so the output still shows up in failure reports (and live under <code>-s</code>). Pass <code>replay=False</code> to keep it quiet.</li>
+<li>The attributes are only valid after the <code>with</code> block ends. Before that they hold an &quot;unfinished yet, called too early&quot; message.</li>
+</ul>
+<h4 id="capturing-logger-stream">Capturing logger stream</h4>
+<p>To check what a <code>logging</code> logger emitted, use <code>CaptureLogger</code>. It attaches a <code>StreamHandler</code> to that logger for the duration of the block. <strong>[ran]</strong>:</p>
+<pre><code class="language-python">import logging
+
+
+def test_capture_logger():
+    logger = logging.getLogger(&quot;mylib.trainer&quot;)
+    logger.setLevel(logging.INFO)          # the logger must let INFO through, or nothing is captured
+    msg = &quot;Testing 1, 2, 3&quot;
+    with CaptureLogger(logger) as cl:
+        logger.info(msg)
+    assert cl.out == msg + &quot;\n&quot;
+</code></pre>
+<p>With Hugging Face Transformers the equivalent is <code>from transformers import logging</code>, <code>logging.set_verbosity_info()</code>, <code>logger = logging.get_logger(&quot;transformers.models.bart.tokenization_bart&quot;)</code>, then the same <code>with CaptureLogger(logger) as cl:</code> block. Plain <code>pytest</code> tests can also use the built-in <code>caplog</code> fixture.</p>
+<h3 id="testing-with-environment-variables">Testing with environment variables</h3>
+<p>To test how code reacts to an environment variable, set it for one test only and restore it afterwards. Otherwise one test's <code>NCCL_DEBUG=INFO</code> leaks into every test after it. <code>mockenv</code> is a decorator for that, a thin wrapper around <code>unittest.mock.patch.dict(os.environ, ...)</code>. <code>mockenv_context</code> is a context manager that can also <strong>remove</strong> variables. <strong>[ran]</strong>:</p>
+<pre><code class="language-python">import os
+from testing_utils import mockenv, mockenv_context
+
+
+@mockenv(MYLIB_VERBOSITY=&quot;error&quot;)
+def test_mockenv_decorator():
+    assert os.getenv(&quot;MYLIB_VERBOSITY&quot;) == &quot;error&quot;
+
+
+def test_env_restored_afterwards():
+    assert os.getenv(&quot;MYLIB_VERBOSITY&quot;) is None
+
+
+def test_mockenv_context():
+    os.environ[&quot;KEEP_ME&quot;] = &quot;1&quot;
+    with mockenv_context(&quot;KEEP_ME&quot;, NCCL_DEBUG=&quot;INFO&quot;):      # positional = remove, keyword = set
+        assert &quot;KEEP_ME&quot; not in os.environ and os.environ[&quot;NCCL_DEBUG&quot;] == &quot;INFO&quot;
+    assert os.environ[&quot;KEEP_ME&quot;] == &quot;1&quot; and &quot;NCCL_DEBUG&quot; not in os.environ
+    del os.environ[&quot;KEEP_ME&quot;]
+</code></pre>
+<p>The same decorator works on <code>unittest</code> methods:</p>
+<pre><code class="language-python">class HfArgumentParserTest(unittest.TestCase):
+    @mockenv(TRANSFORMERS_VERBOSITY=&quot;error&quot;)
+    def test_env_override(self):
+        env_level_str = os.getenv(&quot;TRANSFORMERS_VERBOSITY&quot;, None)
+</code></pre>
+<p>Values must be strings, because <code>os.environ</code> only holds strings. To read boolean or integer flags the way the suite does, <code>parse_flag_from_env(&quot;RUN_SLOW&quot;, default=False)</code> accepts <code>yes/no/true/false/1/0/on/off</code> (and raises on anything else), and <code>parse_int_from_env(&quot;N&quot;, default=None)</code> raises on non-integers.</p>
+<p><strong>Environment for external programs.</strong> Some tests call an external program (a launcher, a training script) that must import your package and test helpers from the checkout, not from some installed copy. <code>TestCasePlus.get_env()</code> returns a <strong>copy</strong> of <code>os.environ</code> (the original stays untouched) with <code>PYTHONPATH</code> set to <code>src_dir</code>, then <code>tests_dir</code>, then whatever <code>PYTHONPATH</code> was before:</p>
+<pre><code class="language-python">from testing_utils import TestCasePlus
+
+
+class EnvExampleTest(TestCasePlus):
+    def test_external_prog(self):
+        env = self.get_env()
+        # now call the external program, passing `env` to it
+</code></pre>
+<p>The <code>test_show_paths</code> run above shows the result, and also that it's only as right as <code>repo_root_dir</code>. The old docs describe a version that picks <code>tests</code> or <code>examples</code> depending on where the test file lives. This copy always uses <code>tests</code>.</p>
+<h3 id="distributed-tests">Distributed tests</h3>
+<p><code>pytest</code> can't run distributed training directly. If a test calls something like <code>torch.multiprocessing.spawn</code> or launches workers in-process, the child processes can end up thinking they are <code>pytest</code> and start running the test suite themselves, in loops. What works is a test that starts an ordinary subprocess, <code>torchrun</code> (taught in <a href="../foundations/linux-and-os.html#how-torchrun-spawns-workers">How torchrun spawns workers</a>), which spawns the workers, while the test manages the I/O pipes and checks the result.</p>
+<p>Hugging Face Transformers tests built this way include <a href="https://github.com/huggingface/transformers/blob/58e3d23e97078f361a533b9ec4a6a2de674ea52a/tests/trainer/test_trainer_distributed.py">test_trainer_distributed.py</a> and <a href="https://github.com/huggingface/transformers/blob/58e3d23e97078f361a533b9ec4a6a2de674ea52a/tests/deepspeed/test_deepspeed.py">test_deepspeed.py</a>. To jump straight to where the processes are launched, search them for <code>execute_subprocess_async</code>, which is defined in <a href="../testing/testing_utils.py">testing_utils.py</a>. Those tests need at least 2 GPUs and are gated behind <code>RUN_SLOW</code> (<strong>untested here</strong>):</p>
+<pre><code class="language-bash">CUDA_VISIBLE_DEVICES=0,1 RUN_SLOW=1 pytest -sv tests/test_trainer_distributed.py
+</code></pre>
+<p><code>RUN_SLOW</code> is an environment variable: tests marked with Transformers' <code>@slow</code> decorator are skipped unless <code>RUN_SLOW=1</code> is set. <code>-s</code> turns off output capture, so you see the workers live, and <code>-v</code> prints one line per test with its result.</p>
+<p><code>execute_subprocess_async(cmd, env=None, stdin=None, timeout=180, quiet=False, echo=True)</code> runs <code>cmd</code> (a list), streams each line of the child's stdout and stderr to the terminal as it arrives, prefixed with <code>stdout:</code> or <code>stderr:</code>, and keeps a copy of both. It raises <code>RuntimeError</code> if the return code is non-zero (including all of stderr, so the test failure shows <em>why</em> the workers died), and also if the child produced no output at all, which catches a launcher that silently did nothing. Live streaming matters because a hanging distributed test with buffered output shows you nothing.</p>
+<p><strong>It's broken on current Python.</strong> On Python 3.14 <strong>[ran]</strong>:</p>
+<pre><code class="language-text">&gt;           raise RuntimeError('There is no current event loop in thread %r.'
+                               % threading.current_thread().name)
+E           RuntimeError: There is no current event loop in thread 'MainThread'.
+</code></pre>
+<p>and once that is worked around, the next line fails with <code>TypeError: Passing coroutines is forbidden, use tasks explicitly.</code> (enforced since Python 3.11). Here's a drop-in replacement with the same behaviour, written with <code>asyncio.run</code> and <code>asyncio.gather</code> (see <a href="../foundations/concurrency.html#asyncio">asyncio</a>). It also enforces the timeout, which the original didn't (&quot;XXX: the timeout doesn't seem to make any difference here&quot;, says its source), and kills the child on timeout so a hung collective fails the test instead of hanging CI:</p>
+<pre><code class="language-python"># run_tee.py -- execute_subprocess_async for Python 3.11+: run cmd, stream both pipes live, keep a copy
+import asyncio
+import sys
+
+
+async def _tee(stream, sink, pipe, label):
+    while line := await stream.readline():
+        line = line.decode(&quot;utf-8&quot;).rstrip()
+        sink.append(line)
+        print(label, line, file=pipe)
+
+
+async def _run(cmd, env, timeout):
+    p = await asyncio.create_subprocess_exec(*cmd, env=env,
+                                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    out, err = [], []
+    try:
+        await asyncio.wait_for(asyncio.gather(_tee(p.stdout, out, sys.stdout, &quot;stdout:&quot;),
+                                              _tee(p.stderr, err, sys.stderr, &quot;stderr:&quot;)), timeout)
+    except TimeoutError:
+        p.kill()            # a hung collective must fail the test, not hang CI
+        raise
+    return await p.wait(), out, err
+
+
+def run_and_tee(cmd, env=None, timeout=180):
+    print(&quot;\nRunning:&quot;, &quot; &quot;.join(cmd))
+    returncode, out, err = asyncio.run(_run(cmd, env, timeout))
+    if returncode != 0:
+        raise RuntimeError(f&quot;'{' '.join(cmd)}' failed with returncode {returncode}\n\n&quot;
+                           &quot;The combined stderr from workers follows:\n&quot; + &quot;\n&quot;.join(err))
+    if not out and not err:
+        raise RuntimeError(f&quot;'{' '.join(cmd)}' produced no output.&quot;)
+    return out, err
+</code></pre>
+<p>The script under test does one <code>all_reduce</code> on 2 CPU ranks with the gloo backend (see <a href="../foundations/networking.html#collective-communication-an-intuitive-introduction">collective communication</a>):</p>
+<pre><code class="language-python"># allreduce_script.py -- the program the distributed test launches (2 CPU processes, gloo backend)
+import torch
+import torch.distributed as dist
+
+dist.init_process_group(&quot;gloo&quot;)               # rank, world size, master addr/port come from torchrun's env vars
+rank = dist.get_rank()
+t = torch.tensor([rank + 1.0])                # rank 0 holds 1.0, rank 1 holds 2.0
+dist.all_reduce(t)                            # sum over ranks -&gt; 3.0 everywhere
+print(f&quot;rank {rank}: all_reduce result {t.item()}&quot;)
+assert t.item() == 3.0
+dist.destroy_process_group()
+</code></pre>
+<p>and the test:</p>
+<pre><code class="language-python"># test_distributed.py -- pytest launches a normal process, that process launches the workers
+import sys
+from pathlib import Path
+
+from run_tee import run_and_tee
+from testing_utils import get_unique_port_number
+
+
+def test_allreduce_two_ranks():
+    script = Path(__file__).parent / &quot;allreduce_script.py&quot;
+    cmd = [
+        sys.executable, &quot;-m&quot;, &quot;torch.distributed.run&quot;,   # == torchrun
+        &quot;--nproc-per-node&quot;, &quot;2&quot;,
+        &quot;--master-port&quot;, str(get_unique_port_number()),  # distinct port per xdist worker
+        str(script),
+    ]
+    out, err = run_and_tee(cmd)
+    # ranks share one pipe, so their lines can interleave mid-line: count in the joined text
+    assert &quot;\n&quot;.join(out).count(&quot;all_reduce result 3.0&quot;) == 2, out
+</code></pre>
+<p><strong>[ran]</strong>:</p>
+<pre><code class="language-text">$ pytest -sv test_distributed.py
+[...]
+Running: /private/tmp/absorb-venv/bin/python3.14 -m torch.distributed.run --nproc-per-node 2 --master-port 10999 /private/tmp/absorb-testing/demo/allreduce_script.py
+stderr: Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, [...]
+stdout: rank 0: all_reduce result 3.0
+stdout: rank 1: all_reduce result 3.0
+PASSED
+</code></pre>
+<p>Two things this example taught the hard way:</p>
+<ul>
+<li><strong>Ranks share the pipe.</strong> My first version asserted that two separate <em>lines</em> contained the result. It failed 2 times in 5 runs. The failure message showed why: <code>['rank 1: all_reduce result 3.0rank 0: all_reduce result 3.0', '']</code>. Both workers inherit the same stdout pipe from <code>torchrun</code>, and one rank's text landed before the other's newline. Count in the joined text, have each rank write to its own file, or check only rank 0's output. With the fix: 8 of 8 runs passed.</li>
+<li><strong>Ports collide under xdist.</strong> Two distributed tests on two xdist workers would both try to bind the default rendezvous port. <code>get_unique_port_number()</code> returns <code>10999 + worker index</code>. The index comes from <code>get_xdist_worker_id()</code>, which parses <code>PYTEST_XDIST_WORKER</code> (<code>gw3</code> → 3) and returns 0 when not under xdist.</li>
+</ul>
+<p>For GPU versions, wrap the test in <code>@require_torch_multi_gpu</code> and pass <code>env=self.get_env()</code> from a <code>TestCasePlus</code> so the workers import your checkout.</p>
+<h3 id="comparing-tensors">Comparing tensors</h3>
+<p><code>torch_assert_equal(actual, expected)</code> is <code>torch.testing.assert_close</code> with <code>rtol=0, atol=0</code>: bit-exact. <code>torch_assert_close(actual, expected)</code> is <code>assert_close</code> with its dtype-dependent defaults. Both also check shape, dtype, device and layout, and both accept <code>msg=...</code> to add your own text to the failure. <code>assert_close</code> passes when <span class="math inline"><span class="math-inline">|a - b| \le \text{atol} + \text{rtol} \cdot |b|</span></span> elementwise. The defaults for each dtype are in the <a href="https://docs.pytorch.org/docs/stable/testing.html#torch.testing.assert_close"><code>assert_close</code> table</a>, e.g. <code>rtol=1.6e-2, atol=1e-5</code> for bf16. <strong>[ran]</strong>:</p>
+<pre><code class="language-python">import torch
+from testing_utils import torch_assert_close, torch_assert_equal
+
+
+def test_assert_close_tolerances():
+    x = torch.tensor([1.0, 2.0], dtype=torch.bfloat16)
+    y = x + torch.tensor([0.0, 0.015625], dtype=torch.bfloat16)  # 1 bf16 ulp at 2.0 (7 stored mantissa bits: 2 * 2**-7)
+    torch_assert_close(x, y)                       # bf16 defaults: rtol=1.6e-2, atol=1e-5
+    try:
+        torch_assert_equal(x, y)
+    except AssertionError as e:
+        print(str(e).splitlines()[0])
+    else:
+        raise AssertionError(&quot;expected exact comparison to fail&quot;)
+</code></pre>
+<pre><code class="language-text">Tensor-likes are not equal!
+</code></pre>
+<p>A one-ulp difference (the gap between adjacent representable numbers, see <a href="../training/arithmetic.html#mixed-precision-internals">mixed precision internals</a>) passes the bf16 default tolerance (relative error <span class="math inline"><span class="math-inline">0.015625/2 \approx 0.78\%</span></span>, under <span class="math inline"><span class="math-inline">1.6\%</span></span>) and fails the exact check. My first attempt added <code>0.0078125</code>, half an ulp, which rounded away to nothing in bf16, so both checks passed and the test proved nothing. Print the actual difference before trusting a tolerance test. Use exact comparison for things that must be deterministic (the same seed on the same device), and tolerances for anything that crosses devices, kernels or dtypes.</p>
+<h3 id="getting-reproducible-results">Getting reproducible results</h3>
+<p><code>set_seed(seed=42)</code> seeds Python's <code>random</code>, NumPy and torch (CPU and all CUDA devices). That's enough for a CPU test to be repeatable. <strong>[ran]</strong> (passes):</p>
+<pre><code class="language-python">from testing_utils import set_seed, torch_assert_equal
+
+def test_set_seed():
+    set_seed(42); a = torch.randn(3)
+    set_seed(42); b = torch.randn(3)
+    torch_assert_equal(a, b)                       # rtol=atol=0: bit-identical
+</code></pre>
+<p>On CUDA, seeding alone is <strong>not</strong> enough. Some kernels are nondeterministic (atomics, cuBLAS workspace selection), so identical seeds can still give different results. The full recipe, <code>enforce_reproducibility(seed)</code> with <code>torch.use_deterministic_algorithms</code>, <code>CUBLAS_WORKSPACE_CONFIG</code> and DataLoader worker seeding, is in <a href="../training/fault-tolerance-and-reproducibility.html#achieve-determinism-in-randomness-based-software">Achieve determinism in randomness based software</a>. Call it from the test rather than keeping a second, incomplete copy in your suite. Remember too that a test with one fixed seed checks one draw of the RNG. <a href="#repeat-tests">Repeat it</a> or parametrize over a few seeds before calling it stable.</p>
+<h3 id="small-file-helpers">Small file helpers</h3>
+<p><code>write_file(path, content)</code>, <code>read_json_file(path)</code> and <code>replace_str_in_file(path, old, new)</code> cover the common &quot;write a config, tweak one value, read it back&quot; steps in tests that drive scripts. <strong>[ran]</strong> (passes):</p>
+<pre><code class="language-python">from testing_utils import read_json_file, replace_str_in_file, write_file
+
+def test_file_helpers(tmp_path):
+    f = tmp_path / &quot;config.json&quot;
+    write_file(f, '{&quot;lr&quot;: 3e-4, &quot;warmup&quot;: 100}')
+    replace_str_in_file(f, &quot;100&quot;, &quot;2000&quot;)
+    assert read_json_file(f) == {&quot;lr&quot;: 3e-4, &quot;warmup&quot;: 2000}
+</code></pre>
+<p><code>replace_str_in_file</code> replaces <strong>every</strong> occurrence, so pick a search string that occurs only once.</p>
+<h2 id="debugging-tests">Debugging tests</h2>
+<p>To start a debugger right where a warning is raised:</p>
+<pre><code class="language-bash">pytest tests/utils/test_logging.py -W error::UserWarning --pdb
+</code></pre>
+<p><code>-W error::UserWarning</code> turns every <code>UserWarning</code> into an exception, so the test fails at the line that raises the warning. <code>--pdb</code> then opens the Python debugger <code>pdb</code> at the point of failure, with capture turned off. <strong>[ran]</strong>, on the scheduler warning planted in <code>test_optimization.py</code>. The <code>pdb</code> commands were piped in: <code>up</code> moves one frame up from PyTorch's <code>warnings.warn</code> into the test, and <code>p</code> prints an expression.</p>
+<pre><code class="language-text">$ printf 'up\np opt.param_groups[0][&quot;lr&quot;]\nq\n' | pytest test_optimization.py -W error::UserWarning --pdb
+[...]
+E               UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`. [...]
+
+../../absorb-venv/lib/python3.14/site-packages/torch/optim/lr_scheduler.py:268: UserWarning
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; entering PDB &gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;
+
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt; PDB post_mortem (IO-capturing turned off) &gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;
+&gt; /private/tmp/absorb-venv/lib/python3.14/site-packages/torch/optim/lr_scheduler.py(268)step()
+-&gt; warnings.warn(
+(Pdb) &gt; /private/tmp/absorb-testing/demo/test_optimization.py(33)test_constant_schedule()
+-&gt; sched.step()
+(Pdb) 0.1
+(Pdb)
+
+=========================== short test summary info ============================
+FAILED test_optimization.py::SchedulerTest::test_constant_schedule - UserWarn...
+!!!!!!!!!!!!!!!!!!! _pytest.outcomes.Exit: Quitting debugger !!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 3 passed in 0.87s ==========================
+</code></pre>
+<p>How to read it: post-mortem <code>pdb</code> starts in the frame that raised, which here is inside PyTorch. One <code>up</code> lands on our line 33 (<code>sched.step()</code>), and from there the test's locals are available. The warning that was easy to ignore in the summary is now a stopped program you can inspect.</p>
+<p>Variations: <code>-W error</code> turns every warning into an error. <code>--trace</code> opens <code>pdb</code> at the start of each selected test. Put <code>breakpoint()</code> in the test or code and run with <code>-s</code> to stop at a specific line. For a failure that only happens on one rank of a multi-process run, see the rank-aware <code>pdb</code> recipes in <a href="../development/debugging-distributed.html">Debugging distributed training</a>. For inspecting tensors and tracing crashes, see <a href="../development/debugging-pytorch.html">Debugging PyTorch programs</a>.</p>
+<h2 id="a-massive-hack-to-create-multiple-pytest-reports">A massive hack to create multiple pytest reports</h2>
+<p>A <code>pytest</code> run produces one stream of output with everything mixed together: failures in three traceback styles, warnings, timings, the summary. On CI it's much easier to diagnose a run, and to view or download just the part you need, when each kind of report is in its own file. All this functionality already exists inside <code>pytest</code>, but there's no supported way to send each part somewhere else. Stas Bekman proposed adding it to <code>pytest</code> and the proposal wasn't accepted, so <code>testing_utils.py</code> does it by <strong>monkey-patching</strong>: replacing a library's functions or attributes at runtime from the outside. At the end of the run it repeatedly points the terminal reporter's writer at a different file and calls pytest's own summary functions.</p>
+<p>To enable it, add to <code>tests/conftest.py</code> (create it if needed):</p>
+<pre><code class="language-python"># tests/conftest.py
+import pytest
+
+def pytest_addoption(parser):
+    from testing_utils import pytest_addoption_shared
+
+    pytest_addoption_shared(parser)
+
+
+def pytest_terminal_summary(terminalreporter):
+    from testing_utils import pytest_terminal_summary_main
+
+    make_reports = terminalreporter.config.getoption(&quot;--make-reports&quot;)
+    if make_reports:
+        pytest_terminal_summary_main(terminalreporter, id=make_reports)
+</code></pre>
+<p><code>pytest_addoption_shared</code> registers <code>--make-reports</code> only once per process. That lets two <code>conftest.py</code> files (say <code>tests/</code> and <code>examples/</code>) both call it without <code>pytest</code> failing on a duplicate option. Then run with a report id:</p>
+<pre><code class="language-bash">pytest --make-reports=mytests tests
+</code></pre>
+<p><strong>[ran]</strong>, with pytest 9.2.0 on a suite with two failures (the coupled test run alone, and a test that sleeps 0.3 s and fails):</p>
+<pre><code class="language-text">$ pytest -p no:cacheprovider --rootdir=tests --make-reports=mytests tests/test_coupled.py::test_reads_cache tests/test_optimization.py tests/test_slow.py
+[...]
+=================== 2 failed, 4 passed, 3 warnings in 0.73s ====================
+$ ls -1 reports/mytests/
+durations.txt
+errors.txt
+failures_line.txt
+failures_long.txt
+failures_short.txt
+stats.txt
+summary_short.txt
+warnings.txt
+$ wc -l reports/mytests/*
+       3 reports/mytests/durations.txt
+       0 reports/mytests/errors.txt
+      19 reports/mytests/failures_line.txt
+      19 reports/mytests/failures_long.txt
+      17 reports/mytests/failures_short.txt
+       1 reports/mytests/stats.txt
+       7 reports/mytests/summary_short.txt
+       6 reports/mytests/warnings.txt
+$ cat reports/mytests/durations.txt
+slowest durations
+0.41s call     test_optimization.py::OptimizationTest::test_adafactor
+0.30s call     test_slow.py::test_sleepy
+16 durations &lt; 0.05 secs were omitted
+$ cat reports/mytests/summary_short.txt
+=========================== short test summary info ============================
+PASSED tests/test_optimization.py::OptimizationTest::test_adafactor
+PASSED tests/test_optimization.py::OptimizationTest::test_adam_w
+PASSED tests/test_optimization.py::OptimizationTest::test_sgd
+PASSED tests/test_optimization.py::SchedulerTest::test_constant_schedule
+FAILED tests/test_coupled.py::test_reads_cache - KeyError: 'vocab_size'
+FAILED tests/test_slow.py::test_sleepy - AssertionError: deliberately failing...
+$ cat reports/mytests/stats.txt
+==================== 2 failed, 4 passed, 1 warning in 0.73s ====================
+</code></pre>
+<p>What each file holds:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>durations.txt</code></td>
+<td>every setup/call/teardown phase that took ≥0.05 s, slowest first (like <code>--durations=0</code> without having to pass it)</td>
+</tr>
+<tr>
+<td><code>errors.txt</code></td>
+<td>errors (failures <em>outside</em> the test body, e.g. in a fixture or setup). Empty here</td>
+</tr>
+<tr>
+<td><code>failures_long.txt</code></td>
+<td>full tracebacks</td>
+</tr>
+<tr>
+<td><code>failures_short.txt</code></td>
+<td>tracebacks cut down to the last frame, under a &quot;FAILURES SHORT STACK&quot; header</td>
+</tr>
+<tr>
+<td><code>failures_line.txt</code></td>
+<td>one <code>path:line: Error</code> line per failure. In pytest 9.2 these lines come <strong>after</strong> the full traceback, so <code>grep '^/' failures_line.txt</code> gives the one-line list</td>
+</tr>
+<tr>
+<td><code>warnings.txt</code></td>
+<td>the warnings summary</td>
+</tr>
+<tr>
+<td><code>summary_short.txt</code></td>
+<td>the <code>-rA</code> style one-line-per-test summary</td>
+</tr>
+<tr>
+<td><code>stats.txt</code></td>
+<td>the final counts line</td>
+</tr>
+</tbody>
+</table>
+<p>Use a different <code>--make-reports=</code> id for each group of tests in a CI job (<code>--make-reports=tests_torch</code>, <code>--make-reports=examples</code>) so the groups don't overwrite each other's files. The code also prepares a <code>passes</code> report but never writes it, because on Hugging Face's CI it took more than 5 minutes with no terminal output and tripped the 10-minute CircleCI timeout.</p>
+<p><strong>Caveats.</strong> It uses private <code>_pytest</code> APIs (<code>create_terminal_writer</code>, <code>tr._tw</code>, <code>_getfailureheadline</code>), so a pytest release can break it. It still worked on 9.2.0 here. It also calls the terminal reporter's default methods, which other plugins can take over. pytest-instafail does that, so the failure reports may come out empty or different when <code>--instafail</code> is on. With a bare <code>--junitxml</code> you get per-test results in one file, which is more robust but not split by kind.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<p>This is the last chapter of the book's main text. With it you can:</p>
+<ul>
+<li>Read and extend the test suite of any PyTorch project, including Hugging Face Transformers' <code>tests/</code> (their <code>testing_utils.py</code> is a superset of the one here), and make your own research code testable with the &quot;overfit one batch / tiny model&quot; checks from <a href="../development/debugging-pytorch.html">Debugging PyTorch programs</a> written as fast <code>pytest</code> tests.</li>
+<li>Turn the distributed bugs from <a href="../development/debugging-distributed.html">Debugging distributed training</a> into regression tests launched through <code>torchrun</code>.</li>
+<li>Use <a href="../appendix/further-reading.html">Further reading</a> for where to go from here.</li>
+</ul>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>pytest documentation: <a href="https://docs.pytest.org/en/stable/how-to/usage.html">How to invoke pytest</a>, <a href="https://docs.pytest.org/en/stable/how-to/skipping.html">skipping and xfail</a>, <a href="https://docs.pytest.org/en/stable/how-to/capture-stdout-stderr.html">capturing stdout/stderr</a>, <a href="https://docs.pytest.org/en/stable/how-to/unittest.html">running unittest-based tests</a>, <a href="https://docs.pytest.org/en/stable/how-to/parametrize.html">parametrizing</a>, <a href="https://docs.pytest.org/en/stable/deprecations.html">deprecations and removals</a> (including <code>--pastebin</code>).</li>
+<li>Plugins used in this chapter: <a href="https://github.com/pytest-dev/pytest-xdist">pytest-xdist</a>, <a href="https://github.com/pytest-dev/pytest-instafail">pytest-instafail</a>, <a href="https://github.com/pytest-dev/pytest-random-order">pytest-random-order</a>, <a href="https://github.com/pytest-dev/pytest-randomly">pytest-randomly</a>, <a href="https://github.com/dropbox/pytest-flakefinder">pytest-flakefinder</a>, <a href="https://github.com/pytest-dev/pytest-repeat">pytest-repeat</a>, <a href="https://github.com/ESSS/pytest-replay">pytest-replay</a>, <a href="https://github.com/anapaulagomes/pytest-picked">pytest-picked</a>, <a href="https://github.com/olzhasar/pytest-watcher">pytest-watcher</a>, <a href="https://github.com/Teemu/pytest-sugar">pytest-sugar</a>, <a href="https://github.com/pytest-dev/pytest-pastebin">pytest-pastebin</a>, and the <a href="https://pypi.org/project/parameterized/">parameterized</a> package.</li>
+<li><a href="https://docs.pytorch.org/docs/stable/testing.html#torch.testing.assert_close"><code>torch.testing.assert_close</code></a> and its per-dtype tolerance table.</li>
+<li>Hugging Face Transformers' <a href="https://huggingface.co/docs/transformers/testing">testing guide</a> and its <code>src/transformers/testing_utils.py</code>, the larger relative of the module used here.</li>
+<li>Python docs: <a href="https://docs.python.org/3/library/unittest.html"><code>unittest</code></a>, <a href="https://docs.python.org/3/library/unittest.mock.html"><code>unittest.mock</code></a> (<code>patch.dict</code> is what <code>mockenv</code> wraps), <a href="https://docs.python.org/3/library/asyncio-subprocess.html"><code>asyncio</code> subprocesses</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../development/debugging-distributed.html">&larr; Debugging Distributed and Multi-Node Programs, and Performance</a><a class="next" href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

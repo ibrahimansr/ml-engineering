@@ -1,0 +1,1740 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting Compute: Clouds, Clusters and When to Upgrade - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details open><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html" class="current">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="getting-compute-clouds-clusters-and-when-to-upgrade">Getting Compute: Clouds, Clusters and When to Upgrade</h1>
+<p>Everything earlier in this book assumed you already had a machine to run on. This chapter is about getting that machine: deciding what hardware a workload needs, choosing between renting, sharing an HPC center and buying, negotiating a cloud contract that won't trap you, checking that the cluster you were given matches what you paid for, and deciding when a new GPU generation is worth paying for. Each of these is a decision worth millions of dollars, and a bad call can sink a team or a startup.</p>
+<p>Most of the hardware facts behind these decisions have their own chapters already: accelerators in <a href="../compute/accelerators.html">Accelerators</a>, networks in <a href="../network/interconnects.html">Interconnects</a>, storage in <a href="../foundations/storage-and-data.html">Storage and Data</a>, FLOP counting and MFU in <a href="../training/arithmetic.html">Training Arithmetic</a>. This chapter doesn't repeat their tables. It links to them and adds the buyer's view: which numbers to ask for, which to measure yourself, and which to write into a contract.</p>
+<p>Much of the material comes from Stas Bekman's years of training large models (BLOOM-176B, IDEFICS-80B and others) on HPC centers and on many clouds. Where something is his personal experience it is attributed to him; his recommendations are given as the chapter's recommendations.</p>
+<p><strong>What was run.</strong> The Python blocks with a file name were run with <code>python3</code> (CPython 3.14) on an Apple M4 laptop; they need nothing but the standard library, and their output is pasted verbatim. They are arithmetic on stated inputs, not benchmarks. All GPU numbers in the <a href="#when-is-it-worth-upgrading-gpus">upgrade section</a> were measured by Stas Bekman on 8x H200 and 8x B200 nodes with the scripts in <a href="https://github.com/ibrahimansr/ml-engineering/tree/master/insights/when-to-upgrade-gpus"><code>insights/when-to-upgrade-gpus/</code></a> and are quoted as measured; those scripts and every cluster-evaluation command in this chapter need GPUs and were <strong>not run</strong> while writing it. Prices in the examples are illustrative, not quotes.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>This is the last chapter of Part 7, and it leans on almost everything before it. The most important ones:</p>
+<ul>
+<li><a href="../compute/accelerators.html">Accelerators</a>: <a href="../compute/accelerators.html#tflops">TFLOPS</a>, the <a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS comparison table</a>, <a href="../compute/accelerators.html#maximum-achievable-and-sustainable-flops">MAMF and MSMF</a> (the measured matmul ceilings), <a href="../compute/accelerators.html#not-all-accelerators-are-created-equal">silicon lottery</a>, <a href="../compute/accelerators.html#where-you-can-get-what">Where you can get what</a>, <a href="../compute/accelerators.html#software-stacks">Software stacks</a> and <a href="../compute/accelerators.html#how-to-get-the-best-price">How to get the best price</a>.</li>
+<li><a href="../network/interconnects.html">Interconnects</a>: <a href="../network/interconnects.html#intra-node-networking">intra-node</a> (NVLink) and <a href="../network/interconnects.html#inter-node-networking">inter-node</a> (InfiniBand, RoCE, EFA) networking, <a href="../network/interconnects.html#sharp">SHARP/NVLS</a>, <a href="../network/interconnects.html#real-network-throughput">Real network throughput</a> and <a href="../network/interconnects.html#inter-node-speed-depends-on-intra-node-speed">Inter-node speed depends on intra-node speed</a>.</li>
+<li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a>: <a href="../network/measuring-and-debugging.html#torch-dist-bench">torch-dist-bench</a>, <a href="../network/measuring-and-debugging.html#nccl-tests">nccl-tests</a> and <code>busbw</code>.</li>
+<li><a href="../foundations/networking.html">Networking</a>: <a href="../foundations/networking.html#top-of-rack-leaf-spine-fat-tree">leaf-spine and fat-tree topologies</a> and <a href="../foundations/networking.html#roce-and-lossless-ethernet">RoCE</a>.</li>
+<li><a href="../foundations/storage-and-data.html">Storage and Data</a>: parallel filesystems, <a href="../foundations/storage-and-data.html#metadata-storms-and-how-ml-jobs-cause-them">metadata storms</a> (why tiny files hurt), <a href="../foundations/storage-and-data.html#5-measuring-storage">measuring storage with fio</a> and <a href="../foundations/storage-and-data.html#rsync">rsync</a>.</li>
+<li><a href="../training/arithmetic.html">Training Arithmetic</a>: <code>6N</code> FLOPs per token, <a href="../training/arithmetic.html#mfu-and-hfu-properly">MFU and HFU</a>, <a href="../training/arithmetic.html#the-attention-term-and-which-constant">the attention term</a>, <a href="../training/arithmetic.html#static-per-parameter">static memory per parameter</a>, <a href="../training/arithmetic.html#fp4-formats">FP4 formats</a> and the <a href="../training/arithmetic.html#transformer-engine-mechanics">Transformer Engine</a>.</li>
+<li><a href="../training/profiling-and-optimization.html">Profiling and Optimization</a>: <a href="../training/profiling-and-optimization.html#tflops-as-a-performance-metric">TFLOPS as a performance metric</a>, <a href="../training/profiling-and-optimization.html#mfu-vs-hfu">MFU vs HFU</a>, <a href="../training/profiling-and-optimization.html#anatomy-of-models-memory-usage">where GPU memory goes</a> and <a href="../training/profiling-and-optimization.html#memory-profiler-tools">memory profiler tools</a>.</li>
+<li><a href="../training/model-parallelism/derivations.html">Model Parallelism: Derivations</a>: ZeRO/FSDP, <a href="../training/model-parallelism/derivations.html#tensor-parallelism-megatron">tensor parallelism</a> and <a href="../training/model-parallelism/derivations.html#sequence-parallelism-and-context-parallelism">sequence/context parallelism</a>.</li>
+<li><a href="../compute/gpu-software-stack.html">The GPU node software stack</a>: <a href="../compute/gpu-software-stack.html#dcgm-the-health-daemon-and-diagnostics">DCGM</a> and the <a href="../compute/gpu-software-stack.html#10-a-node-acceptance-script">node acceptance script</a>.</li>
+<li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance and Reproducibility</a>: <a href="../training/fault-tolerance-and-reproducibility.html#always-plan-to-have-more-nodes-than-needed">spare nodes</a> and <a href="../training/fault-tolerance-and-reproducibility.html#preferring-fixed-accelerator-allocations-to-dynamic-ones">fixed allocations</a>.</li>
+<li><a href="../orchestration/slurm/from-zero.html">Slurm from zero</a> and <a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>, especially <a href="../orchestration/slurm/from-zero.html#slurm-vs-kubernetes">Slurm vs Kubernetes</a>.</li>
+<li><a href="../inference/arithmetic.html">Inference Arithmetic</a>: TTFT and TPOT, the <a href="../inference/arithmetic.html#user-experience-metrics">user experience metrics</a>.</li>
+</ul>
+<h2 id="glossary">Glossary</h2>
+<p>Terms used throughout the chapter that earlier chapters didn't define:</p>
+<ul>
+<li><strong>CSP</strong> (Cloud Service Provider): a company that rents out compute - AWS, GCP, Azure, OCI, and many smaller GPU-focused clouds.</li>
+<li><strong>Tier 1 / Tier 2 clouds</strong>: Tier 1 are the hyperscalers (AWS, GCP, Azure, OCI). Tier 2 are smaller, usually GPU-focused clouds, often called <strong>neoclouds</strong>. Compared in <a href="#tier-1-vs-tier-2-clouds">Tier 1 vs Tier 2 clouds</a>.</li>
+<li><strong>SLA</strong> (Service Level Agreement): the part of a contract that defines what quality of service the provider guarantees and what happens when it doesn't deliver.</li>
+<li><strong>SLO</strong> (Service Level Objective): one quantified target inside an SLA, such as &quot;99.5% monthly uptime&quot;.</li>
+<li><strong>TCO</strong> (Total Cost of Ownership): everything a cluster costs you over its life - rent or purchase, power, cooling, staff, storage, egress, and the engineer time lost to problems.</li>
+<li><strong>OEM</strong> (Original Equipment Manufacturer): the company that builds the servers, such as Dell, HPE or Supermicro.</li>
+<li><strong>RMA</strong> (Return Merchandise Authorization): shipping a broken part back to the vendor for a replacement. It can take weeks.</li>
+<li><strong>Burn-in</strong>: running a new batch of hardware under heavy load for days before handing it to customers, so that faulty parts fail in the provider's hands rather than yours.</li>
+<li><strong>PM</strong>: the product or project manager a CSP assigns to your account; usually your first point of contact.</li>
+<li><strong>HPC center</strong>: a High Performance Computing center - a supercomputer-style shared cluster, usually run by a government, a national lab or a university.</li>
+<li><strong>Egress / ingress fees</strong>: the per-GB fees clouds charge for data leaving or entering a region.</li>
+</ul>
+<h2 id="what-matters-in-the-ai-race">What matters in the AI race</h2>
+<p>Before choosing hardware, be clear about what you're optimizing. For an AI company the hardware budget is in competition with everything else, including salaries.</p>
+<h3 id="what-you-are-competing-on">What you are competing on</h3>
+<p><strong>Training:</strong></p>
+<ol>
+<li>How fast you can train a better model. Being first to market is an advantage.</li>
+<li>How much money it cost. Do you still have money left to pay your people after the training run?</li>
+</ol>
+<p><strong>Inference:</strong></p>
+<ol>
+<li>Low latency. Users are used to millisecond responses and leave if a response takes seconds. In LLM-serving terms this is TTFT (time to first token) and TPOT (time per output token), see <a href="../inference/arithmetic.html#user-experience-metrics">user experience metrics</a>.</li>
+<li>High throughput: how many concurrent queries you can serve.</li>
+<li>Cost per user. Can you afford to rent more GPUs to acquire more users, or to improve (1) and (2)?</li>
+</ol>
+<p>Time appears on both lists. That's why, later in this chapter, the cheapest option per token is not always the right one.</p>
+<h3 id="what-llm-training-needs">What LLM training needs</h3>
+<ol>
+<li>Fast compute, massively dominated by matrix multiplications.</li>
+<li>Memory, IO, network and CPU fast enough to keep that compute fed.</li>
+</ol>
+<p>The corollary: if you buy or rent the fastest accelerators but cheap out on any other component, you've wasted money, and you may lose the race because the training takes longer. <a href="#can-you-feed-the-furnace-fast-enough">The furnace section</a> below shows why.</p>
+<h3 id="the-workhorses">The workhorses</h3>
+<p>The accelerator does most of the work. GPUs were first because ML is massively parallel (<a href="https://en.wikipedia.org/wiki/Single_instruction,_multiple_data">SIMD</a> - one instruction applied to many numbers, see <a href="../foundations/computer-architecture.html#simd-one-instruction-many-numbers">SIMD</a>). Now there are also TPUs, FPGAs, HPUs, QPUs, RDUs and wafer-scale engines - these are expanded in the <a href="../compute/accelerators.html#glossary">Accelerators glossary</a>. Recent CPUs are also used as accelerators, mostly for inference. The <a href="../compute/accelerators.html">Accelerators</a> chapter covers all of them.</p>
+<h3 id="who-drives-ai">Who drives AI</h3>
+<ul>
+<li><strong>AI companies</strong> train models, or build products around models trained by themselves or others, and do in-house research.</li>
+<li><strong>Academia</strong> does massive amounts of research and writes papers. Lots of new ideas come from here.</li>
+<li><strong>AI enthusiasts</strong> bring a lot of good will. Some pool resources and talent to train open-access models, with compute donated by HPC centers, an occasional cloud, or a university cluster.</li>
+<li><strong>Entrepreneurs</strong> have lots of low-hanging fruit to pick: creative reselling of services, ML-driven apps, and ingenious combinations of available resources.</li>
+</ul>
+<h3 id="information-sharing">Information sharing</h3>
+<ul>
+<li>Surprisingly, almost everybody in AI shares a lot of their discoveries with the community.</li>
+<li>Companies don't disclose all their IP, but a lot gets shared as knowledge or as model weights.</li>
+<li>Companies that publish a lot of IP and models tend to attract higher-quality talent.</li>
+<li>Twitter (X) has been the central place to follow what's going on. See <a href="#fomo-and-avoiding-depression">FOMO and avoiding depression</a> for how not to drown in it.</li>
+</ul>
+<h3 id="the-ai-bubble">The AI bubble</h3>
+<ul>
+<li>The <a href="https://en.wikipedia.org/wiki/Dot-com_bubble">Dot-com bubble</a> happened in 1995-2000, and something very similar is happening in AI now.</li>
+<li>There is a lot of money available to create startups or grow existing companies. Raising millions of dollars is relatively easy.</li>
+<li>Because the industry is in its wild-west stage, the future is very hard to predict, so almost any startup idea goes, as long as it sounds reasonable.</li>
+<li>The difference from the Dot-com bubble is that a Dot-com company needed little money to operate - most of what it raised went to marketing and staff, barely any to compute. AI companies need millions because training LLMs takes an enormous amount of very expensive compute. For example, one NVIDIA H100 cost about $30k, and a company may need 512 of them: $15M, before the rest of the hardware and the running costs.</li>
+</ul>
+<h2 id="ml-engineers-heaven-and-hell">ML engineer's heaven and hell</h2>
+<p>Stas Bekman describes the environment he'd like to train LLMs and VLMs in, and the one he dreads. It's one person's experience - your mileage may vary - but it's a useful checklist of what to ask any provider, because each item on the &quot;hell&quot; list is something a contract or a careful evaluation can prevent.</p>
+<h3 id="heaven">Heaven</h3>
+<ol>
+<li>A well-built HPC center, or a full-service cloud cluster, where someone diligently and promptly takes care of the hardware and systems. The ML engineer just brings the training software and trains - which is already an insanely complicated job requiring special skills.</li>
+<li>Lots of nodes available for exclusive, unlimited use.</li>
+<li>Fast inter-node connectivity that doesn't bottleneck the accelerators and isn't shared with other users.</li>
+<li>A huge, local, very fast NVMe-based shared filesystem that can hold datasets and checkpoints.</li>
+<li>Barebones Linux with Slurm and minimal software, enough to launch training jobs.</li>
+<li><code>sudo</code> access, to make working as a team easier.</li>
+</ol>
+<h3 id="hell">Hell</h3>
+<ol>
+<li>A cloud or in-house cluster where you have to do everything - sysadmin work, replacing hardware, dealing with outages - and train on top of that.</li>
+<li>A small, slow shared filesystem (NFS?), with a cloud object store to pull data from and checkpoint to.</li>
+<li>A slow inter-node network, leading to low accelerator utilization.</li>
+<li>An inter-node network shared with other users, which makes it erratic and unpredictable.</li>
+<li>A super-complicated cloud console with countless screens and steps to set up even simple things.</li>
+<li>Not being able to swap out failing hardware quickly.</li>
+<li>Having to timeshare nodes, with waits between training jobs.</li>
+<li>Other concurrent users who can fill the whole disk, crashing trainings.</li>
+<li>Not being able to kill jobs that others on the team started before going to sleep (the fix for this one is a team-wide <a href="../orchestration/slurm/from-zero.html#stopping-a-teammates-job-the-kill-switch">kill switch</a>).</li>
+</ol>
+<h2 id="three-ways-to-get-compute">Three ways to get compute</h2>
+<p>There are three main ways to get compute:</p>
+<ul>
+<li>Rent it on a cloud.</li>
+<li>Get a timeshare on an HPC center.</li>
+<li>Buy it.</li>
+</ul>
+<h3 id="renting-on-the-cloud">Renting on the cloud</h3>
+<p>This is currently the most common way.</p>
+<p>Pros:</p>
+<ul>
+<li>Easy to grow or shrink the cluster.</li>
+<li>Easy to move from an old hardware generation to a new one every few years.</li>
+<li>Cluster management can easily be outsourced.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>Expensive, unless you negotiate a long-term (1-3 year) contract for hundreds of accelerators.</li>
+<li>You'll be tempted to buy many tools and services you may or may not need (see <a href="#dont-buy-what-you-dont-need">Don't buy what you don't need</a>).</li>
+<li>You always get charged, whether you use the cluster fully or not.</li>
+</ul>
+<p>Most of this chapter, from <a href="#choosing-a-cloud-provider">Choosing a cloud provider</a> on, is about doing this well.</p>
+<h3 id="using-an-hpc-center">Using an HPC center</h3>
+<p>There aren't many HPC centers, so the resources available are limited.</p>
+<p>Pros:</p>
+<ul>
+<li>Managed for you: all you need is your training software and a bit of <a href="../orchestration/slurm/from-zero.html">Slurm</a> know-how to launch jobs.</li>
+<li>Often sponsored by a government or university, so the job may cost much less or nothing. BLOOM-176B was trained for free on the <a href="http://www.idris.fr/en/">Jean Zay HPC</a> in France.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>You timeshare with other teams: short job time limits with possibly long waits between jobs, which makes it hard to finish a training quickly.</li>
+<li>The inter-node network is likely to be less stable, because other teams use it too.</li>
+<li>You must follow the center's rules: no <code>sudo</code>, and various others.</li>
+<li>The cluster is what it is. You can't make the network faster, and even getting some software installed can be tricky.</li>
+</ul>
+<h3 id="buying-hardware">Buying hardware</h3>
+<p>Mainly universities buy and build their own clusters, and some big companies do too.</p>
+<p>Pros:</p>
+<ul>
+<li>If you can keep the hardware busy 24/7 for more than a few years, the total cost is lower than renting.</li>
+<li>Fast local storage is easy: a good NVMe RAID is much cheaper and faster than network storage.</li>
+</ul>
+<p>Cons:</p>
+<ul>
+<li>A few years after purchase you're stuck with outdated hardware. You may be able to resell it.</li>
+<li>You must buy more than you need. Hardware breaks, especially under 24/7 load, and an RMA can take weeks.</li>
+<li>You must hire people to run it.</li>
+<li>You must sort out cooling, electricity, insurance and so on. The power and cooling numbers per card are in <a href="../compute/accelerators.html#power-consumption">Power consumption</a> and <a href="../compute/accelerators.html#cooling">Cooling</a>.</li>
+</ul>
+<p>Whether &quot;a few years&quot; of 24/7 use is enough depends on your prices. A minimal break-even sketch, with every number an assumption you should replace:</p>
+<pre><code class="language-python"># rent_vs_buy.py - months until owning beats renting. All inputs are assumptions.
+gpus = 512
+rent = 2.50                     # $/GPU-hour, long-term contract
+capex = 35_000                  # $/GPU all-in: GPU, server share, network share
+opex = 0.60                     # $/GPU-hour: power + cooling + space + staff share
+utilization = 0.85              # fraction of hours you actually keep the GPUs busy
+spare = 1.10                    # buy 10% more than you need to cover failures and RMAs
+
+for u in (0.85, 0.5):
+    rent_per_month = gpus * rent * 730 * u          # rent only what you use (on-demand-ish)
+    own_upfront = gpus * spare * capex
+    own_per_month = gpus * spare * opex * 730
+    months = own_upfront / (rent_per_month - own_per_month)
+    print(f&quot;utilization {u:.0%}: break-even after {months:5.1f} months&quot;)
+</code></pre>
+<pre><code>$ python rent_vs_buy.py
+utilization 85%: break-even after  36.0 months
+utilization 50%: break-even after  89.4 months
+</code></pre>
+<p>How to read this: at high utilization buying pays for itself in about 3 years under these assumptions - about the length of a long-term cloud contract, and about two GPU generations. At 50% utilization it takes over 7 years, by which point the hardware is obsolete. Note the model is generous to renting: a long-term contract bills you for every hour whether you use it or not, which the <code>u</code> factor ignores. The point is the shape, not the number: buying wins only when you can keep the machines busy, and you also inherit everything in the cons list.</p>
+<h3 id="managing-compute">Managing compute</h3>
+<p>Unless you use a fully managed HPC center, you need to hire a system administrator. It may feel like your ML engineers can handle it between training jobs, but they'll lose a lot of time to managing disk space, dealing with problematic nodes, asking users to behave, and so on. Good sysadmins who understand ML workloads are hard to find; <a href="#system-administration">System administration</a> below covers outsourcing it to the provider or a service company.</p>
+<h2 id="the-needs-of-the-technology">The needs of the technology</h2>
+<h3 id="can-you-feed-the-furnace-fast-enough">Can you feed the furnace fast enough?</h3>
+<p>Picture a steam locomotive. The engine is great, but if the <a href="https://en.wikipedia.org/wiki/Fireman_(steam_engine)">fireman</a> can't shovel coal in fast enough, the train won't go fast.</p>
+<p><img src="../insights/images/640px-Baureihe52Heizer.jpg" alt="A fireman shovelling coal into a steam locomotive's firebox" /></p>
+<p><a href="https://commons.wikimedia.org/wiki/File:Baureihe52Heizer.jpg">source</a></p>
+<p>This is the state of ML hardware: the bottleneck is moving bits, not computing on them.</p>
+<ul>
+<li>Accelerators get about 2x faster every 2 years (in the spirit of <a href="https://en.wikipedia.org/wiki/Moore%27s_law">Moore's law</a>).</li>
+<li>Network and memory don't keep up. Both are already bottlenecks for compute (the <a href="../foundations/computer-architecture.html#the-problem-the-memory-wall">memory wall</a>).</li>
+<li>IO can be another bottleneck if your DataLoader pulls data from the cloud.</li>
+<li>The CPU is fine as long as it has enough cores for the DataLoader workers and the main processes.</li>
+</ul>
+<p>The corollary: research the whole machine, not just its engine.</p>
+<p>A crazy idea that follows: older GPUs may do fine if you can actually feed them as fast as they compute. If you can get 3x as many of them for the price of the next generation, you might finish training sooner and cheaper. The <a href="#when-is-it-worth-upgrading-gpus">upgrade section</a> shows how to check this kind of claim with measurements.</p>
+<h3 id="from-tflops-to-days-and-dollars">From TFLOPS to days and dollars</h3>
+<p>Once you've picked the model architecture and size and the number of training tokens, you know how much compute the training needs: about <span class="math inline"><span class="math-inline">6ND</span></span> floating point operations for <span class="math inline"><span class="math-inline">N</span></span> parameters and <span class="math inline"><span class="math-inline">D</span></span> tokens (<a href="../training/arithmetic.html#where-6n-comes-from">Where 6N comes from</a>; the attention term adds to it at long context). What remains is to compare providers on how many floating point operations per second (TFLOPS) their hardware does and what it costs per unit of time:</p>
+<ol>
+<li>Time to train: <code>total_flops_required / flops_per_second_of_the_cluster = time_in_seconds</code>. Say it comes to 604800 seconds, i.e. 7 days.</li>
+<li>Look up what this compute costs for 7 days, and you have the price of the training.</li>
+<li>Do the same for every other proposal and pick the best.</li>
+</ol>
+<p>As the <a href="#what-you-are-competing-on">first section</a> said, time matters a lot, so you might still choose the more expensive option if finishing sooner gets you to market first.</p>
+<p>Unfortunately this math is only partly correct, because the advertised peak TFLOPS can't be reached in practice. The next section corrects it.</p>
+<h3 id="mfu-corrects-the-estimate">MFU corrects the estimate</h3>
+<p>Many vendors publish peak TFLOPS that are impossible to achieve (why is explained in <a href="../compute/accelerators.html#why-the-peak-cant-be-reached">Why the peak can't be reached</a>). <strong>Model FLOPS Utilization (MFU)</strong> measures how well you actually use the accelerator:</p>
+<ol>
+<li>Count the floating point operations of one training iteration and divide by the seconds it took. That's your achieved TFLOPS.</li>
+<li>Divide achieved TFLOPS by the advertised TFLOPS. That's MFU.</li>
+</ol>
+<p>For example, training in bf16: if one iteration needs 624 tera floating point operations and takes 4 seconds, you achieve <code>624/4 = 156</code> TFLOPS. A100 bf16 is <a href="https://www.nvidia.com/en-us/data-center/a100/">advertised at 312 TFLOPS</a>, so <code>156/312 = 0.5</code>, i.e. 50% MFU. <a href="../training/arithmetic.html#mfu-and-hfu-properly">MFU and HFU, properly</a> covers the details, including why recomputed activations don't count.</p>
+<p>In practice:</p>
+<ul>
+<li>With NVIDIA GPUs, above 50% MFU on a multi-node setup with a large model is already doing fantastically.</li>
+<li>More efficient scaling techniques keep pushing MFU up.</li>
+<li>Slow networks, inefficient frameworks and untuned configurations push it down.</li>
+</ul>
+<p>Now adjust the estimate: if the peak-based math said 7 days and MFU is 50%, the training takes 14 days. Here both steps are in one script, for a 70B model trained on 2T tokens on 1024 GPUs, comparing two hypothetical offers:</p>
+<pre><code class="language-python"># cost_estimate.py - from &quot;model + tokens&quot; to days and dollars, first with peak TFLOPS, then with MFU.
+N, D = 70e9, 2e12                       # parameters, training tokens
+total_flop = 6 * N * D                  # forward+backward FLOPs (6N per token)
+gpus = 1024
+offers = {                              # name: (peak dense bf16 TFLOPS per GPU, $/GPU-hour) - illustrative prices
+    &quot;H100 @ $2.00&quot;: (989, 2.00),
+    &quot;B200 @ $3.50&quot;: (2250, 3.50),
+}
+for name, (tflops, price) in offers.items():
+    for mfu in (1.0, 0.5, 0.4):
+        secs = total_flop / (gpus * tflops * 1e12 * mfu)
+        cost = secs / 3600 * gpus * price
+        print(f&quot;{name}  MFU={mfu:.0%}  {secs/86400:6.1f} days  ${cost/1e6:5.2f}M&quot;)
+
+# the MFU of one measured iteration (the A100 example)
+step_tflop, step_secs, peak = 624, 4, 312
+achieved = step_tflop / step_secs
+print(f&quot;achieved {achieved:.0f} TFLOPS -&gt; MFU {achieved/peak:.0%}&quot;)
+</code></pre>
+<pre><code>$ python cost_estimate.py
+H100 @ $2.00  MFU=100%     9.6 days  $ 0.47M
+H100 @ $2.00  MFU=50%    19.2 days  $ 0.94M
+H100 @ $2.00  MFU=40%    24.0 days  $ 1.18M
+B200 @ $3.50  MFU=100%     4.2 days  $ 0.36M
+B200 @ $3.50  MFU=50%     8.4 days  $ 0.73M
+B200 @ $3.50  MFU=40%    10.5 days  $ 0.91M
+achieved 156 TFLOPS -&gt; MFU 50%
+</code></pre>
+<p>How to read this: the MFU=100% rows are the naive estimate; real runs land somewhere in the 40-50% rows. With these made-up prices the pricier GPU is both cheaper and more than twice as fast - but only if both reach the same MFU. A newer GPU often reaches a <em>lower</em> MFU at first, because its software is less mature; the <a href="#worked-example-llama-31-8b-fa3-vs-fa4">worked upgrade example</a> measures exactly that. Better still, replace the peak TFLOPS with the measured <a href="#mamf-the-realistic-ceiling">MAMF</a>, which tells you what the hardware can actually do.</p>
+<h3 id="moving-bits">Moving bits</h3>
+<p>Why can't the advertised TFLOPS be reached? Because moving data takes time: between accelerator memory and the compute units, and even more from disk and from other GPUs into accelerator memory.</p>
+<ul>
+<li><strong>Accelerator memory</strong>: its bandwidth is what it is. You can only write software that moves less data or moves it more efficiently - fused and custom kernels such as those generated by <a href="https://docs.pytorch.org/docs/stable/generated/torch.compile.html">torch.compile</a>, and <a href="https://github.com/Dao-AILab/flash-attention">FlashAttention</a> (see <a href="../training/profiling-and-optimization.html#the-optimization-ladder">the optimization ladder</a>).</li>
+<li><strong>Single GPU</strong>: if the model fits in one GPU's memory, the network doesn't matter and accelerator memory is the only bottleneck. Once you <a href="../training/model-parallelism/derivations.html">shard the model across GPUs</a>, the network becomes the bottleneck.</li>
+<li><strong>Intra-node network</strong>: very fast, but hard to use fully for large models. <a href="../training/model-parallelism/derivations.html#tensor-parallelism-megatron">Tensor parallelism</a> and <a href="../training/model-parallelism/derivations.html#megatron-sequence-parallelism-sp">sequence parallelism</a> address part of this problem (<a href="../network/interconnects.html#intra-node-networking">more</a>).</li>
+<li><strong>Inter-node network</strong>: too slow on most server setups, so this is the key component to research. Efficient frameworks partly hide communication by overlapping it with compute, but if communication takes longer than compute it's still the bottleneck. More in <a href="#inter-node-network">Inter-node network</a> below.</li>
+<li><strong>Storage IO</strong> matters mainly for feeding DataLoader workers and saving checkpoints. More in <a href="#storage">Storage</a> below.
+<ol>
+<li>With enough DataLoader workers, the DataLoader usually adds very little overhead.</li>
+<li>While checkpoints are saved the accelerators sit idle unless you use <a href="../foundations/storage-and-data.html#async-checkpointing">async checkpointing</a>, so fast IO is crucial here.</li>
+</ol>
+</li>
+</ul>
+<h2 id="key-hardware-components">Key hardware components</h2>
+<p>This section is the buyer's tour of a training node. For each component it says what you need and links to the chapter with the full numbers.</p>
+<h3 id="accelerators">Accelerators</h3>
+<p>As of 2026-08, the accelerators most commonly used for training, finetuning and inference:</p>
+<p><strong>Widely available:</strong></p>
+<ul>
+<li>NVIDIA H200, B200, B300 (B300 systems are shipping).</li>
+<li>AMD MI325X, MI350X and MI355X - mostly on neoclouds, but large CSPs (AWS, GCP, Azure) have started offering AMD too.</li>
+<li>Intel Gaudi3 - on Intel's cloud and via OEM servers.</li>
+</ul>
+<p><strong>Available, but locks you in:</strong></p>
+<ul>
+<li>Google TPUs - fast, but locked to one vendor and one cloud, and the software path is XLA rather than CUDA. Google appears to have started selling TPUs to some companies outside its cloud; this isn't officially confirmed, but if it holds it weakens the lock-in argument.</li>
+<li>AWS Trainium2 - on AWS, also XLA.</li>
+<li>Cerebras Wafer Scale Engine - on Cerebras' cloud.</li>
+</ul>
+<p><strong>Not yet available:</strong></p>
+<ul>
+<li>NVIDIA Rubin - in full production and shipping to select enterprise customers (CoreWeave limited availability, Cognition running production workloads), but no self-serve cloud rental or public pricing as of 2026-10. The first hyperscaler general availability (Google Cloud A5X) is expected 2026-11.</li>
+<li>AMD MI455X - Helios volume deployments expected in the second half of 2026.</li>
+<li>SambaNova SN50 - shipping &quot;in the second half of 2026&quot;; SN40L is the current part.</li>
+<li>Intel GPU D-series / D270 (Crescent Island) - an inference GPU, launched at OCP 2026, customer sampling in the second half of 2026: 160GB LPDDR5X (ODM versions up to 480GB) at 1.5TBps, FP8 1.3 PFLOPS (the only published compute figure).</li>
+</ul>
+<p><strong>Regional:</strong></p>
+<ul>
+<li>Huawei Ascend - real scale, but in practice China-only, and the specs are only on Huawei's Chinese pages.</li>
+</ul>
+<p>&quot;Announced&quot; is not &quot;available&quot;. The <a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS comparison table</a> is split in two for exactly this reason: generally available parts first, then announced parts whose availability isn't confirmed. For the full list, per-vendor details and numbers see <a href="../compute/accelerators.html#where-you-can-get-what">Where you can get what</a> and <a href="../compute/accelerators.html#vendors-and-products">Vendors and products</a>.</p>
+<h4 id="accelerator-interoperability">Accelerator interoperability</h4>
+<p>Most (all?) accelerators are supported by the major frameworks like PyTorch or TensorFlow, and the same code should run everywhere with small changes, as long as it doesn't use accelerator-specific features. If your PyTorch program calls <code>torch.mm</code>, it should work everywhere; if it includes custom CUDA kernels, it only works on NVIDIA GPUs and maybe on recent AMD MI-series.</p>
+<ul>
+<li><strong>NVIDIA GPUs</strong>: all based on <a href="https://developer.nvidia.com/cuda/toolkit">CUDA</a>, which most training frameworks support. You can move between NVIDIA GPU generations easily and most things work the same.</li>
+<li><strong>AMD MI250/MI3xx</strong>: with PyTorch on <a href="https://pytorch.org/blog/pytorch-for-amd-rocm-platform-now-available-as-python-package/">ROCm</a> you can run most CUDA-based software as is. This is really the only accelerator that interoperates with the NVIDIA stack.</li>
+<li><strong>Intel Gaudi2/Gaudi3</strong>: with HF Transformers/Diffusers you can use <a href="https://github.com/huggingface/optimum-habana">optimum-habana</a>. If you use the HF Trainer on NVIDIA GPUs, switching to Gaudi should be relatively easy.</li>
+<li><strong>Google TPU and AWS Trainium</strong>: both via <a href="https://openxla.org/xla">XLA</a>. PyTorch works, custom CUDA kernels don't.</li>
+<li><strong>Huawei Ascend</strong>: via CANN, with MindSpore first-party and a PyTorch adaptation alongside it.</li>
+<li><strong>Cerebras</strong>: working on PyTorch support via its <a href="https://www.cerebras.ai/blog/supporting-pytorch-on-the-cerebras-wafer-scale-engine/">Cerebras Software Platform (CSoft) via XLA</a>.</li>
+</ul>
+<p>Most ML code can also be exported to cross-platform formats like <a href="https://en.wikipedia.org/wiki/Open_Neural_Network_Exchange">ONNX (Open Neural Network Exchange)</a>, which runs on many accelerators. This is mostly used for inference.</p>
+<p>A quick portability audit of your own codebase tells you how locked in you already are. Anything that matches below won't run on a non-CUDA accelerator without porting:</p>
+<pre><code class="language-bash"># find CUDA-only code: custom kernels, extensions, vendor libraries
+grep -rnE &quot;load_inline|CUDAExtension|\.cu\b|(import|from) (triton|apex|flash_attn|transformer_engine)|cupy&quot; \
+     --include='*.py' --include='setup.py' --include='*.toml' . | head
+</code></pre>
+<p>Run inside this book's <a href="https://github.com/ibrahimansr/ml-engineering/tree/master/insights/when-to-upgrade-gpus"><code>insights/when-to-upgrade-gpus/</code></a> folder (the upgrade benchmark used later in this chapter), it finds the two FlashAttention imports:</p>
+<pre><code>bench_flash_attn.py:17:    from flash_attn_interface import flash_attn_func
+bench_flash_attn.py:20:    from flash_attn.cute import flash_attn_func
+</code></pre>
+<p>How to read this: each hit is a line that ties the code to NVIDIA (here FA3 for Hopper and FA4 for Blackwell). Zero hits means plain PyTorch, which should move to AMD with little work and to XLA devices with more. Many hits in your model code means a switch of vendor is a porting project, which belongs in the cost of any non-NVIDIA offer.</p>
+<p>Triton (which <code>torch.compile</code> also generates) is a partial exception: it supports AMD GPUs as well as NVIDIA, but not XLA devices. <a href="../compute/accelerators.html#software-stacks">Software stacks</a> shows how to tell from Python which backend you're on.</p>
+<h3 id="network">Network</h3>
+<p>If a model doesn't fit in one accelerator's memory, you rely on the intra- and inter-node networks to keep multiple accelerators in sync. The biggest problem today is that compute improves faster than networking. For NVIDIA NVLink (intra-node, unidirectional bandwidth):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">GPU</th>
+<th style="text-align:right">Compute<br>fp16<br>TFLOPS</th>
+<th style="text-align:right">Compute<br>speedup</th>
+<th style="text-align:right">Intra-node<br>GBps</th>
+<th style="text-align:right">Intra-node<br>speedup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">V100</td>
+<td style="text-align:right">125</td>
+<td style="text-align:right">1</td>
+<td style="text-align:right">150</td>
+<td style="text-align:right">1</td>
+</tr>
+<tr>
+<td style="text-align:left">A100</td>
+<td style="text-align:right">312</td>
+<td style="text-align:right">2.5</td>
+<td style="text-align:right">300</td>
+<td style="text-align:right">2</td>
+</tr>
+<tr>
+<td style="text-align:left">H100</td>
+<td style="text-align:right">989</td>
+<td style="text-align:right">8</td>
+<td style="text-align:right">450</td>
+<td style="text-align:right">3</td>
+</tr>
+<tr>
+<td style="text-align:left">B200</td>
+<td style="text-align:right">2250</td>
+<td style="text-align:right">18</td>
+<td style="text-align:right">900</td>
+<td style="text-align:right">6</td>
+</tr>
+<tr>
+<td style="text-align:left">Rubin</td>
+<td style="text-align:right">4000</td>
+<td style="text-align:right">32</td>
+<td style="text-align:right">1500</td>
+<td style="text-align:right">10</td>
+</tr>
+</tbody>
+</table>
+<p>How to read this table: from V100 to Rubin, compute grew 32x but NVLink only 10x. A100 was 2.5x faster than V100 and H100 about 3x faster than A100, while NVLink grew by only 150GBps per generation until NVLink 5.0 doubled the speed over NVLink 4.0, catching up a little. It's still not enough. So every generation, a model needs relatively more compute per byte communicated to keep the GPUs busy.</p>
+<p>Each NVLink generation raised the per-lane bandwidth (per direction; each link is made of several lanes - see the <a href="../network/interconnects.html#nvlink">NVLink section</a>): 2.5, 3.125, 6.25 and 12.5 GBps for NVLink 1-4, then 25 GBps for NVLink 5. Most generations also added links, so per-GPU bandwidth climbed from 80 GBps (P100) to 450 GBps (H100) to 900 GBps (B200).</p>
+<p>The inter-node story is similar: most NICs do 100 or 200Gbps, with 400Gbps emerging (12.5, 25 and 50 GBps). Some systems install many NICs per node to get higher totals.</p>
+<p>With LLMs the payloads are so large that network latency is usually negligible for training. It still matters a lot for inference.</p>
+<h4 id="intra-node-network">Intra-node network</h4>
+<ul>
+<li>Pay attention to bytes vs bits: 1 byte = 8 bits, so 1GBps = 8Gbps (<a href="../foundations/networking.html#units-reading-spec-sheets-without-getting-fooled">Units</a>).</li>
+<li>When you reduce data (e.g. gradients) across nodes, the slowest link - inter-node - sets the overall throughput, although hierarchical algorithms can sometimes speed things up by using the faster intra-node bandwidth.</li>
+<li><a href="../training/model-parallelism/derivations.html#tensor-parallelism-megatron">Tensor parallelism</a> and <a href="../training/model-parallelism/derivations.html#megatron-sequence-parallelism-sp">sequence parallelism</a> have to stay inside a node to be efficient (<a href="../training/model-parallelism/derivations.html#why-tp-stays-inside-nvlink">Why TP stays inside NVLink</a>); they only make sense with fast intra-node links.</li>
+</ul>
+<p>NVIDIA nodes have plenty of NVLink bandwidth: 1500GBps (12Tbps) unidirectional for Rubin, 900GBps (7.2Tbps) for B200/B300, 450GBps (3.6Tbps) for H100/H200, 300GBps for A100.</p>
+<p>Intel Gaudi2 does 300Gbps card-to-card (100GbE RoCE v2 RDMA; the same NICs also serve inter-node).</p>
+<p>All the details are in <a href="../network/interconnects.html#intra-node-networking">Intra-node networking</a>.</p>
+<h4 id="inter-node-network">Inter-node network</h4>
+<ul>
+<li>You'll see a wide range of speeds, from 200Gbps to 6400Gbps per node.</li>
+<li>Inter-node links are still about an order of magnitude slower than intra-node ones - for example 50GBps per accelerator of EFA v4 on an AWS P6-B200 instance vs 900GBps of NVLink 5. But the practical gap is much smaller, because an inter-node collective also does most of its data movement over the intra-node links: a 4GiB <code>all-reduce</code> across 4 nodes measures only about 2x slower than on one node, not 18x. See <a href="../network/interconnects.html#inter-node-speed-depends-on-intra-node-speed">Inter-node speed depends on intra-node speed</a>.</li>
+<li>You need to reduce gradients and other tensors (e.g. MoE token exchanges) faster than you compute, or the accelerators idle.</li>
+<li>Expect at most about 80% of the advertised speed. If you're told 800Gbps, expect about 640Gbps.</li>
+</ul>
+<p>All the details are in <a href="../network/interconnects.html#inter-node-networking">Inter-node networking</a>.</p>
+<h3 id="storage">Storage</h3>
+<p>An ML workload has three distinct storage needs:</p>
+<ol>
+<li><strong>Feeding the DataLoader</strong> - very fast reads, writes don't matter. The load is sustained for hours and days.</li>
+<li><strong>Writing checkpoints</strong> - very fast writes, fast-ish reads (you'll resume a few times). The load is bursty, and you want the burst to be fast so it blocks training only briefly, unless you offload the checkpoint to CPU memory first and write it asynchronously.</li>
+<li><strong>Loading and maintaining your codebase</strong> - medium speed for both reading and writing. This must be shared so all nodes see the same code. It's accessed only at start and resume, so infrequently.</li>
+</ol>
+<p>Two warnings:</p>
+<ul>
+<li>You're often sold 80% of what you paid for. If you need a reliable 100TB, rent 125TB, or your application may fail to write long before the disk is &quot;full&quot;. <a href="#guaranteed-maximum-capacity">Guaranteed maximum capacity</a> explains why.</li>
+<li>For the shared distributed filesystem:
+<ol>
+<li>Non-parallel shared filesystems can be extremely slow with lots of small files - which is what Python is (<a href="../foundations/storage-and-data.html#metadata-storms-and-how-ml-jobs-cause-them">Metadata storms</a>).</li>
+<li>You want a parallel filesystem such as GPFS (IBM Spectrum Scale) or Lustre (open source), see <a href="../foundations/storage-and-data.html#how-a-parallel-filesystem-works">How a parallel filesystem works</a>.</li>
+</ol>
+</li>
+</ul>
+<p>The mechanisms and the benchmarking tools are in <a href="../foundations/storage-and-data.html">Storage and Data</a>.</p>
+<h3 id="cpu-memory">CPU memory</h3>
+<p>You need enough CPU RAM for:</p>
+<ul>
+<li>2-3 DataLoader workers per accelerator, so 16-24 processes on an 8-accelerator node.</li>
+<li>Even more for those workers if they pull data from the cloud.</li>
+<li>Loading the model, if you can't load it directly onto the accelerators.</li>
+<li>Offloading accelerator memory: CPU RAM extends GPU memory by holding layers or optimizer state that aren't needed at the moment (ZeRO-Offload, FSDP CPU offload). If that's your plan, the more RAM the better.</li>
+</ul>
+<h3 id="cpu">CPU</h3>
+<p>Usually the least worrying component.</p>
+<ul>
+<li>Most clouds provide beefy CPUs with plenty of cores.</li>
+<li>You need enough cores to run 2-3 DataLoader workers plus 1 main process per GPU: at least 30 cores on an 8-GPU node.</li>
+<li>Even more cores if your data transforms are complex or slow (common in computer vision).</li>
+<li>Most of the compute happens on the GPUs.</li>
+</ul>
+<p>Pinning those processes to the right cores matters too: see <a href="../training/profiling-and-optimization.html#numa-affinity">NUMA affinity</a>.</p>
+<h2 id="instant-ml-math-how-many-gpus-in-five-seconds">Instant ML math: how many GPUs in five seconds</h2>
+<p>Two formulas you can do in your head in a meeting:</p>
+<ul>
+<li><strong>Training</strong> with bf16 mixed precision and AdamW: <code>model_size_in_B * 18 * 1.25 / gpu_size_in_GB</code></li>
+<li><strong>Inference</strong> in bf16: <code>model_size_in_B * 2 * 1.25 / gpu_size_in_GB</code></li>
+</ul>
+<p>That's the minimum number of GPUs; you need more for a bigger batch size and longer sequences. The pieces:</p>
+<ul>
+<li><strong>Training, 18 bytes per parameter</strong>: 8 bytes of AdamW state, 4 bytes of gradients, 4+2 bytes of weights (fp32 master copy plus bf16 working copy). The derivation and the variants are in <a href="../training/arithmetic.html#static-per-parameter">Static, per parameter</a>.</li>
+<li><strong>Inference, 2 bytes per parameter</strong> for bf16 weights (1 byte with 8-bit quantization).</li>
+<li><strong>1.25</strong> adds 25% for activations (and, for inference, the KV cache). This is very, very approximate. <a href="../training/arithmetic.html#activation-memory">Activation memory</a> and <a href="../inference/arithmetic.html#kv-cache-sizing">KV cache sizing</a> do it properly.</li>
+</ul>
+<pre><code class="language-python"># gpus_needed.py - the 5-second &quot;how many GPUs&quot; estimate.
+import math
+def gpus(model_b, gpu_gb, bytes_per_param, activations=1.25):
+    return model_b * bytes_per_param * activations / gpu_gb
+
+for model_b, gpu_gb in [(80, 80), (8, 80), (70, 141), (405, 180)]:
+    t = gpus(model_b, gpu_gb, 18)      # train: 4+2 weights, 4 grads, 8 AdamW
+    i = gpus(model_b, gpu_gb, 2)       # bf16 inference
+    q = gpus(model_b, gpu_gb, 1)       # 8-bit quantized inference
+    print(f&quot;{model_b:&gt;4}B on {gpu_gb:&gt;3}GB GPUs: train &gt;= {math.ceil(t):&gt;3} ({t:6.2f})&quot;
+          f&quot;  infer bf16 &gt;= {math.ceil(i)} ({i:.2f})  infer 8-bit &gt;= {math.ceil(q)} ({q:.2f})&quot;)
+</code></pre>
+<pre><code>$ python gpus_needed.py
+  80B on  80GB GPUs: train &gt;=  23 ( 22.50)  infer bf16 &gt;= 3 (2.50)  infer 8-bit &gt;= 2 (1.25)
+   8B on  80GB GPUs: train &gt;=   3 (  2.25)  infer bf16 &gt;= 1 (0.25)  infer 8-bit &gt;= 1 (0.12)
+  70B on 141GB GPUs: train &gt;=  12 ( 11.17)  infer bf16 &gt;= 2 (1.24)  infer 8-bit &gt;= 1 (0.62)
+ 405B on 180GB GPUs: train &gt;=  51 ( 50.62)  infer bf16 &gt;= 6 (5.62)  infer 8-bit &gt;= 3 (2.81)
+</code></pre>
+<p>How to read this: the first row is the classic example - an 80B model on 80GB GPUs needs at least 23 GPUs to train and at least 3 to serve. The number in parentheses is the raw quotient; round up. In practice you then round to whatever your parallelism layout allows (for example a multiple of 8 for whole nodes), and add room for batch size. If the answer is &quot;fewer than one node&quot;, the next question is whether you even need a cluster. More on memory in <a href="../training/profiling-and-optimization.html#anatomy-of-models-memory-usage">Where GPU memory goes</a>.</p>
+<h2 id="choosing-a-cloud-provider">Choosing a cloud provider</h2>
+<p>Choosing a cloud deserves the utmost care, especially for a long-term contract. You can end up in a 3-year lock-in, paying millions of dollars for a terrible experience with no way out. For perspective: a 64-node cluster can easily cost $20-50M over 3 years, often more than a startup pays in salaries. A bad 3-year contract can prevent a startup from succeeding.</p>
+<p>Stas Bekman has used many compute clouds, over long and short terms, and has sat through many &quot;discovery&quot; calls (the sales-led meetings where a provider pitches its cluster). This section doesn't tell you which clouds to avoid. It gives you the questions that let you avoid a bad experience and get at least a decent one.</p>
+<p>It assumes you already know what compute your workloads need - if not, the <a href="../compute/accelerators.html">Accelerators</a>, <a href="../network/interconnects.html">Interconnects</a> and <a href="../foundations/storage-and-data.html">Storage and Data</a> chapters cover what's out there. Most of the time you want the latest the clouds offer.</p>
+<p>Three numbers frame the negotiation - the size of the commitment, the cost of spare nodes, and what an SLA credit is actually worth:</p>
+<pre><code class="language-python"># contract_math.py - three numbers to put in front of a cloud sales team.
+nodes_needed, gpus_per_node, price = 64, 8, 2.50          # $/GPU-hour, illustrative
+hours = 3 * 365 * 24
+print(f&quot;3-year cost of {nodes_needed} nodes: ${nodes_needed*gpus_per_node*price*hours/1e6:.1f}M&quot;)
+# 1. spare nodes: ~10% on top, used for dev work until a node dies
+spare = round(nodes_needed * 0.10)
+print(f&quot;rent {nodes_needed + spare} nodes ({spare} spare) -&gt; +${spare*gpus_per_node*price*hours/1e6:.1f}M over 3 years&quot;)
+# 2. storage you can actually fill: Lustre-like FS may fail writes at ~80% full
+need_tb = 100
+print(f&quot;need {need_tb}TB usable -&gt; provision {need_tb/0.8:.0f}TB&quot;)
+# 3. SLA credit: e.g. 10% credit for 99-99.5% monthly uptime, 25% for 95-99%
+def credit(uptime):
+    return 0.0 if uptime &gt;= 99.5 else 0.10 if uptime &gt;= 99.0 else 0.25 if uptime &gt;= 95.0 else 1.0
+monthly = nodes_needed * gpus_per_node * price * 730
+for up in (99.7, 99.2, 97.0):
+    lost_h = (1 - up / 100) * 730
+    print(f&quot;uptime {up}%: {lost_h:5.1f}h down, credit {credit(up):.0%} = ${monthly*credit(up)/1e3:,.0f}k of ${monthly/1e3:,.0f}k&quot;)
+</code></pre>
+<pre><code>$ python contract_math.py
+3-year cost of 64 nodes: $33.6M
+rent 70 nodes (6 spare) -&gt; +$3.2M over 3 years
+need 100TB usable -&gt; provision 125TB
+uptime 99.7%:   2.2h down, credit 0% = $0k of $934k
+uptime 99.2%:   5.8h down, credit 10% = $93k of $934k
+uptime 97.0%:  21.9h down, credit 25% = $234k of $934k
+</code></pre>
+<p>How to read this: $33.6M for 64 nodes at an illustrative $2.50/GPU-hour sits inside the $20-50M range above. The spare nodes and the storage over-provisioning are explained in <a href="#dealing-with-accelerator-failures">Dealing with accelerator failures</a> and <a href="#guaranteed-maximum-capacity">Guaranteed maximum capacity</a>. The SLA rows show why the definition of &quot;uptime&quot; matters more than the credit percentages: if a whole-cluster outage of 22 hours only earns a 25% credit, the remaining 75% of a lost day is yours - plus the engineer time and the restart. And if one dead node out of 64 doesn't count as &quot;down&quot; at all, the SLA covers nothing you care about. <a href="#service-level-agreement">Service Level Agreement</a> covers what to negotiate.</p>
+<h3 id="the-three-most-important-questions">The three most important questions</h3>
+<p>In Stas Bekman's experience there are three questions you absolutely need answered:</p>
+<ol>
+<li>
+<p><strong>Your GPUs will fail - guaranteed. How quickly are they replaced, and what's the procedure?</strong> If you have to reach a human for each replacement, it will be slow and painful. The best CSPs give you an API to do it yourself. Also beware of &quot;Humpty Dumpty&quot; GPUs: returned to you without actually being replaced, because when the technician checked them they appeared fine - but they fail again as soon as you use them. To catch this, record every GPU's serial number and UUID when you report it, and compare when the node comes back:</p>
+<pre><code class="language-bash">nvidia-smi --query-gpu=index,serial,uuid,pci.bus_id --format=csv,noheader &gt;&gt; gpu-inventory-$(hostname).csv
+</code></pre>
+<p>If the serial of the GPU you reported is still in the node, it wasn't replaced. The <a href="../compute/gpu-software-stack.html">GPU node software stack</a> chapter covers logging GPU UUIDs with every acceptance run for exactly this reason.</p>
+</li>
+<li>
+<p><strong>You'll hit many problems, mostly hardware. How quickly can you reach an engineer who can fix them?</strong> Normally your reports go to a PM, who triages them and tries to find the right person. That often takes hours or days and sometimes needs escalation, especially if the PM isn't very experienced.</p>
+</li>
+<li>
+<p><strong>Can you break the contract - how quickly, and at what cost?</strong> Things can get really bad for your team. If you can't walk away, burnout for one or more people is guaranteed, and so is damage to your ability to make progress.</p>
+</li>
+</ol>
+<h3 id="contracts">Contracts</h3>
+<p>If you pay per hour, you don't need to worry about contracts. But it's a bad long-term strategy: you pay many times more and you don't get a steady, reliable pool of accelerators. A long-term contract, with a good negotiator, can save as much as 10x in TCO (and time). <a href="../compute/accelerators.html#how-to-get-the-best-price">How to get the best price</a> covers the negotiation itself; this section covers what to put in the contract.</p>
+<h4 id="free-trials">Free trials</h4>
+<p>Most CSPs have trial programs where you can &quot;kick the tires&quot; on a few nodes for a few days or weeks, for free. It won't tell you how a larger cluster scales, but it's enough to run quite a few benchmarks and experiments (<a href="#how-to-evaluate-a-cluster">How to evaluate a cluster</a> gives the plan). It's also a good chance to see how the provider's customer support works, if support is included in the trial.</p>
+<h4 id="half-baked-solutions">Half-baked solutions</h4>
+<p>A new accelerator generation arrives roughly every 12-18 months, and customers want it &quot;yesterday&quot; to get ahead of competitors. That leaves CSPs almost no time to integrate the new hardware, test it, adapt their software stack and burn the components in.</p>
+<p>So if you want the latest generation as soon as it's available, you're almost guaranteed a bad experience: getting things right takes months. Customers rule, so CSPs give them what they ask for, often without saying that it isn't quite ready.</p>
+<p>CSPs aren't necessarily to blame. They often receive the hardware months after the manufacturer promised it, by which time they can't keep their own promises, so they deliver what they have.</p>
+<p>Some CSPs also build their own hardware, such as a custom network stack, for better margins, and then fail to finish it in time: the latest accelerators are there but the whole system limps. Off-the-shelf components are safer, since they're most likely well-tested (though they probably cost more).</p>
+<p>It's fine to want the hardware early. What you should expect is honest disclosure, as in: <em>&quot;we need about 3 more months to make this solid; you can have the nodes now, but we can't guarantee anything.&quot;</em> Ask for it explicitly.</p>
+<h4 id="the-we-will-do-our-best-clause">The &quot;we will do our best&quot; clause</h4>
+<p>Many long-term cloud contracts contain &quot;we will do our best&quot; or &quot;we will make a reasonable effort to ...&quot; clauses. Yet:</p>
+<ol>
+<li>The customer isn't allowed to &quot;do their best&quot; to pay. They're legally obliged to pay the agreed amount, on time.</li>
+<li>The customer isn't allowed to leave before the term ends.</li>
+</ol>
+<p>When did you last go to the bread section of a supermarket and find a lump of half-baked dough with a note: &quot;we made a reasonable effort to bake this bread, but alas, what you see is what you get&quot;? Yet for some reason it's acceptable to sign a contract in which the provider commits to neither delivery dates nor performance, and says nothing about what it will do when it fails. If a contract has no clear deliverables (time and performance), don't be surprised if you pay for something you don't receive when you need it, or at all.</p>
+<p>In Stas Bekman's experience, Tier 1 clouds demonstrate &quot;doing their best&quot; by sending 10+ people to meetings with the customer. Some of them are clueless and are there to make the company look resourceful: <em>&quot;look, we've allocated 10+ people to your problem, nothing to worry about.&quot;</em> Most of the time those people can't solve your problem. What you need is two people on the call: a product manager and the engineer directly responsible for fixing the problem. In his experience such a meeting can take weeks or months to happen, or never happen, and usually requires good connections to escalate to &quot;top brass&quot;.</p>
+<p>So: <strong>every critical component you buy needs a quantifiable delivery metric.</strong> For example, if the network is supposed to run at X GBps doing <code>all-reduce</code> across N nodes and you measure significantly less, the contract should say what the CSP does then. The same goes for storage, accelerators and any other component you depend on. You negotiate the specific consequences, but probably the best one is that you stop paying until the problem is fixed - that gives the provider an incentive to fix it. Not paying helps, but not being able to use the compute is still a big problem, and breaking the contract and migrating to another provider is a huge undertaking. At least it gives you something you can do.</p>
+<p>It's almost never the engineers' fault - they're very often amazing, experienced people. It's usually management and resource allocation. Be as gentle as you can with the people you deal with while firmly demanding a resolution. Stas admits this is hard: more than once he was at the end of his rope and couldn't always keep his cool.</p>
+<h4 id="service-level-agreement">Service Level Agreement</h4>
+<p>A <a href="https://en.wikipedia.org/wiki/Service-level_agreement">Service Level Agreement</a> (SLA) is the agreement between provider and customer that defines guarantees and expectations about service quality and availability, and who is responsible for what. An SLO quantifies it. For example, an SLO may set Monthly Uptime Percentage at 99.5%; if uptime falls below that, the provider credits the customer a percentage of what they spent - say 10% for 99-99.5% uptime, 25% for 95-99%, and so on. <a href="https://cloud.google.com/ai-platform/training-and-prediction/sla?hl=en">GCP's SLA</a> is an example.</p>
+<p>When renting ML clusters, the main category to care about is failing accelerators and whole nodes. If you paid for 64 nodes but could only use 60, you should be credited for the 4. The SLA should define how long a node can be down before the provider starts paying you back, and how much.</p>
+<p>The same goes for network and storage. They fail much less often than accelerators, but they do fail. In general, every critical part of the service should have an SLO and clearly defined consequences when it's missed.</p>
+<p>Most Tier 1 providers include their standard SLAs in the contract. In theory you can negotiate them to fit your needs, though not always. Sometimes offering to pay more gets you a better-than-standard SLO.</p>
+<h4 id="a-contract-breaking-clause">A contract-breaking clause</h4>
+<p>Both sides should be able to have a mutually beneficial business relationship. So it's critical that you can legally exit the contract if your experience isn't beneficial because the other side fails to meet the agreed expectations - without a legal battle, which is very expensive, and which you may well lose: Tier 1 clouds can afford the best lawyers. Negotiate up front the circumstances under which the contract can be cleanly exited before its term ends.</p>
+<h4 id="paid-support-must-be-included">Paid support must be included</h4>
+<p>Stas Bekman reports that at one company he worked at, the cloud contract didn't include paid support - it was skipped to save money - and the only support was a customer chat. They lost days of compute because of it.</p>
+<p>Don't save money here. You'll lose much more in money, developer time and hair. Make sure you can submit tickets with priority labels, and that the contract defines how quickly each priority will be handled. A customer chat has zero obligation to do anything about an urgent problem, or to do it in a timely manner. If you deal with PMs, find out how quickly you can talk directly to the engineer who can fix the problem, removing the middleman.</p>
+<h4 id="support-during-off-hours">Support during off-hours</h4>
+<p>Do you get human support for emergencies on weekends, holidays and nights? On one HPC center Stas used, human support was only available Monday to Friday, 9 to 5.</p>
+<p>If it isn't available, at the very least make sure your team can resuscitate the cluster itself - and run a drill to confirm it actually works. That requires an API for everything you'd otherwise ask the provider's support to do.</p>
+<h4 id="next-generation-accelerator-migration">Next-generation accelerator migration</h4>
+<p>A new accelerator generation comes out about every 12-18 months, but a typical contract runs 3 years. So for about half the contract you'll be using an inferior product. Nobody wants a 2-5x slower accelerator when a much faster one exists, but most customers are stuck with the old ones for the full term. Negotiate the right to move to the new generation before the end of the term - which will obviously cost extra. <a href="#when-is-it-worth-upgrading-gpus">When is it worth upgrading GPUs</a> shows how to decide whether to use that right.</p>
+<h4 id="keep-all-accelerators-in-the-same-region">Keep all accelerators in the same region</h4>
+<p>If you want new accelerators early, they very often won't be available in the region where your current ones are. Unless you drop the old allocation entirely and move to the new region, you'll be maintaining multiple copies of your storage, because for performance the storage must be where the accelerators are. You then have to keep those copies in sync and pay potentially huge ongoing egress and ingress fees. Plan for it: ask the CSP to move your older-generation allocation into the region where the new generation is. That isn't always possible, and you may have to wait until more accelerators free up, but it's an important clause to discuss. <a href="#region-migration">Region migration</a> covers the storage side.</p>
+<h3 id="accelerator-questions">Accelerator questions</h3>
+<p>This group of questions is specific to accelerators.</p>
+<h4 id="accelerators-need-to-be-burned-in">Accelerators need to be burned in</h4>
+<p>When a new batch of hardware arrives, the provider should &quot;burn it in&quot; before handing it to customers: run extensive stress tests to find faulty accelerators and other faulty components.</p>
+<p>If that isn't done, you discover the bad apples the hard way, while running your workload, losing compute and developer time. With a few nodes, one failing accelerator usually isn't a big deal; with dozens or hundreds of nodes, every failure stops the whole job and the cost is huge. It shouldn't be the customer's job to find bad accelerators. Nothing guarantees an accelerator won't fail after a stress test, but it should be rare. Otherwise a new batch often has a <strong>3-10% failure rate</strong>, which is huge and very costly for the customer.</p>
+<p>So ask your provider how long they burned in your systems, if at all. There's no golden reference point yet, but <a href="https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy#%C2%A7cluster-deployment-and-acceptance-test">SemiAnalysis</a> suggests the OEM performs a 3-4 week burn-in and then the CSP runs another 2-3 day burn-in/acceptance test. If that's the norm, make sure your systems were stress-tested for at least 2-3 days.</p>
+<p>Nothing stops you from doing your own burn-in with a large real training run, if you don't mind stopping and restarting on failures: if it works, you've made progress. Make sure it stresses every part of the system in a sustained way - compute, memory, NVLink, the inter-node network and storage. The <a href="../compute/gpu-software-stack.html#10-a-node-acceptance-script">node acceptance script</a> is a shorter, structured version of the same idea.</p>
+<p>How much does a 3-10% failure rate matter? It depends on how many accelerators one job touches:</p>
+<pre><code class="language-python"># burnin.py - chance a job's allocation contains at least one bad GPU.
+for rate in (0.001, 0.01, 0.03, 0.10):
+    row = []
+    for gpus in (8, 64, 512):
+        row.append(f&quot;{gpus:&gt;3} GPUs: {1 - (1 - rate) ** gpus:6.1%}&quot;)
+    print(f&quot;per-GPU failure rate {rate:5.1%} -&gt; &quot; + &quot;   &quot;.join(row))
+</code></pre>
+<pre><code>$ python burnin.py
+per-GPU failure rate  0.1% -&gt;   8 GPUs:   0.8%    64 GPUs:   6.2%   512 GPUs:  40.1%
+per-GPU failure rate  1.0% -&gt;   8 GPUs:   7.7%    64 GPUs:  47.4%   512 GPUs: 99.4%
+per-GPU failure rate  3.0% -&gt;   8 GPUs:  21.6%    64 GPUs:  85.8%   512 GPUs: 100.0%
+per-GPU failure rate 10.0% -&gt;   8 GPUs:  57.0%    64 GPUs:  99.9%   512 GPUs: 100.0%
+</code></pre>
+<p>How to read this: each cell is the probability that a job spanning that many GPUs includes at least one bad one, assuming failures are independent. At the 3% rate of an un-burned batch, a 64-node (512 GPU) job is certain to hit bad GPUs, and probably many: the expected count is <span class="math inline"><span class="math-inline">0.03 \times 512 \approx 15</span></span>. That's why burn-in is the provider's job - and why spares matter.</p>
+<h4 id="dealing-with-accelerator-failures">Dealing with accelerator failures</h4>
+<p>In Stas Bekman's experience, other components do fail occasionally, but 95% of the time it's the accelerators. So you need a very clear and quick path to replacing one.</p>
+<p>Ideally it's automated: ask whether there's an API to release a broken node and get a replacement. If you have to ask a human, it usually doesn't work well. The more automated, the better the experience.</p>
+<p>Ask how many accelerators are in the provider's backup pool for you. Providers usually commit to a number of fast replacements per month.</p>
+<p>That said, if time matters to you, always pay for about 10% more nodes than you need, because you usually won't get instant replacements. The extra nodes can be used for development, and when a node fails during training you swap in one of your own immediately. <a href="../training/fault-tolerance-and-reproducibility.html#always-plan-to-have-more-nodes-than-needed">Always plan to have more nodes than needed</a> covers how the training side uses them.</p>
+<h4 id="all-your-nodes-on-the-same-network-spine">All your nodes on the same network spine</h4>
+<p>Unless you rent 10k GPUs, a smaller cluster can easily sit under one network spine (the top tier of switches in a leaf-spine fabric, see <a href="../foundations/networking.html#top-of-rack-leaf-spine-fat-tree">Top-of-rack, leaf-spine, fat-tree</a>), so that inter-node traffic takes the same time between any two nodes.</p>
+<p>Make sure the backup nodes - the ones you don't pay for but that cover failures - are on the same spine as the nodes you pay for. If not, multi-node training gets a big problem: that one replacement node is further from all the others and slows the whole ensemble down, because a synchronous job runs at the speed of its weakest link. See also <a href="../network/interconnects.html#node-proximity">Node Proximity</a>.</p>
+<h4 id="keep-your-good-accelerators-on-reboot">Keep your good accelerators on reboot</h4>
+<p>You want a fixed allocation: if nodes need to be re-deployed, especially during planned downtime, other customers must not be able to grab them. Once you've spent weeks filtering out the bad nodes, it's crucial to keep the good ones and not start the painful and expensive filtering again. <a href="../training/fault-tolerance-and-reproducibility.html#preferring-fixed-accelerator-allocations-to-dynamic-ones">Preferring fixed accelerator allocations to dynamic ones</a> covers this from the training side.</p>
+<h4 id="do-you-think-you-will-need-to-expand">Do you think you will need to expand?</h4>
+<p>This is hard, because you can't know in advance whether you'll need more nodes. Ideally, discuss it with the provider so they can plan for your expansion. Otherwise, say you want to double your nodes, but the only free ones are on a different network spine - that hurts training speed.</p>
+<p>Chances are you'll have to drop your current allocation and move to a bigger one, possibly in a different region if there's no local capacity. Moving regions can be very slow and expensive, because the storage must move with the cluster. Stas Bekman's advice, from personal experience: don't take this lightly.</p>
+<h3 id="storage-questions">Storage questions</h3>
+<p>Large, fast storage matters both for a good developer experience and for fast training, finetuning and inference - in particular for loading and saving checkpoints.</p>
+<h4 id="guaranteed-maximum-capacity">Guaranteed maximum capacity</h4>
+<p>Ask how much of the storage you pay for is actually usable. With Lustre, for example, you have to over-provision by 25% to get the capacity you need, because Lustre can fail to write at about 80% total capacity due to how it balances data across disks. The customer pays for the extra 25%. (The usual mechanism: a file lives on specific storage targets - see <a href="../foundations/storage-and-data.html#lustre-mds-oss-and-lfs-setstripe">Lustre: MDS, OSS and lfs setstripe</a> - so writes fail as soon as one target fills, even if the filesystem as a whole has free space.)</p>
+<p>Most other filesystems Stas has used reach 100% without failing, but always ask about the specific filesystem you'll get.</p>
+<h4 id="know-your-storage-io-requirements">Know your storage IO requirements</h4>
+<p>Stas Bekman reports that one cloud they used had a non-parallel distributed filesystem and the developer experience was terrible. Large files were acceptable, but small files were extremely slow: installing a basic Conda environment took 30 minutes and <code>python -c &quot;import torch&quot;</code> took 2 minutes. Python consists of tens of thousands of 4-16KB files, and if the filesystem isn't optimized for them and its metadata servers are weak, every <code>import</code> turns into thousands of slow metadata operations (<a href="../foundations/storage-and-data.html#metadata-storms-and-how-ml-jobs-cause-them">Metadata storms</a>).</p>
+<p>A typical Python shop needs a filesystem that handles both:</p>
+<ul>
+<li>tens of thousands of tiny files, and</li>
+<li>a few huge files.</li>
+</ul>
+<p>Only you know your workloads' specific requirements. Also consider how local and shared storage relate: some providers shrink or slow down the local drives to save money. Developers often read code, models and datasets from the shared filesystem that could be cached locally. Teaching people to <a href="../foundations/storage-and-data.html#rsync">rsync</a> them to local NVMe improves the developer experience and reduces load on the shared filesystem.</p>
+<p>Two quick probes for the tiny-files problem, to run on the shared filesystem during a trial <strong>[untested here; needs the cluster]</strong>:</p>
+<pre><code class="language-bash">cd /shared/fs/scratch/$USER
+time python -c &quot;import torch&quot;                       # seconds on local NVMe; minutes means trouble
+time (python -m venv v &amp;&amp; v/bin/pip install -q numpy)  # many small-file writes
+</code></pre>
+<p>Separate volumes by workload where you can (advice from Ross Wightman): keep the high-churn, many-small-files data (environments, code, package caches) apart from bulk storage (datasets, checkpoints), and possibly split those too, since datasets are mostly static while checkpoints are written and rotated all the time. A distributed filesystem can't be treated like a local disk, and when high-churn small files and low-churn large files don't share a volume, you can usually use a much higher percentage of the capacity you pay for. <a href="https://github.com/argonne-lcf/dlio_benchmark">DLIO</a>, Argonne's benchmark that emulates the IO pattern of deep learning training, is one way to test a candidate volume with a realistic workload.</p>
+<p>The full benchmarking procedure is in <a href="../foundations/storage-and-data.html#5-measuring-storage">Measuring storage</a> and the <a href="#c-storage">Storage section of How to evaluate a cluster</a>.</p>
+<h4 id="what-happens-when-storage-fails">What happens when storage fails</h4>
+<p>With advanced, expensive distributed filesystems failure is relatively unlikely; with cheaper solutions it's quite likely. Either way it can happen, and you need to know:</p>
+<ul>
+<li>Who is in charge of fixing it?</li>
+<li>How long will recovery take?</li>
+<li>Who pays for the downtime?</li>
+<li>What do users do while it's broken?</li>
+</ul>
+<p>If recovery takes a long time, you often need a temporary filesystem partition so people can keep working - and you'll pay for it.</p>
+<h4 id="region-migration">Region migration</h4>
+<p>A cluster may be forced into a different region when upgrading to a new accelerator generation or expanding, if your region doesn't have what you need. The storage must be in the same region as the accelerators, so this triggers a storage migration, which is sometimes very painful. Ask these questions long before it starts:</p>
+<ul>
+<li>Is the provider responsible for moving your data, or are you?</li>
+<li>Is the provided tooling good enough to move TBs of data in a few hours, or will it take many days? For example, migrating via a storage cloud typically drops all file metadata (permissions, ownership, timestamps), which can be a huge problem. 5 million tiny files can take forever to copy file by file. You can <code>tar</code> them first, but that takes hours too - and do you have room for two copies of your data?</li>
+<li>Do you pay for storage and compute of both clusters while they overlap?</li>
+<li>What happens to files being edited and created during the move? Do you send everybody home and freeze the filesystem?</li>
+</ul>
+<p><a href="../foundations/storage-and-data.html#9-moving-data-between-sites">Moving data between sites</a> has the transfer-time arithmetic and tools.</p>
+<h4 id="backup-and-archive">Backup and archive</h4>
+<p>Many CSPs offer only one tier of file storage at one price. But organizations need several: for example, you may want to archive old checkpoints or finetuning datasets to cheap cold storage such as S3 objects on HDD. Being able to expand capacity and keep &quot;hot&quot; (local NVMe), &quot;warm&quot; (shared NVMe), &quot;cold&quot; (shared HDD) and &quot;archive&quot; (tape) tiers in sync improves resilience, saves money, and makes migration and expansion easier.</p>
+<h3 id="network-questions">Network questions</h3>
+<p>This part matters mostly for training and finetuning. If you rent accelerators for inference via large deployments of microservices, or for small on-demand interactive work (notebooks), you can safely skip it - unless you serve models so big that a single replica needs more than one node.</p>
+<p>In general, make sure the offered <a href="../network/interconnects.html#intra-node-networking">intra-node</a> and <a href="../network/interconnects.html#inter-node-networking">inter-node</a> speeds match the promise and your expectations. When you measure, ask which NCCL environment variables the platform needs; a safe default is <code>NCCL_NVLS_ENABLE=2</code>, which uses NVLink SHARP when available (NVLS is explained in <a href="../network/interconnects.html#sharp">SHARP</a>).</p>
+<h4 id="ask-for-the-actual-performance-numbers">Ask for the actual performance numbers</h4>
+<p>Compute theory never matches reality, and reality can vary dramatically between providers even with identical components, because it depends on the quality of every part and on how well the racks were designed and put together.</p>
+<p>The easiest ask is an <code>all-reduce</code> benchmark plot over 4, 8, 16, 32 and 64 nodes (more if your cluster is bigger). Bandwidth should degrade gradually with more nodes, but not dramatically; some networks become very inefficient at higher node counts. See <a href="../network/interconnects.html#real-network-throughput">Real network throughput</a>.</p>
+<p>Ideally benchmark a few payload sizes - the ones you know your workload's collectives use. Stas usually starts by asking for a plot at a big payload, 4-16GiB (16GiB gets the best bandwidth on the newest, fastest inter-node networks), which immediately tells him whether the network is good. You'll very likely also want 256-512MiB, so ask for the wider range.</p>
+<p>The most practical approach he has used is to ask the CSP for their own <code>nccl-tests</code> <code>all-reduce</code> numbers, on 1 node and on 4-16 nodes. Every provider wants to put its best foot forward, so what comes back is their best case - which is exactly what you want, because it becomes the number you hold them to in the SLA. Ask around whether those figures look right for that hardware; in his experience they usually do. Once you have the nodes, run the same benchmark yourself: those are the numbers you should reproduce. If you can't, something about your allocation differs from what they demoed, and now you have a specific, quantified thing to escalate instead of a vague complaint that the network feels slow.</p>
+<p>Ask for these numbers up front, not while negotiating the SLA. By then it's too late, and they have no incentive to show you their best case.</p>
+<p>He has yet to see NVLink perform differently between providers (unless it's misconfigured in software), but ask for the single-node benchmark too.</p>
+<h4 id="does-the-network-steal-accelerator-memory">Does the network steal accelerator memory?</h4>
+<p>Stas Bekman reports that on one cloud, when they started using the GPUs, they found 5GiB of each one already used by the networking software. They managed to reduce it, but they'd still been sold GPUs with less memory than advertised, and nobody had told them before they signed. As accelerators get bigger this matters less, but getting 75GiB of usable memory instead of 80GiB on an H100 is a huge loss per GPU. Check with <code>nvidia-smi --query-gpu=memory.used,memory.total --format=csv</code> on an idle node with no processes running: <code>memory.used</code> should be a few hundred MiB at most, not several GiB.</p>
+<h4 id="infiniband-or-ethernet">InfiniBand or Ethernet?</h4>
+<p>CSPs generally follow NVIDIA's <a href="https://docs.nvidia.com/dgx-superpod/reference-architecture-scalable-infrastructure-h100/latest/abstract.html">DGX SuperPOD Reference Architecture</a>, which details how to build a rail-optimized InfiniBand network. Rail-optimized means each GPU in an 8-GPU node connects to its own leaf switch; everything else is a standard fat-tree (both explained in <a href="../foundations/networking.html#top-of-rack-leaf-spine-fat-tree">Top-of-rack, leaf-spine, fat-tree</a>).</p>
+<p>However, many of the largest GPU clusters now run RoCEv2 instead of InfiniBand. Meta has <a href="https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/">shown</a> that you can train frontier-class Llama models on RoCEv2. SemiAnalysis/Fabricated Knowledge show a <a href="https://www.fabricatedknowledge.com/p/nvidia-waiting-on-blackwell-and-whats?utm_source=post-banner&amp;utm_medium=web&amp;utm_campaign=posts-open-in-app&amp;triedRedirect=true">significant drop-off</a> in NVIDIA's networking attach rate (the share of NVIDIA GPU purchases that also buy NVIDIA's own InfiniBand networking).</p>
+<p>Since multi-node training depends on network collectives (NCCL or RCCL), the type of network can significantly affect performance and user experience. Either can be good; judge it by the measured numbers above, not the label.</p>
+<h3 id="security">Security</h3>
+<p>Security is sometimes an afterthought, and CSPs' approaches vary widely. A SOC 2 Type 2 certification (an independent audit report attesting that a provider's security controls actually operated over a period of several months) may not be enough. Check:</p>
+<ul>
+<li>Whether the machines you'll use are virtualized. If you're on bare metal and the provider serves other tenants, you can't know what was done on that machine before you got it (<a href="../foundations/containers-and-virtualization.html#7-hardware-virtualization">Hardware virtualization</a> explains what a VM isolates).</li>
+<li>That the provider verifies known-good versions of BMC firmware (the baseboard management controller, the out-of-band management chip), system firmware and BIOS before provisioning, or re-provisioning, a server for you.</li>
+</ul>
+<h3 id="tier-1-vs-tier-2-clouds">Tier 1 vs Tier 2 clouds</h3>
+<p>Stas Bekman doesn't have a clear recommendation yet. His intuition is that Tier 2 clouds are likely to provide better and more personal support, because they have to work harder to win customers.</p>
+<p>On price, Tier 2 clouds are generally cheaper, or they couldn't compete. But their margins are much thinner, because they lack Tier 1's volume buying power.</p>
+<p>Tier 2 clouds are also more likely to be flexible, to offer non-mainstream accelerators (AMD, Intel), and to help tune things at little or no cost.</p>
+<h3 id="orchestration">Orchestration</h3>
+<p>Well-oiled node orchestration is critical for using multi-node clusters. Know which one you need - usually <a href="../orchestration/slurm/from-zero.html">Slurm</a>, <a href="../orchestration/kubernetes-from-zero.html">Kubernetes</a>, or both - and make sure it's well supported. Some clouds support only one, or offer very limited support for the other. These days Slurm is mostly used for training and finetuning and Kubernetes for inference (<a href="../orchestration/slurm/from-zero.html#slurm-vs-kubernetes">Slurm vs Kubernetes</a>); there are also <a href="../orchestration/slurm/from-zero.html#other-orchestrators">other orchestration platforms</a>.</p>
+<p>As with hardware, if you won't administer the cluster yourself, know who handles problems. Orchestration is a crucial component: when it's broken, nobody can use the cluster and you lose time and money.</p>
+<h3 id="up-to-date-software-and-os-versions">Up-to-date software and OS versions</h3>
+<p>Make sure the provider won't force you onto old software or an old operating system. Stas Bekman has been forced to use very old Ubuntu versions because the provider's software stack, which they had to use, didn't support newer ones. An old OS often means an old kernel and an old driver branch, which caps the CUDA version you can run (<a href="../compute/gpu-software-stack.html#the-four-rules">The four rules</a>).</p>
+<h3 id="system-administration">System administration</h3>
+<p>It can be hard to find a good system administrator who understands ML workloads, so ask whether the CSP can take some of that work. Tier 1 CSPs sub-contract service companies that provide various levels of system administration. Smaller clouds usually offer their own services directly and tend to understand what ML workloads need well.</p>
+<p>You can't succeed without someone experienced looking after your cluster. Using ML engineers for system administration is very counter-productive: it's time-consuming, interrupt-driven work. Hire a system administrator, or a service company that does it for you.</p>
+<h3 id="before-you-sign">Before you sign</h3>
+<p>These notes come from direct experience, and clearly not every possible failure is covered. Add your own questions by asking what's important to you and what failures could stop you from reaching your compute goals. If you're evaluating a particular CSP, ask the community about it, especially what pitfalls to avoid there.</p>
+<p>The key message: choose a cloud where your choices haven't been taken away from you, and where you won't be stuck with a service your developers hate, which is likely to make people leave your company.</p>
+<p>The questions above, as a checklist to bring to discovery calls:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Area</th>
+<th style="text-align:left">Ask</th>
+<th style="text-align:left">Want in writing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Failures</td>
+<td style="text-align:left">Replacement procedure, API, backup pool size</td>
+<td style="text-align:left">Replacement time; credit per node-hour down</td>
+</tr>
+<tr>
+<td style="text-align:left">Support</td>
+<td style="text-align:left">Paid tier, priority tickets, off-hours, direct engineer access</td>
+<td style="text-align:left">Response time per priority</td>
+</tr>
+<tr>
+<td style="text-align:left">Exit</td>
+<td style="text-align:left">Under what conditions can we leave early?</td>
+<td style="text-align:left">A clean exit clause</td>
+</tr>
+<tr>
+<td style="text-align:left">Upgrades</td>
+<td style="text-align:left">Can we move to the next generation mid-term? Same region?</td>
+<td style="text-align:left">Upgrade right and its price</td>
+</tr>
+<tr>
+<td style="text-align:left">Burn-in</td>
+<td style="text-align:left">How long, which tests?</td>
+<td style="text-align:left">Minimum burn-in (2-3 days)</td>
+</tr>
+<tr>
+<td style="text-align:left">Topology</td>
+<td style="text-align:left">Same spine for all nodes and spares? Fixed allocation?</td>
+<td style="text-align:left">Both</td>
+</tr>
+<tr>
+<td style="text-align:left">Expansion</td>
+<td style="text-align:left">Room to grow on the same spine and region?</td>
+<td style="text-align:left">A plan</td>
+</tr>
+<tr>
+<td style="text-align:left">Storage</td>
+<td style="text-align:left">Usable vs paid capacity, small-file performance, failure plan, migration plan, tiers</td>
+<td style="text-align:left">Usable capacity; recovery time</td>
+</tr>
+<tr>
+<td style="text-align:left">Network</td>
+<td style="text-align:left"><code>nccl-tests</code> all-reduce on 1 and 4-16 nodes; required NCCL env vars; GPU memory taken by networking</td>
+<td style="text-align:left">Those numbers as the SLO</td>
+</tr>
+<tr>
+<td style="text-align:left">Security</td>
+<td style="text-align:left">VM or bare metal; firmware verification</td>
+<td style="text-align:left">-</td>
+</tr>
+<tr>
+<td style="text-align:left">Software</td>
+<td style="text-align:left">Slurm/Kubernetes support; OS and driver versions</td>
+<td style="text-align:left">Versions not forced</td>
+</tr>
+<tr>
+<td style="text-align:left">Admin</td>
+<td style="text-align:left">Who runs the cluster day to day?</td>
+<td style="text-align:left">Scope of managed service</td>
+</tr>
+</tbody>
+</table>
+<p>If this feels overwhelming, Stas Bekman occasionally consults on due diligence and joins discovery calls; he can be contacted at <a href="mailto:stas@stason.org?subject=Choosing%20cloud%20consulting">stas@stason.org</a>.</p>
+<h2 id="how-to-evaluate-a-cluster">How to evaluate a cluster</h2>
+<p>Once you have trial nodes, measure the three subsystems the previous section is about: network, compute and storage. Don't treat the CSP's slide deck as the SLA until you've reproduced it on <em>your</em> allocation. All the tools are in this book; an agent runbook for the same loop is <a href="https://github.com/stas00/ml-engineering/blob/master/skills/evaluate-cluster/SKILL.md">evaluate-cluster/SKILL.md</a>.</p>
+<p>The order matters, because the slow passes (DCGM, MAMF, a shared-filesystem <code>fio</code> scan, a multi-node all-reduce) each take minutes to hours and you don't want one to die halfway on something a ten-second check would have caught:</p>
+<ol>
+<li>Preflight: collect what you need, prove the nodes can reach each other.</li>
+<li>Build an isolated, current software stack and dump the environment.</li>
+<li>Connectivity: <a href="../debug/torch-distributed-gpu-test.py"><code>torch-distributed-gpu-test.py</code></a> across every node you were given.</li>
+<li>Compute, then network, then storage (sections A-C below).</li>
+<li>Write the report, clean up the scratch files, and send the open questions back to the provider.</li>
+</ol>
+<p>Evaluate <strong>all</strong> the nodes you were given, whether that's 1 or 16. The inter-node benchmarks use every one of them. With a single node there is no inter-node section at all: leave it out of the report rather than writing &quot;skipped&quot;, and say in the verdict that the fabric is unmeasured.</p>
+<h3 id="preflight-what-to-collect-before-you-start">Preflight: what to collect before you start</h3>
+<p>Write down every row before running anything slow. If something is missing, ask for it and wait; don't start MAMF &quot;in the meantime&quot;.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Need</th>
+<th style="text-align:left">Why</th>
+<th style="text-align:left">Typical answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">How to run a command on a node</td>
+<td style="text-align:left">every step</td>
+<td style="text-align:left"><code>ssh</code>, <code>srun</code>, <code>kubectl exec</code> (with context, namespace and pod names)</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>All</strong> node identities</td>
+<td style="text-align:left">per-GPU checks and inter-node runs</td>
+<td style="text-align:left">every hostname or pod, not only the first</td>
+</tr>
+<tr>
+<td style="text-align:left">A hostfile with the peers' IPs</td>
+<td style="text-align:left">inter-node launch and rendezvous</td>
+<td style="text-align:left">one IP per line (<code>10.0.0.1</code> or <code>10.0.0.1 slots=8</code>); on Slurm, <code>scontrol show hostnames</code> plus the IPs</td>
+</tr>
+<tr>
+<td style="text-align:left">SSH details</td>
+<td style="text-align:left"><code>pdsh</code> and DeepSpeed launchers</td>
+<td style="text-align:left">port, and passwordless SSH <em>between</em> the nodes, not only from your laptop to the first one</td>
+</tr>
+<tr>
+<td style="text-align:left">GPUs per node</td>
+<td style="text-align:left">rank counts</td>
+<td style="text-align:left"><code>nvidia-smi -L</code></td>
+</tr>
+<tr>
+<td style="text-align:left">Local-disk path and shared-filesystem path</td>
+<td style="text-align:left"><code>fio-scan</code></td>
+<td style="text-align:left">find them with <code>df -hT</code>; ask if unclear</td>
+</tr>
+<tr>
+<td style="text-align:left">Advertised bandwidth and TFLOPS</td>
+<td style="text-align:left">the targets to judge against</td>
+<td style="text-align:left">the contract, or the <a href="../compute/accelerators.html#tflops-comparison-table">accelerator tables</a></td>
+</tr>
+</tbody>
+</table>
+<p>A <strong>hostfile</strong> is a text file listing one node per line; DeepSpeed's <code>-H</code> and <code>pdsh -w</code> read it. Skip <code>#</code> comment lines when you parse it, and if the platform already ships one, read it but don't edit it.</p>
+<p>The NCCL environment is not something to ask about; dump it on the first node:</p>
+<pre><code class="language-bash">env | grep -E '^NCCL_|^FI_|^AWS_OFI'
+</code></pre>
+<p>Keep whatever the platform sets for its fast path (<code>NCCL_IB_HCA</code>, <code>NCCL_NET_PLUGIN=ofi</code>, <code>NCCL_TUNER_PLUGIN=ofi</code>, the EFA/OFI tunables, <code>NCCL_NVLS_ENABLE</code>, ...) and don't overwrite it with your own default. Only if <code>NCCL_NVLS_ENABLE</code> is unset, set it to <code>2</code>. Its values: <code>2</code> = use NVLink SHARP when available (auto), <code>0</code> = off, <code>1</code> = require it (NCCL can abort if it isn't available). Record the final environment in the report, and say who set each value (the container image, the cluster), since that is what the provider has to reproduce.</p>
+<p>With two or more nodes, prove they can see each other before touching a GPU. This takes seconds and is plain TCP and SSH (untested here):</p>
+<pre><code class="language-bash"># 1. launch node -&gt; every peer; BatchMode fails fast if keys or port are wrong
+while read -r ip rest; do
+  [[ &quot;$ip&quot; =~ ^# ]] || [[ -z &quot;$ip&quot; ]] &amp;&amp; continue
+  ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new &quot;$ip&quot; hostname
+done &lt; &quot;$HOSTFILE&quot;
+
+# 2. the same through pdsh, if that is the launcher
+HOSTS=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | cut -d' ' -f1 | tr '\n' ',' | sed 's/,*$//g')
+PDSH_RCMD_TYPE=ssh pdsh -w &quot;$HOSTS&quot; hostname
+
+# 3. peer -&gt; peer TCP to the first node, which the rendezvous will need (run from another node)
+MASTER_ADDR=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | head -1 | cut -d' ' -f1)
+timeout 5 bash -c &quot;echo &gt;/dev/tcp/$MASTER_ADDR/${SSH_PORT:-22}&quot; &amp;&amp; echo OPEN
+</code></pre>
+<p>Pass means every hostname came back and the TCP probe printed <code>OPEN</code>. On Kubernetes, SSH may be <code>kubectl exec</code> per pod; loop over <strong>every</strong> pod, and find the <code>sshd</code> port with <code>ss -ltnp | grep sshd</code> rather than assuming 22 or 2222. Once the venv below exists, add one more cheap check: a CPU-only, one-process-per-node <code>gloo</code> job that runs <code>init_process_group</code> and one <code>all_reduce</code>. It tests the rendezvous without NCCL; if it hangs, see <a href="../orchestration/internals.html#when-the-hostname-doesnt-resolve-to-the-nodes-routable-ip">when the hostname doesn't resolve to the node's routable IP</a>.</p>
+<h3 id="a-current-isolated-software-stack">A current, isolated software stack</h3>
+<p>Build a fresh venv on the <strong>newest released</strong> PyTorch, and don't benchmark the node's preinstalled Python (its conda, the image's <code>python3</code>, a <code>dev</code> environment), and don't modify it either. The preinstalled one is usually months behind, and the <code>torch</code> version decides which matmul kernels and which NCCL you get, so it changes MAMF and every <code>busbw</code> number. &quot;It imports and the CUDA major version matches&quot; is not a reason to reuse it. Find the newest version rather than assuming one (untested here):</p>
+<pre><code class="language-bash">python3 -m venv &quot;$EVAL_VENV&quot;     # on the shared filesystem, so every node sees the same one
+&quot;$EVAL_VENV/bin/pip&quot; install -U pip
+&quot;$EVAL_VENV/bin/pip&quot; index versions torch --index-url https://download.pytorch.org/whl/cu130   # LATEST: x.y.z
+&quot;$EVAL_VENV/bin/pip&quot; install torch numpy packaging nvidia-ml-py matplotlib \
+  --index-url https://download.pytorch.org/whl/cu130
+</code></pre>
+<p>Pick the <code>cuNNN</code> index that matches the driver: try the highest one the driver supports (<code>nvidia-smi</code> prints it, see <a href="../compute/gpu-software-stack.html#the-four-rules">The four rules</a>) and fall back if it returns 404. Record the version you installed and that it was the newest at the time; if you had to settle for an older one, say so and why.</p>
+<p>Two traps:</p>
+<ul>
+<li><strong>Check that each phase actually ran on that venv.</strong> Launchers can silently substitute their own interpreter: <code>deepspeed</code>, <code>pdsh</code> and <code>srun</code> run whatever <code>python3</code> is first on the remote <code>PATH</code>, so a run can come back on the node's old <code>torch</code> with your venv activated locally. Every benchmark here prints its software stack (<code>torch=..., nccl=...</code>); grep the log before copying a number.</li>
+<li><strong><code>nvidia-ml-py</code> is required</strong> (it's imported as <code>pynvml</code>). <code>mamf-finder.py</code> refuses to start without it, because it needs the SM clock to confirm a MAMF burst ran at boost and the power draw to rank shapes. Install it rather than passing <code>--telemetry off</code>.</li>
+</ul>
+<p>Install the host tools on <strong>every</strong> node you'll measure, before the environment dump (with <code>sudo</code> if you aren't root):</p>
+<pre><code class="language-bash">sudo apt-get update &amp;&amp; sudo apt-get install -y infiniband-diags fio iproute2 rdma-core pdsh   # Debian/Ubuntu
+sudo dnf install -y infiniband-diags fio iproute rdma-core pdsh                               # RHEL/Rocky
+# DCGM is not in the distro repos: add NVIDIA's CUDA repo, then install the package matching the CUDA major:
+#   CUDA_VERSION=$(nvidia-smi | sed -E -n 's/.*CUDA Version: ([0-9]+)[.].*/\1/p')
+#   apt-get install -y --install-recommends datacenter-gpu-manager-4-cuda${CUDA_VERSION}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Binary</th>
+<th style="text-align:left">Package</th>
+<th style="text-align:left">Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>ibstat</code></td>
+<td style="text-align:left"><code>infiniband-diags</code></td>
+<td style="text-align:left">InfiniBand/RoCE NIC state and rate. Empty on AWS EFA, which is fine: use <code>rdma link</code> and sysfs</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>fio</code></td>
+<td style="text-align:left"><code>fio</code></td>
+<td style="text-align:left"><code>fio-scan</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>rdma</code></td>
+<td style="text-align:left"><code>iproute2</code> (+ <code>rdma-core</code>)</td>
+<td style="text-align:left"><code>rdma link</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>pdsh</code></td>
+<td style="text-align:left"><code>pdsh</code></td>
+<td style="text-align:left">multi-node launch</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>dcgmi</code></td>
+<td style="text-align:left"><code>datacenter-gpu-manager-4-cudaN</code> (NVIDIA's repo)</td>
+<td style="text-align:left"><code>dcgmi diag -r 2</code></td>
+</tr>
+</tbody>
+</table>
+<p>If package installs are blocked, record it and fall back to <code>/sys/class/infiniband/*/ports/*/rate</code> and <code>nvidia-smi topo -m</code>. Put the benchmark scripts (<a href="../compute/accelerator/benchmarks/mamf-finder.py"><code>mamf-finder.py</code></a> and <a href="../compute/accelerator/benchmarks/mamf-finder-all-gpus.py"><code>mamf-finder-all-gpus.py</code></a>, <a href="../network/benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a>, <a href="../debug/torch-distributed-gpu-test.py"><code>torch-distributed-gpu-test.py</code></a>, <a href="../storage/fio-scan"><code>fio-scan</code></a> and <a href="../storage/fio-json-extract.py"><code>fio-json-extract.py</code></a>) in <strong>one directory</strong> on the shared filesystem: <code>mamf-finder-all-gpus.py</code> runs <code>./mamf-finder.py</code> from its own directory, and <code>fio-scan</code> calls <code>./fio-json-extract.py</code>. Record their <code>sha256sum</code> in the report.</p>
+<p>Then dump the environment into the report (UTC time and hostnames first):</p>
+<pre><code class="language-bash">PY=$EVAL_VENV/bin/python
+date -u +%FT%TZ
+hostname -s; uname -a
+nproc; grep MemTotal /proc/meminfo
+. /etc/os-release; echo &quot;$PRETTY_NAME&quot;
+&quot;$PY&quot; -c &quot;import torch; print(torch.__version__, torch.version.cuda); print(torch.cuda.nccl.version())&quot;
+nvidia-smi --query-gpu=index,name,uuid,driver_version,memory.total,power.limit,power.max_limit,clocks.max.sm,clocks.sm,power.draw,pcie.link.gen.current,pcie.link.gen.max --format=csv
+nvidia-smi topo -m
+ibstat; rdma link; ls /sys/class/infiniband; cat /sys/class/infiniband/*/ports/1/rate
+nvidia-smi --query-compute-apps=pid,used_memory,process_name --format=csv   # must be empty before GPU passes
+</code></pre>
+<p>Report HBM in GiB, and three SM clocks, not one: <strong>boost</strong> (<code>clocks.max.sm</code>, what a short burst reaches), <strong>saturated</strong> (the clock under a dense matmul at the power limit, well below boost; a range is fine) and <strong>parked idle</strong> (<code>clocks.sm</code> with nothing running). Don't call the boost clock the &quot;loaded&quot; clock. The GPU UUIDs double as the serial-number record from <a href="#the-three-most-important-questions">the three most important questions</a>.</p>
+<p>Then, before the expensive sweeps, run <a href="../debug/torch-distributed-gpu-test.py"><code>torch-distributed-gpu-test.py</code></a>, so a broken NCCL or GPU shows up in seconds rather than in the middle of a 16GiB all-reduce. With two or more nodes, run it across <strong>all</strong> of them, with the same launcher you'll use for the inter-node benchmark; a one-node run only tests NVLink and must not be reported as an inter-node check. The single-node form (untested here):</p>
+<pre><code class="language-bash">&quot;$PY&quot; -m torch.distributed.run --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d \
+  torch-distributed-gpu-test.py   # seconds; fails fast on broken NCCL
+</code></pre>
+<p>Copy every log and plot <strong>off the cluster as soon as it's written</strong>. Trial access, and the pod's <code>/tmp</code>, disappear without notice.</p>
+<h3 id="a-network">A. Network</h3>
+<p>Intra-node: run <a href="../network/benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a> with <code>torchrun --nproc_per_node=8</code> (or however many GPUs the node has). Inter-node: the same script on <strong>every node you were given</strong> (at least 4 if you have the choice; ranks = nodes x GPUs per node). The script header has a <code>pdsh</code> recipe that needs passwordless SSH between those nodes; Slurm <code>srun</code> and <code>deepspeed -H &lt;hostfile&gt;</code> are the other common launchers. See <a href="../network/measuring-and-debugging.html#torch-dist-bench">torch-dist-bench</a>, <a href="../network/measuring-and-debugging.html#network-throughput">Network throughput</a> and <a href="../network/interconnects.html#real-network-throughput">Real network throughput</a>.</p>
+<pre><code class="language-bash">&quot;$PY&quot; -u -m torch.distributed.run --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d \
+  torch-dist-bench.py --collectives all --separate-tables      # intra-node
+# inter-node: see the pdsh / srun recipes in the script's header, and the pdsh form below
+</code></pre>
+<p><code>--collectives all</code> times all nine collectives (all-reduce first), each from 8B to 16GiB; on one 8x B200 node that takes under 2 minutes. The all-reduce table gives the bandwidth, and the per-call latency of all nine gives the <a href="#latency-every-collective-no-target">latency check</a> below.</p>
+<p>Multi-node launchers need care with the environment, because <strong><code>pdsh</code> doesn't forward your environment</strong> to the remote shells:</p>
+<ul>
+<li>
+<p>With <code>pdsh</code> + <code>torchrun</code>, put the venv activation and the NCCL values in a small <code>run-env.sh</code> on the shared filesystem and <code>source</code> it at the start of the remote command (sketch, untested here):</p>
+<pre><code class="language-bash">NNODES=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -vc '^$')
+MASTER_ADDR=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | head -1 | cut -d' ' -f1)
+HOSTS=$(grep -v '^#' &quot;$HOSTFILE&quot; | grep -v '^$' | cut -d' ' -f1 | tr '\n' ',' | sed 's/,*$//g')
+cwd=$(pwd)
+cmd=&quot;source $cwd/run-env.sh; python -u -m torch.distributed.run \
+    --nproc_per_node 8 --nnodes $NNODES \
+    --rdzv_endpoint $MASTER_ADDR:6002 --rdzv_backend c10d --max_restarts 0 \
+    --role \$(hostname -s): --tee 3 \
+    $cwd/torch-dist-bench.py --collectives all --separate-tables&quot;
+PDSH_RCMD_TYPE=ssh PDSH_SSH_ARGS_APPEND=&quot;-o StrictHostKeyChecking=accept-new -o BatchMode=yes&quot; \
+  pdsh -w $HOSTS $cmd |&amp; tee torch-dist-bench-torchrun.log
+</code></pre>
+<p><code>\$(hostname -s)</code> is escaped so it expands on each remote node, not on the launch node, and <code>MASTER_ADDR</code> must be an IP the other nodes can reach over TCP. If the rendezvous times out, the usual cause is a hostname that resolves to <code>127.0.1.1</code>: see <a href="../orchestration/internals.html#when-the-hostname-doesnt-resolve-to-the-nodes-routable-ip">when the hostname doesn't resolve to the node's routable IP</a>.</p>
+</li>
+<li>
+<p>With DeepSpeed, <code>--venv_script run-env.sh</code> can drop exports; <code>~/.deepspeed_env</code> (one <code>KEY=VALUE</code> per line) is the reliable place for environment variables. And <code>--venv_script</code> does <strong>not</strong> switch the Python interpreter: DeepSpeed still launches whatever <code>python3</code> is first on the remote <code>PATH</code>. Put the venv first on <code>PATH</code> inside <code>run-env.sh</code> <em>and</em> start <code>deepspeed</code> from the venv (<code>$EVAL_VENV/bin/deepspeed</code>). If <code>ssh</code> reaches the machine's <code>sshd</code> rather than the container's, start <code>sshd</code> inside the container on a free port and set <code>PDSH_SSH_ARGS_APPEND=&quot;-p &lt;port&gt; ...&quot;</code>.</p>
+</li>
+<li>
+<p>Install <code>matplotlib</code> in the venv on the shared filesystem so every node can draw its plot. <code>torch-dist-bench.py</code> writes its PNGs into the process's current directory (often <code>$HOME</code> under <code>torchrun</code>), so look for them there.</p>
+</li>
+</ul>
+<p><strong>Identify the transport before quoting any number.</strong> Inside the node:</p>
+<pre><code class="language-bash">nvidia-smi topo -m      # NV18 = 18 bonded NVLinks between that GPU pair; PHB/PIX/SYS = PCIe only
+nvidia-smi nvlink -s    # per-link GBps; x0.94 (encoding overhead) is roughly the advertised rate
+</code></pre>
+<p>About 53 GBps per link is NVLink 5 (900 GBps unidirectional per GPU, B200 class), about 26.5 is NVLink 4 (450 GBps, H100/H200 class), and about 12.5 is older NVLink (<a href="../network/interconnects.html#nvlink">NVLink</a>). With no <code>NV*</code> entries, the GPUs talk over PCIe; use <code>pcie.link.gen.max</code> (Gen5 x16 is about 63 GBps unidirectional). Between nodes:</p>
+<pre><code class="language-bash">ls /sys/class/infiniband/                 # mlx5_* = InfiniBand or RoCE; rdmap* = AWS EFA
+cat /sys/class/infiniband/*/ports/1/rate  # e.g. 200 Gb/sec (EFA) or 800 Gb/sec (ConnectX-8)
+rdma link
+ibstat                                    # may print nothing on EFA; that is not &quot;no fabric&quot;
+</code></pre>
+<p>Rail-optimized fabrics usually give each GPU its own NIC; count the devices and record them as <strong>inventory</strong>.</p>
+<p><strong>One slow node drags down every collective it's in</strong>, and an all-reduce over all nodes won't tell you which one it is. Testing every pair of nodes will: run a 2-node all-reduce on each pair, and the node that shows up in all the slow pairs is the one to report. Dirk Groeneveld wrote <a href="https://github.com/allenai/OLMo/commit/f91cebdfa299bf55e815d496c367de8b59881c2e">this pair check</a> for OLMo on GCP; the launcher is <code>mpirun</code>, and the <code>tcpxo</code> and <code>FasTrak</code> lines are specific to that cloud's network plugin, so adapt the top half to your platform:</p>
+<pre><code class="language-bash">#!/bin/bash
+# check_node_pair.sh HOST1 HOST2 - all-reduce benchmark on just these two nodes
+
+NCCL_LIB_DIR=/var/lib/tcpxo/lib64 source /var/lib/tcpxo/lib64/nccl-env-profile.sh
+
+set -euxo pipefail
+
+HOST_VARS=$(sed 's/ \{1,\}/ -x /g' &lt;&lt;&lt;&quot;${!NCCL*} LD_LIBRARY_PATH&quot;)
+FIRST_HOST=$(( echo &quot;$1&quot; &amp;&amp; echo &quot;$2&quot; ) | sort | head -1)
+mpirun \
+  --mca btl self,tcp \
+  --mca btl_tcp_if_include enp0s12 \
+  --mca orte_base_help_aggregate 0 \
+  -H $1,$2 \
+  -np 2 \
+  --bind-to none \
+  -npernode 1 \
+  -tag-output \
+  -x ${HOST_VARS} \
+  -x NCCL_NET=FasTrak \
+  -x GLOO_SOCKET_IFNAME=enp0s12 \
+  -x CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+  -x OMP_NUM_THREADS=16 \
+  bash -c &quot;source ~/venv/OLMo/bin/activate &amp;&amp; torchrun --nproc_per_node 8 --nnodes=2 --rdzv-backend=c10d --rdzv-endpoint=$FIRST_HOST ~/OLMo/scripts/augusta/all_reduce_bench.py&quot;
+</code></pre>
+<p>and to run it over consecutive pairs from a hostfile, with <a href="https://www.gnu.org/software/parallel/">GNU parallel</a> taking two hosts at a time:</p>
+<pre><code class="language-bash"># checking all node pairs for reduce perf
+fgrep -hv \# ~/hostfiles/hosts | \
+parallel -N2 'echo {} $(./check_node_pair.sh {} 2&gt;&amp;1 | fgrep busbw)'
+</code></pre>
+<p>Untested here. <code>&quot;${!NCCL*}&quot;</code> expands to the <em>names</em> of all set <code>NCCL_*</code> variables, and the <code>sed</code> turns them into <code>-x NAME</code> flags so <code>mpirun</code> forwards them. <code>parallel -N2</code> pairs lines 1-2, 3-4 and so on, which covers every node once; shuffle the hostfile and rerun to pair each node with different partners, so a slow pair points at one node rather than two.</p>
+<p>The number to report is <strong><code>busbw</code></strong> (unidirectional). Intra-node, compare it to the advertised NVLink bandwidth (not the duplex figure); NVLS/SHARP can push the ring-formula number past 100% of that spec, and only helps <strong>all-reduce</strong> (roughly +30% intra-node and +25% inter-node over ring <code>busbw</code>; it doesn't speed up all-gather or reduce-scatter, and it's a different feature from InfiniBand switch SHARP). Inter-node, quote <code>busbw</code> and the NCCL path (IB or Socket, NVLS yes or no, from the <code>NCCL_DEBUG=INFO</code> log). <strong>Don't</strong> divide it by the advertised IB/RoCE/EFA GBps, and don't multiply it by a ring factor to get &quot;GBps on the wire&quot;: a multi-node <code>busbw</code> is always a mix of NVLink, NIC and (usually) NVLS traffic, so it is never a NIC-only measurement. Instead, compare multi-node <code>busbw</code> with the 1-node all-reduce at the same payload: the ratio is the cost of scaling out. If <code>NCCL_TUNER_PLUGIN</code> is set (EFA's <code>ofi</code>, for example), a platform tuner, not NCCL's built-in tuning, picks the algorithm; confirm what ran with <code>NCCL_DEBUG=INFO</code>. If you only have one node, skip inter-node and write that down: a 1-node NVLink number says nothing about how the fabric behaves at 4 nodes.</p>
+<h4 id="latency-every-collective-no-target">Latency: every collective, no target</h4>
+<p>Don't let all-reduce stand in for latency. Its small-payload latency is the best of all collectives: NCCL gives only all-reduce its tree algorithm, whose latency grows with the log of the node count while the other collectives' rings grow linearly, and with NVLS or InfiniBand SHARP a small all-reduce is reduced inside the switch (<a href="../network/interconnects.html#which-collective-to-measure-latency-with">which collective to measure latency with</a>). Report the 8B and 64KiB median and p99 (99th percentile) of all nine; at both sizes a call is nearly all latency (on 8x H200 every all-reduce up to 512KiB took 15-23 µs). The ones to comment on:</p>
+<ul>
+<li><code>batch_isend_irecv</code>: point-to-point, the latency the NICs and switches add with no collective algorithm in the way (pipeline parallelism, KV-cache transfer).</li>
+<li><code>all_to_all</code>: every GPU sends to every other at once, which exposes oversubscription and incast (mixture-of-experts dispatch and combine).</li>
+<li><code>all_reduce</code>: the best case (tensor-parallel inference inside a node, where it really is the workload).</li>
+<li><code>all_gather</code> / <code>reduce_scatter</code>: ring latency, growing linearly with rank count (FSDP/ZeRO training at scale).</li>
+</ul>
+<p>PyTorch runs <code>batch_isend_irecv</code> through its point-to-point path and <code>scatter</code> as separate NCCL sends, while <code>nccl-tests</code> makes one NCCL call for each, so those two can read higher than <code>nccl-tests</code> would on the same cluster; say so next to their numbers. With two or more nodes, add an <code>inter/intra ×</code> column: the inter-node median divided by the intra-node median of the same collective at the same payload, i.e. how many times longer a call takes once it leaves the node.</p>
+<p>No vendor publishes collective latency figures, so latency can't be &quot;x% of spec&quot; and can't be called healthy or underperforming. It goes in the verdict under &quot;needs provider input&quot;, with a request for the latency the provider expects at this node count, or a reference run on the same fabric.</p>
+<h3 id="b-compute">B. Compute</h3>
+<p>Three passes, in this order: hardware health, performance, and a search for underperforming GPUs. Start the last two only when <code>nvidia-smi --query-compute-apps=pid --format=csv</code> shows no other process on the node, and stop if one appears.</p>
+<p><strong>1. Hardware health: <code>dcgmi diag -r 2</code>.</strong> DCGM is NVIDIA's GPU health daemon (<a href="../compute/gpu-software-stack.html#dcgm-the-health-daemon-and-diagnostics">DCGM: the health daemon and diagnostics</a>); <code>-r</code> picks the diagnostic level. Level 2 checks hardware health (GPU memory, memory bandwidth, PCIe/NVLink), not FLOPS, and takes up to about 10.5 minutes on 8 GPUs. <code>-r 1</code> is a few seconds of software checks and not enough; <code>-r 3</code> is an optional longer stress test. It needs <code>nv-hostengine</code> and usually <code>CAP_SYS_ADMIN</code>:</p>
+<pre><code class="language-bash">nv-hostengine 2&gt;/dev/null || true
+dcgmi discovery -l
+dcgmi diag -r 2 | tee dcgm-diag-r2.txt
+</code></pre>
+<p>Report Pass or Fail per plugin and per GPU. If your container can't run it, write that down and continue; don't skip the next two passes.</p>
+<p><strong>2. Performance: <a href="../compute/accelerator/benchmarks/mamf-finder-all-gpus.py"><code>mamf-finder-all-gpus.py</code></a>.</strong> It measures one GPU at a time while every other GPU of the node runs a continuous bf16 matmul that holds it at its power limit, which is how GPUs compute in a real job (they share the board's power and cooling):</p>
+<pre><code class="language-bash">OUT_DIR=mamf &quot;$PY&quot; mamf-finder-all-gpus.py --dtype bfloat16 &gt; mamf-all.console 2&gt;&amp;1
+</code></pre>
+<p>On 8x H200 it took about 4.5 minutes. GPU0 runs the full <code>--search auto</code> and finds MAMF, MSMF and their matmul shapes; each other GPU then measures GPU0's shapes only; <code>mamf/summary.txt</code> lists each GPU's MAMF and MSMF with shape, watts and MHz, and gives the node figure (the median GPU), the slowest GPU (what a synchronous job runs at) and the spread. Compare both to the official bf16 TFLOPS in the <a href="../compute/accelerators.html#tflops-comparison-table">accelerator tables</a>; the definitions are in <a href="../compute/accelerators.html#mamf-and-msmf">MAMF and MSMF</a> and the tool in <a href="../compute/accelerators.html#the-mamf-finder-mamf-finderpy">The MAMF finder</a>. Don't replace it with plain <code>mamf-finder.py</code> on each GPU while the others sit idle: that measures a single-GPU upper bound, because an idle board has power and cooling headroom a busy node never has.</p>
+<p>One pass can't call a GPU slow, and a few percent isn't slow. On healthy 8x H200 and 8x B200 nodes, the slowest GPU's MSMF sat 0.9-1.7% below the node median, and one GPU's MSMF moved by up to 2.2% between passes, so a healthy GPU can read about 4% below the median in a single pass (<a href="../compute/accelerators.html#silicon-lottery">Silicon lottery</a>). Treat a GPU as a candidate only if it is more than 5% below the node median. Then rerun twice with the shape pinned (<code>--m M --n N --k K</code> from the summary's MSMF shape, <code>OUT_DIR=mamf-rep2</code> and <code>mamf-rep3</code>, about 3.5 minutes each on 8x H200), and call it underperforming only if it is more than 5% below its node median in <strong>all three</strong> passes. A <code>saw idle siblings</code> warning in <code>summary.txt</code> means a sibling's matmul stopped during that measurement, so that MSMF reads high: rerun.</p>
+<p><strong>3. Find underperforming or dead GPUs: one fixed matmul everywhere.</strong> A cheap check for a dead, slow or throttled card on every GPU of every node, siblings idle. It isn't MAMF: one fixed shape, no search, no burst/sustained split. A throwaway script (untested here):</p>
+<pre><code class="language-python"># lemon.py - same 16384^3 bf16 matmul on every visible GPU, one at a time; prints TFLOPS per GPU
+import socket, torch
+N, iters = 16384, 50
+for i in range(torch.cuda.device_count()):
+    a = torch.randn(N, N, device=f&quot;cuda:{i}&quot;, dtype=torch.bfloat16)
+    b = torch.randn(N, N, device=f&quot;cuda:{i}&quot;, dtype=torch.bfloat16)
+    for _ in range(5):
+        a @ b                                    # warm up
+    start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    start.record()
+    for _ in range(iters):
+        a @ b
+    end.record(); torch.cuda.synchronize(i)
+    secs = start.elapsed_time(end) / 1000 / iters
+    print(f&quot;{socket.gethostname()} gpu{i}: {2 * N**3 / secs / 1e12:.0f} TFLOPS&quot;)
+</code></pre>
+<p>Report every GPU's score, not just min and max, and flag a card that lands well below its node's median (the same &gt;5% rule). Name each bad GPU as <code>&lt;host&gt;(node&lt;I&gt;):gpu&lt;N&gt;</code>: the hostname an operator needs to drain it, its position in your hostfile, and its <code>nvidia-smi</code> index.</p>
+<p>Why 16384: with 128x256 output tiles, one CTA (CUDA thread block) per tile, the matmul launches <span class="math inline"><span class="math-inline">128 \cdot 64 = 8192</span></span> CTAs, and the last partial &quot;wave&quot; of CTAs across the SMs wastes little. Compute it from <em>this</em> GPU's SM count (<code>torch.cuda.get_device_properties(0).multi_processor_count</code>), never from another GPU family's <strong>[ran]</strong>:</p>
+<pre><code class="language-python"># waves.py - how evenly a 16384^3 matmul fills the GPU, with 128x256 output tiles (one CTA per tile)
+import math
+N = 16384
+ctas = (N // 128) * (N // 256)                     # 128 * 64 = 8192 tiles of the output matrix
+for name, sms in [(&quot;H100/H200&quot;, 132), (&quot;B200&quot;, 148), (&quot;A100&quot;, 108)]:
+    waves, tail = divmod(ctas, sms)
+    busy = ctas / (math.ceil(ctas / sms) * sms)    # fraction of SM-slots doing work, last partial wave included
+    print(f&quot;{name:&lt;9} {sms} SMs: {waves} full waves + {tail:&gt;2} CTA tail -&gt; {busy:.1%} of SM-slots busy&quot;)
+</code></pre>
+<pre><code>H100/H200 132 SMs: 62 full waves +  8 CTA tail -&gt; 98.5% of SM-slots busy
+B200      148 SMs: 55 full waves + 52 CTA tail -&gt; 98.8% of SM-slots busy
+A100      108 SMs: 75 full waves + 92 CTA tail -&gt; 99.8% of SM-slots busy
+</code></pre>
+<p>How to read it: on every one of these GPUs the shape keeps at least 98.5% of the SMs busy, so a GPU that scores well below its siblings is slow, not unlucky with the shape. (Wave quantization is explained in <a href="../training/profiling-and-optimization.html#tile-and-wave-quantization">Tile and wave quantization</a>.)</p>
+<h3 id="c-storage">C. Storage</h3>
+<p>Run <a href="../storage/fio-scan"><code>fio-scan</code></a> on the <strong>local NVMe</strong> path <em>and</em> the <strong>shared filesystem</strong> path (<a href="../foundations/storage-and-data.html#fio-flag-by-flag">fio, flag by flag</a> explains what it measures). You need both: NVMe is the ceiling, and the shared filesystem is what DataLoaders and checkpoints actually hit. <code>fio-scan</code> does six runs: 16KiB, 1MiB and 1GiB files, each read and written, with 16 parallel jobs, 4KiB blocks, <code>libaio</code> and <code>O_DIRECT</code> (which bypasses the page cache, so you measure the filesystem, not RAM), 3 minutes each: about 18 minutes per mount. Tiny-file (16KiB) latency is the proxy for developer experience; 1GiB sequential is the proxy for checkpointing. It needs <code>python</code> on <code>PATH</code> for <code>fio-json-extract.py</code>. On some network filesystems the 1GiB x 16-job runs take hours (file creation and deletion are slow), so a quiet 40 minutes isn't necessarily a hang; copy the local-disk results off first.</p>
+<pre><code class="language-bash">./fio-scan &quot;$NVME_PATH&quot;
+./fio-scan &quot;$SHARED_PATH&quot;
+</code></pre>
+<p><strong>Take an inventory first, by backing volume.</strong> List <code>/</code> and one row per <em>distinct</em> shared volume with its size, type and device or server. Two mount points of the same device, Lustre filesystem or bind-mount are one row. Inside a container <code>df -T /</code> often says <code>overlay</code>; report the backing filesystem (<code>xfs</code>, <code>ext4</code>, ...) from <code>findmnt</code> or <code>lsblk -f</code>. If the type is a sharing protocol rather than the product (for example <code>virtiofs</code>), find the product from the mount source tag (<code>findmnt</code>, <code>/sys/fs/virtiofs/*/tag</code>), the pod's volumes or the provider's docs. Never report how full a partition is: that's a snapshot of other tenants' data, not a property of the hardware.</p>
+<p><strong>Decide which shared mounts to scan by grouping them.</strong> Managed parallel filesystems are usually provisioned per TiB of capacity, so a 2TiB share and a 25TiB share of the same product have different expected rates, and a result from one doesn't transfer to the other. Group mounts by (type, size): scan one per group and say the others are the same type and size; a different size or type needs its own scan, or it is unmeasured. Short on time, scan the mount the workload will hammer (checkpoints go to the big share, not the code share) and scope every claim to that mount, naming its size. After scanning, treat two mounts as equivalent only if every corresponding bandwidth and IOPS cell differs by at most 5%, computed symmetrically as <span class="math inline"><span class="math-inline">|a-b| / \min(a,b)</span></span>; never average across mounts.</p>
+<p><strong>On a parallel filesystem, record the layout in the same pass.</strong> A single-client result is capped by how many storage targets the file is spread over: on Lustre save <code>lfs df -h &lt;mount&gt;</code> (how many OSTs, the object storage targets, and their sizes) and <code>lfs getstripe -d &lt;scan dir&gt;</code> (default stripe count and size; see <a href="../foundations/storage-and-data.html#lustre-mds-oss-and-lfs-setstripe">Lustre: MDS, OSS and lfs setstripe</a>); on GPFS <code>mmlsdisk</code>/<code>mmlsfs</code>, on BeeGFS <code>beegfs-ctl --getentryinfo</code>, on NFS <code>nfsstat -m</code>. A stripe count of 1 with a fast fabric and a slow result is the finding, not a mystery.</p>
+<p>In the report, compare the shared filesystem to local disk as <strong>how many times slower</strong> (local bandwidth / shared bandwidth, one decimal, e.g. <code>8.0×</code>) rather than a percentage of local. With a fixed 4KiB block size the IOPS ratio is the same number, so one column is enough. With two or more nodes, a concurrent write from every node (one 1GiB <code>O_DIRECT</code> <code>dd</code> per node to the share) is a quick extra check.</p>
+<p><strong>Leave the filesystems as you found them.</strong> A storage eval writes large scratch files onto filesystems other people use. <code>--numjobs=16 --filesize=1g</code> writes 16GiB per run, so one six-run scan leaves about 33GiB per mount if the files aren't deleted; five mounts is 165GiB. <code>fio-scan</code> passes <code>--unlink=1</code> for exactly this reason; if you write your own <code>fio</code> loop, carry that flag over, and check with <code>du -sh &lt;scan dir&gt;</code> after the first run. Keep all scratch in one timestamped directory per mount (<code>&lt;mount&gt;/users/&lt;user&gt;/cluster-eval-&lt;TS&gt;/</code>), copy the results off, then <strong>move</strong> (don't <code>rm</code>) the scratch into a trash directory <strong>on the same mount</strong>: within one filesystem a move is a rename, while a move across mounts copies every byte. Moving doesn't free the space, so tell the owner the exact paths and sizes, and let them delete it.</p>
+<h3 id="write-the-verdict">Write the verdict</h3>
+<p>End the dated report with the findings, under up to three headings, each used only if it has entries:</p>
+<ul>
+<li><strong>Healthy</strong>: subsystems that met a known target (official TFLOPS, NVLink spec, the provider's advertised filesystem figures).</li>
+<li><strong>Underperforming</strong>: subsystems measurably below a known target, every under-performing or dead GPU by name (with the pass that found it and its numbers against the node median), and a launcher or rendezvous that failed. A broken launcher isn't an unhealthy network; say which it was.</li>
+<li><strong>Needs provider input</strong>: subsystems measured cleanly but with no target to judge them against, such as collective latency or a shared filesystem with no published figures. Give the measurements in full and what you need from the provider.</li>
+</ul>
+<p>A verdict needs a target. Calling something slow with nothing to compare it to is an opinion the provider can dismiss. A parallel filesystem (Lustre, GPFS/Storage Scale, BeeGFS, NFS) is software that publishes no performance figures: throughput is a property of the deployment (number of storage targets and servers, their devices, the network to them, the stripe count), and the figure that exists is the <strong>service tier</strong> the provider sold you, typically per TiB of capacity (managed Lustre is commonly 125-1000 MB/s per TiB). So ask for that tier and the default stripe layout, and ask for the targets in the shape you measured: one expected bandwidth (or IOPS) per cell, at 16KiB, 1MiB and 1GiB, read and write, from one client with 16 jobs, 4KiB blocks and <code>O_DIRECT</code>, and whether the figures are per client or per filesystem. A comparison to local NVMe (say, 26.5x slower) is a fact worth stating, but it isn't the target: the shared filesystem was never sold to match local disk.</p>
+<p>Write findings in concrete terms: name the operation and its measured rate (&quot;a <code>pip install</code> on <code>/code</code> runs at the 16KiB read rate of 204.7 MiB/s&quot;), quote all six storage numbers rather than one, and don't assume the cluster is for training; it may be bought for inference or batch jobs. Don't make the reader hunt through tables for the call. Then compare against the numbers the provider showed you in <a href="#ask-for-the-actual-performance-numbers">Ask for the actual performance numbers</a>; any gap is your escalation, and every &quot;needs provider input&quot; item is an open question to send back before you accept the cluster. Finally, report the scratch you moved to trash, with paths and sizes.</p>
+<h2 id="traps-to-be-aware-of">Traps to be aware of</h2>
+<p>Besides the <a href="#the-we-will-do-our-best-clause">&quot;reasonable effort&quot; contract clauses</a>, two traps catch people often.</p>
+<h3 id="hardware-and-software-lock-in">Hardware and software lock-in</h3>
+<ul>
+<li>Some providers make you use very proprietary tools or hardware that make leaving hard later, because you'd have to retool everything.</li>
+<li>Consider what moving to another provider would cost if this one proves unsatisfactory, or can't supply your growing needs.</li>
+<li>If you rent a cluster of generic Linux boxes with generic open-source tools, moving between providers should be easy, since almost everything works out of the box.</li>
+<li>If you choose compute that needs custom software that only works on that hardware, and you can't rent that hardware anywhere else, you're setting yourself up for lock-in. The <a href="#accelerator-interoperability">interoperability list</a> shows where each accelerator stands.</li>
+</ul>
+<h3 id="dont-buy-what-you-dont-need">Don't buy what you don't need</h3>
+<p>Cloud providers mostly have the same generic hardware, which leaves them slim margins. To make big money, they invent products and try to convince you that you need them. Sometimes you do; very often you don't. Proprietary products usually mean partial lock-in too.</p>
+<p>It's often easy to spot the three-step marketing technique for solutions looking for a problem:</p>
+<ol>
+<li>Convince a couple of well-respected customers to use the provider's proprietary products, with huge discounts or even by paying them.</li>
+<li>Use them as social proof to reel in more converts.</li>
+<li>Then scoop up the rest of the stragglers by saying that 80% of your customers (1+2) use these amazing products.</li>
+</ol>
+<p>When marketing these products it's important:</p>
+<ul>
+<li>to mention how well they integrate with a dozen other products, since now you're not buying a single product but a whole proprietary product-sphere;</li>
+<li>to show really nice-looking, complicated diagrams of how everything plugs together, and move quickly to the next slide before someone asks a difficult question.</li>
+</ul>
+<p>HPC centers are a good group to learn from: they have no money to create new products, so they creatively meet all their needs with mostly generic open-source tools, adding custom software only when absolutely needed.</p>
+<h2 id="when-is-it-worth-upgrading-gpus">When is it worth upgrading GPUs?</h2>
+<p>Sooner or later the question is whether to move to the next GPU generation - at contract renewal, when a <a href="#next-generation-accelerator-migration">mid-term upgrade right</a> comes up, or when deciding what to buy. This section gives a decision framework and works it through on a real benchmark: training meta-llama/Llama-3.1-8B with DeepSpeed, FlashAttention-3 (FA3) on NVIDIA H200 (Hopper) vs FlashAttention-4 (FA4) on B200 (Blackwell). The framework generalizes to any &quot;should I upgrade from GPU X to GPU Y&quot; decision. The benchmark and its analysis are Stas Bekman's; the numbers are quoted as he measured them.</p>
+<h3 id="key-spec-differences-h200-vs-b200">Key spec differences: H200 vs B200</h3>
+<table>
+<thead>
+<tr>
+<th>Spec</th>
+<th>H200 SXM</th>
+<th>B200 SXM</th>
+<th style="text-align:right">Ratio (B200/H200)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Architecture</td>
+<td>Hopper</td>
+<td>Blackwell</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>Compute capability</td>
+<td>sm90</td>
+<td>sm100</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>Attention kernel (HF auto-select)</td>
+<td>FlashAttention-3</td>
+<td>FlashAttention-4 (beta)</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>Peak bf16 TFLOPS (theoretical)</td>
+<td>989</td>
+<td>2250</td>
+<td style="text-align:right"><strong>2.28x</strong></td>
+</tr>
+<tr>
+<td>Peak fp8 TFLOPS (theoretical)</td>
+<td>1979</td>
+<td>4500</td>
+<td style="text-align:right">2.27x</td>
+</tr>
+<tr>
+<td>HBM capacity (usable) HBM3e</td>
+<td>~141GiB</td>
+<td>~180GiB</td>
+<td style="text-align:right">1.28x</td>
+</tr>
+<tr>
+<td>HBM bandwidth</td>
+<td>4.8TBps</td>
+<td>8.0TBps</td>
+<td style="text-align:right">1.67x</td>
+</tr>
+<tr>
+<td>TDP</td>
+<td>700W</td>
+<td>1000W</td>
+<td style="text-align:right">1.43x</td>
+</tr>
+</tbody>
+</table>
+<p><em>Compute capability</em> is NVIDIA's version number for a GPU architecture (<code>sm_90</code> for Hopper, <code>sm_100</code> for Blackwell); kernels and libraries are compiled and tuned per compute capability. Theoretical peak TFLOPS is <a href="../training/profiling-and-optimization.html#tflops-as-a-performance-metric">a ceiling nobody reaches in practice</a>; the next section gives what's actually achievable. The full spec tables (all dtypes, all vendors, memory, power, clocks) are in <a href="../compute/accelerators.html#tflops-comparison-table">Accelerators</a>.</p>
+<h3 id="mamf-the-realistic-ceiling">MAMF: the realistic ceiling</h3>
+<p><strong>MAMF (Maximum Achievable Matmul FLOPS)</strong> is the best <code>matmul</code> throughput actually measured on real hardware and software (perfectly aligned, maximum-size shapes, no sparsity), as opposed to the physically unreachable theoretical peak. Use it to check whether your own training TFLOPS have room left, or whether you're already near the ceiling. Measure it on your own GPUs with <a href="../compute/accelerator/benchmarks/mamf-finder.py"><code>mamf-finder.py</code></a>; the methodology and the cross-vendor table are in <a href="../compute/accelerators.html#mamf-and-msmf">MAMF and MSMF</a> and the <a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MAMF comparison table</a>.</p>
+<p><strong>BF16:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Accelerator</th>
+<th style="text-align:right">MAMF (TFLOPS)</th>
+<th style="text-align:right">Theoretical</th>
+<th style="text-align:right">Efficiency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H100/H200 SXM</td>
+<td style="text-align:right">794.5</td>
+<td style="text-align:right">989</td>
+<td style="text-align:right">80.3%</td>
+</tr>
+<tr>
+<td>B200 SXM</td>
+<td style="text-align:right">1745.0</td>
+<td style="text-align:right">2250</td>
+<td style="text-align:right">77.6%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>FP8:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Accelerator</th>
+<th style="text-align:right">MAMF (TFLOPS)</th>
+<th style="text-align:right">Theoretical</th>
+<th style="text-align:right">Efficiency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H200 SXM</td>
+<td style="text-align:right">1453.4</td>
+<td style="text-align:right">1979</td>
+<td style="text-align:right">73.4%</td>
+</tr>
+<tr>
+<td>B200 SXM</td>
+<td style="text-align:right">3432.5</td>
+<td style="text-align:right">4500</td>
+<td style="text-align:right">76.3%</td>
+</tr>
+</tbody>
+</table>
+<p>How to read these: the <em>achievable</em> bf16 ratio (1745/794.5 = <strong>2.20x</strong>) tracks the theoretical 2.28x closely, because efficiency is similar on both chips (80.3% vs 77.6%). In fp8 the achievable ratio is actually <em>higher</em> than the theoretical one (3432.5/1453.4 = <strong>2.36x</strong>), because B200's fp8 path is relatively more mature (76.3%) than H200's (73.4%). Either way, <strong>2.2-2.4x is the realistic matmul-only ceiling</strong> for this upgrade. Real training lands below that once attention scaling, dense-GEMM maturity and communication come in; the <a href="#worked-example-llama-31-8b-fa3-vs-fa4">worked example</a> shows how far below, and why.</p>
+<h3 id="decision-framework-part-1-do-you-need-a-new-dtype">Decision framework, part 1: do you need a new dtype?</h3>
+<p>Start here, because this one question can settle the decision without any benchmarking. The first question isn't <em>&quot;how much faster is it?&quot;</em> but <em>&quot;does the new GPU do something the current one <strong>can't</strong>?&quot;</em> For a generation jump, the clearest such gap is <strong>new low-precision dtypes</strong> (the dtype zoo is in <a href="../training/arithmetic.html#mixed-precision-internals">Mixed precision internals</a>).</p>
+<p>Blackwell adds <strong>FP4 (MXFP4, NVFP4) and FP6</strong>, which Hopper <strong>cannot execute in hardware at all</strong> - relevant for FP4 inference or microscaling training recipes. If your target recipe needs one of these formats, the old GPU doesn't score &quot;2x slower&quot;, it scores zero. There's nothing to benchmark: you either need the capability or you don't. (Caveat: this is also the feature <em>most</em> exposed to software-maturity risk - the silicon can do it before the frameworks, kernels and numerics recipes can; see <a href="#software-support-the-cost-of-switching-too-early">Software support</a>.)</p>
+<p>The numbers behind this, H200 to B200 theoretical dense TFLOPS: bf16 989 to 2250, fp8 1979 to 4500, plus formats Hopper can't execute at all: fp6 4500, mxfp4 and nvfp4 9000. FP4 roughly doubles fp8 throughput and halves the memory and bandwidth of the quantized tensors. What makes 4-bit actually <em>usable</em> is Blackwell's <strong>second-generation Transformer Engine with microscaling</strong>. FP4 has only about 16 representable values, so a single scale factor per tensor can't cover its dynamic range: small values flush to zero and large ones saturate. Microscaling (MX / NVFP4) instead uses a separate scale per small block (e.g. per 16-32 values), applied by the tensor cores in hardware at no throughput cost. You keep accuracy near fp8/bf16 at FP4's ~2x speed and half the memory, which naive per-tensor FP4 can't do. (Hopper's first-generation Transformer Engine did this for fp8 with per-tensor scales; Blackwell's second generation extends it to block-scaled fp4/fp6.) The formats themselves are covered in <a href="../training/arithmetic.html#fp4-formats">FP4 formats</a> and <a href="../inference/arithmetic.html#nvfp4-and-mxfp4">NVFP4 and MXFP4</a>, and the scaling machinery in <a href="../training/arithmetic.html#transformer-engine-mechanics">Transformer Engine mechanics</a>.</p>
+<p><strong>Before upgrading <em>for</em> a feature, confirm that the software you actually use supports it.</strong> A hardware capability you can't use from your stack is money spent on nothing: a spec sheet lists what the silicon <em>can</em> do, not what your framework, kernels and libraries let you do today. Two examples:</p>
+<ul>
+<li><strong>NVLink-C2C</strong> (the coherent CPU-GPU interconnect on Grace-based systems, see <a href="../network/interconnects.html#nvlink-c2c">NVLink-C2C</a>) looked great on paper but was barely used by most training and inference software at launch, so paying for it bought little until the software caught up.</li>
+<li>It took many months for a fully usable FlashAttention-4 to appear. Until then people had to keep using FlashAttention-2, which was very slow on Blackwell because it couldn't use the new architecture.</li>
+</ul>
+<p>Treat &quot;does my stack support this feature?&quot; as a hard gate on any feature-motivated upgrade, and re-check over time, because support improves.</p>
+<p>Everything else a new GPU brings - more memory, more bandwidth, a faster interconnect, more raw FLOPS - is <em>more of what you already have</em>, not a new capability. It doesn't settle the decision on its own; it comes down to measurement, which is part 2.</p>
+<h3 id="decision-framework-part-2-is-it-worth-it-on-performance">Decision framework, part 2: is it worth it on performance?</h3>
+<p>If you don't need the new capabilities from <a href="#decision-framework-part-1-do-you-need-a-new-dtype">part 1</a>, upgrading is a quantitative question of speed and capacity for money, and you have to <strong>measure</strong> it. Work through these steps before trusting any vendor slide or single benchmark number:</p>
+<ol>
+<li><strong>Match the software stack on both GPUs.</strong> Same torch, CUDA and library versions on old and new hardware. A newer GPU is often <em>also</em> tested on a newer stack, and stack differences alone can be worth double-digit percent (see <a href="#compare-on-an-identical-software-stack">Compare on an identical software stack</a>). Compare apples to apples.</li>
+<li><strong>Find your workload's attention-vs-dense split, and how it changes with your real config.</strong> New GPU generations usually improve attention (FlashAttention kernels) faster than dense GEMMs mature (cuBLAS and cuDNN need time to catch up on a new architecture). An attention-heavy, long-context workload sees a bigger win than a short-context, dense-bound one, and the split isn't fixed: it grows with sequence length. Measure it, don't assume it.</li>
+<li><strong>Weigh the new GPU's quantitative advantages - memory, bandwidth, interconnect - for <em>your</em> workload.</strong> These are increases, not new capabilities, so their value is workload-specific and must be measured:
+<ul>
+<li><strong>More memory</strong> (e.g. 180 vs 141GiB) is the borderline one. It can let a config fit that OOMs on the old GPU, and lets you drop throughput-costing crutches (CPU offload, a high ZeRO stage, activation checkpointing), so the <em>effective</em> speedup can even exceed the raw FLOPS ratio once you re-tune. But &quot;doesn't fit&quot; is rarely a hard wall: you can almost always fit on the older GPU with more parallelism (more GPUs plus <a href="../training/model-parallelism/derivations.html">ZeRO/TP/CP/SP/PP/EP</a>). So it's usually a cost/efficiency trade-off, tipping to &quot;just upgrade&quot; only when the extra GPUs or parallelism needed to fit would cost or slow you down more than the newer hardware. In the extreme - when no parallelism you can afford makes it fit - memory does become a hard capability gap, like a new dtype.</li>
+<li><strong>More HBM bandwidth</strong> (8.0 vs 4.8TBps, ~1.67x) sets the ceiling for bandwidth-bound work (norms, elementwise ops, the optimizer step, KV-cache traffic) and for decode-bound inference latency (<a href="../inference/arithmetic.html#arithmetic-intensity-and-the-roofline">Arithmetic intensity and the roofline</a>). The payoff depends on how bandwidth-bound your workload really is.</li>
+<li><strong>A faster interconnect</strong> (newer NVLink/NVSwitch/NVLink-C2C) raises the ceiling for ZeRO/TP/CP/SP/PP/EP communication, for host-memory offloading strategies, and for multi-node scaling. The payoff depends on how communication-bound you are.</li>
+</ul>
+</li>
+<li><strong>Compute $/token (or $/step), not just TFLOPS per step.</strong> A 2x speedup at 2x the price is break-even on cost; the tie is broken by (a) wall-clock time and (b) memory headroom.</li>
+<li><strong>Watch for real-world effects that inflate or deflate the lab number</strong>: packed vs unpacked sequences, beta-quality kernels, software-stack mismatches. The <a href="#caveats">Caveats</a> give concrete examples.</li>
+</ol>
+<p>One more warning about step 2. The <span class="math inline"><span class="math-inline">O(s^2)</span></span> full-attention share that drives most of the long-context advantage is shrinking as newer models move to <strong>linear or hybrid attention</strong> - Gated DeltaNet, Mamba-style SSMs, sliding-window attention, and hybrids that interleave a few full-attention layers among many linear ones (see <a href="../models/beyond-transformers.html#hybrids-a-few-attention-layers-plus-many-linear-ones">Hybrids</a>). Linear attention is <span class="math inline"><span class="math-inline">O(s)</span></span>, so it behaves more like the dense path than like full attention: the quadratic term that makes the new GPU shine at long context is a <em>smaller fraction</em> of these models than of a classic dense-attention transformer. If your target model is hybrid or linear-attention, don't extrapolate from a full-attention model like the Llama-3 family; benchmark that architecture (its kernels are also younger, see <a href="#software-support-the-cost-of-switching-too-early">Software support</a>).</p>
+<p>The rest of this section walks through these steps on the H200 to B200 example.</p>
+<h3 id="worked-example-llama-31-8b-fa3-vs-fa4">Worked example: Llama-3.1-8B, FA3 vs FA4</h3>
+<p>Setup: meta-llama/Llama-3.1-8B, real weights, bf16, 8 GPUs, DeepSpeed, micro-batch size (mbs) 1 per GPU, forward + backward + optimizer step. Attention uses Hugging Face Transformers' native <code>attn_implementation</code> argument (which selects the attention kernel), auto-selected per GPU: <strong>H200 uses FA3, B200 uses FA4</strong>.</p>
+<h4 id="results-speedup-grows-with-sequence-length">Results: speedup grows with sequence length</h4>
+<p>The same config on both GPUs (ZeRO-3 + activation checkpointing + CPU optimizer offload + Liger-Kernel), steady-state TFLOPS per GPU:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">seqlen</th>
+<th style="text-align:right">full attn<br>share of step</th>
+<th style="text-align:right">H200<br>TFLOPS</th>
+<th style="text-align:right">H200<br>MFU</th>
+<th style="text-align:right">B200<br>TFLOPS</th>
+<th style="text-align:right">B200<br>MFU</th>
+<th style="text-align:right">speedup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">8K</td>
+<td style="text-align:right">~13%</td>
+<td style="text-align:right">141</td>
+<td style="text-align:right">14%</td>
+<td style="text-align:right">167</td>
+<td style="text-align:right">7%</td>
+<td style="text-align:right"><strong>1.19x</strong></td>
+</tr>
+<tr>
+<td style="text-align:right">32K</td>
+<td style="text-align:right">~36%</td>
+<td style="text-align:right">324</td>
+<td style="text-align:right">33%</td>
+<td style="text-align:right">524</td>
+<td style="text-align:right">23%</td>
+<td style="text-align:right"><strong>1.62x</strong></td>
+</tr>
+<tr>
+<td style="text-align:right">64K</td>
+<td style="text-align:right">~53%</td>
+<td style="text-align:right">391</td>
+<td style="text-align:right">40%</td>
+<td style="text-align:right">719</td>
+<td style="text-align:right">32%</td>
+<td style="text-align:right"><strong>1.84x</strong></td>
+</tr>
+<tr>
+<td style="text-align:right">128K</td>
+<td style="text-align:right">~70%</td>
+<td style="text-align:right">420</td>
+<td style="text-align:right">42%</td>
+<td style="text-align:right">836</td>
+<td style="text-align:right">37%</td>
+<td style="text-align:right"><strong>1.99x</strong></td>
+</tr>
+<tr>
+<td style="text-align:right">192K</td>
+<td style="text-align:right">~77%</td>
+<td style="text-align:right">422</td>
+<td style="text-align:right">43%</td>
+<td style="text-align:right">852</td>
+<td style="text-align:right">38%</td>
+<td style="text-align:right"><strong>2.02x</strong></td>
+</tr>
+<tr>
+<td style="text-align:right">256K</td>
+<td style="text-align:right">~82%</td>
+<td style="text-align:right">419</td>
+<td style="text-align:right">42%</td>
+<td style="text-align:right">852</td>
+<td style="text-align:right">38%</td>
+<td style="text-align:right"><strong>2.03x</strong></td>
+</tr>
+</tbody>
+</table>
+<p><img src="../insights/when-to-upgrade-gpus/results_plot.png" alt="Throughput, speedup, attention share and peak memory vs sequence length, H200 FA3 vs B200 FA4" /></p>
+<p>How to read this: at 8K, B200 is barely faster (1.19x) and its MFU is half of H200's. As sequences grow, attention's share of the work grows from 13% to 82% and the speedup climbs to about 2x, close to the 2.2x matmul ceiling.</p>
+<p><strong>Why the speedup grows with sequence length.</strong> Causal attention costs <span class="math inline"><span class="math-inline">6 \cdot s^2 \cdot d \cdot h \cdot L</span></span> FLOPs per step, which is <span class="math inline"><span class="math-inline">O(s^2)</span></span>; the dense path costs <span class="math inline"><span class="math-inline">6 \cdot N \cdot \text{tok}</span></span>, which is <span class="math inline"><span class="math-inline">O(s)</span></span>. Here <span class="math inline"><span class="math-inline">s</span></span> is the sequence length, <span class="math inline"><span class="math-inline">d</span></span> the per-head dimension, <span class="math inline"><span class="math-inline">h</span></span> the number of attention heads (so <span class="math inline"><span class="math-inline">d \cdot h</span></span> is the hidden size), <span class="math inline"><span class="math-inline">L</span></span> the number of layers, <span class="math inline"><span class="math-inline">N</span></span> the parameter count and <span class="math inline"><span class="math-inline">\text{tok}</span></span> the number of tokens in the step. Longer sequences push attention's share of the step up, and attention is exactly where FA4 on Blackwell is strongest. The dense path (bandwidth-bound at this size, and running on Blackwell's still-young <code>sm_100</code> cuBLAS) scales only ~1.7x, and its share shrinks to almost nothing. Because MFU is just TFLOPS divided by peak, <span class="math inline"><span class="math-inline">\text{speedup} = 2.28 \times \text{MFU ratio}</span></span> (B200 MFU divided by H200 MFU) holds by construction; the interesting part is that the MFU ratio stays below 1 even when attention dominates, which is FA4-beta overhead not yet reaching the full hardware ratio.</p>
+<p>You can reproduce the attention-share column from the model's config alone, with the same FLOP formula the benchmark uses (<code>estimate_tflos</code> in <a href="../insights/when-to-upgrade-gpus/benchmark.py"><code>benchmark.py</code></a>). The same function shows what packing does, which matters in the <a href="#caveats">Caveats</a>:</p>
+<pre><code class="language-python"># attn_share.py - attention's share of model FLOPs for Llama-3.1-8B, using the same causal
+# convention as insights/when-to-upgrade-gpus/benchmark.py (estimate_tflos).
+hidden, inter, layers, heads, kv_heads, head_dim, vocab = 4096, 14336, 32, 32, 8, 128, 128256
+q = heads * head_dim
+kv = kv_heads * head_dim
+dense_N = (hidden * inter * 3 + hidden * (q + kv + kv + q)) * layers + vocab * hidden
+
+def share(s, docs=None):
+    dense = 6 * dense_N * s
+    # packed: attention only within each document -&gt; sum(len_i^2) instead of s^2
+    sq = s * s if docs is None else sum(l * l for l in docs)
+    attn = 6 * sq * head_dim * heads * layers
+    return attn / (dense + attn)
+
+for s in [8192, 32768, 65536, 131072, 196608, 262144]:
+    print(f&quot;seqlen {s//1024:&gt;3}K  attention share {share(s):5.1%}&quot;)
+packed = [8192] * 32                     # 32 docs of 8K packed into one 256K sequence
+print(f&quot;256K packed from 8K docs: share {share(262144, packed):5.1%}, &quot;
+      f&quot;attention FLOPs drop {262144**2 / sum(l*l for l in packed):.0f}x&quot;)
+</code></pre>
+<pre><code>$ python attn_share.py
+seqlen   8K  attention share 12.5%
+seqlen  32K  attention share 36.4%
+seqlen  64K  attention share 53.4%
+seqlen 128K  attention share 69.6%
+seqlen 192K  attention share 77.4%
+seqlen 256K  attention share 82.1%
+256K packed from 8K docs: share 12.5%, attention FLOPs drop 32x
+</code></pre>
+<p>How to read this: the shares match the table's column (~13% ... ~82%). The last line is the packing caveat in one number: packing 8K documents into a 256K sequence brings attention's share back to that of a plain 8K sequence.</p>
+<p><strong>FLOP-counting convention.</strong> The TFLOPS and MFU figures count <em>model</em> FLOPs (<a href="../training/profiling-and-optimization.html#mfu-vs-hfu">MFU vs HFU</a>) with attention counted <strong>causally</strong> (<span class="math inline"><span class="math-inline">6 \cdot s^2 \cdots</span></span> - the lower triangle FlashAttention actually computes, see <a href="../training/arithmetic.html#do-kernels-skip-the-causal-half">Do kernels skip the causal half?</a>). The non-causal <span class="math inline"><span class="math-inline">12 \cdot s^2</span></span> would double-count attention and inflate MFU at long context. Activation-checkpoint recomputation is <em>excluded</em>; counting it would give HFU, about 1.3x higher. Both conventions cancel in the B200/H200 ratio, so only the absolute MFU and TFLOPS depend on them, not the headline speedups.</p>
+<p><strong>The 8K caveat.</strong> This heavy config (ZeRO-3 + activation checkpointing + CPU offload) exists to reach 256K. At 8K it's pure overhead with no compute to hide behind, giving single-digit B200 MFU and only 1.19x. A right-sized 8K run (ZeRO-2, no activation checkpointing or offload) reaches ~1.69x at much higher MFU - see <a href="#where-the-dense-path-deficit-comes-from">Where the dense-path deficit comes from</a>. <strong>Lesson: don't benchmark a long-context config at short context and call it representative.</strong></p>
+<h4 id="does-the-bigger-gpu-unlock-configs-the-old-one-cant-run">Does the bigger GPU unlock configs the old one can't run?</h4>
+<p>Config: ZeRO-3, Liger-Kernel, activation checkpointing on, CPU AdamW offload on, mbs=1. With activation checkpointing and a fused cross-entropy, <a href="../training/arithmetic.html#activation-memory">activation memory</a> is small and linear: <strong>peak ≈ 12.6GiB + 0.00043GiB per token</strong>. The 12.6GiB floor is the ZeRO-3 parameter and gradient shards; the AdamW state lives on the CPU.</p>
+<p>Peak memory (<code>max_memory_reserved</code>, worst rank) is <strong>identical on H200 and B200 at a given sequence length</strong>. It's set by the model, the ZeRO-3 sharding and the activations, not by the GPU architecture, so a sequence length that fits one fits the other, up to each GPU's own capacity:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">seqlen</th>
+<th style="text-align:right">H200 peak (GiB)</th>
+<th style="text-align:right">B200 peak (GiB)</th>
+<th style="text-align:right">H200 TFLOPS</th>
+<th style="text-align:right">B200 TFLOPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">8K</td>
+<td style="text-align:right">16.3</td>
+<td style="text-align:right">16.3</td>
+<td style="text-align:right">141</td>
+<td style="text-align:right">167</td>
+</tr>
+<tr>
+<td style="text-align:right">32K</td>
+<td style="text-align:right">25.8</td>
+<td style="text-align:right">25.9</td>
+<td style="text-align:right">324</td>
+<td style="text-align:right">524</td>
+</tr>
+<tr>
+<td style="text-align:right">64K</td>
+<td style="text-align:right">37.5</td>
+<td style="text-align:right">37.6</td>
+<td style="text-align:right">391</td>
+<td style="text-align:right">719</td>
+</tr>
+<tr>
+<td style="text-align:right">128K</td>
+<td style="text-align:right">66.5</td>
+<td style="text-align:right">66.7</td>
+<td style="text-align:right">420</td>
+<td style="text-align:right">836</td>
+</tr>
+<tr>
+<td style="text-align:right">192K</td>
+<td style="text-align:right">95.7</td>
+<td style="text-align:right">95.7</td>
+<td style="text-align:right">422</td>
+<td style="text-align:right">852</td>
+</tr>
+<tr>
+<td style="text-align:right"><strong>256K</strong></td>
+<td style="text-align:right"><strong>124.5</strong></td>
+<td style="text-align:right"><strong>124.6</strong></td>
+<td style="text-align:right"><strong>419</strong></td>
+<td style="text-align:right"><strong>852</strong></td>
+</tr>
+</tbody>
+</table>
+<p>How to read this: the maximum on H200's ~130GiB usable budget is <strong>256K tokens at ~125GiB</strong>, confirmed on both machines (peaks match within ~0.2GiB). B200's larger HBM (180 vs 141GiB) could push past ~350K tokens - sequences H200 <strong>cannot fit at any price</strong> in this config - and that's exactly where B200's speedup is largest. This is the &quot;more memory&quot; advantage from <a href="#decision-framework-part-2-is-it-worth-it-on-performance">part 2</a> in its extreme form: past 256K the comparison isn't &quot;B200 is faster&quot;, it's &quot;H200 can't do this job&quot;. (Checking the linear fit: <span class="math inline"><span class="math-inline">12.6 + 0.00043 \times 262144 \approx 125</span></span>GiB, and <span class="math inline"><span class="math-inline">(170 - 12.6)/0.00043 \approx 366</span></span>K tokens on B200 if about 170GiB is usable.)</p>
+<h4 id="caveats">Caveats</h4>
+<h5 id="unpacked-vs-packed-sequences">Unpacked vs packed sequences</h5>
+<p>Every run above feeds <strong>one dense sequence</strong>, so attention is genuinely full <span class="math inline"><span class="math-inline">O(s^2)</span></span>. That's what drives attention to ~82% of FLOPs at 256K and the ≥2x speedup. Real training often <strong>packs</strong> several short samples into one sequence with a document mask, so attention costs <span class="math inline"><span class="math-inline">\sum \text{len}_i^2</span></span> instead of <span class="math inline"><span class="math-inline">(\sum \text{len}_i)^2</span></span>. For example, packing ~8K-token samples into a 256K sequence means attention runs only <em>within</em> each sample, so its FLOPs drop ~32x: total attention work falls from <span class="math inline"><span class="math-inline">(256\text{k})^2</span></span> to <span class="math inline"><span class="math-inline">\sum \text{len}_i^2 = 256\text{k} \cdot 8\text{k}</span></span>, a factor of <span class="math inline"><span class="math-inline">256\text{k} \div 8\text{k} = 32</span></span>. The drop factor equals packed sequence length divided by <em>average sample length</em>: it's set by how <strong>short</strong> each sample is, not how <strong>many</strong> you pack. That puts attention back at the ~13% share of a genuine 8K sequence (the 8K row above, and the last line of <code>attn_share.py</code>), so the speedup returns to the dense-bound regime measured there - <strong>~1.7x</strong> (see <a href="#where-the-dense-path-deficit-comes-from">Where the dense-path deficit comes from</a>), not the ~2x of true long context. The ≥2x result applies only to genuinely long <em>individual</em> documents. Check which regime your workload is in before assuming the headline number transfers.</p>
+<h5 id="compare-on-an-identical-software-stack">Compare on an identical software stack</h5>
+<p>Stas Bekman reports that while writing this analysis he first compared H200 on torch <strong>2.10.0/cu129</strong> against B200 on torch <strong>2.13.0/cu130</strong> without noticing, and got very different results that massively favored B200. Suspecting the CUDA version, he re-ran the sweep on H200 alone across torch 2.10.0-2.13.0 on both cu129 and cu130 - and CUDA barely mattered. The real driver was <strong>PyTorch itself</strong>: 2.12.0 and later are significantly faster than 2.11.0 and earlier, independent of CUDA. At 8K, same GPU, model and config, sweeping torch and CUDA independently:</p>
+<table>
+<thead>
+<tr>
+<th>H200 @ 8K, TFLOPS/GPU</th>
+<th>torch 2.10.0</th>
+<th>2.11.0</th>
+<th>2.12.0</th>
+<th>2.13.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>cu129</strong></td>
+<td>113.8</td>
+<td>-</td>
+<td>-</td>
+<td>140.4</td>
+</tr>
+<tr>
+<td><strong>cu130</strong></td>
+<td>117.8</td>
+<td>120.5</td>
+<td>140.1</td>
+<td><strong>140.2</strong></td>
+</tr>
+</tbody>
+</table>
+<p>How to read this: across the full range, torch 2.10.0 to 2.13.0 on H200 is <strong>+19% at fixed cu130</strong> (117.8 to 140.2 TFLOPS), and almost all of it comes from one step - torch 2.11.0 to 2.12.0 alone is <strong>+16%</strong> (120.5 to 140.1). CUDA contributes at most ~3.5% (113.8 to 117.8 at torch 2.10.0) and essentially nothing by torch 2.13.0 (140.4 vs 140.2). So the original 2.10.0/cu129 vs 2.13.0/cu130 comparison (113.8 to 140.4, <strong>+23.4%</strong>) was almost entirely a <strong>PyTorch-version artifact - not hardware, and not even CUDA</strong>. All results in this section use an identical stack on both machines (torch 2.13.0/cu130, DeepSpeed 0.19.2). <strong>If you skip this check, you'll systematically overstate whichever GPU was benchmarked on the newer PyTorch.</strong></p>
+<h4 id="is-b200-worth-2x-the-h200-cost">Is B200 worth ~2x the H200 cost?</h4>
+<p>Assume for simplicity that B200 costs 2x as much, which is typical when a new GPU family has just come out. Blackwell has been out since mid-2026, so the real difference is already less than 2x. In your own calculations, use your quoted prices, not numbers found online.</p>
+<pre><code class="language-python"># upgrade_math.py - is the faster, pricier GPU cheaper per token? Measured H200-&gt;B200 numbers.
+price_ratio = 2.0                         # B200 $/GPU-hour divided by H200 $/GPU-hour: use YOUR quote
+peak_ratio = 2250 / 989                   # bf16 dense spec ratio
+rows = {  # seqlen: (H200 TFLOPS, H200 MFU, B200 TFLOPS, B200 MFU)
+    &quot;8K&quot;: (141, .14, 167, .07), &quot;32K&quot;: (324, .33, 524, .23), &quot;64K&quot;: (391, .40, 719, .32),
+    &quot;128K&quot;: (420, .42, 836, .37), &quot;256K&quot;: (419, .42, 852, .38),
+    &quot;8K right-sized&quot;: (461, .47, 778, .35),
+}
+def verdict(c):
+    return 'B200 cheaper' if c &lt; 0.98 else 'H200 cheaper' if c &gt; 1.02 else 'tie'
+
+print(f&quot;peak ratio {peak_ratio:.2f}x, price ratio {price_ratio:.1f}x&quot;)
+for k, (h, hm, b, bm) in rows.items():
+    speedup = b / h
+    cost_per_token = price_ratio / speedup     # B200 cost per token relative to H200
+    print(f&quot;{k:&gt;15}: speedup {speedup:.2f}x  (peak x MFU ratio = {peak_ratio * bm / hm:.2f}x)  &quot;
+          f&quot;B200 $/token = {cost_per_token:.2f} x H200's  -&gt; {verdict(cost_per_token)}&quot;)
+print(f&quot;break-even price ratio at 256K: {852/419:.2f}x, at 8K right-sized: {778/461:.2f}x&quot;)
+</code></pre>
+<pre><code>$ python upgrade_math.py
+peak ratio 2.28x, price ratio 2.0x
+             8K: speedup 1.18x  (peak x MFU ratio = 1.14x)  B200 $/token = 1.69 x H200's  -&gt; H200 cheaper
+            32K: speedup 1.62x  (peak x MFU ratio = 1.59x)  B200 $/token = 1.24 x H200's  -&gt; H200 cheaper
+            64K: speedup 1.84x  (peak x MFU ratio = 1.82x)  B200 $/token = 1.09 x H200's  -&gt; H200 cheaper
+           128K: speedup 1.99x  (peak x MFU ratio = 2.00x)  B200 $/token = 1.00 x H200's  -&gt; tie
+           256K: speedup 2.03x  (peak x MFU ratio = 2.06x)  B200 $/token = 0.98 x H200's  -&gt; tie
+ 8K right-sized: speedup 1.69x  (peak x MFU ratio = 1.69x)  B200 $/token = 1.19 x H200's  -&gt; H200 cheaper
+break-even price ratio at 256K: 2.03x, at 8K right-sized: 1.69x
+</code></pre>
+<p>How to read this: the speedup and its &quot;peak x MFU ratio&quot; form agree to within the rounding of the MFU column (the 8K row is furthest off because 7% and 14% are rounded heavily; 167/141 also gives 1.18x rather than the table's 1.19x, which was computed from unrounded TFLOPS). The last line is the useful one for negotiation: B200 wins on $/token at long context only if it costs less than ~2.03x as much as H200, and on short or packed workloads only below ~1.69x.</p>
+<p>So, with the 2x price assumption:</p>
+<ul>
+<li><strong>Long unpacked context (128K-256K):</strong> ~2.0x throughput for ~2x cost, so break-even on $/token - and then a net win from (1) <strong>half the wall-clock time</strong> and (2) <strong>more memory</strong>, which unlocks context lengths (≥256K) that H200 can't hold at all. That's exactly where B200's speedup peaks, so the two advantages compound.</li>
+<li><strong>Short or packed-short (dense-bound):</strong> ~1.7x for 2x cost, so it <strong>loses</strong> on $/token today. At this batch size the dense path is bandwidth-bound, not compute-bound (see <a href="#where-the-dense-path-deficit-comes-from">the next section</a>), so don't expect cuBLAS <code>sm_100</code> maturity alone to close the gap to 2.28x; it converges toward the <strong>~1.67x HBM-bandwidth ceiling</strong> instead. Getting closer to 2.28x here would need a bigger batch, i.e. larger GEMMs that make the dense path compute-bound again.</li>
+</ul>
+<p><strong>Beyond $/token: the time dimension.</strong> Cost per performance alone can be the wrong metric, because it treats a slow-but-cheap and a fast-but-pricey option as equal when they cost the same per token, ignoring <em>wall-clock time to result</em>.</p>
+<ul>
+<li>For training, a run that takes 2x longer can lose a first-to-market race, which no $/token saving makes up for (the <a href="#what-you-are-competing-on">first section</a> of this chapter).</li>
+<li>For inference, 2x slower directly hurts the user experience - higher TTFT and TPOT - which can cost you users however good the per-token math looks.</li>
+<li>In principle you can buy back the speed on the cheaper GPU by using ~2x as many, but that usually means <em>more</em> cross-GPU (and often cross-node) communication, which adds overhead and can eat into, or exceed, the speedup you wanted, especially for communication-bound workloads. So weigh raw speed as its own axis, not just a term in the $/token ratio.</li>
+</ul>
+<p><strong>Verdict for this example:</strong> yes, upgrade for genuinely long-context training; hold off for short or packed workloads, where the dense path is bandwidth-bound rather than compute-bound and won't reach the full 2.28x hardware ratio at this batch size.</p>
+<h4 id="where-the-dense-path-deficit-comes-from">Where the dense-path deficit comes from</h4>
+<p>Why not the full 2.28x? This deep-dive on an 8K step (ZeRO-2, no activation checkpointing - right-sized for short context) shows why the dense path caps the speedup below the hardware ratio. All three buckets below share <strong>one clock</strong>: the measured wall-clock step time, split by each bucket's share of compute-stream kernel time (attention = FlashAttention kernels; NCCL gradient communication overlaps the backward pass and is hidden inside the wall clock). So the buckets add up to the total by construction. Reproduce with <a href="../insights/when-to-upgrade-gpus/bench_decompose.py"><code>bench_decompose.py</code></a>.</p>
+<p><strong>Step decomposition at 8K</strong> (attention is ~13% of the FLOPs and ~12% of the step time; the dense path is the rest):</p>
+<table>
+<thead>
+<tr>
+<th>bucket</th>
+<th style="text-align:right">H200<br>TFLOPS</th>
+<th style="text-align:right">H200<br>MFU</th>
+<th style="text-align:right">B200<br>TFLOPS</th>
+<th style="text-align:right">B200<br>MFU</th>
+<th style="text-align:right">ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>attention (FA)</td>
+<td style="text-align:right">447</td>
+<td style="text-align:right">45%</td>
+<td style="text-align:right">834</td>
+<td style="text-align:right">37%</td>
+<td style="text-align:right">1.87x</td>
+</tr>
+<tr>
+<td>everything else</td>
+<td style="text-align:right">463</td>
+<td style="text-align:right">47%</td>
+<td style="text-align:right">771</td>
+<td style="text-align:right">34%</td>
+<td style="text-align:right">1.67x</td>
+</tr>
+<tr>
+<td><strong>total</strong></td>
+<td style="text-align:right">461</td>
+<td style="text-align:right">47%</td>
+<td style="text-align:right">778</td>
+<td style="text-align:right">35%</td>
+<td style="text-align:right"><strong>1.69x</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Two things stand out:</p>
+<ul>
+<li><strong>Attention (FA4 vs FA3) scales 1.87x</strong> measured <em>inside the step</em>, matching the isolated micro-benchmark (<a href="../insights/when-to-upgrade-gpus/bench_flash_attn.py"><code>bench_flash_attn.py</code></a>, FA4 vs FA3, the 8B model's attention shape, causal: forward+backward <strong>1.88x at 8K, 1.95x at 32K</strong>). Attention is close to the 2.28x ceiling and is <em>not</em> the bottleneck.</li>
+<li><strong>The ceiling is the dense &quot;everything else&quot; bucket at 1.67x</strong> - essentially exactly the <strong>HBM-bandwidth ratio</strong> (8 vs 4.8TBps = 1.67x). At mbs=1 x 8K the per-GPU GEMMs are small, and the dense path is bandwidth- and overhead-bound (norm/RoPE/SwiGLU/cross-entropy elementwise ops, NCCL communication, skinny GEMMs). Blackwell's 2.28x <em>compute</em> advantage mostly sits idle and the bucket tracks memory bandwidth instead, pulling the blended total down to <strong>1.69x</strong>. (This is the roofline argument from <a href="../foundations/computer-architecture.html#arithmetic-intensity-and-the-roofline-model">Arithmetic intensity and the roofline model</a> in a real step.)</li>
+</ul>
+<p><strong>Liger-Kernel</strong> (fused RMSNorm/RoPE/SwiGLU/cross-entropy kernels) is a <strong>memory win, not a speed win, at 8K</strong>. It cuts peak memory ~20% (<strong>99 to 80GiB</strong>, identical on both GPUs) while step time stays within noise (≤1.5% on either machine) and the blend is essentially unchanged (~1.66x). Fusing the bandwidth-bound elementwise ops doesn't raise throughput here, because the dense path is already limited by GEMM size and communication, not by those ops - consistent with the bucket tracking HBM bandwidth.</p>
+<p>cuBLAS for <code>sm_100</code> is younger than Hopper's, and FA4 was in beta when these numbers were taken (it has since shipped as the <code>flash-attn-4</code> package), so this dense-path deficit should shrink over time. Re-run the benchmark periodically rather than treating today's number as permanent.</p>
+<h4 id="environment-used-for-these-experiments">Environment used for these experiments</h4>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>B200</th>
+<th>H200</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPU</td>
+<td>NVIDIA B200</td>
+<td>NVIDIA H200</td>
+</tr>
+<tr>
+<td>attention</td>
+<td>flash-attn-4 4.0.0b22 (beta)</td>
+<td>flash-attn-3 3.0.0</td>
+</tr>
+<tr>
+<td>PyTorch / CUDA</td>
+<td>2.13.0 / cu130</td>
+<td>2.13.0 / cu130</td>
+</tr>
+<tr>
+<td>deepspeed</td>
+<td>0.19.2</td>
+<td>0.19.2</td>
+</tr>
+<tr>
+<td>python / transformers / Liger-Kernel</td>
+<td>3.12.12 / 5.14.1 / 0.8.0</td>
+<td>(same)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="software-support-the-cost-of-switching-too-early">Software support: the cost of switching too early</h3>
+<p>New silicon almost always ships before the software that can fully use it. &quot;The GPU is available&quot; and &quot;the GPU is <em>usable</em> for your workload at its rated performance&quot; can be many months apart, and the gap can depend on the model architecture, not just the GPU. Two forms of it are visible directly in this benchmark:</p>
+<ol>
+<li><strong>The optimized kernel itself may still be beta.</strong> B200's attention path here is <code>flash-attn-4 4.0.0b22</code>, a beta release. Beta kernels can have correctness bugs, missing features and breaking API changes before 1.0. Pin the exact version, re-test on every bump, and check the project's issue tracker rather than assuming &quot;it's on PyPI&quot; means production-ready.</li>
+<li><strong>The rest of the stack may lag even when the headline kernel is fine.</strong> Isolated attention (FA4 vs FA3) already scales ~1.9x here, close to the 2.28x hardware ratio, but the <em>dense</em> path only reaches ~1.7x: it tracks the HBM-bandwidth ratio, being bandwidth- and overhead-bound at this size, and Blackwell's cuBLAS for <code>sm_100</code> is younger than Hopper's, which has had years to mature. You can be running the best available attention kernel and still see a fraction of the theoretical speedup, because a less glamorous part of the stack - the one nobody puts on a slide - hasn't caught up.</li>
+</ol>
+<p><strong>A checklist before committing budget to a new architecture:</strong></p>
+<ul>
+<li>Search the kernel library's issue tracker for your GPU's compute capability (e.g. <code>sm_100</code>) and your model's attention/MoE mechanism by name. A README saying &quot;supported&quot; doesn't mean GA quality, or even that pre-built wheels exist.</li>
+<li>Confirm your training framework (DeepSpeed, Megatron-LM, TorchTitan, etc.) has a <em>released</em> version tested on the new compute capability. &quot;Should work, it's just CUDA&quot; isn't the same as tested.</li>
+<li>If your model uses a non-standard op (linear attention, MoE routing, sparse attention, fused custom CUDA extensions), check that someone has actually built <em>and benchmarked</em> it on the new architecture. Don't assume it inherits the GPU's speedup just because the GPU is faster.</li>
+<li>Re-measure periodically rather than trusting a one-time verdict. Beta kernels and young GEMM libraries both improve fast. The <a href="#where-the-dense-path-deficit-comes-from">cuBLAS-maturity gap</a> is exactly the kind of moving target that can flip &quot;not yet worth it&quot; to &quot;worth it&quot; within a few release cycles - or in the other direction, if a regression lands.</li>
+</ul>
+<h3 id="rent-the-target-hardware-first">Rent the target hardware first</h3>
+<p>You might be able to rely on someone else's analysis (like this one), but workloads differ, and it's best to benchmark your exact workload. So first rent at least one node of the GPUs you're considering and benchmark there.</p>
+<p>If your workload spans multiple nodes, first shrink it to one node and compare there. For example, reduce the number of layers: model architectures are usually a stack of identical layers, so cutting a 48-layer model to 1-2 layers uses little GPU memory and easily fits on one node, while keeping per-layer compute and memory behavior representative (how to do this with Hugging Face models is in <a href="../development/debugging-pytorch.html">Debugging PyTorch</a>). A sketch <strong>[untested here]</strong>:</p>
+<pre><code class="language-python">from transformers import AutoConfig, AutoModelForCausalLM
+cfg = AutoConfig.from_pretrained(&quot;meta-llama/Llama-3.1-8B&quot;)
+cfg.num_hidden_layers = 2                            # was 32: same width, same per-layer kernels
+model = AutoModelForCausalLM.from_config(cfg)        # random weights are fine for speed comparisons
+</code></pre>
+<p>If the workload does span multiple nodes, you eventually have to benchmark the full minimal replica configuration, but you can postpone that until the single-node comparison favors upgrading. If it doesn't, you've saved the time and money of renting more nodes.</p>
+<h3 id="applying-this-framework-to-your-own-upgrade-decision">Applying this framework to your own upgrade decision</h3>
+<p>Swap in your own model, GPUs and prices, and work through <a href="#decision-framework-part-1-do-you-need-a-new-dtype">part 1</a> and then <a href="#decision-framework-part-2-is-it-worth-it-on-performance">part 2</a>: first the feature check, then, if features don't already decide it, the performance steps:</p>
+<ol>
+<li>Pin an identical software stack on both GPUs (<a href="#compare-on-an-identical-software-stack">Compare on an identical software stack</a>); otherwise you're measuring the stack, not the hardware.</li>
+<li>Sweep the axis that shifts your attention/dense split (or, generally, the accelerated vs non-accelerated split). For LLM training that's sequence length; for other workloads it may be batch size, resolution, or something else entirely.</li>
+<li>Sweep memory-limited configs on the old GPU until it OOMs, and check what the new GPU can additionally fit.</li>
+<li>Get your actual $/GPU-hour on old and new, and compute $/token or $/step at each point of the sweep, not just at its top (<code>upgrade_math.py</code> above does this for the table it's given).</li>
+<li>Check for things that invalidate the comparison: beta kernels, packed vs unpacked data, thermal throttling, and silicon-lottery variance between GPUs in the same node (see <a href="../compute/accelerators.html#not-all-accelerators-are-created-equal">Not all accelerators are created equal</a>).</li>
+</ol>
+<p>If you scale with <a href="../training/model-parallelism/derivations.html#zero-and-fsdp">FSDP</a>, its performance should be roughly equal to DeepSpeed ZeRO; you may need to tweak the config to match your setup, but ideally benchmark your exact software.</p>
+<h3 id="same-generation-upgrades">Same-generation upgrades</h3>
+<p>Everything above compared two <em>generations</em> (Hopper to Blackwell). A refresh within a generation - e.g. B200 to <strong>B300</strong> (&quot;Blackwell Ultra&quot;) - is a different and usually smaller decision. The same two-part framework applies, but the answers shift predictably.</p>
+<table>
+<thead>
+<tr>
+<th>spec</th>
+<th style="text-align:right">B200 SXM</th>
+<th style="text-align:right">B300 SXM</th>
+<th style="text-align:right">ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bf16 / fp8 TFLOPS (theoretical)</td>
+<td style="text-align:right">2250 / 4500</td>
+<td style="text-align:right">2250 / 4500</td>
+<td style="text-align:right">1.0x</td>
+</tr>
+<tr>
+<td>mxfp4 / nvfp4 TFLOPS (theoretical)</td>
+<td style="text-align:right">9000 / 9000</td>
+<td style="text-align:right">13500 / 13500</td>
+<td style="text-align:right">1.5x</td>
+</tr>
+<tr>
+<td>bf16 MAMF (achievable)</td>
+<td style="text-align:right">1745</td>
+<td style="text-align:right">1769</td>
+<td style="text-align:right">~1.01x</td>
+</tr>
+<tr>
+<td>HBM (usable)</td>
+<td style="text-align:right">~180GiB</td>
+<td style="text-align:right">~288GiB</td>
+<td style="text-align:right"><strong>1.6x</strong></td>
+</tr>
+<tr>
+<td>HBM bandwidth</td>
+<td style="text-align:right">8.0TBps</td>
+<td style="text-align:right">8.0TBps</td>
+<td style="text-align:right">1.0x</td>
+</tr>
+<tr>
+<td>TDP</td>
+<td style="text-align:right">1000W</td>
+<td style="text-align:right">1300W</td>
+<td style="text-align:right">1.3x</td>
+</tr>
+</tbody>
+</table>
+<p>What this means for the framework:</p>
+<ul>
+<li><strong><a href="#decision-framework-part-1-do-you-need-a-new-dtype">Part 1</a> (do you need a new dtype?) rarely fires.</strong> B300 adds no dtype B200 lacks. The one thing that <em>can</em> act like a part-1 gap is <strong>memory</strong>: 288 vs 180GiB (1.6x) is a big jump, so a model or config that can't be made to fit a B200 node even with parallelism may fit a B300 node outright.</li>
+<li><strong><a href="#decision-framework-part-2-is-it-worth-it-on-performance">Part 2</a> (is it worth it on performance?): the only real compute increase is fp4 (1.5x).</strong> bf16 and fp8 are unchanged, so B300 mainly pays off for low-precision inference or training, and for the extra memory.</li>
+<li><strong>Software-maturity risk is low.</strong> Same architecture family (<code>sm_100</code>), same FA4 and kernel stack, so none of the &quot;switching too early&quot; cost of the cross-generation case.</li>
+</ul>
+<h3 id="reproduce-this-benchmark">Reproduce this benchmark</h3>
+<p>Every number in the worked example comes from the scripts in <a href="https://github.com/ibrahimansr/ml-engineering/tree/master/insights/when-to-upgrade-gpus"><code>insights/when-to-upgrade-gpus/</code></a>; nothing was entered by hand. All scripts <strong>auto-detect the GPU</strong> (Hopper uses FA3, Blackwell FA4) and print the resolved backend and full environment in their output header, so the <em>same commands</em> run on both machines. None of them were run while writing this chapter (they need 8x H200 and 8x B200 nodes).</p>
+<h4 id="files-at-a-glance">Files at a glance</h4>
+<table>
+<thead>
+<tr>
+<th>file</th>
+<th>purpose</th>
+<th>produces</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../insights/when-to-upgrade-gpus/install.sh"><code>install.sh</code></a></td>
+<td>one-time setup: pins matched torch/CUDA/deps (torch 2.13.0 cu130, transformers 5.14.1, deepspeed 0.19.2, liger-kernel 0.8.0, via <code>uv pip</code>), installs FA3 (Hopper) or FA4 (Blackwell), stages the model to local disk</td>
+<td>the identical-stack environment (the <a href="#compare-on-an-identical-software-stack">identical software stack</a> caveat)</td>
+</tr>
+<tr>
+<td><a href="../insights/when-to-upgrade-gpus/benchmark.py"><code>benchmark.py</code></a></td>
+<td>training loop (fwd+bwd+step) with real weights; prints per-step JSON (<code>tflops</code>, <code>peak_mem_gib</code>); config block at the top, overridable by env vars (<code>SEQ_LEN</code>, <code>STEPS</code>, <code>WARMUP_STEPS</code>, <code>ZERO_STAGE</code>, <code>OFFLOAD_OPTIMIZER</code>, <code>GRAD_CHECKPOINT</code>, <code>USE_LIGER</code>, <code>MEM_DEBUG</code>)</td>
+<td>one row of the speedup and memory tables</td>
+</tr>
+<tr>
+<td><a href="../insights/when-to-upgrade-gpus/run_sweep.sh"><code>run_sweep.sh</code></a></td>
+<td>runs <code>benchmark.py</code> over a list of sequence lengths, logs to <code>results_&lt;gpu&gt;_&lt;ts&gt;.log</code></td>
+<td>the <strong>speedup-vs-seqlen</strong> and <strong>max-seqlen/memory</strong> tables</td>
+</tr>
+<tr>
+<td><a href="../insights/when-to-upgrade-gpus/bench_flash_attn.py"><code>bench_flash_attn.py</code></a></td>
+<td>isolated FA3/FA4 attention-kernel micro-benchmark (fwd and fwd+bwd TFLOPS across sequence lengths)</td>
+<td>the <strong>isolated attention</strong> numbers in <a href="#where-the-dense-path-deficit-comes-from">Where the dense-path deficit comes from</a></td>
+</tr>
+<tr>
+<td><a href="../insights/when-to-upgrade-gpus/bench_decompose.py"><code>bench_decompose.py</code></a></td>
+<td>one profiled training step; splits measured wall time into attention (FlashAttention kernels) vs everything-else buckets on a single clock (env: <code>SEQ_LEN</code>, <code>ZERO_STAGE</code>, <code>GRAD_CHECKPOINT</code>, <code>OFFLOAD_OPTIMIZER</code>, <code>USE_LIGER</code>)</td>
+<td>the <strong>step-decomposition</strong> table</td>
+</tr>
+<tr>
+<td><a href="../insights/when-to-upgrade-gpus/plot_results.py"><code>plot_results.py</code></a></td>
+<td>matplotlib figure from the sweep numbers (data hardcoded at the top)</td>
+<td><a href="../insights/when-to-upgrade-gpus/results_plot.png"><code>results_plot.png</code></a></td>
+</tr>
+</tbody>
+</table>
+<h4 id="step-1-set-up-an-identical-stack-on-each-gpu-once-per-node">Step 1: set up an identical stack on each GPU (once per node)</h4>
+<p>Run the same installer on the H200 machine and the B200 machine. It pins identical torch, CUDA and dependencies so the only intended difference is the attention backend, then installs FA3 on Hopper or FA4 on Blackwell automatically and stages the model to local disk:</p>
+<pre><code class="language-bash">./install.sh  # H200 -&gt; FA3, B200 -&gt; FA4 (auto-detected); --force fa3|fa4 to override
+</code></pre>
+<p><code>HF_HOME</code> defaults to <code>~/.cache/huggingface</code>, and the model (<code>meta-llama/Llama-3.1-8B</code>) must be there first, e.g. via <code>hf download meta-llama/Llama-3.1-8B</code> (<code>hf</code> is the Hugging Face Hub command-line tool). Llama is a gated model, so first accept its license on the Hub and log in with <code>hf auth login</code>. The installer's last step verifies the stack and makes a tiny FlashAttention call to catch ABI mismatches (a library compiled against a different torch or CUDA than the one installed).</p>
+<h4 id="step-2-run-the-sequence-length-sweep-on-each-gpu">Step 2: run the sequence-length sweep on each GPU</h4>
+<p>This produces the speedup and memory tables:</p>
+<pre><code class="language-bash">SEQLENS=&quot;8192 32768 65536 131072 196608 262144&quot; GPUS=8 ./run_sweep.sh # -&gt; results_&lt;gpu&gt;_&lt;ts&gt;.log
+</code></pre>
+<p>Run it on both machines. Each step prints a JSON line like <code>{&quot;step&quot;: 5, &quot;warmup&quot;: false, &quot;exec_time_ms&quot;: ..., &quot;tflops&quot;: ..., &quot;peak_mem_gib&quot;: ...}</code>. Take the steady-state (non-warmup) <code>tflops</code> for the throughput/speedup table and <code>peak_mem_gib</code> for the memory table; the B200/H200 speedup is the ratio of the two machines' <code>tflops</code> at each sequence length. If you omit the env vars, the defaults are a single sequence length of 196608, 8 GPUs, 10 steps plus 2 warmup. The config that defines the run - ZeRO-3, activation checkpointing, CPU AdamW offload, Liger-Kernel, mbs=1 - lives in <code>benchmark.py</code>'s config block and is printed in each run's header.</p>
+<h4 id="step-3-isolated-attention-micro-benchmark">Step 3: isolated attention micro-benchmark</h4>
+<pre><code class="language-bash">python bench_flash_attn.py   # prints per-seqlen fwd / fwd+bwd TFLOPS for FA3 or FA4
+</code></pre>
+<p>Run it on both machines. The FA4/FA3 ratio of <code>fwd_bwd_tflops</code> at each sequence length is the &quot;isolated attention&quot; result showing attention itself scales ~1.9x - i.e. that the dense path, not FlashAttention, caps the end-to-end speedup.</p>
+<h4 id="step-4-step-decomposition">Step 4: step decomposition</h4>
+<pre><code class="language-bash">for L in 0 1; do USE_LIGER=$L deepspeed --num_gpus=8 bench_decompose.py; done  # L=0 base, L=1 Liger
+</code></pre>
+<p><code>deepspeed</code> is DeepSpeed's launcher (it plays the role <code>torchrun</code> does), and <code>--num_gpus=8</code> starts one process per GPU. Run on both machines. The script measures the wall-clock step time with the profiler off, then profiles one window and splits the measured time into an attention bucket (FlashAttention kernels) and an everything-else bucket by their share of compute-stream kernel time. NCCL communication overlaps the backward pass and is excluded as hidden. Because both buckets come from the <em>same</em> measured step, they add up to the total by construction - that's the step-decomposition table. The B200/H200 ratio per bucket is the per-bucket speedup (attention ~1.87x, dense path ~1.67x).</p>
+<h4 id="step-5-the-memory-investigation-optional">Step 5: the memory investigation (optional)</h4>
+<pre><code class="language-bash">MEM_DEBUG=1 SEQ_LEN=32768 deepspeed --num_gpus=8 benchmark.py
+</code></pre>
+<p><code>MEM_DEBUG=1</code> adds staged allocated/reserved probes around forward, backward and step, and dumps a <code>torch.cuda.memory._record_memory_history</code> snapshot on rank 0 - useful for <a href="../training/profiling-and-optimization.html#memory-profiler-tools">diagnosing GPU memory usage</a> (reading the snapshot is covered in <a href="../training/profiling-and-optimization.html#cuda-memory-snapshots">CUDA memory snapshots</a>).</p>
+<h4 id="step-6-regenerate-the-plot">Step 6: regenerate the plot</h4>
+<pre><code class="language-bash">python plot_results.py       # -&gt; results_plot.png
+</code></pre>
+<p><code>plot_results.py</code> has the sweep numbers <strong>hardcoded at the top</strong>; it doesn't parse the <code>.log</code> files. If you re-run the sweep and get different numbers, update the arrays in <code>plot_results.py</code> (and your copy of the tables), then regenerate.</p>
+<h2 id="unsolicited-advice">Unsolicited advice</h2>
+<p>To finish, some advice from Stas Bekman on making daily life on the AI battlefield a little better. It's personal, and it's here because burnout loses more compute-hours than any bad contract.</p>
+<h3 id="fomo-and-avoiding-depression">FOMO and avoiding depression</h3>
+<p>If you read Twitter and similar ML feeds, you're guaranteed to feel the fear of missing out: there's probably at least one great new model released every week, multiple papers published every day, and your peers post their cool achievements every few minutes. This is <strong>very complex</strong> technology, and only a small handful of people can absorb that much new material and understand and integrate it. That can be extremely depressing and discouraging.</p>
+<p>Stas deals with it by looking at Twitter about once or twice a week, and using it mostly in broadcast mode: if he has something to share he posts it, and only watches for follow-up questions. The important news usually reaches him through other people anyway.</p>
+<h3 id="dont-try-to-know-everything">Don't try to know everything</h3>
+<p>The pace of innovation in AI is insane. It's not possible to know all of AI - for most of us, arguably not even 10% of it.</p>
+<p>Stas realized this early and stopped paying attention to most announcements, tutorials, keynotes and so on. When he has a new need, he researches it, finds what he needs, and is careful not to learn things unrelated to the goal at hand. So he actually knows very little, but what he has researched in depth he knows quite well for a while - and later forgets that too, which is why he writes notes like the ones this book grew from, so he can find what he already researched. If you ask him something, chances are he doesn't know it; the saving grace is that given time, he can figure it out and give an answer or build a solution.</p>
+<h3 id="dont-beat-yourself-up-when-using-half-baked-software">Don't beat yourself up when using half-baked software</h3>
+<p>Because ML is in a huge race, a lot of open-source software is half-baked: badly documented, badly tested, and at times poorly supported. If you think you can save time by reusing others' software, expect to spend hours to weeks making it work - and then keeping it working when updates break it.</p>
+<p>Worse, most of it depends on other software that can be just as bad. It's common to start fixing an integration problem only to find a problem in a dependency, which in turn has a problem in another package. This is extremely frustrating and discouraging: you try to save time by reusing code and end up spending a long time making it work. Writing your own software is at least fun and creative; making other people's software work is not.</p>
+<p>At the end of the day we're still better off reusing other people's software, but it comes at an emotional price and exhaustion. So first, find a way not to beat yourself up when software you didn't write doesn't work: those problems aren't of your making. Learning to <a href="https://github.com/stas00/the-art-of-debugging/tree/master/methodology">debug efficiently</a> makes the process much less painful, and Part 8 of this book, starting with <a href="../development/debugging-pytorch.html">Debugging PyTorch</a>, is about exactly that.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../development/debugging-pytorch.html">Debugging PyTorch</a>, <a href="../development/debugging-distributed.html">Debugging distributed training</a> and <a href="../development/testing.html">Testing</a> (Part 8): what to do once the cluster is yours and things break.</li>
+<li><a href="../compute/accelerators.html">Accelerators</a>, <a href="../network/interconnects.html">Interconnects</a> and <a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a>, again, with a buyer's eye: every number there is now something you can ask a provider for or measure on a trial.</li>
+<li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance and Reproducibility</a>: how the training side uses the spares, fixed allocations and fast replacements you negotiated.</li>
+<li>SemiAnalysis's <a href="https://newsletter.semianalysis.com/p/the-gpu-cloud-clustermax-rating-system-how-to-rent-gpus">ClusterMAX rating</a> of GPU clouds, below, which you can now read critically.</li>
+</ul>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>SemiAnalysis, &quot;The GPU Cloud ClusterMAX Rating System: How to Rent GPUs&quot; (2025): a CSP rating system with excellent explanations of the criteria, which they plan to keep updating. https://newsletter.semianalysis.com/p/the-gpu-cloud-clustermax-rating-system-how-to-rent-gpus</li>
+<li>SemiAnalysis, &quot;AI Neocloud Playbook and Anatomy&quot;, including cluster deployment and acceptance testing (burn-in): https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy</li>
+<li>NVIDIA DGX SuperPOD Reference Architecture (rail-optimized InfiniBand): https://docs.nvidia.com/dgx-superpod/reference-architecture-scalable-infrastructure-h100/latest/abstract.html</li>
+<li>Meta Engineering, &quot;RoCE networks for distributed AI training at scale&quot; (2024): https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/</li>
+<li>Google Cloud, an example ML-service SLA: https://cloud.google.com/ai-platform/training-and-prediction/sla?hl=en</li>
+<li><a href="https://github.com/stas00/ml-engineering/blob/master/skills/evaluate-cluster/SKILL.md">evaluate-cluster/SKILL.md</a>: an agent runbook for the cluster evaluation in this chapter.</li>
+<li>Stas Bekman, &quot;The Art of Debugging&quot; methodology: https://github.com/stas00/the-art-of-debugging/tree/master/methodology</li>
+<li>FlashAttention (FA2/FA3/FA4): https://github.com/Dao-AILab/flash-attention ; Liger-Kernel: https://github.com/linkedin/Liger-Kernel ; DeepSpeed: https://github.com/deepspeedai/DeepSpeed</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../platform/rl-infrastructure.html">&larr; Infrastructure for Large-Scale RL on LLMs</a><a class="next" href="../development/debugging-pytorch.html">Debugging PyTorch Programs &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

@@ -1,0 +1,1290 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Debugging Distributed and Multi-Node Programs, and Performance - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details open><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html" class="current">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="debugging-distributed-and-multi-node-programs-and-performance">Debugging Distributed and Multi-Node Programs, and Performance</h1>
+<p>A single-process bug leaves one traceback. A bug in a 512-GPU job usually leaves nothing: the loss stops printing, GPU utilization sits flat (or pinned at 100% while spinning in a collective), and the job burns GPU-hours until a timeout fires minutes later. The evidence is spread over hundreds of processes on dozens of machines. Most of the work is finding <em>which</em> rank is somewhere it shouldn't be, and <em>where</em> in the code it is.</p>
+<p>This chapter is the multi-process, multi-node companion to <a href="../development/debugging-pytorch.html">Debugging PyTorch programs</a>. It covers, in the order you reach for them:</p>
+<ol>
+<li>A small test script that checks the GPUs and the network before you blame your code.</li>
+<li>Stack dumps of every rank with <code>py-spy</code>, on one node and across many.</li>
+<li>PyTorch's own NCCL hang diagnostics: the desync report and the flight recorder.</li>
+<li>Network-level hangs and isolating bad GPUs.</li>
+<li>Tracing every Python call when a process stops responding, printing from many ranks without garbled output, and core files from processes stuck in native code.</li>
+<li>Getting nodes to talk to each other in the first place, and attaching a debugger to one rank.</li>
+<li>Performance: measuring durations correctly, <code>torch.profiler</code> in one shot, and a case study where <code>cProfile</code> found what <code>torch.profiler</code> could not.</li>
+</ol>
+<p>The methods were developed on multi-node multi-GPU PyTorch training, but they work for any multi-process, multi-node Python program.</p>
+<p>Labels follow <a href="../foundations/toolkit.html#how-to-read-this-books-labels">the toolkit's conventions</a>. The runs marked <strong>[ran]</strong> were done on an Apple-silicon MacBook (10 CPU cores, macOS) with Python 3.14 and PyTorch 2.15.0 (CPU build), using the <code>gloo</code> backend where a process group was needed. Commands that need Linux, NVIDIA GPUs, <code>sudo</code> or a cluster are marked <strong>[GPU, untested]</strong> or <strong>untested</strong>. Output from GPU clusters that I could not reproduce here is labelled as quoted from the original source (Stas Bekman's runs), with the PyTorch version where it is known.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><a href="../development/debugging-pytorch.html">Debugging PyTorch programs</a>, the previous chapter: async CUDA errors, <code>strace</code>, and reading a <code>gdb</code> backtrace from a core file (its section on segfaults and core files). This chapter reuses all three.</li>
+<li><a href="../foundations/linux-and-os.html">Linux and the OS</a>: <a href="../foundations/linux-and-os.html#signals">signals</a>, <a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now"><code>py-spy</code></a> and its <code>ptrace</code> permission issue, <a href="../foundations/linux-and-os.html#gdb-basics"><code>gdb</code> basics</a>, <a href="../foundations/linux-and-os.html#working-remotely-ssh-scp-rsync">ssh</a>, <a href="../foundations/linux-and-os.html#quoting-the-source-of-many-bugs">quoting</a>.</li>
+<li><a href="../foundations/concurrency.html#a-distributed-hang-is-a-deadlock-across-machines">Concurrency: a distributed hang is a deadlock across machines</a>: why a skipped collective freezes every rank, and the NCCL watchdog.</li>
+<li><a href="../foundations/distributed-systems.html#the-distributed-debugging-mindset">Distributed systems: the distributed debugging mindset</a>: <a href="../foundations/distributed-systems.html#per-rank-logs-and-rank-prefixed-printing">per-rank logs</a>, <a href="../foundations/distributed-systems.html#hangs-vs-crashes">hangs vs crashes</a> (and <code>faulthandler</code>), <a href="../foundations/distributed-systems.html#py-spy-on-all-ranks">py-spy on all ranks</a>.</li>
+<li><a href="../foundations/networking.html">Networking</a>: <a href="../foundations/networking.html#ports-and-sockets">ports and sockets</a>, <a href="../foundations/networking.html#interfaces-and-the-routing-table">interfaces</a>, <a href="../foundations/networking.html#firewalls-and-why-master_port-gets-blocked">firewalls and <code>MASTER_PORT</code></a>, <a href="../foundations/networking.html#how-pytorch-distributed-bootstraps">how PyTorch distributed bootstraps</a>.</li>
+<li><a href="../network/measuring-and-debugging.html">Measuring and debugging the network</a>: <a href="../network/measuring-and-debugging.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">diagnosing NCCL connectivity</a> and the <a href="../network/measuring-and-debugging.html#useful-nccl-debug-environment-variables">NCCL debug environment variables</a>. This chapter does not repeat them; it uses them.</li>
+<li><a href="../orchestration/slurm/from-zero.html">Slurm from zero</a>: <a href="../orchestration/slurm/from-zero.html#squeue-what-is-queued-and-running"><code>squeue</code></a>, <a href="../orchestration/slurm/from-zero.html#srun-launching-a-step"><code>srun</code></a>, <a href="../orchestration/slurm/from-zero.html#hostfiles-for-deepspeed-and-mpi-launchers">hostfiles</a>, <a href="../orchestration/slurm/from-zero.html#slurm_procid-early-interpolation"><code>SLURM_PROCID</code> early interpolation</a>.</li>
+<li><a href="../training/profiling-and-optimization.html">Profiling and optimization</a>: <a href="../training/profiling-and-optimization.html#timing-gpu-code-correctly">timing GPU code correctly</a> and <a href="../training/profiling-and-optimization.html#torchprofiler-end-to-end"><code>torch.profiler</code> end to end</a>. The performance half of this chapter adds to those, it does not replace them.</li>
+</ul>
+<h2 id="start-with-a-test-script-not-your-program">Start with a test script, not your program</h2>
+<p>Before debugging your training code, find out whether the GPUs and the network work at all. A full training program takes minutes to start and can fail for a dozen unrelated reasons. A script that only initializes the process group, allocates some GPU memory and runs a few collectives fails fast and for one reason.</p>
+<p>The repository ships one: <a href="../debug/torch-distributed-gpu-test.py">torch-distributed-gpu-test.py</a>. It checks that every GPU in the job (one node or many) can allocate memory and talk to every other GPU through NCCL, and prints other useful facts such as each GPU's NUMA affinity. It is mostly a tool for network problems, and a quick way to see how multi-GPU communication works. Its docstring has the launch commands for <code>torchrun</code>, for Slurm, and for <code>[hostname:rank]</code> log prefixes. The basic single-node form <strong>[GPU, untested]</strong>:</p>
+<pre><code class="language-bash">torchrun --nproc_per_node 2 --nnodes 1 torch-distributed-gpu-test.py
+</code></pre>
+<p>If it hangs in a <code>barrier</code>, the problem is the network or the GPUs, not your code; <a href="../network/measuring-and-debugging.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">Measuring and debugging the network</a> walks through <code>NCCL_DEBUG=INFO</code> output and interface selection. If the script passes and your program still hangs, the problem is in the code, and the rest of this chapter applies.</p>
+<h2 id="where-is-every-rank-stuck-py-spy">Where is every rank stuck? py-spy</h2>
+<p><a href="https://github.com/benfred/py-spy"><code>py-spy</code></a> reads the Python stack of a running process from outside, without stopping it. <a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now">Linux and the OS</a> introduced it; here we run it on one process, then every process on a node, then every node.</p>
+<h3 id="one-process">One process</h3>
+<p>Install it with <code>pip install py-spy</code>, then attach to a hanging process <strong>[untested here: needs Linux, or <code>sudo</code> on macOS]</strong>:</p>
+<pre><code class="language-bash">py-spy dump -n -p PID
+</code></pre>
+<ul>
+<li><code>PID</code> is the process id of the hanging Python process.</li>
+<li><code>-n</code> (<code>--native</code>) also shows frames from extensions written in C, C++ and so on. Use it, since the program may be hanging inside one of them.</li>
+<li>You may need <code>sudo</code> in front; see <a href="https://github.com/benfred/py-spy/blob/master/README.md#when-do-you-need-to-run-as-sudo">when you need to run as sudo</a>.</li>
+</ul>
+<p>Without <code>sudo</code>, your sysadmin can relax the kernel's <code>ptrace</code> restriction (<code>ptrace</code> is the kernel interface that lets one process inspect another; on Ubuntu <code>kernel.yama.ptrace_scope=1</code> by default, which allows tracing only your own descendant processes). Any of these sets it to <code>0</code> <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">sudo echo 0 &gt; /proc/sys/kernel/yama/ptrace_scope   # often fails: the redirect runs as you, not root
+sudo sysctl -w kernel.yama.ptrace_scope=0
+sudo bash -c &quot;echo 0 &gt; /proc/sys/kernel/yama/ptrace_scope&quot;
+</code></pre>
+<p>If the first form fails with &quot;Permission denied&quot;, that is why: <code>sudo</code> applies to <code>echo</code>, but the <code>&gt;</code> redirect is done by your own shell. The other two run the write as root. To make the change survive a reboot, put this line in <code>/etc/sysctl.d/10-ptrace.conf</code>:</p>
+<pre><code>kernel.yama.ptrace_scope = 0
+</code></pre>
+<p>This lets you run <code>py-spy</code> (and <code>strace</code>) without <code>sudo</code>. Mind the <a href="https://wiki.ubuntu.com/SecurityTeam/Roadmap/KernelHardening#ptrace_Protection">security implications</a>: any of your processes can now read the memory of any other process you own. On a compute node not reachable from the Internet this is usually an acceptable risk.</p>
+<p>Here is a <code>py-spy dump</code> of a rank hung during Megatron-DeepSpeed training (quoted from the original source):</p>
+<pre><code>Thread 835995 (active): &quot;MainThread&quot;
+    broadcast (torch/distributed/distributed_c10d.py:1191)
+    _aggregate_total_loss (deepspeed/runtime/pipe/engine.py:540)
+    train_batch (deepspeed/runtime/pipe/engine.py:330)
+    train_step (megatron/training.py:436)
+    train (megatron/training.py:851)
+    pretrain (megatron/training.py:187)
+    &lt;module&gt; (pretrain_gpt.py:239)
+</code></pre>
+<p>How to read it: the stack is printed innermost first, so the <strong>first line is where the program is stuck</strong>: inside <code>broadcast</code>, a collective, called from DeepSpeed's pipeline engine while aggregating the loss. Very often it is an NCCL collective or a <code>barrier</code>. If the hang is inside a C++ extension, <code>--native</code> adds the non-Python frames.</p>
+<p>A process with several threads gets one stack per thread:</p>
+<pre><code>Thread 0x7F6D3C29D740 (idle): &quot;MainThread&quot;
+    wait (threading.py:312)
+    result (concurrent/futures/_base.py:435)
+    main (slurmeventd.py:208)
+    &lt;module&gt; (slurmeventd.py:217)
+Thread 0x7F6CF5FFB700 (idle): &quot;Thread-CallbackRequestDispatcher&quot;
+    wait (threading.py:312)
+    get (queue.py:171)
+    _get_many (pubsub_v1/subscriber/_protocol/helper_threads.py:56)
+    __call__ (pubsub_v1/subscriber/_protocol/helper_threads.py:103)
+    run (threading.py:892)
+    _bootstrap_inner (threading.py:954)
+    _bootstrap (threading.py:912)
+</code></pre>
+<p><code>MainThread</code> is the one running your program's main code; the others are helper threads (here a Pub/Sub client's dispatcher). <code>(idle)</code> vs <code>(active)</code> says whether the thread was on a CPU when sampled.</p>
+<h3 id="every-process-on-one-node">Every process on one node</h3>
+<p>Attaching to 8 processes one by one is too slow. <code>pgrep</code> finds them for you. If the launch command was <code>python</code> <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}
+</code></pre>
+<p><code>pgrep -o python</code> returns the PID of the <strong>oldest</strong> process named <code>python</code>, which is the launcher; <code>pgrep -P PID</code> lists that process's direct children, the per-GPU worker processes; and <code>xargs -I {}</code> runs <code>py-spy dump</code> once per child PID, substituting it for <code>{}</code>. Replace <code>python</code> with the launcher's name:</p>
+<pre><code class="language-bash">pgrep -P $(pgrep -o deepspeed) | xargs -I {} py-spy dump --pid {}     # deepspeed
+pgrep -P $(pgrep -o accelerate) | xargs -I {} py-spy dump --pid {}    # accelerate
+</code></pre>
+<p>This dumps only the launcher's direct children, not other sub-processes and threads they spawned, so with 8 GPUs and 8 processes you get 8 stack traces. To show just the top 5 frames of each main thread:</p>
+<pre><code class="language-bash">pgrep -P $(pgrep -o deepspeed) | xargs -I {} py-spy dump --pid {} | grep -A5 MainThread
+</code></pre>
+<p>Variations you will need:</p>
+<pre><code class="language-bash"># defunct zombies from earlier runs that can't be killed: pick the newest launcher (-n), not the oldest (-o)
+pgrep -P $(pgrep -n deepspeed) | xargs -I {} py-spy dump --pid {}
+
+# an extra wrapper launcher adds one more Python parent level: add one more pgrep -P
+pgrep -P $(pgrep -P $(pgrep -n deepspeed)) | xargs -I {} py-spy dump --pid {}
+
+# every python process and every sub-process (replace python with the launcher's name if needed)
+pgrep -f python | xargs -I {} py-spy dump --pid {}
+</code></pre>
+<p>What to look for: the odd one out. If 7 stacks end in <code>all_reduce</code> and one in <code>torch.load</code> or in a different collective, that rank is the bug.</p>
+<h3 id="every-node-via-srun">Every node, via <code>srun</code></h3>
+<p>With several nodes you can of course <code>ssh</code> into each and dump the stacks. On Slurm, <code>srun</code> can do it on all nodes at once. First, in another terminal, find the job id (or read it from the <code>salloc</code> log):</p>
+<pre><code class="language-bash">squeue -u `whoami` -o &quot;%.16i %9P %26j %.8T %.10M %.8l %.6D %.20S %R&quot;
+</code></pre>
+<p>Then, with the job id from that output (here <code>2180718</code>), run a second job step inside the same allocation <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 --output=trace-%N.out sh -c 'ps aux | grep python | egrep -v &quot;grep|srun&quot; | grep `whoami` | awk &quot;{print \$2}&quot; | xargs -I {} py-spy dump --native --pid {}' || echo &quot;failed&quot;
+</code></pre>
+<p>The <code>sh -c '...'</code> part runs on every node: list your Python processes (excluding the <code>grep</code> and <code>srun</code> themselves), take the PID column with <code>awk</code>, and dump each one. Notes:</p>
+<ul>
+<li><code>--gres=gpu:0</code> is required. Otherwise the monitoring step asks for the GPUs the training step already holds, and blocks until training exits.</li>
+<li><code>--output=trace-%N.out</code> writes one file per node, <code>trace-&lt;nodename&gt;.out</code>, which tells you which node(s) are the problem. Drop it to get everything on stdout.</li>
+<li>Some Slurm versions also need <code>--overlap</code> to share the allocation.</li>
+<li>In some Slurm versions the job id does not match the one <code>squeue</code> shows; take the correct <code>SLURM_JOB_ID</code> from the logs of the <code>srun</code> job that allocated the GPUs.</li>
+<li>Sometimes <code>bash</code> doesn't work where <code>sh</code> does, probably because of which dot files get <code>source</code>d.</li>
+<li>If you need a custom Python environment, activate it inside the command, or in <code>~/.bashrc</code> (or your shell's rc file):</li>
+</ul>
+<pre><code class="language-bash">srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 --output=trace-%N.out sh -c 'conda activate myenvname; ps auxc | ... ' || echo &quot;failed&quot;
+</code></pre>
+<p>The command above dumps every Python process. For only the launcher's children, as in the single-node section (adjust <code>python</code> as explained there):</p>
+<pre><code class="language-bash">srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 --output=trace-%N.out sh -c 'pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}' || echo &quot;failed&quot;
+</code></pre>
+<p>If you get nothing back, build the command up one stage at a time and check each stage's output: the first should print a date per node, the second and third PIDs:</p>
+<pre><code class="language-bash">srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 --output=trace-%N.out sh -c 'date'
+srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 sh -c 'date'
+srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 sh -c 'pgrep -o python'
+srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 sh -c 'pgrep -P $(pgrep -o python) '
+srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 sh -c 'pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}'
+</code></pre>
+<h3 id="every-node-via-pdsh">Every node, via <code>pdsh</code></h3>
+<p><a href="https://github.com/chaos/pdsh"><code>pdsh</code></a> runs one command over ssh on many hosts at once, and is available from the normal OS package installer. With 2 nodes named <code>nodename-5</code> and <code>nodename-8</code>, first check that remote execution works at all (quoted output from the original source):</p>
+<pre><code class="language-bash">$ PDSH_RCMD_TYPE=ssh pdsh -w nodename-[5,8] &quot;date&quot;
+nodename-5: Wed Oct 25 04:32:43 UTC 2023
+nodename-8: Wed Oct 25 04:32:45 UTC 2023
+</code></pre>
+<p><code>PDSH_RCMD_TYPE=ssh</code> tells <code>pdsh</code> to connect with ssh, <code>-w</code> takes the host list (<code>nodename-[5,8]</code> expands to the two names), and each output line is prefixed with the host it came from. Once <code>date</code> works, move to <code>py-spy</code> <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">PDSH_RCMD_TYPE=ssh pdsh -w nodename-[5,8] 'pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}'
+</code></pre>
+<p>This usually fails because <code>py-spy</code> is not on the remote <code>PATH</code>. A remote command runs a non-interactive shell, and most <code>~/.bashrc</code> files start with:</p>
+<pre><code class="language-bash"># If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+</code></pre>
+<p>so Bash exits the rc file early and whatever it sets up (<code>PATH</code>, conda activation) never happens. Either delete that block, or copy <code>~/.bashrc</code> to a startup file that contains only what the remote command needs, and <code>source</code> it explicitly. The name <code>~/.pdshrc</code> is just a convention; nothing reads it automatically:</p>
+<pre><code class="language-bash">PDSH_RCMD_TYPE=ssh pdsh -w nodename-[5,8] 'source ~/.pdshrc; pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}'
+</code></pre>
+<p>If <code>py-spy</code> needs <code>sudo</code> on your nodes (the <code>ptrace</code> restriction above):</p>
+<pre><code class="language-bash">PDSH_RCMD_TYPE=ssh pdsh -w nodename-[5,8] 'sudo bash -c &quot;source ~/.pdshrc; pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}&quot;'
+</code></pre>
+<p>Edit the <code>pgrep</code> part to narrow down which processes you watch. To avoid being asked</p>
+<pre><code>Are you sure you want to continue connecting (yes/no/[fingerprint])?
+</code></pre>
+<p>for every node you haven't logged into before, disable host key checking:</p>
+<pre><code class="language-bash">echo &quot;Host *&quot; &gt;&gt; ~/.ssh/config
+echo &quot;  StrictHostKeyChecking no&quot; &gt;&gt; ~/.ssh/config
+</code></pre>
+<p>This assumes an isolated cluster where replaced nodes routinely come back with new host keys. Disabling the check removes ssh's protection against a machine impersonating your node, so don't do it on machines reachable from the Internet.</p>
+<h3 id="every-node-via-ds_ssh">Every node, via <code>ds_ssh</code></h3>
+<p>Read the <code>pdsh</code> section first; this is yet another way, using <code>ds_ssh</code>, DeepSpeed's small <code>pdsh</code> wrapper (installed by <code>pip install deepspeed</code>). It runs one command on every host listed in a DeepSpeed hostfile: one <code>hostname slots=N</code> line per node, <code>N</code> being the number of GPUs.</p>
+<p>In one Slurm environment the original author could not get <code>py-spy</code> to work remotely through <code>ds_ssh</code>: the remote <code>ssh</code> command did not get the same environment as an interactive login. With <code>sudo</code> on the compute nodes it does work. First write the hostfile from inside the job:</p>
+<pre><code class="language-bash">function makehostfile() {
+perl -e '$slots=split /,/, $ENV{&quot;SLURM_STEP_GPUS&quot;};
+$slots=8 if $slots==0; # workaround 8 gpu machines
+@nodes = split /\n/, qx[scontrol show hostnames $ENV{&quot;SLURM_JOB_NODELIST&quot;}];
+print map { &quot;$_ slots=$slots\n&quot; } @nodes'
+}
+makehostfile &gt; hostfile
+</code></pre>
+<p>It counts the GPU ids in <code>SLURM_STEP_GPUS</code> for the slot count (falling back to 8), expands the job's node list with <code>scontrol show hostnames</code>, and prints <code>node slots=N</code> per node. Adapt <code>$slots</code> to your GPUs per node, and the parsing if your <code>scontrol</code> prints something different. <a href="../orchestration/slurm/from-zero.html#hostfiles-for-deepspeed-and-mpi-launchers">Slurm from zero</a> has a cleaner version of the same function, with a test run. Then <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">ds_ssh -f hostfile &quot;source ~/.pdshrc; ps aux | grep python | grep -v grep | grep `whoami` | awk '{print \$2}' | xargs -I {} sudo py-spy dump --pid {} &quot;
+</code></pre>
+<ul>
+<li>Put whatever init code you need in <code>~/.pdshrc</code>; if you need none, drop <code>source ~/.pdshrc;</code>.</li>
+<li>If you get <code>rcmd: socket: Permission denied</code>, <code>export PDSH_RCMD_TYPE=ssh</code>.</li>
+</ul>
+<h3 id="loops-hide-which-iteration-a-rank-is-in">Loops hide which iteration a rank is in</h3>
+<p>Stack traces have one weakness: they show the line, not the iteration. With</p>
+<pre><code class="language-python">for i, d in enumerate(data):
+    some_hanging_call(d)
+</code></pre>
+<p>one process can hang in the first iteration and another in the second, and <code>py-spy</code> reports the same line number for both, although they are not at the same point in the program. While debugging, unroll the loop:</p>
+<pre><code class="language-python">d_iter = iter(data)
+some_hanging_call(next(d_iter))
+some_hanging_call(next(d_iter))
+</code></pre>
+<p>Now each iteration has its own line, so a process stuck in the first iteration reports the first <code>some_hanging_call</code> and one stuck in the second reports the second.</p>
+<h2 id="diagnosing-nccl-collective-hangs">Diagnosing NCCL collective hangs</h2>
+<p>When a multi-GPU run hangs, <code>py-spy</code> shows <em>where</em> each rank's Python is parked, but usually every rank is blocked inside the same NCCL wait, which does not say what went wrong. The useful questions are <em>which</em> collective failed to match across ranks, and <em>where in your code</em> it was issued. PyTorch's ProcessGroupNCCL watchdog (the background thread that monitors collectives and aborts on timeout, introduced in <a href="../foundations/concurrency.html#a-distributed-hang-is-a-deadlock-across-machines">Concurrency</a>) answers both, in two escalating steps:</p>
+<ol>
+<li>A <strong>desync report</strong>, which names the rank and the collective that fell out of step.</li>
+<li>A <strong>flight recorder</strong> dump: the full per-rank history of recent collectives, each with the Python call stack that issued it.</li>
+</ol>
+<p>Start with the first; reach for the second only when you need more.</p>
+<p>Both come from the <code>nccl</code> backend's watchdog. Measured on PyTorch 2.14.0 (in the original source): if the process group uses the <a href="../training/profiling-and-optimization.html#choosing-between-nccl-nccl2-and-nccl-lazy"><code>nccl2</code> implementation</a> instead, selected with <code>backend=&quot;nccl2&quot;</code> or with <code>TORCH_DIST_USE_NCCL2=1</code> (which redirects plain <code>&quot;nccl&quot;</code> to it), none of the <code>TORCH_NCCL_*</code> and <code>TORCH_FR_*</code> variables below do anything. The same hang then reports a single <code>Operation timed out</code> line and a Python traceback pointing at the collective the rank was blocked in, rather than the one that diverged, with no desync report and no dump file. Reproduce the hang under <code>nccl</code> to diagnose it. (The 2.14 release notes describe a flight recorder that records through process-group hooks rather than only under NCCL. A stock 2.14.0 wheel does not do that for <code>nccl2</code>, which is why the advice is to switch back rather than to expect a dump.)</p>
+<h3 id="the-bug-we-will-diagnose">The bug we will diagnose</h3>
+<p><a href="../debug/code/collective_mismatch.py">collective_mismatch.py</a> has rank 0 issue one extra <code>all_reduce</code> that the other rank never joins:</p>
+<pre><code class="language-python">#!/usr/bin/env python
+import torch, torch.distributed as dist
+from datetime import timedelta
+
+def buggy(x, rank):
+    dist.all_reduce(x)          # both ranks take part - fine
+    if rank == 0:
+        dist.all_reduce(x)      # BUG: only rank 0 calls this -&gt; everyone hangs
+
+def main():
+    dist.init_process_group(&quot;nccl&quot;, timeout=timedelta(seconds=8))
+    rank = dist.get_rank()
+    torch.cuda.set_device(rank)
+    x = torch.ones(4, device=&quot;cuda&quot;)
+    buggy(x, rank)
+    dist.barrier()
+
+main()
+</code></pre>
+<p>Rank 0 waits in its second <code>all_reduce</code> for a partner that never comes; rank 1 has moved on to <code>barrier</code> and waits there. Neither can proceed.</p>
+<p>To see what you get <em>without</em> the NCCL tooling, here is the same program on CPU with <code>gloo</code> (<code>init_process_group(&quot;gloo&quot;, ...)</code>, no <code>.cuda()</code>), which is what you can run on a laptop <strong>[ran]</strong>:</p>
+<pre><code class="language-bash">$ GLOO_SOCKET_IFNAME=lo0 torchrun --nnodes 1 --nproc_per_node=2 --master-addr 127.0.0.1 --master-port 29512 mismatch_gloo.py
+[rank0]:   File &quot;/private/tmp/absorb/run/debug2/mismatch_gloo.py&quot;, line 8, in buggy
+[rank0]:     dist.all_reduce(x)      # BUG: only rank 0 calls this
+...
+[rank0]: RuntimeError: [.../gloo/transport/uv/unbound_buffer.cc:65] Timed out waiting 8000ms for recv operation to complete
+[rank1]:   File &quot;/private/tmp/absorb/run/debug2/mismatch_gloo.py&quot;, line 15, in main
+[rank1]:     dist.barrier()
+...
+[rank1]: RuntimeError: [.../gloo/transport/uv/unbound_buffer.cc:65] Timed out waiting 8000ms for recv operation to complete
+</code></pre>
+<p>(Trimmed to the relevant frames. <code>GLOO_SOCKET_IFNAME=lo0</code> and <code>--master-addr 127.0.0.1</code> keep everything on the macOS loopback interface.) How to read it: after 8 s each rank fails where <em>it</em> was blocked, rank 0 in the stray <code>all_reduce</code> and rank 1 in <code>barrier</code>. With two ranks and a short script you can work out the story from that. With 512 ranks and a real training loop, &quot;everyone timed out somewhere&quot; is not a diagnosis. That is what the NCCL tooling adds.</p>
+<h3 id="the-desync-report">The desync report</h3>
+<p>For most hangs the desync report is enough. Enable it before launching the program <strong>[GPU, untested here]</strong>:</p>
+<pre><code class="language-bash">export TORCH_NCCL_DESYNC_DEBUG=1
+export TORCH_FR_BUFFER_SIZE=2000
+torchrun --standalone --nproc_per_node=2 collective_mismatch.py
+</code></pre>
+<p><code>TORCH_NCCL_DESYNC_DEBUG=1</code> makes the watchdog, at timeout, name which collective and which rank fell out of step. <code>TORCH_FR_BUFFER_SIZE</code> (any non-zero value turns the flight recorder on; it is the number of recent collectives each rank remembers) is what adds the source stack trace of the stuck call to that report.</p>
+<p>The repro passes a short <code>timeout=timedelta(seconds=8)</code> to <code>init_process_group</code>, which is why the watchdog fires after 8 s. Unless <code>default_pg_nccl_timeout</code> is overridden, the NCCL default is 10 minutes, so the watchdog won't fire until then. While chasing a hang, lower it to seconds or a few minutes so the report lands promptly, and remember to undo it before production. From PyTorch 2.14 you don't have to edit the <code>init_process_group</code> call: <code>dist.set_timeout(timedelta(seconds=8))</code> changes the timeout of an existing group, and the same call can stretch it back out around something slow, like a checkpoint load.</p>
+<p>On timeout the watchdog names the culprit and prints the call stack of the stuck collective (quoted from the original source, PyTorch 2.14, 2 GPUs):</p>
+<pre><code>[Rank 0] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=2, OpType=ALLREDUCE, NumelIn=4, NumelOut=4, Timeout(ms)=8000) ran for 8097 milliseconds before timing out.
+ - [0] Timeout at collective: ALLREDUCE, #3
+ - To our best knowledge, the lagging/dead/mismatched ranks that caused the desync are:
+     [1] finished collective #2, but didn't join collective #3 (count from 1)
+Stack trace of the failed collective:
+#2 buggy from collective_mismatch.py:8
+#3 main from collective_mismatch.py:15
+#4 &lt;module&gt; from collective_mismatch.py:18
+</code></pre>
+<p>How to read it: line 1 is the timeout itself (<code>SeqNum=2</code> is the process group's 0-based sequence number of the operation, <code>NumelIn=4</code> the tensor size, and it ran 8097 ms against an 8000 ms limit). The <code>- [1] finished collective #2, but didn't join collective #3</code> line is the diagnosis: rank 1 is the one that diverged. The stack trace points at <code>collective_mismatch.py:8</code>, the stray <code>all_reduce</code>, and, crucially, at <code>main:15</code>, which called <code>buggy</code>, so you learn <em>how</em> the bad call was reached, not just that it happened. That is usually enough to find and fix the bug.</p>
+<h3 id="the-flight-recorder-trace">The flight recorder trace</h3>
+<p>For a more detailed picture, have every rank write its full flight-recorder history to disk <strong>[GPU, untested here]</strong>:</p>
+<pre><code class="language-bash">export TORCH_FR_BUFFER_SIZE=2000
+export TORCH_NCCL_DUMP_ON_TIMEOUT=1
+export TORCH_FR_DUMP_TEMP_FILE=/tmp/fr
+torchrun --standalone --nproc_per_node=2 collective_mismatch.py
+</code></pre>
+<ul>
+<li><code>TORCH_NCCL_DUMP_ON_TIMEOUT=1</code> dumps the buffer to disk when the watchdog fires. Without it the recorder still runs, but nothing is written out.</li>
+<li><code>TORCH_FR_DUMP_TEMP_FILE=/tmp/fr</code> is the path prefix for the dump. Each rank appends its rank number, giving <code>/tmp/fr0</code>, <code>/tmp/fr1</code>, and so on. On a multi-node job, point it at a shared filesystem or collect the files from every node afterwards.</li>
+<li><code>TORCH_FR_BUFFER_SIZE</code> is as above.</li>
+</ul>
+<p><code>TORCH_FR_BUFFER_SIZE</code> and <code>TORCH_FR_DUMP_TEMP_FILE</code> were named <code>TORCH_NCCL_TRACE_BUFFER_SIZE</code> and <code>TORCH_NCCL_DEBUG_INFO_TEMP_FILE</code> before PyTorch 2.9; the old names still work but warn. These <code>TORCH_NCCL_*</code>/<code>TORCH_FR_*</code> variables are PyTorch-level controls, distinct from NCCL's own <code>NCCL_*</code> variables such as <code>NCCL_DEBUG</code>.</p>
+<p>Each dump is a pickle. The helper <a href="../debug/code/collective_mismatch_analyze.py">collective_mismatch_analyze.py</a> loads one and, for each collective that did not complete, prints its call site and caller with PyTorch's own frames stripped out:</p>
+<pre><code class="language-python">#!/usr/bin/env python
+import pickle, glob, os, torch
+
+SHOW_ALL   = False   # False: only collectives that hung; True: every collective
+NUM_FRAMES = 2       # user frames to show: the actual call site + who called it
+
+TORCH_DIR = os.path.dirname(torch.__file__)      # wherever torch actually lives
+def is_user(frame):                              # skip torch's own collective plumbing
+    return not frame[&quot;filename&quot;].startswith(TORCH_DIR)
+
+d = pickle.load(open(sorted(glob.glob(&quot;/tmp/fr*&quot;))[0], &quot;rb&quot;))
+for e in d[&quot;entries&quot;]:
+    if SHOW_ALL or e[&quot;state&quot;] != &quot;completed&quot;:
+        print(e[&quot;state&quot;], e[&quot;profiling_name&quot;])
+        user = [f for f in e[&quot;frames&quot;] if is_user(f)]   # innermost first
+        for f in user[:NUM_FRAMES]:                      # call site, then its caller
+            print(&quot;   &quot;, f[&quot;name&quot;], os.path.basename(f[&quot;filename&quot;]) + &quot;:&quot; + str(f[&quot;line&quot;]))
+</code></pre>
+<p>Output (quoted from the original source):</p>
+<pre><code>started nccl:all_reduce
+    buggy collective_mismatch.py:8
+    main collective_mismatch.py:15
+scheduled nccl:all_reduce_barrier
+    main collective_mismatch.py:16
+    &lt;module&gt; collective_mismatch.py:18
+</code></pre>
+<p>How to read it: each entry has a state, <code>scheduled</code> (enqueued), <code>started</code> (the kernel began) or <code>completed</code>. An entry left in <code>started</code> or <code>scheduled</code> is the hang, and its first non-torch frame is the offending call, here <code>collective_mismatch.py:8</code>. Raise <code>NUM_FRAMES</code> for deeper call chains. Set <code>SHOW_ALL = True</code> for the whole timeline, including the collectives that completed before the divergence:</p>
+<pre><code>completed nccl:all_reduce
+    buggy collective_mismatch.py:6
+    main collective_mismatch.py:15
+started nccl:all_reduce
+    buggy collective_mismatch.py:8
+    main collective_mismatch.py:15
+scheduled nccl:all_reduce_barrier
+    main collective_mismatch.py:16
+    &lt;module&gt; collective_mismatch.py:18
+</code></pre>
+<p>This is usually faster than reading raw stacks, because comparing ranks' timelines surfaces the ordering mismatch behind most NCCL hangs: mismatched sizes, a different collective order, or a collective one rank skipped.</p>
+<p>Primary reference: <a href="https://docs.pytorch.org/docs/stable/torch_nccl_environment_variables.html">ProcessGroupNCCL environment variables</a>.</p>
+<h3 id="debug-environment-variables-at-a-glance">Debug environment variables at a glance</h3>
+<p>All the variables this chapter uses, in one place. NCCL's own variables are explained in <a href="../network/measuring-and-debugging.html#useful-nccl-debug-environment-variables">Measuring and debugging the network</a>; variable names change between versions, so check them against yours.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Layer</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TORCH_NCCL_DESYNC_DEBUG=1</code></td>
+<td>PyTorch (<code>nccl</code> backend)</td>
+<td>at timeout, report which rank and collective desynced</td>
+</tr>
+<tr>
+<td><code>TORCH_FR_BUFFER_SIZE=N</code></td>
+<td>PyTorch (<code>nccl</code> backend)</td>
+<td>enable the flight recorder, keeping the last <code>N</code> collectives; was <code>TORCH_NCCL_TRACE_BUFFER_SIZE</code> before 2.9</td>
+</tr>
+<tr>
+<td><code>TORCH_NCCL_DUMP_ON_TIMEOUT=1</code></td>
+<td>PyTorch (<code>nccl</code> backend)</td>
+<td>write the flight recorder to disk when the watchdog fires</td>
+</tr>
+<tr>
+<td><code>TORCH_FR_DUMP_TEMP_FILE=/path/prefix</code></td>
+<td>PyTorch (<code>nccl</code> backend)</td>
+<td>dump path prefix, rank number appended; was <code>TORCH_NCCL_DEBUG_INFO_TEMP_FILE</code> before 2.9</td>
+</tr>
+<tr>
+<td><code>TORCH_NCCL_ASYNC_ERROR_HANDLING=1</code></td>
+<td>PyTorch</td>
+<td>crash instead of hanging forever when a collective times out (<a href="../orchestration/slurm/from-zero.html#nccl-settings-and-per-rank-logging">Slurm from zero</a>)</td>
+</tr>
+<tr>
+<td><code>TORCH_DISTRIBUTED_DEBUG=DETAIL</code></td>
+<td>PyTorch</td>
+<td>extra checks that collectives match across ranks; slow, debugging only</td>
+</tr>
+<tr>
+<td><code>NCCL_DEBUG=INFO</code></td>
+<td>NCCL</td>
+<td>print transports, interfaces, topology; see below</td>
+</tr>
+<tr>
+<td><code>NCCL_DEBUG_FILE=nccl.%h.%p.log</code></td>
+<td>NCCL</td>
+<td>one log file per process (<a href="../network/measuring-and-debugging.html#nccl_debug_file">details</a>)</td>
+</tr>
+<tr>
+<td><code>NCCL_SOCKET_IFNAME=...</code></td>
+<td>NCCL</td>
+<td>which network interface to use (<a href="../network/measuring-and-debugging.html#nccl_socket_ifname">details</a>)</td>
+</tr>
+<tr>
+<td><code>NCCL_P2P_DISABLE=1</code></td>
+<td>NCCL</td>
+<td>rule the intra-node P2P path in or out (<a href="../network/measuring-and-debugging.html#nccl_p2p_disable">details</a>)</td>
+</tr>
+<tr>
+<td><code>CUDA_VISIBLE_DEVICES=0,1</code></td>
+<td>CUDA</td>
+<td>run on a subset of GPUs to isolate a bad one</td>
+</tr>
+<tr>
+<td><code>TORCH_LOGS=recompiles</code></td>
+<td>PyTorch (<code>torch.compile</code>)</td>
+<td>log every recompilation and the guard that triggered it (<a href="#a-laptop-reproduction-recompiles-under-torchcompile">below</a>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="network-level-hangs-and-bad-gpus">Network-level hangs and bad GPUs</h2>
+<h3 id="is-it-the-network">Is it the network?</h3>
+<p>The hang could be at the network level. Run the test script with <code>NCCL_DEBUG=INFO</code> and look for obvious errors. Among other things it tells you which device NCCL uses (quoted from the original source):</p>
+<pre><code>DeepWhite:21288:21288 [0] NCCL INFO NET/Socket : Using [0]enp67s0:192.168.50.21&lt;0&gt;
+</code></pre>
+<p>How to read it: <code>DeepWhite</code> is the host, <code>21288:21288</code> the PID and thread id, <code>[0]</code> the GPU, and <code>NET/Socket</code> says the collectives run over plain TCP sockets on interface <code>enp67s0</code> with address <code>192.168.50.21</code>. Is that address firewalled? Is it a misconfigured network device? Does it work over the loopback device, <code>127.0.0.1</code> (single node only) <strong>[GPU, untested]</strong>?</p>
+<pre><code class="language-bash">NCCL_DEBUG=INFO NCCL_SOCKET_IFNAME=lo torchrun --nproc_per_node 4 --nnodes 1 torch-distributed-gpu-test.py
+</code></pre>
+<p>If not, list the node's other interfaces with <code>ifconfig</code> (or <code>ip addr</code>) and try those in place of <code>lo</code>. <a href="../network/measuring-and-debugging.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">Measuring and debugging the network</a> explains the <code>NET/</code> line in detail, which interfaces to avoid, and the <code>NCCL_SOCKET_IFNAME</code> syntax.</p>
+<h3 id="isolate-problematic-gpus">Isolate problematic GPUs</h3>
+<p>Check whether only some GPUs fail. On a 4-GPU node, try the first pair, then the second <strong>[GPU, untested]</strong>:</p>
+<pre><code class="language-bash">CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node 2 --nnodes 1 torch-distributed-gpu-test.py
+CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node 2 --nnodes 1 torch-distributed-gpu-test.py
+</code></pre>
+<p><code>CUDA_VISIBLE_DEVICES</code> hides all other GPUs from the process. If one pair passes and the other hangs, keep halving until one GPU (or one GPU pair's link) is left. The same bisection works at node level: if 64 nodes hang and 32 don't, test each half. If you suspect faulty hardware rather than code, see <a href="../compute/gpu-software-stack.html#xid-errors-reading-finding-and-looking-them-up">Xid errors</a>.</p>
+<h3 id="amdrocm-hangs-or-slowness-with-the-iommu">AMD/ROCm: hangs or slowness with the IOMMU</h3>
+<p>On AMD GPUs, multi-GPU runs that hang or run slowly are often caused by the IOMMU (the unit that translates device memory addresses) configuration. See <a href="../compute/gpu-software-stack.html#amd-hangs-or-slow-multi-gpu-runs-and-the-iommu">AMD: hangs or slow multi-GPU runs and the IOMMU</a>.</p>
+<h2 id="when-the-process-stops-responding-tracing-every-call">When the process stops responding: tracing every call</h2>
+<p>Sometimes the process doesn't just hang, it stops responding entirely, for example after a serious hardware problem. <code>py-spy</code> can't attach to a process that doesn't respond. If the problem recurs, the alternative is to record every Python call <em>as it happens</em>, like <code>strace</code> does for system calls, so that after the freeze you have the last call each process made and everything before it.</p>
+<h3 id="the-standard-librarys-trace-module">The standard library's <code>trace</code> module</h3>
+<p>Python's <a href="https://docs.python.org/3/library/trace.html"><code>trace</code></a> module can print every line as it executes. Combined with a <code>Tee</code> that writes stdout to the terminal and to a per-process file, each rank leaves a log that ends exactly where it stopped. Here is the pattern as a self-contained script <strong>[ran]</strong>:</p>
+<pre><code class="language-python"># trace_demo.py - log every line executed into a per-rank file with the stdlib `trace` module
+import os, socket, sys, trace
+
+class Tee:
+    &quot;&quot;&quot;Send everything written to stdout to the terminal AND to a file.&quot;&quot;&quot;
+    def __init__(self, filename):
+        self.stdout = sys.stdout
+        self.file = open(filename, &quot;a&quot;)
+    def __getattr__(self, attr):
+        return getattr(self.stdout, attr)
+    def write(self, msg):
+        self.stdout.write(msg)
+        self.file.write(msg)
+        self.file.flush()               # flush every line: the last line must survive a hang
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
+
+def step(i):
+    x = i * 2
+    return x + 1
+
+def main():
+    for i in range(2):
+        step(i)
+
+if __name__ == &quot;__main__&quot;:
+    if int(os.environ.get(&quot;TRACE&quot;, &quot;0&quot;)):
+        local_rank = int(os.environ.get(&quot;LOCAL_RANK&quot;, 0))
+        out = f&quot;trace-{socket.gethostname().split('.')[0]}-{local_rank}-{os.getpid()}.txt&quot;
+        tracer = trace.Trace(ignoredirs=[sys.prefix, sys.exec_prefix, os.path.dirname(os.__file__)], trace=1, count=0, timing=True)
+        sys.stdout = Tee(out)
+        tracer.run(&quot;main()&quot;)
+    else:
+        main()
+</code></pre>
+<pre><code>$ TRACE=1 python trace_demo.py
+ --- modulename: trace_demo, funcname: &lt;module&gt;
+0.00 &lt;string&gt;(1)
+ --- modulename: trace_demo, funcname: main
+0.00 trace_demo.py(24):      for i in range(2):
+0.00 trace_demo.py(25):          step(i)
+ --- modulename: trace_demo, funcname: step
+0.00 trace_demo.py(20):      x = i * 2
+0.00 trace_demo.py(21):      return x + 1
+0.00 trace_demo.py(24):      for i in range(2):
+0.00 trace_demo.py(25):          step(i)
+ --- modulename: trace_demo, funcname: step
+0.00 trace_demo.py(20):      x = i * 2
+0.00 trace_demo.py(21):      return x + 1
+0.00 trace_demo.py(24):      for i in range(2):
+</code></pre>
+<p>How to read it: <code>--- modulename: ..., funcname: ...</code> marks entry into a function; every other line is <code>&lt;seconds since start&gt; &lt;file&gt;(&lt;line&gt;): &lt;source&gt;</code>. The last line in the file is the last line the process executed. The file name carries hostname, local rank and PID, so after a multi-node freeze you have one file per process and can tell them apart.</p>
+<p>What to know before using it on a real job:</p>
+<ul>
+<li>In a real training script, put this in the <code>if __name__ == &quot;__main__&quot;:</code> block around your <code>main()</code>, and switch it on (<code>TRACE=1</code> here; an <code>if 0:</code>/<code>if 1:</code> toggle works too). <code>LOCAL_RANK</code> is set by <code>torchrun</code>.</li>
+<li><code>ignoredirs</code> lists directories whose code is not traced. <code>sys.prefix</code> and <code>sys.exec_prefix</code> cover installed packages, but inside a virtual environment they point at the venv, not at the standard library, so <code>os.path.dirname(os.__file__)</code> is added to skip the standard library too (see <a href="../development/debugging-pytorch.html">the trace trap in Debugging PyTorch Programs</a>). Without these, every Python call is logged: expect many GBs of data, multiplied by hundreds of GPUs.</li>
+<li>You don't have to start from <code>main</code>. If you suspect a specific area, start tracing there; it's much faster and saves less data.</li>
+<li><code>trace</code> can only be told which directories to <em>ignore</em>, not which packages to <em>follow</em>, which is harder to set up and gives much more data than needed.</li>
+<li>The code runs much slower under tracing, and slower still the more packages you trace.</li>
+<li><code>count=1</code> additionally collects line-execution counts (the original version of this snippet used it); for hang hunting only <code>trace=1</code> matters.</li>
+</ul>
+<h3 id="nicertrace">NicerTrace</h3>
+<p>Because <code>trace</code> proved of limited use when debugging a complex multi-node, multi-hour crash, Stas Bekman started an improved version, <a href="../debug/NicerTrace.py">NicerTrace</a>. It adds constructor flags, most importantly <code>packages_to_include</code>, which inverts <code>trace</code>'s ignore-list: list the top-level packages you want followed, and it traces those plus anything not installed under <code>site-packages</code> (your own code and <code>pip install -e .</code> packages). The file contains a full working example; run it with <code>python NicerTrace.py</code> (needs Pillow) <strong>[ran]</strong>:</p>
+<pre><code>        /Users/ibrahimansari/Desktop/ml-engineering/debug/NicerTrace.py:1 &lt;module&gt;
+0:00:00 &lt;string&gt;:     1:         /Users/ibrahimansari/Desktop/ml-engineering/debug/NicerTrace.py:190 main
+0:00:00 NicerTrace.py:   191:     img = Image.new(&quot;RGB&quot;, (4, 4))
+        PIL.Image:3209 new
+0:00:00 Image.py:  3228:     _check_size(size)
+        PIL.Image:3190 _check_size
+0:00:00 Image.py:  3198:     if not isinstance(size, (list, tuple)):
+0:00:00 Image.py:  3201:     if len(size) != 2:
+0:00:00 Image.py:  3204:     if size[0] &lt; 0 or size[1] &lt; 0:
+</code></pre>
+<p>How to read it: indented lines without a timestamp are function entries, <code>module:line function</code>; timestamped lines are executed source lines, <code>elapsed file: line: source</code>. The example sets</p>
+<pre><code>            packages_to_include=[&quot;PIL&quot;],
+</code></pre>
+<p>so it follows into <code>PIL</code> (Pillow), which plain <code>trace</code> with <code>ignoredirs</code> would have skipped. To trace another package, add it to that list. It is a work in progress, built while chasing one hard crash; read the constructor's docstring for the other flags (<code>packages_to_include=&quot;uninstalled&quot;</code>, <code>log_pids</code>).</p>
+<h3 id="working-with-per-rank-trace-files">Working with per-rank trace files</h3>
+<p>Once every node and rank has written its trace file, a few one-liners summarize them. In the <code>find ... -exec sh -c '...' _ {} \;</code> commands below, <code>find</code> runs the quoted shell snippet once per matching file; the <code>_</code> fills the snippet's <code>$0</code> (its name, unused) so that the file name <code>{}</code> arrives as <code>$1</code>, and <code>\;</code> ends the <code>-exec</code> clause. On three trace files from the script above (two ranks, plus one earlier run) <strong>[ran]</strong>:</p>
+<pre><code class="language-bash">$ grep -n &quot;x + 1&quot; trace*        # a specific match, with file name and line number
+trace-Ibrahims-MacBook-Pro-1-11380.txt:8:0.00 trace_demo.py(21):      return x + 1
+trace-Ibrahims-MacBook-Pro-1-11380.txt:13:0.00 trace_demo.py(21):      return x + 1
+trace-Ibrahims-MacBook-Pro-0-11377.txt:8:0.00 trace_demo.py(21):      return x + 1
+...
+$ find . -name &quot;trace*&quot; -exec sh -c 'echo &quot;$1: $(tail -1 &quot;$1&quot;)&quot;' _ {} \;      # last line of each file
+./trace-Ibrahims-MacBook-Pro-1-11380.txt: 0.00 trace_demo.py(24):      for i in range(2):
+./trace-Ibrahims-MacBook-Pro-0-11379.txt: 0.00 trace_demo.py(24):      for i in range(2):
+./trace-Ibrahims-MacBook-Pro-0-11377.txt: 0.00 trace_demo.py(24):      for i in range(2):
+$ find . -name &quot;trace*&quot; -exec sh -c 'echo &quot;$1: $(grep &quot;x = i&quot; $1 | wc -l)&quot;' _ {} \;   # matches per file
+./trace-Ibrahims-MacBook-Pro-1-11380.txt:        2
+./trace-Ibrahims-MacBook-Pro-0-11379.txt:        2
+./trace-Ibrahims-MacBook-Pro-0-11377.txt:        2
+</code></pre>
+<p>Two more forms: <code>tail -3</code> of every file, and the last 5 lines with the file name on its own line and a blank line between files, which is easier to read:</p>
+<pre><code class="language-bash">find . -name &quot;trace*&quot; -exec sh -c 'echo &quot;$1: $(tail -3 &quot;$1&quot;)&quot;' _ {} \;
+find . -name &quot;trace*&quot; -exec sh -c 'echo; echo $1; echo &quot;$(tail -5 &quot;$1&quot;)&quot;' _ {} \;
+</code></pre>
+<p>How to read them on a real hang: all files ending on the same line means all processes are stuck in the same place (a collective, most likely); the file whose last line differs is your suspect. The per-file match count does the same for a repeated event such as <code>backward</code>: the rank that ran it one time fewer is the one that fell behind. These are the same tricks as for <a href="../network/measuring-and-debugging.html#nccl_debug_file">per-rank NCCL logs</a>.</p>
+<h2 id="printing-from-many-ranks">Printing from many ranks</h2>
+<h3 id="print-with-a-rank-prefix-and-printflock"><code>print</code> with a rank prefix, and <code>printflock</code></h3>
+<p>Once you know <em>where</em> a hang happens, you need to know <em>why</em>. A debugger is the ideal tool, but debugging multi-process, multi-node programs with one is often very hard. Good old <code>print</code> works: add prints before the calls that hang, with whatever helps you understand what led to the deadlock. For example, a missing <code>barrier</code> lets one or a few processes skip some code while the rest block, waiting for everyone to send data in an NCCL collective like <code>gather</code> or <code>reduce</code>.</p>
+<p>Prefix each print with the rank so you can tell processes apart:</p>
+<pre><code class="language-python">import torch.distributed as dist
+print(f&quot;{dist.get_rank()}: passed stage 0&quot;)
+</code></pre>
+<p>With many GPUs these prints get interleaved, sometimes mid-line, and are hard to make sense of. The fix is to override <code>print</code> with a version that takes <code>flock</code> (an advisory file lock that only one process can hold at a time) around each call, so only one process writes to stdout at once. The helper is <a href="../training/tools/printflock.py">printflock.py</a>, and its core is six lines:</p>
+<pre><code class="language-python">import builtins, fcntl
+
+def printflock(*args, **kwargs):
+    with open(__file__, &quot;r&quot;) as fh:                 # the lock file is printflock.py itself
+        fcntl.flock(fh, fcntl.LOCK_EX)              # block until no other process holds it
+        try:
+            builtins.print(*args, **kwargs)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+</code></pre>
+<p>To make every <code>print</code> in the module you're debugging non-interleaved, put this at its top:</p>
+<pre><code class="language-python">from printflock import printflock as print
+</code></pre>
+<p>or call it explicitly:</p>
+<pre><code class="language-python">from printflock import printflock
+import torch.distributed as dist
+printflock(f&quot;{dist.get_rank()}: passed stage 0&quot;)
+</code></pre>
+<p>The order of output between ranks is still random; only the lines stay whole. The lock serializes printing across processes, so keep it for debug prints, not for logging in a hot loop. A sibling script, <a href="../training/tools/multi-gpu-non-interleaved-print.py">multi-gpu-non-interleaved-print.py</a>, contains the same wrapper plus a full example to run with <code>torchrun --nproc_per_node 2 multi-gpu-non-interleaved-print.py</code>. As its comments note, interleaving is typically a problem only among processes on the same node; output from processes on different nodes doesn't get interleaved this way.</p>
+<p>On my laptop, 4 processes each printing 200 lines of 2,000 characters through a pipe produced no garbled lines either with or without the lock <strong>[ran]</strong>, so I can't show you the failure here. It depends on the OS, on how the launcher collects output, and on the number of writers; treat <code>printflock</code> as cheap insurance on multi-GPU nodes.</p>
+<h3 id="prefixing-logs-with-noderank">Prefixing logs with <code>node:rank</code></h3>
+<p>Every line of output, not only your prints, can be prefixed with where it came from. With <code>torchrun</code> (<code>torch.distributed.run</code>), add <code>--role $(hostname -s): --tee 3</code>:</p>
+<pre><code class="language-bash">torchrun --role $(hostname -s): --tee 3 --nnodes 1 --nproc_per_node 2 \
+torch-distributed-gpu-test.py
+</code></pre>
+<p><code>--tee 3</code> copies both stdout and stderr of every worker to the console with a prefix, and <code>--role</code> sets the first part of that prefix, so each line starts with <code>[hostname:rank]</code>. The colon at the end of the role is important: it is what separates host from rank in the prefix.</p>
+<p>Under Slurm the command becomes <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">srun --jobid $SLURM_JOBID bash -c 'torchrun \
+--nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank $SLURM_PROCID \
+--master_addr $MASTER_ADDR --master_port $MASTER_PORT \
+--role $(hostname -s): --tee 3 \
+torch-distributed-gpu-test.py'
+</code></pre>
+<p>Adjust the environment variables to yours. Note the <strong>single quotes</strong> around the command passed to <code>bash -c</code>: they delay <code>$(hostname -s)</code> until it runs on each node. With double quotes, <code>hostname -s</code> would be expanded once, on the node that launches the job, and every node would get the same prefix. If you need double quotes, escape what must be expanded per node:</p>
+<pre><code class="language-bash">srun --jobid $SLURM_JOBID bash -c &quot;torchrun \
+--nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank \$SLURM_PROCID \
+--master_addr $MASTER_ADDR --master_port $MASTER_PORT \
+--role \$(hostname -s): --tee 3 \
+torch-distributed-gpu-test.py&quot;
+</code></pre>
+<p><code>$SLURM_PROCID</code> is escaped too, since it is specific to each node and unknown when the command string is built on the first node, so this version has two <code>\$</code> escapes. Getting this wrong for <code>SLURM_PROCID</code> makes the job hang; see <a href="../orchestration/slurm/from-zero.html#slurm_procid-early-interpolation"><code>SLURM_PROCID</code> early interpolation</a>.</p>
+<p>The prefix is most valuable when a distributed program crashes and every rank prints the same traceback at once. Without prefixes you get (quoted from the original source):</p>
+<pre><code>  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+    if self.dataset_proba.sum() != 1:
+AttributeError: 'list' object has no attribute 'sum'
+    if self.dataset_proba.sum() != 1:
+  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+    if self.dataset_proba.sum() != 1:
+    if self.dataset_proba.sum() != 1:
+AttributeError: 'list' object has no attribute 'sum'
+AttributeError: 'list' object has no attribute 'sum'
+AttributeError: 'list' object has no attribute 'sum'
+</code></pre>
+<p>and with dozens of frames over 8 nodes that can't be untangled. With <code>--role</code> and <code>--tee</code>:</p>
+<pre><code>[host1:0]  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+[host1:1]  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+[host1:0]    if self.dataset_proba.sum() != 1:
+[host1:0]AttributeError: 'list' object has no attribute 'sum'
+[host1:1]    if self.dataset_proba.sum() != 1:
+[host1:2]  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+[host1:3]  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+[host1:3]    if self.dataset_proba.sum() != 1:
+[host1:2]    if self.dataset_proba.sum() != 1:
+[host1:1]AttributeError: 'list' object has no attribute 'sum'
+[host1:2]AttributeError: 'list' object has no attribute 'sum'
+[host1:3]AttributeError: 'list' object has no attribute 'sum'
+</code></pre>
+<p>and grepping for one prefix reconstructs one rank's real traceback (<code>-F</code> makes <code>grep</code> treat the brackets literally):</p>
+<pre><code class="language-bash">$ grep -F '[host1:0]' log.txt
+[host1:0]  File &quot;/path/to/training/dataset.py&quot;, line 785, in __init__
+[host1:0]    if self.dataset_proba.sum() != 1:
+[host1:0]AttributeError: 'list' object has no attribute 'sum'
+</code></pre>
+<p>In a real job there can easily be hundreds to thousands of interleaved traceback lines. Recent <code>torchrun</code> versions also prefix worker tracebacks with <code>[rankN]:</code> on their own, as in the <code>gloo</code> run <a href="#the-bug-we-will-diagnose">above</a>, but without the host name.</p>
+<p>More tips:</p>
+<ul>
+<li>On a single node, <code>--tee 3</code> alone is enough; <code>--role</code> adds nothing.</li>
+<li>If hostnames are long but numbered, like <code>[really-really-really-long-hostname-5:0]</code>, keep only the digits with <code>hostname -s | tr -dc '0-9'</code>, which gives <code>[5:0]</code>, <code>[5:1]</code>, <code>[5:2]</code>.</li>
+<li>For your own debug prints, combine this with <a href="#print-with-a-rank-prefix-and-printflock"><code>printflock</code></a>.</li>
+</ul>
+<p>The same feature in other launchers:</p>
+<ul>
+<li><code>srun</code> in Slurm: add <code>--label</code>.</li>
+<li>Open MPI's <code>mpirun</code>: add <code>--tag-output</code>.</li>
+<li><code>accelerate</code>: pass the same <code>--tee</code> and <code>--role</code> flags as to <code>torchrun</code>.</li>
+</ul>
+<h2 id="native-hangs-core-files">Native hangs: core files</h2>
+<p>If a process hangs inside non-Python code and <code>py-spy --native</code> isn't enough, make it write a core file (a snapshot of the process's memory and threads) and inspect that with <code>gdb</code>. Either of these works <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">gcore &lt;pid&gt;
+kill -ABRT &lt;pid&gt;
+</code></pre>
+<p><code>gcore</code> comes with <code>gdb</code>; it writes a core file of a running process and leaves it running. <code>SIGABRT</code> makes the process abort and dump core on its way out. Then load the core file in <code>gdb</code> as shown in the segfaults and core files section of <a href="../development/debugging-pytorch.html">Debugging PyTorch programs</a>, with <code>thread apply all bt</code> to get every thread's stack. On a multi-node job, run the <code>gcore</code> through <code>pdsh</code> or <code>srun --jobid ... --gres=gpu:0</code> exactly like the <code>py-spy</code> commands <a href="#every-node-via-srun">above</a>, with the <code>pgrep</code> expression choosing the PIDs.</p>
+<p>If no core file appears, you need to allow core dumps and decide where they go. In bash (other shells may use a different command):</p>
+<pre><code class="language-bash">ulimit -c unlimited
+</code></pre>
+<p>To make this persistent:</p>
+<pre><code class="language-bash">echo '* soft core unlimited' &gt;&gt; /etc/security/limits.conf
+</code></pre>
+<p>On some systems, like Ubuntu, core files are sent to <code>apport</code>, which may save them to <code>/var/lib/apport/coredump</code> or <code>/var/crash</code>. Check <code>/proc/sys/kernel/core_pattern</code> to see where they go, and override it with:</p>
+<pre><code class="language-bash">sudo sysctl -w kernel.core_pattern=/tmp/core-%e.%p.%h.%t
+</code></pre>
+<p>The <code>%</code> templates expand to the executable name (<code>%e</code>), PID (<code>%p</code>), hostname (<code>%h</code>) and time (<code>%t</code>); <code>man core</code> lists them all. Including <code>%h</code> matters on a multi-node job if the directory is on a shared filesystem, so cores from different nodes don't collide. Change the directory if you like, but the user the program runs as must be able to write there. To make it permanent, add (or edit) <code>kernel.core_pattern=/tmp/core-%e.%p.%h.%t</code> in <code>/etc/sysctl.conf</code>.</p>
+<p>A quick test that your setup can produce a core file:</p>
+<pre><code class="language-bash">sleep 10 &amp;
+kill -SEGV $!
+</code></pre>
+<p><code>$!</code> is the PID of the <code>sleep</code> just put in the background, so only that process is signalled. <code>SIGSEGV</code> is fine for this test, but don't use it on a real hanging program: it is likely to run the program's own signal handler instead of dumping core cleanly.</p>
+<h2 id="getting-nodes-to-talk-to-each-other">Getting nodes to talk to each other</h2>
+<p>Before you can debug a multi-node job, the nodes must be able to reach each other. Once you scale past one node (for example to make DDP faster), every training step ends with GPUs on different nodes exchanging data through a communication library like <a href="https://github.com/NVIDIA/nccl">NCCL</a>; in DDP, an <code>all_reduce</code> that synchronizes the gradients across all ranks. For the NCCL layer itself see <a href="../network/measuring-and-debugging.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">Measuring and debugging the network</a>; this section is the PyTorch-level checklist.</p>
+<p>Take the simplest case: 2 nodes with 8 GPUs each, at IP addresses <code>10.0.0.1</code> and <code>10.0.0.2</code>. It extends to any number of nodes.</p>
+<h3 id="pick-a-port-and-check-it-is-open">Pick a port and check it is open</h3>
+<p>Rendezvous needs a TCP port (the background is in <a href="../foundations/networking.html#ports-and-sockets">ports and sockets</a>). There are 65,536 ports; the first 1,024 are reserved for well-known services, so that any computer knows in advance where to connect. Port 22 is SSH, so <code>ssh example.com</code> really connects to <code>example.com:22</code>. Thousands of other services use whatever ports they like, but a fresh cloud or HPC Linux box rarely runs many services on high ports, so most are free. Let's use 6000, giving <code>10.0.0.1:6000</code> and <code>10.0.0.2:6000</code>.</p>
+<p>The port must be open for incoming and outgoing connections on both nodes. It may be already; otherwise follow your platform's instructions for opening a port. Several tools test it, all available from your package manager:</p>
+<pre><code class="language-bash">telnet localhost 6000
+nmap -p 6000 localhost
+nc -zv localhost 6000
+curl -v telnet://localhost:6000
+</code></pre>
+<p>With <code>nmap</code> (quoted output):</p>
+<pre><code class="language-bash">$ nmap -p 22 localhost
+[...]
+PORT   STATE SERVICE
+22/tcp open  ssh
+$ nmap -p 6000 localhost
+[...]
+PORT     STATE  SERVICE
+6000/tcp closed X11
+</code></pre>
+<p>How to read it: <code>open</code> means something is listening and reachable; <code>closed</code> means reachable but nothing listening (fine for a port you are about to use, as long as no firewall blocks it); <code>filtered</code> (not shown) means a firewall dropped the probe. The <code>SERVICE</code> column is just <code>nmap</code>'s guess from the port number, which is why 6000 shows <code>X11</code>.</p>
+<p>Now test each node from the other. In terminal A, from the first node to the second:</p>
+<pre><code class="language-bash">ssh 10.0.0.1
+nmap -p 6000 10.0.0.2
+</code></pre>
+<p>and in terminal B, the reverse:</p>
+<pre><code class="language-bash">ssh 10.0.0.2
+nmap -p 6000 10.0.0.1
+</code></pre>
+<p>If both are reachable you can use the port. If not, open it; most clouds have their own mechanism, so search for &quot;open port&quot; plus your provider's name. <a href="../foundations/networking.html#firewalls-and-why-master_port-gets-blocked">Firewalls and why <code>MASTER_PORT</code> gets blocked</a> has the background.</p>
+<h3 id="find-the-right-network-interface">Find the right network interface</h3>
+<p>Compute nodes usually have several network interface cards (NICs). List them with:</p>
+<pre><code class="language-bash">$ sudo ifconfig
+</code></pre>
+<p>One interface is typically for users: ssh, email, downloading data. It is often called <code>eth0</code> (Ethernet), but names vary. Then there are the inter-node interfaces, InfiniBand, EFA, OPA, HPE Slingshot and others (<a href="../network/interconnects.html#inter-node-networking">inter-node networking</a>), anywhere from one to dozens of them. Two examples, trimmed:</p>
+<pre><code class="language-bash">$ sudo ifconfig
+enp5s0: flags=4163&lt;UP,BROADCAST,RUNNING,MULTICAST&gt;  mtu 1500
+        inet 10.0.0.23  netmask 255.255.255.0  broadcast 10.0.0.255
+        [...]
+</code></pre>
+<p>The key information is the address after <code>inet</code>: <code>10.0.0.23</code> is the IP of interface <code>enp5s0</code>. Another node on the same network will probably be <code>10.0.0.24</code> or <code>10.0.0.21</code> or similar, differing in the last number.</p>
+<pre><code class="language-bash">$ sudo ifconfig
+ib0     Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00
+        inet addr:172.0.0.50  Bcast: 172.0.0.255  Mask:255.255.255.0
+        [...]
+</code></pre>
+<p><code>ib</code> typically means InfiniBand, but other vendors use it too; <a href="../network/interconnects.html#omni-path">Omni-Path</a> does, for example. Again <code>inet addr</code> gives the IP, <code>172.0.0.50</code>. These IPs are what you test <code>ip:port</code> against.</p>
+<h3 id="run-the-test-script-across-nodes">Run the test script across nodes</h3>
+<p>Back to <code>10.0.0.1:6000</code> and <code>10.0.0.2:6000</code>. Run an <code>all_reduce</code> test from two terminals with <a href="../debug/torch-distributed-gpu-test.py">torch-distributed-gpu-test.py</a>, choosing <code>10.0.0.1</code> as the host that coordinates the others <strong>[GPU, untested]</strong>. Terminal A:</p>
+<pre><code class="language-bash">$ ssh 10.0.0.1
+$ torchrun --role $(hostname -s): --tee 3 --nnodes 2 --nproc_per_node 8 \
+ --rdzv_backend c10d --rdzv_endpoint 10.0.0.1:6000 torch-distributed-gpu-test.py
+</code></pre>
+<p>Terminal B:</p>
+<pre><code class="language-bash">$ ssh 10.0.0.2
+$ torchrun --role $(hostname -s): --tee 3 --nnodes 2 --nproc_per_node 8 \
+ --rdzv_backend c10d --rdzv_endpoint 10.0.0.1:6000 torch-distributed-gpu-test.py
+</code></pre>
+<p>Both sides use the same <code>--rdzv_endpoint 10.0.0.1:6000</code>, the port we checked, on the coordinating host. With <code>c10d</code> rendezvous, ranks are assigned automatically, so <code>--node_rank</code>, <code>--master_addr</code> and <code>--master_port</code> are not needed.</p>
+<p>Running things by hand on each node is painful; these tools run the same command on many nodes.</p>
+<p><strong>pdsh</strong> folds the two commands into one; for more nodes, add them to <code>-w</code>:</p>
+<pre><code class="language-bash">PDSH_RCMD_TYPE=ssh pdsh -w 10.0.0.1,10.0.0.2 \
+'torchrun --role $(hostname -s): --tee 3 --nnodes 2 --nproc_per_node 8 \
+ --rdzv_backend c10d --rdzv_endpoint 10.0.0.1:6000 torch-distributed-gpu-test.py'
+</code></pre>
+<p>The single quotes matter: <code>$(hostname -s)</code> must expand on each remote host, not on the launching one.</p>
+<p><strong>Slurm</strong>: whoever set up the cluster almost certainly opened the ports, so it should just work. If it doesn't, the steps above help debug it. A batch script for 2 nodes <strong>[untested]</strong>:</p>
+<pre><code class="language-bash">#!/bin/bash
+#SBATCH --job-name=test-nodes        # name
+#SBATCH --nodes=2                    # nodes
+#SBATCH --ntasks-per-node=1          # crucial - only 1 task per dist per node!
+#SBATCH --cpus-per-task=10           # number of cores per tasks
+#SBATCH --gres=gpu:8                 # number of gpus
+#SBATCH --time 0:05:00               # maximum execution time (HH:MM:SS)
+#SBATCH --output=%x-%j.out           # output file name
+#
+export GPUS_PER_NODE=8
+export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+export MASTER_PORT=6000
+#
+srun --jobid $SLURM_JOBID bash -c 'torchrun \
+--nproc_per_node $GPUS_PER_NODE --nnodes $SLURM_NNODES --node_rank $SLURM_PROCID \
+--master_addr $MASTER_ADDR --master_port $MASTER_PORT \
+torch-distributed-gpu-test.py'
+</code></pre>
+<p><code>--ntasks-per-node=1</code> is crucial: Slurm starts one <code>torchrun</code> per node, and <code>torchrun</code> starts the 8 per-GPU processes. <code>MASTER_ADDR</code> is the first host of the allocation. For more than 2 nodes, change <code>--nodes</code> and nothing else.</p>
+<p><strong>MPI</strong>: <a href="https://en.wikipedia.org/wiki/Message_Passing_Interface">Message Passing Interface (MPI)</a> launchers are another common way, with several open-source implementations. Write a hostfile with the target nodes and how many processes to start on each; for our 2 nodes with 8 GPUs:</p>
+<pre><code class="language-bash">$ cat hostfile
+10.0.0.1:8
+10.0.0.2:8
+</code></pre>
+<p>This <code>host:N</code> syntax is the MPICH/Hydra (and Intel MPI / MVAPICH) form. Hostfiles are not standardized across MPI implementations; pick the line for your <code>mpirun</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Implementation</th>
+<th>Per-host count syntax</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Open MPI</td>
+<td><code>10.0.0.1 slots=8</code></td>
+</tr>
+<tr>
+<td>MPICH / Hydra, Intel MPI, MVAPICH</td>
+<td><code>10.0.0.1:8</code></td>
+</tr>
+<tr>
+<td>MS-MPI</td>
+<td><code>10.0.0.1 8</code></td>
+</tr>
+</tbody>
+</table>
+<p>Then run:</p>
+<pre><code class="language-bash">$ mpirun --hostfile hostfile -np 16 -map-by ppr:8:node python my-program.py
+</code></pre>
+<p><code>-np 16</code> is the total number of processes and <code>-map-by ppr:8:node</code> (&quot;processes per resource&quot;) places 8 on each node. This uses <code>my-program.py</code> because <a href="../debug/torch-distributed-gpu-test.py">torch-distributed-gpu-test.py</a> was written for <code>torchrun</code>. Under <code>mpirun</code>, check which environment variable your implementation uses to pass the local rank and use it in place of <code>LOCAL_RANK</code>; the rest stays mostly the same.</p>
+<p>Nuances:</p>
+<ul>
+<li>You may have to tell Open MPI which interface to use: <code>--mca btl_tcp_if_include 10.0.0.0/24</code> for our example. <code>--mca</code> sets an Open MPI component parameter, here for its TCP transport (the <code>btl</code>), and <code>10.0.0.0/24</code> means every address <code>10.0.0.*</code>. With many interfaces it may otherwise pick one that is closed or simply wrong.</li>
+<li>Or the reverse, exclude interfaces: with <code>docker0</code> and <code>lo</code> present, add <code>--mca btl_tcp_if_exclude docker0,lo</code>.</li>
+</ul>
+<p><code>mpirun</code> has a great many flags, and different implementations use different ones; read its manpage.</p>
+<h3 id="case-study-ethernet-works-infiniband-doesnt">Case study: Ethernet works, InfiniBand doesn't</h3>
+<p>On Azure, two nodes on a shared subnet were given the 2-node NCCL test <strong>[GPU, quoted from the original source]</strong>:</p>
+<pre><code class="language-bash">NCCL_DEBUG=INFO python -u -m torch.distributed.run --nproc_per_node=1 --nnodes 2 --rdzv_endpoint 10.2.0.4:6000  --rdzv_backend c10d torch-distributed-gpu-test.py
+</code></pre>
+<p>The debug output showed the InfiniBand interfaces were detected:</p>
+<pre><code>node-2:5776:5898 [0] NCCL INFO NET/IB : Using [0]ibP111p0s0:1/IB [1]rdmaP1111p0s2:1/RoCE [RO]; OOB eth0:10.2.0.4&lt;0&gt;
+</code></pre>
+<p>but then the connection timed out with:</p>
+<pre><code>node-2:5776:5902 [0] transport/net_ib.cc:1296 NCCL WARN NET/IB : Got completion from peer 10.2.0.5&lt;33092&gt; with error 12, opcode 0, len
+0, vendor err 129 (Recv)
+node-2:5776:5902 [0] NCCL INFO transport/net.cc:1134 -&gt; 6
+node-2:5776:5902 [0] NCCL INFO proxy.cc:679 -&gt; 6
+node-2:5776:5902 [0] NCCL INFO proxy.cc:858 -&gt; 6 [Proxy Thread]
+</code></pre>
+<p>and nothing worked. How to read it: the <code>NET/IB</code> line says NCCL found an IB port and a RoCE port, with <code>eth0</code> for out-of-band bootstrap; the bootstrap succeeded, so Ethernet between the nodes works. The <code>WARN</code> is an IB completion error from the peer, and the <code>-&gt; 6</code> lines are the error code propagating up NCCL's call stack. So: Ethernet works, the IB fabric does not.</p>
+<p>There are many possible reasons. The most likely on a cloud is that the two nodes were not provisioned so that their IB is connected: Ethernet works but is far too slow for training. The fix is to re-provision the nodes so they are allocated together; on Azure, inside an <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/availability-set-overview?source=recommendations">availability set</a>. Once the nodes were deleted and recreated in an availability set, the test worked out of the box.</p>
+<p>The general lesson: individual cloud nodes are often not meant for inter-node communication. Clouds have a concept of clusters (placement groups, availability sets and so on) for allocating nodes as a group that is already wired and configured to work together. Use it.</p>
+<h2 id="a-debugger-on-one-rank">A debugger on one rank</h2>
+<h3 id="distbreakpoint-and-forkedpdb"><code>dist.breakpoint()</code> and <code>ForkedPdb</code></h3>
+<p>Since PyTorch 2.2 you can stop one rank in <code>pdb</code> (Python's debugger) while the others wait:</p>
+<pre><code class="language-python">import torch.distributed as dist
+[...]
+
+def mycode(...):
+
+   dist.breakpoint(0)
+
+</code></pre>
+<p>This breaks on the rank you choose, rank 0 here. When the breakpoint hits, type <code>up;;n</code> right away to get into your own code: <code>up</code> moves one frame up, out of the <code>breakpoint</code> helper into your function, <code>;;</code> separates two pdb commands, and <code>n</code> executes the next line.</p>
+<p>Why a special helper: worker processes started by a launcher don't have the terminal as their stdin, so plain <code>pdb.set_trace()</code> can't read your keystrokes. Underneath, <code>dist.breakpoint</code> does essentially this:</p>
+<pre><code class="language-python">import sys
+import pdb
+
+class ForkedPdb(pdb.Pdb):
+    &quot;&quot;&quot;
+    PDB Subclass for debugging multi-processed code
+    Suggested in: https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess
+    &quot;&quot;&quot;
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
+
+def mycode():
+
+    if dist.get_rank() == 0:
+        ForkedPdb().set_trace()
+    dist.barrier()
+
+</code></pre>
+<p><code>interaction</code> reopens <code>/dev/stdin</code> (the controlling terminal) for the duration of the pdb session, and the <code>barrier</code> keeps the other ranks waiting while rank 0 is stopped. You can write it yourself, and use <code>ForkedPdb</code> for ordinary forked (multiprocessing) programs too, minus the <code>dist</code> calls.</p>
+<h3 id="attaching-pdb-to-an-already-running-process">Attaching pdb to an already-running process</h3>
+<p><code>dist.breakpoint()</code> and <code>ForkedPdb</code> both require planting the breakpoint in the source before the run. Python 3.14 adds the missing case: attaching to a process that is <em>already running</em> and that you did not prepare, given only its PID (<a href="https://peps.python.org/pep-0768/">PEP 768</a>):</p>
+<pre><code class="language-bash">python -m pdb -p PID
+</code></pre>
+<p>Both the target and the interpreter you attach with must be Python 3.14+, since it relies on the new safe remote-debugging hook. It drops you at a <code>(Pdb)</code> prompt controlling the target wherever it happens to be (quoted from the original source):</p>
+<pre><code>$ python -m pdb -p 2916
+&gt; /tmp/target.py(6)&lt;module&gt;()
+-&gt; time.sleep(0.2)
+(Pdb) p counter
+8
+(Pdb) c
+</code></pre>
+<p>From there the usual commands work: <code>p</code>/<code>pp</code> to print values, <code>bt</code> for the stack, <code>w</code> for the current frame. <code>c</code> resumes the process; closing the session detaches without killing it (in the run above the target continued and finished normally). There is no <code>detach</code> command; use <code>c</code> or quit the debugger.</p>
+<p>This is the standard-library counterpart to <code>py-spy dump</code>. <code>py-spy</code> samples the stack read-only and never stops the target; <code>python -m pdb -p PID</code> stops the process and lets you evaluate expressions inside it. For a wedged rank in a multi-GPU job, that means you can inspect live state even though you never planted a <code>dist.breakpoint()</code>. Keep <code>dist.breakpoint(rank)</code> for when you <em>can</em> edit the source and want a clean, all-ranks-aware stop.</p>
+<p>Caveats: you can normally attach only to your own processes; systems that restrict <code>ptrace</code> need the same <code>kernel.yama.ptrace_scope</code> change as <a href="#one-process"><code>py-spy</code></a>; the target can opt out entirely with <code>-X disable-remote-debug</code> or <code>PYTHON_DISABLE_REMOTE_DEBUG=1</code>; and a rank blocked inside a C call will not break until that call returns, which for a rank stuck in an NCCL wait may be never.</p>
+<p>Primary reference: <a href="https://docs.python.org/3.14/library/pdb.html">Python 3.14 pdb</a>.</p>
+<h2 id="measuring-durations">Measuring durations</h2>
+<p>The second half of this chapter is about speed. Faster ML software means less money spent on hardware (even on hardware you own, you pay for the electricity), and results sooner. In a race to train a model, a competitor whose framework trains faster can make your better idea irrelevant before your run finishes. Making software faster starts with measuring durations, then optimizing, then measuring again. <a href="../training/profiling-and-optimization.html">Profiling and optimization</a> covers the methodology and a full training loop; this section covers the general tools.</p>
+<h3 id="time"><code>time</code></h3>
+<p>The simplest measurement is two timestamps:</p>
+<pre><code class="language-bash">$ python -c 'import time; start=time.time(); time.sleep(1); print(f&quot;duration: {time.time()-start} secs&quot;)'
+duration: 1.0000815391540527 secs
+</code></pre>
+<p>The shell's <code>time</code> measures a whole command, and reports three kinds of time (quoted from the original source, a 192-core Linux node):</p>
+<pre><code class="language-bash">$ time python -c 'import torch'
+real    0m1.399s
+user    0m8.222s
+sys     0m0.209s
+</code></pre>
+<ul>
+<li><code>real</code> is wall clock time: what a stopwatch would show from launch to exit.</li>
+<li><code>user</code> is CPU time spent in user space, that is, in your program.</li>
+<li><code>sys</code> is CPU time spent in system calls (in the kernel): IO, networking, memory.</li>
+</ul>
+<p>Here <code>user+sys</code> (<code>8.222+0.209=8.431</code>) is six times <code>real</code> (<code>1.399</code>). That's not a contradiction: <code>user</code> and <code>sys</code> are summed over every thread that ran. This node has 192 cores and importing <code>torch</code> starts a thread pool across them, so CPU-seconds pile up much faster than wall-clock seconds. Restrict it to one thread and the CPU time collapses while the wall-clock time stays put:</p>
+<pre><code class="language-bash">$ time OMP_NUM_THREADS=1 python -c 'import torch'
+real    0m1.377s
+user    0m1.099s
+sys     0m0.258s
+</code></pre>
+<p>Now <code>user+sys</code> (<code>1.099+0.258=1.357</code>) does add up to <code>real</code> (<code>1.377</code>), and the 7 extra CPU-seconds of the first run bought no wall-clock time at all.</p>
+<p><code>real</code> can also be <em>bigger</em> than <code>user+sys</code>: that happens when the program waits instead of computing. If you build PyTorch with <code>make -j</code> on all cores and run another program at the same time, the latter reports a bigger <code>real</code> and smaller <code>user+sys</code>, because it fights dozens of <code>gcc</code> processes for CPU time and spends a lot of it waiting. Slow or blocking IO (a shared NFS filesystem, say) causes the same gap. Unless your software competes with other software, <code>real</code> is the number to care about; <code>user</code> and <code>sys</code> matter to people optimizing low-level systems.</p>
+<h3 id="hyperfine">hyperfine</h3>
+<p><a href="https://github.com/sharkdp/hyperfine">hyperfine</a> runs a command many times and reports the mean, standard deviation, and fastest and slowest runs. It can also compare commands. Install it with <code>sudo apt-get install -y hyperfine</code> (or your package manager). On the same import (quoted from the original source):</p>
+<pre><code class="language-bash">$ hyperfine 'python -c &quot;import torch&quot;'
+Benchmark 1: python -c &quot;import torch&quot;
+  Time (mean ± σ):      1.412 s ±  0.024 s    [User: 8.160 s, System: 0.290 s]
+  Range (min … max):    1.378 s …  1.454 s    10 runs
+</code></pre>
+<p>It ran the command 10 times, the default; <code>-r N</code> sets the count. The <code>± 0.024 s</code> is what <code>time</code> can't tell you: repeated runs differ by about 24 ms, so a change that saves 10 ms hasn't been shown to save anything.</p>
+<p>To compare two commands, pass both; <code>-w 2</code> warms up by running each twice before measuring:</p>
+<pre><code class="language-bash">$ hyperfine -w 2 'python -c &quot;import torch&quot;' 'python -c &quot;import transformers&quot;'
+Benchmark 1: python -c &quot;import torch&quot;
+  Time (mean ± σ):      1.415 s ±  0.026 s    [User: 8.226 s, System: 0.224 s]
+  Range (min … max):    1.379 s …  1.455 s    10 runs
+
+Benchmark 2: python -c &quot;import transformers&quot;
+  Time (mean ± σ):      1.211 s ±  0.017 s    [User: 8.024 s, System: 0.245 s]
+  Range (min … max):    1.186 s …  1.233 s    10 runs
+
+Summary
+  python -c &quot;import transformers&quot; ran
+    1.17 ± 0.03 times faster than python -c &quot;import torch&quot;
+</code></pre>
+<p>Importing <code>transformers</code> is faster than importing <code>torch</code>, even though <code>transformers</code> needs <code>torch</code>, because it imports it lazily:</p>
+<pre><code class="language-bash">$ python -c 'import transformers, sys; print(&quot;torch&quot; in sys.modules)'
+False
+</code></pre>
+<p><strong>Cache effects.</strong> All the runs above most likely read the imported files from the kernel's <a href="../foundations/linux-and-os.html#the-page-cache-why-the-second-read-is-fast">page cache</a>, filled by earlier runs. On a new node, after a fresh install, on the first run of the day, or after the kernel reclaims that memory, they are read from disk instead. <code>--prepare</code> (<code>-p</code>) runs a command before each timed run; use it to drop the caches <strong>[untested here: needs Linux and sudo]</strong>:</p>
+<pre><code class="language-bash">$ hyperfine -p 'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches' 'python -c &quot;import torch&quot;'
+Benchmark 1: python -c &quot;import torch&quot;
+  Time (mean ± σ):      2.103 s ±  0.054 s    [User: 8.319 s, System: 0.348 s]
+  Range (min … max):    2.018 s …  2.191 s    10 runs
+</code></pre>
+<p>The same import takes 1.5x longer with nothing cached. On a networked filesystem it's far worse. Here is the <code>torch</code> package copied onto a local NVMe drive and onto a shared Lustre mount, then imported from each (from the original source):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">package on</th>
+<th style="text-align:right">from cache</th>
+<th style="text-align:right">from the filesystem</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">local NVMe</td>
+<td style="text-align:right">1.491s ± 0.178</td>
+<td style="text-align:right">2.134s ± 0.035</td>
+</tr>
+<tr>
+<td style="text-align:left">Lustre</td>
+<td style="text-align:right">1.681s ± 0.494</td>
+<td style="text-align:right">10.589s ± 0.104</td>
+</tr>
+</tbody>
+</table>
+<p>With nothing cached, Lustre takes 5.0x as long as local NVMe, and 7.1x as long as local NVMe from cache. This is why installing packages on a shared filesystem and importing them from there is so much slower than using a local disk. Writing is punished even harder: copying these same files took 2.026 s onto the local drive and 2 min 35.880 s onto Lustre. The cached Lustre number is unreliable too: those runs ranged from 1.441 s to 2.912 s, because the Lustre client doesn't keep a package that size cached for long. <code>User</code> time stays at about 8.3 s in all of these runs, so the extra wall-clock time is time spent waiting for IO. What an import actually reads, and how to build a filesystem benchmark from timings like these, is in <a href="../foundations/storage-and-data.html#usability-perception-io-benchmarks">Usability perception IO benchmarks</a>.</p>
+<p>So when you compare two timings, take both the same way: both cached or both not, from the same filesystem. Otherwise you're measuring the cache and the filesystem, not your change.</p>
+<h3 id="device-events">Device events</h3>
+<p>Wall-clock time does not measure GPU work correctly, because kernel launches are asynchronous; <a href="../training/profiling-and-optimization.html#timing-gpu-code-correctly">Timing GPU code correctly</a> shows by how much it lies, and the right patterns. The precise tool is device events: <strong>[GPU, quoted from the original source]</strong></p>
+<pre><code class="language-python">import torch
+start_event = torch.cuda.Event(enable_timing=True)
+end_event   = torch.cuda.Event(enable_timing=True)
+x = torch.ones(2**10,2**10, device=&quot;cuda&quot;)
+start_event.record()
+x@x.T
+end_event.record()
+torch.cuda.synchronize()
+duration = start_event.elapsed_time(end_event) / 1000
+print(f&quot;It took {duration} seconds to run this&quot;)
+</code></pre>
+<pre><code>It took 0.07701897430419923 seconds to run this
+</code></pre>
+<p>The code creates two timing events, records the first, runs a matmul of a tensor with its own transpose, records the second, waits for all queued work to finish, and asks for the time between the events (<code>elapsed_time</code> returns milliseconds, hence the <code>/1000</code>; it can be called any time after the sync). Note that this is a single call without warmup, so the 77 ms most likely includes one-time startup costs (such as cuBLAS initialization) on top of the matmul itself; warm up first when you time for real. The part that matters is the exact order:</p>
+<pre><code class="language-python">start_event.record()
+&lt;the code execution of which you want to time goes here&gt;
+end_event.record()
+torch.cuda.synchronize()
+</code></pre>
+<p>Other devices have similar or identical APIs:</p>
+<ul>
+<li><code>torch.cuda.Event</code> - NVIDIA CUDA and AMD ROCm</li>
+<li><code>ht.hpu.Event(enable_timing)</code> - Intel Gaudi (<code>ht</code> being <code>import habana_frameworks.torch as ht</code>)</li>
+<li><code>torch.xpu.Event(enable_timing)</code> - Intel dGPUs</li>
+<li>Apple MPS now has <code>torch.mps.Event(enable_timing=True)</code> (used in <a href="../training/profiling-and-optimization.html#why-the-naive-timer-lies">timing.py</a>); older code emulated the API, as in <a href="https://github.com/stas00/ml-engineering/blob/0099885db36a8f06556efe1faf552518852cb1e0/compute/accelerator/benchmarks/mamf-finder.py#L159">this version of mamf-finder.py</a>.</li>
+</ul>
+<p>Practical examples of timing with device events in this repository: <a href="../compute/accelerator/benchmarks/mamf-finder.py">mamf-finder.py</a> and <a href="../network/benchmarks/torch-dist-bench.py">torch-dist-bench.py</a> (explained in <a href="../network/measuring-and-debugging.html#torch-dist-bench">torch-dist-bench</a>). For a deeper treatment, see <a href="https://www.speechmatics.com/company/articles-and-news/timing-operations-in-pytorch">How to Accurately Time CUDA Kernels in Pytorch</a>.</p>
+<h2 id="profilers">Profilers</h2>
+<p>General Python profilers (for example <code>cProfile</code> from the standard library; <a href="https://github.com/stas00/the-art-of-debugging/blob/master/python/README.md#profilers">Python Profilers</a> is a good tour) tell you where a Python program spends its time. PyTorch has profilers designed for its APIs that also see GPUs, TPUs and other hardware, with small overhead and access to fine-grained events Python profilers can't see. Since PyTorch runs device work asynchronously, a Python profiler like <code>cProfile</code> doesn't know how long a kernel actually took; it reports what it can see happen on the CPU.</p>
+<h3 id="torchprofiler-in-one-shot"><code>torch.profiler</code> in one shot</h3>
+<p><code>torch.profiler</code> correctly measures operations that run asynchronously, where the Python dispatcher pushes a kernel launch into a queue and the device runs it when it gets to it. <a href="../training/profiling-and-optimization.html#torchprofiler-end-to-end">Profiling and optimization</a> shows the scheduled form for a training loop; here is the one-shot form around a single call <strong>[GPU, quoted from the original source, H100]</strong>:</p>
+<pre><code class="language-python"># torch-profile-linear-example.py
+import torch
+from torch.profiler import profile, ProfilerActivity
+
+linear = torch.nn.Linear(1024, 1024).to(&quot;cuda&quot;)
+x = torch.randn(256, 512, 1024, device=&quot;cuda&quot;)
+
+# warmup
+out = linear(x)
+torch.cuda.synchronize()
+
+with profile(activities=[ProfilerActivity.CUDA], with_stack=True) as prof:
+    out = linear(x)
+    torch.cuda.synchronize()
+print(prof.key_averages().table(sort_by=&quot;cuda_time_total&quot;, row_limit=10, max_name_column_width=27))
+</code></pre>
+<p>It runs a Linear layer twice: once as warmup, which is ignored, and once under the profiler, then prints the report:</p>
+<pre><code class="language-bash">$ python torch-profile-linear-example.py
+---------------------------  ----------  ---------  -----------  ---------  ------------  ---------  -----------  ----------  -------------  ----------
+                       Name  Self CPU %   Self CPU  CPU total %  CPU total  CPU time avg  Self CUDA  Self CUDA %  CUDA total  CUDA time avg  # of Calls
+---------------------------  ----------  ---------  -----------  ---------  ------------  ---------  -----------  ----------  -------------  ----------
+sm90_xmma_gemm_f32f32_tf...       0.00%    0.000us        0.00%    0.000us       0.000us  687.139us       99.80%   687.139us      687.139us           1
+            Memset (Device)       0.00%    0.000us        0.00%    0.000us       0.000us    1.344us        0.20%     1.344us        1.344us           1
+    Activity Buffer Request      69.98%    2.193ms       69.98%    2.193ms       2.193ms    0.000us        0.00%     0.000us        0.000us           1
+      cudaStreamIsCapturing       0.26%    8.203us        0.26%    8.203us       8.203us    0.000us        0.00%     0.000us        0.000us           1
+                 cudaMalloc      10.75%  337.029us       10.75%  337.029us     337.029us    0.000us        0.00%     0.000us        0.000us           1
+            cudaMemsetAsync       0.61%   19.135us        0.61%   19.135us      19.135us    0.000us        0.00%     0.000us        0.000us           1
+      cudaFuncGetAttributes       0.28%    8.769us        0.28%    8.769us       4.385us    0.000us        0.00%     0.000us        0.000us           2
+        cudaLaunchKernelExC       1.23%   38.672us        1.23%   38.672us      38.672us    0.000us        0.00%     0.000us        0.000us           1
+      cudaDeviceSynchronize      16.88%  529.079us       16.88%  529.079us     264.540us    0.000us        0.00%     0.000us        0.000us           2
+---------------------------  ----------  ---------  -----------  ---------  ------------  ---------  -----------  ----------  -------------  ----------
+Self CPU time total: 3.134ms
+Self CUDA time total: 688.483us
+</code></pre>
+<p>How to read this table: each row is one operator, kernel or CUDA runtime call. &quot;Self&quot; columns count time spent in that row itself; &quot;total&quot; columns include everything it called. CPU columns are host-side time; CUDA columns are time the GPU spent executing kernels (more in <a href="../training/profiling-and-optimization.html#reading-key_averages">Reading <code>key_averages()</code></a>). Rows with CUDA time are GPU kernels, the <code>cuda*</code> rows are CUDA runtime API calls made by the CPU, and <code>Activity Buffer Request</code> is the profiler's own setup.</p>
+<p>The code spends almost all its GPU time in one GEMM, as a linear layer should: 687.139 us, 99.80% of the CUDA time. The other rows are the CUDA calls made while launching it. The kernel name <code>sm90_xmma_gemm_f32f32_tf...</code> is a cuBLAS kernel: <code>sm90</code> means it targets Hopper, <code>f32f32</code> gives the input and output dtypes, and the part cut off by the column width encodes the math mode, tile shape and layouts. Kernel names are long because they include dtypes and shapes; to see them in full, widen the column:</p>
+<pre><code class="language-diff">- print(prof.key_averages().table(sort_by=&quot;cuda_time_total&quot;, row_limit=10, max_name_column_width=27))
++ print(prof.key_averages().table(sort_by=&quot;cuda_time_total&quot;, row_limit=10, max_name_column_width=450))
+</code></pre>
+<p>The last two lines are the end-to-end totals: about 3.1 ms on the CPU and 0.7 ms on the GPU. Once you profile a whole model rather than one layer, you see many more kernels, and that's where it gets interesting.</p>
+<p>The same example on CPU (<code>.to(&quot;cuda&quot;)</code> removed, a smaller batch <code>x = torch.randn(16, 512, 1024)</code>, <code>ProfilerActivity.CPU</code>, sorted by <code>cpu_time_total</code>) <strong>[ran]</strong>:</p>
+<pre><code>--------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+--------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+        aten::linear         0.12%      18.435us       100.00%      15.642ms      15.642ms             1  
+         aten::addmm        86.36%      13.508ms        99.76%      15.604ms      15.604ms             1  
+         aten::copy_        13.39%       2.094ms        13.39%       2.094ms       2.094ms             1  
+             aten::t         0.03%       5.375us         0.05%       7.934us       7.934us             1  
+aten::_unsafe_vie...         0.04%       6.000us         0.04%       6.000us       6.000us             1  
+          aten::view         0.04%       5.708us         0.04%       5.708us       5.708us             1  
+--------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 15.642ms
+</code></pre>
+<p>This one shows self vs total clearly: <code>aten::linear</code> has 100% total but 0.12% self, because it just calls <code>aten::addmm</code> (the fused bias-add plus matmul), which does 86% of the work itself.</p>
+<p>For more options see the <a href="https://docs.pytorch.org/docs/stable/profiler.html"><code>torch.profiler</code> docs</a>, and <a href="https://huggingface.co/blog/torch-profiler">an excellent introduction to <code>torch.profiler</code> from the Hugging Face team</a>.</p>
+<h3 id="when-torchprofiler-isnt-enough-a-cprofile-case-study">When <code>torch.profiler</code> isn't enough: a cProfile case study</h3>
+<p><code>cProfile</code> is the wrong profiler for the GPU part of PyTorch code, but there are cases where it is exactly the right one: when the time goes somewhere that is <em>not</em> a PyTorch operator.</p>
+<p>Stas Bekman was diagnosing a strange ~1 s overhead in <code>forward</code> and <code>backward</code> calls. <code>torch.profiler</code> measured the forward at about 100 ms, but the wall-clock timer said about 1 s, and <code>torch.profiler</code> gave no hint why. <code>cProfile</code> showed it immediately: a Triton kernel (Triton is a Python-embedded language for writing GPU kernels, compiled at run time) was being recompiled, taking about 1 s each time. The input was a padded 2D batch flattened into an unpadded 1D one, so the final length differed on many steps, and each new length triggered a recompilation of a kernel specialized to a specific input length.</p>
+<p>Reproducing it needs a CUDA GPU, a recent PyTorch (see <a href="https://pytorch.org/get-started/locally/">PyTorch's install page</a>) and <a href="https://github.com/linkedin/Liger-Kernel">Liger Kernel</a>, LinkedIn's collection of Triton kernels for LLM training (RMSNorm, RoPE, SwiGLU, fused cross-entropy and so on). Its <code>AutoLigerKernelForCausalLM</code> swaps them into a Hugging Face Transformers model in place of the stock PyTorch modules:</p>
+<pre><code class="language-bash">pip install liger-kernel
+</code></pre>
+<p>First, a context manager that switches between <code>cProfile</code>, <code>torch.profiler</code> and no profiler without changing the code being profiled:</p>
+<pre><code class="language-python"># profilers.py
+from contextlib import nullcontext
+from pstats import Stats
+from torch.profiler import profile, record_function, ProfilerActivity
+import cProfile
+import pstats
+import torch
+
+# customize the precision of cProfile to give 6 decimals
+pstats.f8 = lambda x: f&quot;{x:3.6f}&quot;
+
+
+class ProfilerContext:
+    &quot;&quot;&quot;
+    A proxy Profiler context manager class that can quickly choose between cProfile, torch.profiler and no-profiler w/o changing the end user code (other than changing the profiler type flag)
+
+    Example:
+
+    prof_fwd = ProfilerContext(type=&quot;c&quot;, name=&quot;some context&quot;)
+    with prof_fwd():
+        x = 1
+    prof_fwd.report()
+    &quot;&quot;&quot;
+
+    def __init__(self, type=&quot;none&quot;, name=None):
+        &quot;&quot;&quot;
+        Args:
+        - type: &quot;torch&quot;: torch.profiler, &quot;c&quot;: cProfile, &quot;none&quot;: none
+        - name: some context string for the reports
+        &quot;&quot;&quot;
+        self.torch = False
+        self.c = False
+        if type == &quot;torch&quot;:
+            self.torch = True
+        elif type == &quot;c&quot;:
+            self.c = True
+        elif type == &quot;none&quot;:
+            pass
+        else:
+            raise ValueError(f&quot;the `type` can be one of torch|c|none but got {type}&quot;)
+
+        self.name = name if name is not None else &quot;unknown&quot;
+
+        if self.torch:
+            self.ctx = profile(activities=[ProfilerActivity.CUDA], record_shapes=False, with_stack=True)
+        elif self.c:
+            self.ctx = cProfile.Profile()
+        else:
+            self.ctx = nullcontext()
+
+    def __call__(self):
+        if self.torch and torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+        return self.ctx
+
+    def report(self):
+        if self.torch:
+            print(f&quot;*** torch.profiler {self.name} ***&quot;)
+            print(self.ctx.key_averages().table(sort_by=&quot;cuda_time_total&quot;, row_limit=20))
+        elif self.c:
+            print(f&quot;*** cProfile {self.name} ***&quot;)
+            stats = Stats(self.ctx)
+            stats.sort_stats(&quot;tottime&quot;).print_stats(20)
+            # cumulative report is useful to understand where some of the large internal time overheads
+            # come from - because it shows you the stack of calls leading to the slow call. So
+            # `tottime` shows candidates to study and `cumulative` for finding context for those calls
+            stats.sort_stats('cumulative').print_stats(50)
+        else:
+            pass # report nothing
+</code></pre>
+<p>(<code>cProfile.Profile</code> objects are context managers themselves since Python 3.8, which is why <code>with prof():</code> works for all three types.) Now profile 2 forward calls of Qwen3-0.6B with Liger's kernels swapped in <strong>[GPU, quoted from the original source]</strong>:</p>
+<pre><code class="language-python"># liger-kernel-varlen-recompile.py
+import torch
+import time
+from liger_kernel.transformers import AutoLigerKernelForCausalLM
+from profilers import ProfilerContext
+
+#PROFILER_TYPE = &quot;c&quot;
+PROFILER_TYPE = &quot;torch&quot;
+#PROFILER_TYPE = &quot;none&quot;
+
+model = AutoLigerKernelForCausalLM.from_pretrained(&quot;Qwen/Qwen3-0.6B&quot;).to(&quot;cuda&quot;)
+
+batch_size = 5
+seq_len = 512
+vocab_size = model.config.vocab_size
+
+input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=model.device)
+attention_mask = torch.ones_like(input_ids)
+
+for i in range(2):
+    prof = ProfilerContext(type=PROFILER_TYPE, name=f&quot;FWD {i}&quot;)
+    start = time.perf_counter()
+    with prof(): outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+    prof.report()
+    print(f&quot;wallclock duration: {(time.perf_counter()-start)*1000:0.3f} msecs&quot;)
+</code></pre>
+<p>Running it shows the discrepancy (most of the profiler table trimmed):</p>
+<pre><code class="language-bash">$ python liger-kernel-varlen-recompile.py
+*** torch.profiler FWD 0 ***
+[...]
+Self CPU time total: 119.385ms
+Self CUDA time total: 25.041ms
+
+wallclock duration: 1003.727 msecs
+</code></pre>
+<p>On the second step the gap is much smaller:</p>
+<pre><code>*** torch.profiler FWD 1 ***
+[...]
+Self CPU time total: 59.184ms
+Self CUDA time total: 25.011ms
+
+wallclock duration: 228.978 msecs
+</code></pre>
+<p>How to read it: on the first call, the profiler accounts for 119 ms of CPU and 25 ms of GPU time, but the wall clock says 1,004 ms. Something took over 800 ms that <code>torch.profiler</code> did not attribute to any PyTorch operator. So switch to <code>cProfile</code> by editing two lines:</p>
+<pre><code>PROFILER_TYPE = &quot;c&quot;
+#PROFILER_TYPE = &quot;torch&quot;
+</code></pre>
+<p>and the first forward call shows the problem:</p>
+<pre><code>*** cProfile FWD 0 ***
+         113616 function calls (109641 primitive calls) in 3.290 seconds
+
+   Ordered by: internal time
+   List reduced from 947 to 20 due to restriction &lt;20&gt;
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       28 1.991778 0.071135 1.991778 0.071135 {built-in method torch._C._nn.scaled_dot_product_attention}
+       57 0.427335 0.007497 0.427335 0.007497 {built-in method torch.cat}
+      398 0.268139 0.000674 0.268139 0.000674 {method 'update' of '_hashlib.HASH' objects}
+      197 0.134879 0.000685 0.134879 0.000685 {built-in method torch._C._nn.linear}
+       28 0.107747 0.003848 0.107747 0.003848 {built-in method torch.empty_like}
+      475 0.091337 0.000192 0.091337 0.000192 {method 'read' of '_io.BufferedReader' objects}
+        1 0.050481 0.050481 0.055220 0.055220 python3.12/site-packages/transformers/models/qwen3/modeling_qwen3.py:319(forward)
+       80 0.035789 0.000447 0.036184 0.000452 {built-in method _io.open}
+      115 0.025036 0.000218 0.025036 0.000218 {method '__exit__' of '_io._IOBase' objects}
+    144/7 0.008807 0.000061 0.037330 0.005333 {built-in method builtins.exec}
+        6 0.005818 0.000970 0.005818 0.000970 {built-in method _imp.create_dynamic}
+        1 0.005175 0.005175 0.005175 0.005175 {method 'all' of 'torch._C.TensorBase' objects}
+      376 0.004812 0.000013 0.004812 0.000013 {built-in method posix.stat}
+</code></pre>
+<p><strong>How to read a cProfile table.</strong> <code>ncalls</code> is how many times the function was called (<code>144/7</code> means 144 calls in total, of which 7 were primitive, i.e. not recursive). <code>tottime</code> is the time spent inside the function itself, excluding the functions it called; <code>cumtime</code> includes them. Each <code>percall</code> is the preceding column divided by the number of calls. Entries in <code>{...}</code> are built-in functions implemented in C. The header says how many calls were recorded in total and how the list was cut down (<code>List reduced from 947 to 20</code>).</p>
+<p>Also note that <code>cProfile</code> makes the program slower (3.29 s here vs 1.0 s unprofiled) and attributes asynchronous GPU work to whichever CPU call happened to wait for it, so the large <code>scaled_dot_product_attention</code> and <code>torch.cat</code> numbers are not to be trusted as GPU costs. What <em>is</em> trustworthy is the presence of calls that interface with the operating system: <code>read</code>, <code>_io.open</code>, <code>exec</code>, <code>posix.stat</code>, <code>_imp.create_dynamic</code> (loading a compiled extension module), and SHA hashing. Those have no business running during a fast <code>forward</code>/<code>backward</code>.</p>
+<p>The wrapper prints the data twice. Sorting by <code>tottime</code> shows which functions are slow in themselves, but not where they were called from. The second dump, sorted by <code>cumtime</code>, shows the chain of callers:</p>
+<pre><code>         113616 function calls (109641 primitive calls) in 3.290 seconds
+
+   Ordered by: cumulative time
+   List reduced from 947 to 50 due to restriction &lt;50&gt;
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+[...]]
+      141 0.000894 0.000006 0.620426 0.004400 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/liger_kernel/ops/utils.py:33(wrapper)
+      169 0.000906 0.000005 0.524757 0.003105 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/triton/runtime/jit.py:370(&lt;lambda&gt;)
+      169 0.004586 0.000027 0.523851 0.003100 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/triton/runtime/jit.py:695(run)
+      113 0.000454 0.000004 0.498234 0.004409 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/liger_kernel/transformers/rms_norm.py:37(forward)
+      113 0.000670 0.000006 0.490840 0.004344 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/liger_kernel/ops/rms_norm.py:605(forward)
+      113 0.002546 0.000023 0.490049 0.004337 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/liger_kernel/ops/rms_norm.py:409(rms_norm_forward)
+        5 0.000087 0.000017 0.435603 0.087121 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/triton/runtime/jit.py:826(_do_compile)
+        5 0.000169 0.000034 0.435442 0.087088 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/triton/compiler/compiler.py:226(compile)
+       57 0.427335 0.007497 0.427335 0.007497 {built-in method torch.cat}
+       28 0.000101 0.000004 0.426423 0.015229 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/transformers/cache_utils.py:742(update)
+       28 0.000226 0.000008 0.426321 0.015226 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/transformers/cache_utils.py:98(update)
+        5 0.000105 0.000021 0.368456 0.073691 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/triton/runtime/cache.py:307(get_cache_key)
+        1 0.000693 0.000693 0.349386 0.349386 /home/yak/miniconda3/envs/dev/lib/python3.12/site-packages/triton/runtime/cache.py:271(triton_key)
+      398 0.268139 0.000674 0.268139 0.000674 {method 'update' of '_hashlib.HASH' objects}
+</code></pre>
+<p>How to read it: follow <code>cumtime</code> down the chain. Liger's <code>rms_norm_forward</code> (0.49 s cumulative over 113 calls) goes through Triton's <code>jit.py run</code>, which calls <code>_do_compile</code> and <code>compiler.py compile</code> 5 times (0.44 s), and <code>cache.py get_cache_key</code>/<code>triton_key</code> (0.37 s), which is where the SHA hashing (<code>_hashlib.HASH update</code>, 0.27 s) comes from: Triton hashes its own source files to build a cache key. So the strange OS calls came from Liger Kernel's Triton RMSNorm kernel being compiled and cached.</p>
+<p>A slower first call is normally fine: the first call often runs one-time work such as <code>torch.compile</code>. But older versions of liger-kernel had a bug that recompiled and re-cached the <code>RMSNorm</code> kernel for <strong>every new sequence length</strong>, which massively hurt end-to-end performance, twice over, since <code>forward</code> and <code>backward</code> are two different kernels. With <code>pip install liger-kernel==0.6.1</code> you see the problem whenever the sequence length changes from step to step; <code>liger-kernel&gt;=0.8.0</code> fixes it.</p>
+<p>Benchmarks normally need a warmup phase, with measurement starting after step 2 or later. Here the very first step was enough to demonstrate how <code>cProfile</code> helps when seemingly pure PyTorch code underperforms, but the same approach works from step 2 onwards, which is where a per-length recompilation would keep showing up.</p>
+<h3 id="a-laptop-reproduction-recompiles-under-torchcompile">A laptop reproduction: recompiles under <code>torch.compile</code></h3>
+<p>The same failure pattern is easy to reproduce without a GPU, because <code>torch.compile</code> also specializes on shapes. This compiles an RMSNorm with <code>dynamic=False</code>, so every new sequence length <code>T</code> triggers a recompile, and compares what <code>torch.profiler</code> and <code>cProfile</code> see <strong>[ran]</strong>:</p>
+<pre><code class="language-python"># recompile.py - a compiled function fed a new sequence length every step; cProfile vs torch.profiler
+import cProfile, pstats, time, torch
+from torch.profiler import profile, ProfilerActivity
+
+pstats.f8 = lambda x: f&quot;{x:3.6f}&quot;          # 6 decimals instead of 3 in the cProfile table
+
+@torch.compile(dynamic=False)               # dynamic=False: specialize on every new shape
+def rmsnorm(x, w):                          # x: (B, T, C)
+    return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + 1e-6) * w
+
+w = torch.ones(256)
+rmsnorm(torch.randn(4, 100, 256), w)        # warmup: first compile
+
+for step, T in enumerate([100, 117]):       # same T as warmup, then a new T
+    x = torch.randn(4, T, 256)              # (B, T, C)
+    with profile(activities=[ProfilerActivity.CPU]) as prof:
+        t0 = time.perf_counter(); rmsnorm(x, w); dt = time.perf_counter() - t0
+    ops = sum(e.self_cpu_time_total for e in prof.key_averages() if e.key.startswith(&quot;aten::&quot;)) / 1e3
+    print(f&quot;step {step} T={T}: wall {dt*1e3:8.1f} ms, aten ops seen by torch.profiler {ops:6.2f} ms&quot;)
+
+x = torch.randn(4, 131, 256)                # yet another T, this time under cProfile
+pr = cProfile.Profile(); pr.enable(); rmsnorm(x, w); pr.disable()
+st = pstats.Stats(pr)
+st.sort_stats(&quot;tottime&quot;).print_stats(8)
+st.sort_stats(&quot;cumulative&quot;).print_stats(&quot;inductor|subprocess&quot;, 8)  # only lines matching the regex, top 8
+</code></pre>
+<p>Run with Inductor's on-disk caches disabled, so every compile is a cold one (site-packages paths shortened):</p>
+<pre><code>$ TORCHINDUCTOR_FORCE_DISABLE_CACHES=1 python recompile.py
+step 0 T=100: wall      0.1 ms, aten ops seen by torch.profiler   0.00 ms
+step 1 T=117: wall    247.0 ms, aten ops seen by torch.profiler   1.07 ms
+         241823 function calls (234055 primitive calls) in 0.289 seconds
+
+   Ordered by: internal time
+   List reduced from 4622 to 8 due to restriction &lt;8&gt;
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1 0.195265 0.195265 0.195265 0.195265 {method 'read' of '_io.BufferedReader' objects}
+        1 0.003949 0.003949 0.003956 0.003956 {built-in method torch._C._dynamo.guards.profile_guard_manager}
+        1 0.003459 0.003459 0.003459 0.003459 {built-in method _posixsubprocess.fork_exec}
+37425/37002 0.002670 0.000000 0.003150 0.000000 {built-in method builtins.isinstance}
+        1 0.001606 0.001606 0.001606 0.001606 {built-in method posix.read}
+12143/11970 0.001315 0.000000 0.001582 0.000000 {built-in method builtins.getattr}
+        1 0.001227 0.001227 0.001229 0.001229 {built-in method gc.collect}
+1243/1240 0.001204 0.000001 0.001925 0.000002 torch/utils/_config_module.py:571(__getattr__)
+
+
+         241823 function calls (234055 primitive calls) in 0.289 seconds
+
+   Ordered by: cumulative time
+   List reduced from 4622 to 1461 due to restriction &lt;'inductor|subprocess'&gt;
+   List reduced from 1461 to 8 due to restriction &lt;8&gt;
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1 0.000011 0.000011 0.266222 0.266222 torch/_inductor/compile_fx.py:3125(compile_fx)
+        1 0.000043 0.000043 0.266206 0.266206 torch/_inductor/compile_fx.py:3291(_maybe_wrap_and_compile_fx_main)
+        1 0.000021 0.000021 0.266069 0.266069 torch/_inductor/compile_fx.py:3341(_compile_fx_main)
+        1 0.000025 0.000025 0.251472 0.251472 torch/_inductor/compile_fx.py:3389(fw_compiler_base)
+        1 0.000019 0.000019 0.250315 0.250315 torch/_inductor/compile_fx.py:2831(compile_fx_forward)
+        1 0.000024 0.000024 0.249971 0.249971 torch/_inductor/compile_fx.py:1032(compile_fx_inner)
+        1 0.000059 0.000059 0.249360 0.249360 torch/_inductor/compile_fx.py:1113(_compile_fx_inner)
+        1 0.000130 0.000130 0.249146 0.249146 torch/_inductor/compile_fx.py:2127(fx_codegen_and_compile)
+</code></pre>
+<p>How to read it:</p>
+<ul>
+<li>Step 0 reuses the shape from the warmup: 0.1 ms. Step 1 has a new <code>T</code>: 247 ms of wall clock, of which <code>torch.profiler</code>'s <code>aten::</code> operators account for about 1 ms. The same signature as the Liger case: the profiler is blind to the cost.</li>
+<li>The <code>tottime</code> table is topped by a single 195 ms <code>read</code> of a <code>BufferedReader</code> plus a <code>fork_exec</code>: the process forked a subprocess (the C++ compiler that Inductor, <code>torch.compile</code>'s backend, runs to build the CPU kernel) and waited to read its result.</li>
+<li>The <code>cumulative</code> table, filtered with a regex (<code>print_stats</code> accepts a regex and a count, applied in order), shows where that came from: Inductor's <code>compile_fx</code> with 266 ms cumulative. One recompilation per new shape.</li>
+<li>A second run <em>with</em> caches enabled took 18.8 ms at step 1, not 247 ms: the compiled kernel came from Inductor's on-disk cache, though Dynamo still re-traced the function. Caches hide this kind of bug on your machine and expose it on a fresh node; measure both ways.</li>
+</ul>
+<p>Since the culprit in this case is <code>torch.compile</code>, you can also spot recompilations directly with <code>TORCH_LOGS=recompiles</code> (and graph breaks, where compiled code falls back to eager, with <code>TORCH_LOGS=graph_breaks</code>) <strong>[ran]</strong>:</p>
+<pre><code>$ TORCH_LOGS=recompiles python recompile.py
+V1111 23:35:59.753000 11144 torch/_dynamo/guards.py:6374] [0/1] [__recompiles] Recompiling function rmsnorm in /private/tmp/absorb/run/debug2/recompile.py:7
+V1111 23:35:59.753000 11144 torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     triggered by the following guard failure(s):
+V1111 23:35:59.753000 11144 torch/_dynamo/guards.py:6374] [0/1] [__recompiles]     - 0/0: tensor 'x' size mismatch at index 1. expected 100, actual 117
+V1111 23:35:59.773000 11144 torch/_dynamo/guards.py:6374] [0/2] [__recompiles] Recompiling function rmsnorm in /private/tmp/absorb/run/debug2/recompile.py:7
+V1111 23:35:59.773000 11144 torch/_dynamo/guards.py:6374] [0/2] [__recompiles]     triggered by the following guard failure(s):
+V1111 23:35:59.773000 11144 torch/_dynamo/guards.py:6374] [0/2] [__recompiles]     - 0/1: tensor 'x' size mismatch at index 1. expected 117, actual 131
+V1111 23:35:59.773000 11144 torch/_dynamo/guards.py:6374] [0/2] [__recompiles]     - 0/0: tensor 'x' size mismatch at index 1. expected 100, actual 131
+</code></pre>
+<p>How to read it: <code>[0/1]</code> is frame 0, compiled version 1 (the second). A <em>guard</em> is a check <code>torch.compile</code> inserts to decide whether a compiled version still applies; here the guard on <code>x.shape[1]</code> failed (expected 100, got 117), then again for 131, each time listing every existing version it tried. A recompile line on every training step is the bug. The fixes are to let shapes be dynamic (<code>dynamic=True</code> or <code>torch._dynamo.mark_dynamic</code>), or to pad or bucket lengths to a few fixed values. See <a href="../training/profiling-and-optimization.html#torchcompile"><code>torch.compile</code></a> and <a href="https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html">PyTorch compiler troubleshooting</a>. This logging only covers <code>torch.compile</code>; a kernel library with its own JIT, like the Triton kernels in old Liger versions, recompiles silently, and <code>cProfile</code> is how you catch it.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<ul>
+<li><a href="../development/testing.html">Testing</a> - the next chapter: how to keep these bugs from coming back, including tests that need several GPUs or processes.</li>
+<li><a href="../training/fault-tolerance-and-reproducibility.html">Fault tolerance and reproducibility</a> - turning the hangs and crashes from this chapter into automatic restarts, and emulating multi-node setups on one node to reproduce them.</li>
+<li><a href="../training/profiling-and-optimization.html">Profiling and optimization</a> - if you came here for the performance tools: scheduled profiling, traces, Nsight Systems and the optimization ladder.</li>
+<li><a href="../network/measuring-and-debugging.html">Measuring and debugging the network</a> - if the hang turned out to be below PyTorch, in NCCL or the fabric.</li>
+</ul>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li><a href="https://docs.pytorch.org/docs/stable/torch_nccl_environment_variables.html">ProcessGroupNCCL environment variables</a> - the desync, flight recorder and watchdog controls.</li>
+<li><a href="https://github.com/benfred/py-spy"><code>py-spy</code></a>, and its note on <a href="https://github.com/benfred/py-spy/blob/master/README.md#when-do-you-need-to-run-as-sudo">when you need sudo</a>.</li>
+<li><a href="https://peps.python.org/pep-0768/">PEP 768</a> and the <a href="https://docs.python.org/3.14/library/pdb.html">Python 3.14 <code>pdb</code> docs</a> - attaching a debugger to a running process.</li>
+<li>Python's <a href="https://docs.python.org/3/library/trace.html"><code>trace</code> module</a>; <code>man core</code> for core-file name templates.</li>
+<li><a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html">NCCL troubleshooting</a> and the <a href="https://github.com/NVIDIA/nccl/issues">NCCL Issues</a>.</li>
+<li><a href="https://github.com/sharkdp/hyperfine">hyperfine</a>.</li>
+<li><a href="https://docs.pytorch.org/docs/stable/profiler.html"><code>torch.profiler</code> docs</a> and the <a href="https://huggingface.co/blog/torch-profiler">Hugging Face introduction to <code>torch.profiler</code></a>.</li>
+<li><a href="https://www.speechmatics.com/company/articles-and-news/timing-operations-in-pytorch">How to Accurately Time CUDA Kernels in Pytorch</a>.</li>
+<li><a href="https://github.com/stas00/the-art-of-debugging/blob/master/python/README.md#profilers">Python Profilers</a> in Stas Bekman's <em>The Art of Debugging</em>.</li>
+<li><a href="https://docs.pytorch.org/docs/stable/torch.compiler_troubleshooting.html">PyTorch compiler troubleshooting</a> - <code>TORCH_LOGS</code>, recompiles and graph breaks.</li>
+<li><a href="https://github.com/linkedin/Liger-Kernel">Liger Kernel</a>.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../development/debugging-pytorch.html">&larr; Debugging PyTorch Programs</a><a class="next" href="../development/testing.html">Writing and Running Tests &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

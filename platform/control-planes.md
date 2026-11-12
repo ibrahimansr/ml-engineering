@@ -1547,7 +1547,7 @@ $ python3 cells.py
 
 A compute marketplace, or any fleet that buys capacity from several clouds and neoclouds (GPU-focused cloud providers such as CoreWeave or Lambda), adds two more problems.
 
-**Normalization.** Every provider names hardware differently ("gpu_8x_h100_sxm5", "H100.80GB.PCIe", "8xH100-80G-IB"), and the differences that matter (SXM vs PCIe, NVLink vs none, InfiniBand vs Ethernet, 80 vs 94 GB) are often hidden in the name or not stated at all. Map every offering into one catalog of **normalized labels** that the scheduler filters on (`gpu=H100-SXM`, `gpus=8`, `ib=true`), and verify the labels with your own benchmark when a node joins, since provider metadata can be wrong. See [compute/accelerator](../compute/accelerator/README.md) for what the differences mean.
+**Normalization.** Every provider names hardware differently ("gpu_8x_h100_sxm5", "H100.80GB.PCIe", "8xH100-80G-IB"), and the differences that matter (SXM vs PCIe, NVLink vs none, InfiniBand vs Ethernet, 80 vs 94 GB) are often hidden in the name or not stated at all. Map every offering into one catalog of **normalized labels** that the scheduler filters on (`gpu=H100-SXM`, `gpus=8`, `ib=true`), and verify the labels with your own benchmark when a node joins, since provider metadata can be wrong. See [compute/accelerator](../compute/accelerators.md) for what the differences mean.
 
 **Partial provider outages.** A provider's API that times out costs you a timeout on every placement attempt. A **circuit breaker** stops calling a provider after several consecutive failures, waits, and then lets one probe through ("half-open") to see if it recovered:
 

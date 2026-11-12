@@ -16,7 +16,7 @@ This chapter assumes you know ML well and systems not at all. Read these first, 
 
 What this chapter covers: how Kubernetes works inside (desired state, controllers, the API server, etcd, the scheduler, the kubelet), every core object with a complete YAML file, scheduling controls, how to extend Kubernetes with your own resource types and operators, how GPUs get into containers, how to run training and inference on GPU nodes, and how to debug a pod that won't run.
 
-What it doesn't cover: the ML-specific scheduling internals (gang scheduling, Kueue/Volcano/KAI, DRA, topology-aware placement, RDMA for pods, failure-rate arithmetic). Those are in [Orchestration internals](internals.md) and are linked rather than repeated. The [Kubernetes gotchas chapter](kubernetes/README.md) has the practical case against Kubernetes for interactive training and the CPU-OOM job-reset fix.
+What it doesn't cover: the ML-specific scheduling internals (gang scheduling, Kueue/Volcano/KAI, DRA, topology-aware placement, RDMA for pods, failure-rate arithmetic). Those are in [Orchestration internals](internals.md) and are linked rather than repeated. The practical case against Kubernetes for interactive training, and the CPU-OOM job-reset fix, are in [Training on Kubernetes: gotchas](#training-on-kubernetes-gotchas) at the end.
 
 How the examples were produced. Everything marked "real output" was run on a three-node [kind](https://kind.sigs.k8s.io/) cluster (Kubernetes v1.37.0, kind v0.33.0, kubectl v1.37.2) inside Docker Desktop on an Apple Silicon Mac, in November 2026. The cluster was then torn down, so sections after the StatefulSet example (DaemonSet, RBAC, NetworkPolicy, scheduling controls, the operator running against a cluster, everything GPU, and the debugging sessions) were **not run**. Their YAML follows the documented APIs, and their output blocks are labelled "sketched": they show the shape of what you'll see, not a capture. The operator's pure-Python parts were run locally.
 
@@ -663,7 +663,7 @@ spec:
           exec: {command: ["python", "/app/save_checkpoint.py"]}
 ```
 
-Your trainer must handle SIGTERM: Kubernetes sends it on every deletion, eviction, preemption and rolling update. See [Linux and the OS](../foundations/linux-and-os.md) for signals and [fault tolerance](../training/fault-tolerance/README.md) for checkpoint-on-signal recipes.
+Your trainer must handle SIGTERM: Kubernetes sends it on every deletion, eviction, preemption and rolling update. See [Linux and the OS](../foundations/linux-and-os.md) for signals and [fault tolerance](../training/fault-tolerance-and-reproducibility.md) for checkpoint-on-signal recipes.
 
 ### Requests, limits and QoS
 
@@ -694,7 +694,7 @@ Advice that's specific to ML workloads:
 - Set memory requests equal to memory limits for trainers and inference servers. A Burstable trainer on a busy node can be evicted, or OOM-killed by the kernel when the node itself is out of memory, even though it's under its own limit.
 - Think twice about CPU limits on data-loading-heavy pods. CFS throttling with many DataLoader workers can stall the GPU in bursts; a request without a limit lets the pod use idle cores. Many clusters set CPU limits anyway for fairness; measure with `cat /sys/fs/cgroup/cpu.stat` (`nr_throttled`, `throttled_usec`).
 - GPUs are an **extended resource** (`nvidia.com/gpu`). They can only be whole integers, can't be overcommitted, and you set them in `limits` (requests default to the same value).
-- Since Kubernetes v1.28 (on cgroup v2 nodes), one OOMing process makes the kernel kill every process in the container (`memory.oom.group=1`), which kills interactive training sessions. v1.32 added the kubelet setting `singleProcessOOMKill` to opt out; the details are in [the gotchas chapter](kubernetes/README.md).
+- Since Kubernetes v1.28 (on cgroup v2 nodes), one OOMing process makes the kernel kill every process in the container (`memory.oom.group=1`), which kills interactive training sessions. v1.32 added the kubelet setting `singleProcessOOMKill` to opt out; the details are in [the CPU-OOM fix](#overcoming-the-job-reset-on-a-cpu-oom-event).
 
 ```bash
 # inside a pod: am I being throttled?
@@ -1289,7 +1289,7 @@ A subtle hole: "create pods" in a namespace is nearly "read every Secret in that
 kubectl label namespace team-a pod-security.kubernetes.io/enforce=baseline
 ```
 
-This connects to the [gotchas chapter](kubernetes/README.md)'s point about accountability: containers commonly run as the same UID for everyone, so audit logs from the API server (who created which pod) are the record of who did what, not Unix usernames.
+This connects to the [accountability point](#the-case-against-kubernetes-for-training) made at the end of the chapter: containers commonly run as the same UID for everyone, so audit logs from the API server (who created which pod) are the record of who did what, not Unix usernames.
 
 ### NetworkPolicy
 
@@ -2229,7 +2229,7 @@ kubectl exec dataproc-5f6d -- cat /sys/fs/cgroup/memory.peak       # bytes, high
 kubectl exec dataproc-5f6d -- cat /sys/fs/cgroup/memory.events      # oom_kill counter
 ```
 
-If the *node* ran out of memory rather than the container hitting its limit, the pod is `Evicted` (by the kubelet) or a process is OOM-killed by the kernel with no `OOMKilled` reason on your container; check `kubectl describe node` for `MemoryPressure` and the node's `dmesg` via `kubectl debug node/...`. Since v1.28 on cgroup v2, one OOMing process kills the whole container by default (opt out with the kubelet's `singleProcessOOMKill`, v1.32+); see [the gotchas chapter](kubernetes/README.md).
+If the *node* ran out of memory rather than the container hitting its limit, the pod is `Evicted` (by the kubelet) or a process is OOM-killed by the kernel with no `OOMKilled` reason on your container; check `kubectl describe node` for `MemoryPressure` and the node's `dmesg` via `kubectl debug node/...`. Since v1.28 on cgroup v2, one OOMing process kills the whole container by default (opt out with the kubelet's `singleProcessOOMKill`, v1.32+); see [the CPU-OOM fix](#overcoming-the-job-reset-on-a-cpu-oom-event).
 
 ### Running but not Ready
 
@@ -2280,14 +2280,49 @@ Force-deleting a pod on a partitioned-but-alive node can leave two copies runnin
 $ kubectl debug node/gpu-node-1 -it --image=ubuntu:24.04 -- chroot /host bash -c 'nvidia-smi -q | grep -i "driver version"; dmesg | grep -i xid | tail -3'
 ```
 
+## Training on Kubernetes: gotchas
+
+Everything above is how Kubernetes works. This section is the view from someone doing interactive training work on it, and the one setting that most often bites.
+
+### The case against Kubernetes for training
+
+A strongly held opinion, worth knowing even if your cluster is Kubernetes: for training work, Kubernetes is the wrong environment, and [Slurm](slurm/from-zero.md) is much friendlier. Slurm builds on top of Unix, so multi-node coordination is mostly Unix you already know (processes, users, signals, a shared filesystem, SSH). Kubernetes reinvents all of that, and many ordinary Unix features are missing. The sharpest example: there are no per-person Unix usernames; everyone's containers commonly run as the same UID, which is bad for accountability and security (the API server's audit log becomes the only record of who did what; see [RBAC](#namespaces-serviceaccounts-and-rbac)). The result is an environment that needs a large support team just to deal with Kubernetes problems. When forced onto Kubernetes, people find a way to get their work done, but at a high cost in people and money for the training shop.
+
+The rest of this section is the gotcha most likely to cost you a day.
+
+### Overcoming the job reset on a CPU OOM event
+
+Since Kubernetes v1.28, on cgroup v2 nodes, when one process in a container runs out of CPU (host) memory, the kernel's OOM killer kills **every** process in that container's cgroup, not just the offender ([requests, limits and QoS](#requests-limits-and-qos), [cgroups v2](../foundations/containers-and-virtualization.md#cgroups-v2-limits-and-accounting)). The cgroup file that controls this is `memory.oom.group`, and the default is now `1`.
+
+For an inference server in production that is reasonable: a half-dead server is worse than a restarted one. For interactive training it is a disaster. Say you're searching for the fastest training configuration: one configuration OOMs a `DataLoader` worker, and instead of catching the crash, adjusting and retrying, your whole session is killed and the job resets. You start from scratch, and you lose the logs too unless you synced them out in time.
+
+The fix is `memory.oom.group = 0`, which kills only the process that caused the OOM. It has to be set at the node-pool level (a node pool is a managed cloud cluster's group of identically configured nodes) or cluster level, so if your jobs get killed on CPU OOM, ask your Kubernetes admin. Kubernetes 1.32 added the kubelet flag [`singleProcessOOMKill`](https://github.com/kubernetes/kubernetes/pull/126096) for exactly this (the kubelet is the per-node agent that starts containers; see [the components](#the-components)). The snippet below is in the format of one managed provider's node-pool config, so the surrounding keys depend on your provider; on a self-managed cluster the same `singleProcessOOMKill: true` goes into the kubelet's own config file (`KubeletConfiguration`).
+
+```yaml
+compute:
+  additionalNodePools:
+    - name: foo
+      kubeletConfig:
+        singleProcessOOMKill: true
+```
+
+Untested here (the kind cluster was gone by then). To check the setting from inside a running pod on the node:
+
+```bash
+$ cat /sys/fs/cgroup/memory.oom.group
+```
+
+How to read it: `0` means the fix is in effect and only the offending process is killed on a CPU OOM; `1` is the default that kills the whole container, and with it your job.
+
 ## You can now read
 
 - [Orchestration internals](internals.md): gang scheduling, Kueue/Volcano/KAI, DRA, topology, RDMA for pods, torchrun internals and fault-tolerance arithmetic, all of which assume what this chapter covered.
-- [Kubernetes gotchas](kubernetes/README.md): the case against Kubernetes for interactive training and the OOM fix.
-- [SLURM for users](slurm/users.md): the other orchestration world, for comparison.
+- [Slurm from zero: day-to-day user recipes](slurm/from-zero.md#day-to-day-user-recipes): the other orchestration world, for comparison.
 - [RL infrastructure](../platform/rl-infrastructure.md): how trainers, rollout workers, inference servers and sandboxes are put together, often on Kubernetes.
 - [Serving hands-on](../inference/serving-hands-on.md): running vLLM and friends, which you can now deploy.
 - [GPU software stack](../compute/gpu-software-stack.md): the driver/toolkit layers under the device plugin.
+
+Parts of this chapter are adapted from Stas Bekman's [Machine Learning Engineering Open Book](https://github.com/stas00/ml-engineering) (CC BY-SA 4.0).
 
 ## Further reading
 

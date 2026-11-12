@@ -4,9 +4,8 @@
 
 This chapter is the hands-on companion to two theory chapters. It does not repeat them; it links to them whenever a number or mechanism comes from there.
 
-- [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md) - rooflines, KV cache sizing, the decode latency bound, Little's law and the worked capacity-planning example.
+- [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md) - rooflines, KV cache sizing, the decode latency bound, Little's law and the worked capacity-planning example. Its opening sections define the vocabulary used here: [prefill and decode](arithmetic.md#prefill-and-decode), [batching](arithmetic.md#batching), [decoding methods](arithmetic.md#decoding-methods), and [TTFT, TPOT/ITL and percentiles](arithmetic.md#key-inference-performance-metrics).
 - [Inference Internals II: Inside a Serving Engine](serving-engine-internals.md) - PagedAttention, continuous batching, chunked prefill, prefix caching, speculative decoding, serving-time parallelism, disaggregation and the engine metrics table.
-- [Inference overview](README.md) - vocabulary: prefill, decode, TTFT, TPOT/ITL, percentiles.
 - [Concurrency](../foundations/concurrency.md) - especially [asyncio](../foundations/concurrency.md#asyncio) and [producer/consumer and backpressure](../foundations/concurrency.md#producerconsumer-and-backpressure). Every client and server in this chapter is an asyncio program.
 - [Networking](../foundations/networking.md) - TCP, [HTTP/1.1](../foundations/networking.md#http11-from-raw-sockets), and why one long-lived connection per stream matters.
 - [Distributed Systems](../foundations/distributed-systems.md) - [tail latency](../foundations/distributed-systems.md#stragglers-and-tail-latency), [timeouts](../foundations/distributed-systems.md#heartbeats-timeouts-and-slow-vs-dead) and [consistent hashing](../foundations/distributed-systems.md#consistent-hashing-sharding-that-survives-membership-changes), all three of which the gateway uses.
@@ -233,7 +232,109 @@ python -m sglang_router.launch_router --worker-urls http://10.0.0.1:30000 http:/
   --policy cache_aware --port 8000
 ```
 
-How to choose between the two engines: both are fast, and either one's lead on a given model changes from month to month. Pick the one that supports your model and features (structured output, LoRA, your quantization format, your parallelism layout) on the day you deploy, then benchmark *your* traffic on both with the same client. The [overview's framework comparison](README.md#how-to-choose-an-inference-framework) covers the rest.
+How to choose between the two engines: both are fast, and either one's lead on a given model changes from month to month. Pick the one that supports your model and features (structured output, LoRA, your quantization format, your parallelism layout) on the day you deploy, then benchmark *your* traffic on both with the same client. [How to choose an inference framework](#how-to-choose-an-inference-framework) below covers the rest, and the other frameworks.
+
+
+
+## Inference frameworks and how to choose one
+
+vLLM and SGLang are the two engines this chapter runs, but there are many dozens of inference frameworks, with new ones every week. Below is a starter list of a handful that might fit your needs; check others if none of these do. The list is deliberately neutral: even after trying them all, nobody can predict which framework will work best for which user or company.
+
+### General-purpose frameworks
+
+- **vLLM**: [vLLM](https://github.com/vllm-project/vllm) - [Running vLLM](#running-vllm).
+- **DeepSpeed-FastGen**: [DeepSpeed-FastGen](https://github.com/deepspeedai/DeepSpeed/tree/master/blogs/deepspeed-fastgen) from [the DeepSpeed team](https://github.com/deepspeedai/DeepSpeed).
+- **TensorRT-LLM**: [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), which also absorbed what used to be `FasterTransformer`. Supports only NVIDIA GPUs.
+- **SGLang**: [SGLang](https://github.com/sgl-project/sglang) - [Running SGLang](#running-sglang).
+- **llama.cpp**: [llama.cpp](https://github.com/ggml-org/llama.cpp) - local / single-box serving (CPU, CUDA including datacenter GPUs, Metal, ...); not a multi-tenant production peer to vLLM/SGLang.
+- **LightLLM**: [LightLLM](https://github.com/ModelTC/lightllm).
+- **LMDeploy**: [LMDeploy](https://github.com/InternLM/lmdeploy).
+- **MLC-LLM**: [MLC-LLM](https://github.com/mlc-ai/mlc-llm).
+
+All of the server-style ones expose the [OpenAI-compatible API](#the-openai-compatible-api-and-streaming), so the same client and load generator work against each of them; that is what makes a fair comparison possible:
+
+```bash
+# untested here; each command starts an OpenAI-compatible server for the same model
+vllm serve Qwen/Qwen3-8B --port 8000
+python -m sglang.launch_server --model-path Qwen/Qwen3-8B --port 30000
+llama-server -m qwen3-8b-q4_k_m.gguf --port 8080        # llama.cpp, GGUF weights
+# then point the same benchmark at :8000, :30000 and :8080
+```
+
+### Accelerator-specific frameworks
+
+Most inference frameworks support NVIDIA CUDA. Many also support AMD ROCm and Intel Gaudi, increasingly through vendor plugins to the mainstream frameworks (e.g. vLLM's hardware-plugin architecture) rather than as separate stacks. The main accelerator-specific software stacks:
+
+- **Intel Gaudi (HPU)**: the [vllm-gaudi](https://github.com/vllm-project/vllm-gaudi) plugin (the older [HabanaAI/vllm-fork](https://github.com/HabanaAI/vllm-fork) is being retired), plus [Optimum for Intel Gaudi](https://github.com/huggingface/optimum-habana) for the HF `transformers`/`diffusers` ecosystem.
+- **AWS Trainium/Inferentia**: the [AWS Neuron SDK](https://github.com/aws-neuron/aws-neuron-sdk), which serves through standard vLLM APIs, and [Optimum Neuron](https://github.com/huggingface/optimum-neuron).
+- **Google TPU**: [tpu-inference](https://github.com/vllm-project/tpu-inference) - the vLLM TPU plugin unifying JAX and PyTorch, and the successor to the now-archived [JetStream](https://github.com/AI-Hypercomputer/JetStream); [MaxText](https://github.com/AI-Hypercomputer/maxtext) is the JAX-native alternative.
+- **Modular MAX**: [MAX](https://github.com/modular/modular) - a portable serving stack that also runs on CPUs and NVIDIA/AMD GPUs.
+- **Apple Silicon**: [MLX](https://github.com/ml-explore/mlx) / [mlx-lm](https://github.com/ml-explore/mlx-lm), plus llama.cpp's Metal backend.
+- **Tenstorrent**: [tt-metal](https://github.com/tenstorrent/tt-metal) and its vLLM integration.
+
+Because accelerator support increasingly ships as a plugin to a mainstream framework, check whether your framework of choice already supports your accelerator before reaching for a vendor-specific stack. The accelerators themselves are compared in [Accelerators](../compute/accelerators.md).
+
+Some vendors offer inference only as a hosted service on their own hardware rather than as an installable framework - e.g. [Cerebras Inference](https://www.cerebras.ai/inference), Groq and [SambaNova](https://sambanova.ai/). See [Inference chips](#inference-chips).
+
+### How to choose an inference framework
+
+Answer at least these questions:
+
+1. **Does it have the features you need?** Be careful: some frameworks list feature A as supported, but when you try it, it is poorly integrated or very slow.
+2. **Does its license meet your current and future needs?** In practice, frameworks with licenses that restrict commercial use tend to be rejected by the community. HF's TGI tried to charge for commercial use and it backfired: the license was reverted under community pressure, but TGI never recovered and its development has stopped.
+3. **Does it have a thriving community of contributors?** Look at the GitHub repo's contributor count. Very few contributors is a concern: thriving projects invite contributions, so even when the core team has no time for a feature, a contributor might build it for you.
+4. **Is it widely adopted?** GitHub stars are a decent signal but can be inflated by marketing. Look for others: the `Used by` count on the repo's main page (real numbers), lots of PRs and Issues, and how many articles are written about it.
+5. **Are the maintainers responsive to Issues and PRs?** Some projects ignore many Issues and even PRs; count how many go unaddressed. A large number of open Issues cuts both ways: the project is popular, but the team cannot keep up with its users.
+6. **Can you fix it yourself?** Most ML inference frameworks are Python with some C++ or Triton for fused kernels, but not all (NVIDIA's TensorRT-LLM is 99% C++; llama.cpp is C++/CUDA). If something doesn't work and your Issue isn't addressed, will you be able to modify the framework?
+7. **Will it accept your PRs?** Some projects don't want your fixes or features, and you end up maintaining a fork, which is very painful if you want to keep syncing with upstream.
+8. **Is it fast enough for your workload?** Run load [benchmarks](#benchmarking-tools-and-a-minimal-ttft-probe) on your desired workloads, using [the load generator](#writing-a-load-generator) or `vllm bench serve` against each candidate.
+9. **Do you want to keep the option of switching hardware?** Will you want the [most cost-effective accelerator](../compute/accelerators.md#high-end-accelerators-for-ml-workloads) down the road, or are you fine being locked into one vendor? A framework from NVIDIA is unlikely to support other vendors' accelerators; the same goes for AMD and Intel.
+
+Questions 3-5 are quick to answer with the GitHub CLI (untested here; needs `gh` and a login):
+
+```bash
+gh repo view vllm-project/vllm --json stargazerCount,forkCount,primaryLanguage,licenseInfo
+gh api 'repos/vllm-project/vllm/contributors?per_page=1&anon=1' -i | grep -i '^link:'   # last page number = contributor count
+gh issue list -R vllm-project/vllm --state open --limit 1000 --json number | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
+```
+
+For example, here is a snapshot of [vLLM](https://github.com/vllm-project/vllm)'s GitHub stats on 2024-08-24; as of 2026-08 it is one of the most popular inference frameworks:
+
+![vLLM GitHub stats on 2024-08-24](images/github-vllm-stats-2024-08-24.png)
+
+It is used by many GitHub repositories, has a lot of contributors, and is written mainly in Python. This information is just as easy to find for any framework you consider; this is an example, not an endorsement of vLLM.
+
+
+
+## Inference chips
+
+Besides general-purpose accelerators, some vendors build ASICs designed for inference only.
+
+### Groq
+
+- [Groq](https://groq.com/) - its chip is the LPU (Language Processing Unit™). Groq exposes it mainly as a hosted, OpenAI-compatible API rather than as hardware you install, so the [client code in this chapter](#the-openai-compatible-api-and-streaming) works against it by changing `base_url`.
+
+How inference-oriented chips such as Cerebras' wafer-scale engine and SambaNova's RDU compare with GPUs is covered in [Accelerators](../compute/accelerators.md#the-landscape).
+
+
+
+## Speeding up model loading time
+
+In production it is usually fine for the model to take a while to load: it happens once, and the server then runs for days, so the cost is amortized. During research, development and testing, though, the server restarts constantly and needs to start serving fast.
+
+Sometimes the overhead is just loading weights to CPU and moving them to the accelerators. Sometimes the weights also have to be sharded for multiple accelerators to perform [TP](../training/model-parallelism/derivations.md#tensor-parallelism-megatron) and [PP](../training/model-parallelism/derivations.md#from-naive-model-parallelism-to-a-pipeline). Most fixes involve some form of pre-sharding and caching, followed by loading directly onto the GPU. For example:
+
+- [vLLM](#running-vllm) has the `--load-format` flag, with options such as `npcache` (cache the weights in numpy format) or `tensorizer`, using CoreWeave's [Tensorizer](https://github.com/coreweave/tensorizer) ([recipe](https://docs.vllm.ai/en/stable/examples/features/tensorize_vllm_model/)). If you use TP>1, [pre-shard the weights once](https://docs.vllm.ai/en/stable/examples/features/sharded_state/) so each rank loads only its own shard.
+- [TensorRT-LLM](#general-purpose-frameworks) requires building a model **engine** (an ahead-of-time compiled, hardware- and shape-specific version of the model) for each use case, and loads the pre-made shards at run time - unless you use the simplified API, which builds the engine on the fly at every server start.
+
+```bash
+# untested; flag values as in the vLLM docs linked above - check `vllm serve --help` on your version
+vllm serve meta-llama/Llama-3.1-8B-Instruct --load-format npcache          # numpy cache on 2nd+ start
+# pre-shard once with the sharded_state example script, then each TP rank reads only its shard:
+vllm serve /models/llama-70b-tp8-sharded --load-format sharded_state -tp 8
+```
+
+Measure before and after: the startup log prints how long weight loading took, and that number is the one these options change.
 
 
 
@@ -554,6 +655,93 @@ mock:steps_total 7
 
 
 
+## Benchmarking tools and a minimal TTFT probe
+
+You can write your own benchmark, measuring the metrics from [Key inference performance metrics](arithmetic.md#key-inference-performance-metrics), or use an existing one. Two numbers cover most needs: [TTFT](arithmetic.md#time-to-first-token) and [decode throughput](arithmetic.md#decode-throughput). TTFT here is the client-observed time from sending the request until receiving the first non-empty generated chunk. The decode rate covers the interval between receiving the first and the last generated tokens.
+
+The smallest useful benchmark is one streamed request timed with the `openai` client. The original version of this probe used the completions API, where the text is in `chunk.choices[0].text`; the version below uses `/v1/chat/completions` (text in `delta.content`) so it runs against the mock server from the previous section. With `stream=True` the server sends text in chunks as it is generated, which is what makes it possible to time the first token. On a real engine, count output tokens with the served model's HF tokenizer, `len(tokenizer.encode(decode_text, add_special_tokens=False))`; the mock's tokens are words, so the script counts words.
+
+```python
+# ttft_probe.py - TTFT and decode throughput of one streamed request, with the openai client
+import sys, time
+from openai import OpenAI
+
+client = OpenAI(base_url=sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8001/v1", api_key="EMPTY")
+model, prompt = "mock-llm", "word " * 512                  # a 512-token prompt (the mock's tokens are words)
+
+def count_tokens(text):                                     # real engine: len(tokenizer.encode(text, add_special_tokens=False))
+    return len(text.split())
+
+for run in range(3):
+    request_started_time = time.perf_counter()
+    decode_text, first_token_time, last_token_time = "", None, None
+    stream = client.chat.completions.create(model=model, stream=True, max_tokens=128,
+                                            messages=[{"role": "user", "content": prompt}])
+    for chunk in stream:
+        if chunk.choices:
+            text = chunk.choices[0].delta.content           # completions API: chunk.choices[0].text
+            if text:                                        # skip the role-only first chunk
+                now = time.perf_counter()
+                if first_token_time is None:
+                    first_token_time = now
+                last_token_time = now
+                decode_text += text
+    if first_token_time is None:
+        raise RuntimeError("The response contained no output tokens")
+
+    ttft = first_token_time - request_started_time
+    output_tokens = count_tokens(decode_text)
+    inter_token_count = max(output_tokens - 1, 0)           # the interval starts after token 1 arrived
+    inter_token_time = last_token_time - first_token_time
+    decode_tps = inter_token_count / inter_token_time if inter_token_count > 0 and inter_token_time > 0 else None
+    print(f"run {run}: TTFT {ttft*1e3:6.1f} ms  output {output_tokens} tokens  "
+          f"decode {decode_tps:6.1f} tok/s  (TPOT {1e3/decode_tps:.2f} ms)")
+```
+
+Ran on the Mac, with `pip install openai` (openai 3.49.0) and the mock started as `./venv/bin/python mock_server.py --port 8001 &`:
+
+```text
+run 0: TTFT   43.5 ms  output 128 tokens  decode  108.7 tok/s  (TPOT 9.20 ms)
+run 1: TTFT   13.7 ms  output 128 tokens  decode  108.2 tok/s  (TPOT 9.24 ms)
+run 2: TTFT   14.0 ms  output 128 tokens  decode  108.8 tok/s  (TPOT 9.19 ms)
+```
+
+How to read it:
+
+- **Decode**: the mock's step model predicts $8 + 0.25 = 8.25$ ms per token for one sequence; we measured 9.2 ms, the same ~1 ms of HTTP/asyncio overhead seen in the [concurrency sweep](#concurrency-sweep-finding-the-knee).
+- **TTFT** of the first run is 3x the others. Run 0 pays for opening the TCP connection and for prefilling all 512 prompt tokens ($8 + 512 \times 0.02 \approx 18$ ms of simulated prefill). Runs 1 and 2 send the identical prompt, so the [prefix cache](serving-engine-internals.md#prefix-caching) skips almost all of the prefill. Real engines do the same: a benchmark that repeats one prompt measures cached TTFT. Vary the prompts, or report the first run separately.
+- The `output_tokens - 1` matches the measured interval, which starts *after* the first token arrived. This client-side estimate assumes streamed chunks correspond closely to token arrivals; an API that batches several tokens into a chunk needs token-level or server-side timestamps for precise inter-token latency.
+
+TTFT is not pure prefill time. It includes request transport, queueing, scheduling, prompt processing, first-token generation and response transport. Dividing the prompt-token count by TTFT therefore does **not** give prefill throughput; that needs server-side instrumentation that isolates prompt processing ([engine metrics](#monitoring-engine-metrics)). See [NVIDIA's LLM inference metric definitions](https://developer.nvidia.com/blog/llm-benchmarking-fundamental-concepts/) and [MLPerf Inference's TTFT and TPOT definitions](https://mlcommons.org/2024/03/mlperf-inference-v4/).
+
+Like any serious benchmark, run it several times: the variance between single runs can be large, as runs 0-2 show.
+
+**The client can be the bottleneck.** A lesson from the original author: with many concurrent requests, the `openai` client did not scale - it became the bottleneck and did not measure the server's real performance (investigated in [vllm#7935](https://github.com/vllm-project/vllm/issues/7935); whether the cause was the benchmark code, the client, or its interaction with vLLM was never pinned down). [This version](https://github.com/vllm-project/vllm/blob/f842a7aff143a4a1ddc59e1fb57109cb377f5475/benchmarks/backend_request_func.py#L223-L301) of the client, rewritten to use `aiohttp`, scaled well, and the GPU utilization went from 6-7% to 75% ([Accelerator utilization](arithmetic.md#accelerator-utilization)). That is why the [load generator below](#writing-a-load-generator) uses raw `httpx` on one event loop and watches its own CPU.
+
+Good starting points for load testing:
+
+- vLLM's benchmark scripts - the original author's favourite tool was [`benchmarks/benchmark_throughput.py`](https://github.com/vllm-project/vllm/blob/main/benchmarks/benchmark_throughput.py) (offline throughput). In current releases the same functionality is the `vllm bench throughput` subcommand, and the online one is [`vllm bench serve`](#vllms-own-benchmark-client); the script path may have moved.
+- [k6](https://github.com/grafana/k6) - a general load-testing tool that simulates many concurrent clients from JavaScript test scripts. It knows nothing about tokens, so it reports whole-request timings; its output format is read line by line in [Percentiles](arithmetic.md#percentiles).
+
+A minimal k6 script against an OpenAI-compatible server (untested here; run with `k6 run --vus 32 --duration 60s chat.js`):
+
+```javascript
+// chat.js - 32 virtual users, each sending non-streaming chat requests in a loop
+import http from "k6/http";
+import { check } from "k6";
+export default function () {
+  const body = JSON.stringify({ model: "mock-llm", max_tokens: 128,
+    messages: [{ role: "user", content: "hello ".repeat(256) }] });
+  const r = http.post("http://127.0.0.1:8001/v1/chat/completions", body,
+    { headers: { "Content-Type": "application/json" } });
+  check(r, { "status 200": (res) => res.status === 200 });
+}
+```
+
+The original author noted the missing piece: a tool to measure the highest concurrency a server can handle. The [concurrency sweep](#concurrency-sweep-finding-the-knee) below finds it by hand, as the knee where throughput stops rising and TTFT jumps.
+
+
+
 ## Writing a load generator
 
 ### What to measure
@@ -569,7 +757,7 @@ E2E        = stamps[-1] - t0
 throughput = total content chunks / wall time,  completed requests / wall time
 ```
 
-Report **percentiles**, never just means ([why](README.md#percentiles)). Always report the **error count** next to the latencies: a run with 5% timeouts has excellent p99 latency over the 95% of requests that succeeded.
+Report **percentiles**, never just means ([why](arithmetic.md#percentiles)). Always report the **error count** next to the latencies: a run with 5% timeouts has excellent p99 latency over the 95% of requests that succeeded.
 
 ### Closed loop vs open loop
 
@@ -1200,7 +1388,7 @@ vllm serve meta-llama/Llama-3.1-405B-Instruct \
   --distributed-executor-backend ray --max-model-len 16384
 ```
 
-How NCCL chooses an interface, and why `NCCL_SOCKET_IFNAME` matters, is in [Which interface does NCCL pick?](../foundations/networking.md#which-interface-does-nccl-pick). vLLM's docs include a `run_cluster.sh` helper that starts the Ray head and workers inside the vLLM container. Diagnosing a multi-node NCCL setup that hangs at startup is a networking problem, not a vLLM problem. Run `nccl-tests` across the two nodes first ([network benchmarks](../network/benchmarks/README.md)), and set `NCCL_DEBUG=INFO` to see which interface and transport NCCL picked.
+How NCCL chooses an interface, and why `NCCL_SOCKET_IFNAME` matters, is in [Which interface does NCCL pick?](../foundations/networking.md#which-interface-does-nccl-pick). vLLM's docs include a `run_cluster.sh` helper that starts the Ray head and workers inside the vLLM container. Diagnosing a multi-node NCCL setup that hangs at startup is a networking problem, not a vLLM problem. Run `nccl-tests` across the two nodes first ([network benchmarks](../network/measuring-and-debugging.md)), and set `NCCL_DEBUG=INFO` to see which interface and transport NCCL picked.
 
 ### Multi-node data parallel (MoE)
 
@@ -1492,7 +1680,11 @@ One check catches a large share of these before users do: **after any change, ru
 
 
 
+Parts of this chapter are adapted from Stas Bekman's [Machine Learning Engineering Open Book](https://github.com/stas00/ml-engineering) (CC BY-SA 4.0).
+
 ## Further reading
+
+- [A Survey on Efficient Inference for Large Language Models (2024)](https://arxiv.org/abs/2404.14294) - a map of inference-efficiency techniques at the data, model and system level.
 
 - vLLM docs: engine arguments https://docs.vllm.ai/en/latest/configuration/engine_args.html; data-parallel deployment https://docs.vllm.ai/en/latest/serving/data_parallel_deployment.html; NIXL connector https://docs.vllm.ai/en/latest/features/nixl_connector_usage.html (all checked November 2026, "latest" developer docs).
 - SGLang docs: server arguments https://docs.sglang.io/advanced_features/server_arguments.html; PD disaggregation https://docs.sglang.io/advanced_features/pd_disaggregation.html.
@@ -1505,4 +1697,4 @@ One check catches a large share of these before users do: **after any change, ru
 - Mitzenmacher, "The Power of Two Choices in Randomized Load Balancing", IEEE TPDS 2001.
 - Marc Brooker, "Exponential Backoff And Jitter", AWS Architecture Blog, 2015.
 - Kubernetes Gateway API Inference Extension: https://gateway-api-inference-extension.sigs.k8s.io/
-- In this repo: [Inference overview](README.md), [Inference Internals I](arithmetic.md), [Inference Internals II](serving-engine-internals.md), [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md), [Containers and Virtualization](../foundations/containers-and-virtualization.md), [RL Infrastructure](../platform/rl-infrastructure.md).
+- In this repo: [Inference Internals I](arithmetic.md), [Inference Internals II](serving-engine-internals.md), [Kubernetes from Zero](../orchestration/kubernetes-from-zero.md), [Containers and Virtualization](../foundations/containers-and-virtualization.md), [RL Infrastructure](../platform/rl-infrastructure.md).

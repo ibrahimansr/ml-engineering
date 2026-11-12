@@ -1,6 +1,6 @@
 # usage: make help
 
-.PHONY: help check-style spell prep-html-files html html-local pdf epub upload fix-tables check-links-local check-links-all check-links-local-fast check-redirects check-programs clean
+.PHONY: help check-style spell prep-html-files html html-local pdf epub fix-tables check-links-local check-links-all check-links-local-fast check-redirects check-programs clean
 .DEFAULT_GOAL := help
 
 help: ## this help
@@ -21,28 +21,20 @@ html-local: prep-html-files ## make html version w/ scripts remaining local
 	python build/mdbook/md-to-html.py --local
 
 pdf: html ## make pdf version (from html files)
-	prince --no-author-style -s build/prince_style.css --pdf-title="Stas Bekman - Machine Learning Engineering ($$(date))" -o out1.pdf $$(cat chapters-html.txt | tr "\n" " ")
+	prince --no-author-style -s build/prince_style.css --pdf-title="Machine Learning Engineering ($$(date))" -o out1.pdf $$(cat chapters-html.txt | tr "\n" " ")
 	pdftk out1.pdf dump_data output pdf-bookmarks.txt
 	pdftk out1.pdf cat 2-end 1 output out2.pdf
-	pdftk images/Machine-Learning-Engineering-book-cover.pdf out2.pdf output out3.pdf
-	pdftk out3.pdf update_info pdf-bookmarks.txt output "Stas Bekman - Machine Learning Engineering.pdf"
+	pdftk out2.pdf update_info pdf-bookmarks.txt output "Machine Learning Engineering.pdf"
 
 epub: html ## make epub version (from html files)
 	python build/mdbook/preprocess-html-for-epub.py && \
 	pandoc --from html --to epub3 \
-		--output "Stas Bekman - Machine Learning Engineering.epub" \
+		--output "Machine Learning Engineering.epub" \
 		--metadata title="Machine Learning Engineering" \
-		--metadata author="Stas Bekman" \
 		--metadata date="$$(date +%Y-%m-%d)" \
 		--metadata language="en" \
-		--epub-cover-image=images/Machine-Learning-Engineering-book-cover.png \
 		--resource-path=.:$$(cat chapters-html.txt | xargs -n1 dirname | awk '!seen[$$0]++' | tr "\n" ":") \
 		$$(cat chapters-html.txt | tr "\n" " ")
-
-upload: pdf epub ## upload pdf to the hub
-	cp "Stas Bekman - Machine Learning Engineering.pdf" ml-engineering-book/
-	cp "Stas Bekman - Machine Learning Engineering.epub" ml-engineering-book/
-	cd ml-engineering-book/ && git commit -m "new version" "Stas Bekman - Machine Learning Engineering.pdf" "Stas Bekman - Machine Learning Engineering.epub" && git push
 
 fix-tables: ## fix markdown tables so they render (join multi-line headers, add missing blank lines, realign pipes)
 	python build/fix-tables.py

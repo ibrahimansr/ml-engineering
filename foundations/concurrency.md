@@ -68,7 +68,7 @@ Swapping one thread out and another in is a **context switch**. The direct cost 
 Practical consequences for ML:
 
 - **Oversubscription hurts.** If you run 8 training processes, each spawns a PyTorch intra-op thread pool (the threads PyTorch uses to parallelize a single CPU op such as a matmul) sized to all 64 cores, plus 8 DataLoader workers each, you have hundreds of CPU-hungry threads fighting for 64 cores. They spend time context-switching and thrashing caches instead of working. This is why `torchrun` sets `OMP_NUM_THREADS=1` (the environment variable that sizes OpenMP thread pools, the C/C++ threading mechanism behind PyTorch's and NumPy's CPU math) by default and prints a warning about it, and why DataLoader workers call `torch.set_num_threads(1)` inside each worker.
-- **Pinning matters.** Keeping a process on the cores near its GPU and memory (NUMA affinity) avoids both migrations and remote memory access - see [NUMA](computer-architecture.md#numa) for the hardware and [NUMA affinity](../training/performance/README.md#numa-affinity).
+- **Pinning matters.** Keeping a process on the cores near its GPU and memory (NUMA affinity) avoids both migrations and remote memory access - see [NUMA](computer-architecture.md#numa) for the hardware and [NUMA affinity](../training/profiling-and-optimization.md#numa-affinity).
 
 
 
@@ -291,7 +291,7 @@ Now replace threads with processes on different machines, and locks with collect
 
 If rank 3 crashes, takes a different branch, or is stuck on a slow filesystem read, the other 511 ranks sit inside `all_reduce` waiting for it. That's "hold and wait" plus "circular wait" spread over a network: each rank holds its position in the collective sequence and waits for the others. GPU utilization often shows 100% during such a hang, because the NCCL kernel spins on the GPU waiting for data that never arrives - which is why "the GPUs are busy" is not evidence that training is progressing.
 
-The tools to break it map onto the Coffman table: the process group **timeout** is the "no preemption" breaker (after the timeout, the collective is aborted and the job crashes loudly instead of hanging silently), and a consistent order of collectives across ranks is the "lock ordering" rule. See [Part 9](#part-9-distributed-concurrency-preview) for a runnable example, and [Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs](../debug/torch-distributed-hanging-solutions.md) and [NCCL debug and performance](../debug/nccl-performance-debug.md) for how to find which rank is stuck where.
+The tools to break it map onto the Coffman table: the process group **timeout** is the "no preemption" breaker (after the timeout, the collective is aborted and the job crashes loudly instead of hanging silently), and a consistent order of collectives across ranks is the "lock ordering" rule. See [Part 9](#part-9-distributed-concurrency-preview) for a runnable example, and [Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs](../development/debugging-distributed.md) and [NCCL debug and performance](../network/measuring-and-debugging.md) for how to find which rank is stuck where.
 
 
 
@@ -563,7 +563,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The `MAX_WAIT_S` knob is a direct latency/throughput trade-off: waiting longer fills bigger batches (more throughput per GPU) and adds that wait to every request's latency. Real engines (vLLM, SGLang, TGI: open-source LLM serving engines) go further with *continuous batching* - inserting new requests into the running batch at every decode step (one forward pass that generates the next token for every sequence in the batch) rather than waiting for a whole batch to finish, taught in [Continuous batching and the scheduler](../inference/serving-engine-internals.md#continuous-batching-and-the-scheduler) - and they typically keep the GPU-driving loop out of the asyncio thread entirely (in a separate thread or process) so that tokenization and HTTP handling never stall the GPU, and GPU syncs never stall HTTP. See [Inference](../inference/README.md).
+The `MAX_WAIT_S` knob is a direct latency/throughput trade-off: waiting longer fills bigger batches (more throughput per GPU) and adds that wait to every request's latency. Real engines (vLLM, SGLang, TGI: open-source LLM serving engines) go further with *continuous batching* - inserting new requests into the running batch at every decode step (one forward pass that generates the next token for every sequence in the batch) rather than waiting for a whole batch to finish, taught in [Continuous batching and the scheduler](../inference/serving-engine-internals.md#continuous-batching-and-the-scheduler) - and they typically keep the GPU-driving loop out of the asyncio thread entirely (in a separate thread or process) so that tokenization and HTTP handling never stall the GPU, and GPU syncs never stall HTTP. See [Inference](../inference/arithmetic.md).
 
 
 
@@ -712,7 +712,7 @@ print(f"total {time.perf_counter() - t0:.2f} s  (consumer-bound: 10 x 0.05 = 0.5
 
 The queue sits near full and total time ≈ consumer time: the pipeline is consumer-bound, i.e. GPU-bound, which is what you want in training. If the queue is usually *empty*, the producer is the bottleneck - you're input-bound and the GPU is starving.
 
-The queue depth is therefore the cheapest diagnostic there is. In a DataLoader, the equivalent question is "how long does `next(iter)` take?" - if the training loop spends noticeable time waiting for the next batch, you're input-bound; add workers, move work out of `__getitem__`, or precompute. See [DataLoader](../training/performance/README.md#dataloader). The same structure, with the same knobs, shows up in serving (request queue -> batcher -> GPU -> detokenizer -> network) and in checkpointing (snapshot -> serialize -> upload).
+The queue depth is therefore the cheapest diagnostic there is. In a DataLoader, the equivalent question is "how long does `next(iter)` take?" - if the training loop spends noticeable time waiting for the next batch, you're input-bound; add workers, move work out of `__getitem__`, or precompute. See [DataLoader](../training/profiling-and-optimization.md#dataloader). The same structure, with the same knobs, shows up in serving (request queue -> batcher -> GPU -> detokenizer -> network) and in checkpointing (snapshot -> serialize -> upload).
 
 The sentinel value is the standard way to tell a consumer "no more items"; with multiple consumers, put one sentinel per consumer.
 
@@ -754,7 +754,7 @@ $$
 
 where $p$ is now the parallel fraction of time *on the scaled run*. With $p = 0.95$: $N = 8$ gives $0.05 + 7.6 = 7.65$; $N = 64$ gives $0.05 + 60.8 = 60.85$.
 
-The two laws don't contradict each other; they answer different questions. Amdahl: "how much faster does *this* job get?" (strong scaling). Gustafson: "how much more work can I do in the same time?" (weak scaling). Data-parallel training with a fixed per-GPU batch is weak scaling, which is why it scales well until the communication cost - which grows with $N$ - becomes the "serial" part. See [Model parallelism](../training/model-parallelism/README.md) for how that plays out.
+The two laws don't contradict each other; they answer different questions. Amdahl: "how much faster does *this* job get?" (strong scaling). Gustafson: "how much more work can I do in the same time?" (weak scaling). Data-parallel training with a fixed per-GPU batch is weak scaling, which is why it scales well until the communication cost - which grows with $N$ - becomes the "serial" part. See [Model parallelism](../training/model-parallelism/derivations.md) for how that plays out.
 
 
 
@@ -773,7 +773,7 @@ In Python, the GIL acts as a full barrier at every thread switch, so CPython pro
 
 Where it does reach ML engineers:
 
-- **CUDA kernels**: the GPU memory model is weak. (Background: a kernel launch runs many GPU threads, grouped into **thread blocks**; the threads of one block run on the same SM and share a small fast on-chip scratchpad called **shared memory**. `__syncthreads()` is a barrier for the threads of one block, and `atomicAdd`/`__threadfence()` are the GPU's atomic add and memory fence. The full hierarchy is in [the GPU execution model](../compute/accelerator/execution-model.md#the-hierarchy).) Threads in a block communicate through shared memory only after `__syncthreads()`; across blocks you need atomics and `__threadfence()`. Floating-point `atomicAdd` from many threads completes in nondeterministic order, and since float addition isn't associative, the result varies run to run in the last bits. That's why ops like `index_add_`/`scatter_add_` on CUDA are nondeterministic and why `torch.use_deterministic_algorithms(True)` exists - see [Reproducibility](../training/reproducibility/README.md).
+- **CUDA kernels**: the GPU memory model is weak. (Background: a kernel launch runs many GPU threads, grouped into **thread blocks**; the threads of one block run on the same SM and share a small fast on-chip scratchpad called **shared memory**. `__syncthreads()` is a barrier for the threads of one block, and `atomicAdd`/`__threadfence()` are the GPU's atomic add and memory fence. The full hierarchy is in [the GPU execution model](../compute/accelerator/execution-model.md#the-hierarchy).) Threads in a block communicate through shared memory only after `__syncthreads()`; across blocks you need atomics and `__threadfence()`. Floating-point `atomicAdd` from many threads completes in nondeterministic order, and since float addition isn't associative, the result varies run to run in the last bits. That's why ops like `index_add_`/`scatter_add_` on CUDA are nondeterministic and why `torch.use_deterministic_algorithms(True)` exists - see [Reproducibility](../training/fault-tolerance-and-reproducibility.md#reproducibility).
 - **False sharing**: caches move memory in **cache lines** ([Cache lines and locality](computer-architecture.md#cache-lines-and-locality); 64 bytes on most x86 CPUs; 128 bytes on Apple M-series). If two threads on different cores write to *different* variables that happen to sit on the same cache line, the line ping-pongs between the cores' caches on every write, and both threads slow down dramatically - even though they share no data logically. The fix is padding or aligning per-thread data to separate cache lines (e.g. `alignas(64)` in C++). You'll meet it in custom C++/CUDA extensions, per-thread counters and lock-free queues; it's invisible from Python.
 
 
@@ -844,7 +844,7 @@ ms = time_cuda(lambda: x @ x)
 print(f"{ms:.3f} ms/iter, {2 * 8192**3 / (ms / 1e3) / 1e12:.1f} TFLOP/s")
 ```
 
-Events are recorded into the stream like kernels, so `elapsed_time` measures GPU time between the two markers, independent of what the CPU was doing. Alternatively `torch.utils.benchmark.Timer` handles synchronization and warmup for you, and for "where does the time go" questions use the PyTorch profiler, which shows CPU and GPU timelines side by side - a gap in the GPU timeline is time the GPU was waiting for the CPU. Note also that results depend on input values and on GPU clock behaviour (see [Input data affects measured speed](../training/performance/README.md#input-data-affects-measured-speed)).
+Events are recorded into the stream like kernels, so `elapsed_time` measures GPU time between the two markers, independent of what the CPU was doing. Alternatively `torch.utils.benchmark.Timer` handles synchronization and warmup for you, and for "where does the time go" questions use the PyTorch profiler, which shows CPU and GPU timelines side by side - a gap in the GPU timeline is time the GPU was waiting for the CPU. Note also that results depend on input values and on GPU clock behaviour (see [Input data affects measured speed](../training/profiling-and-optimization.md#input-data-affects-measured-speed)).
 
 ### Events
 
@@ -968,7 +968,7 @@ on_disk = torch.load("/tmp/ckpt_6.pt")["weight"]
 print("checkpoint matches weights at save time:", torch.equal(on_disk, saved_at))
 ```
 
-Replace `snapshot(model)` with `model.state_dict()` and the background thread serializes tensors that the optimizer is mutating in place - the file may contain a later step's weights, or a mix, and nothing will tell you. A thread works for the write because file I/O releases the GIL; if serialization itself is CPU-heavy Python, a background *process* is better (at the cost of moving the snapshot to it through shared memory). Production versions add: pinned host staging buffers reused across saves, so the GPU-to-host copy is fast; writing to a temporary name and atomically renaming on completion, so a crash mid-write never leaves a corrupt "latest" checkpoint; and an `atexit`/signal handler that joins the writer. In PyTorch's distributed checkpointing, `torch.distributed.checkpoint.async_save` implements this pattern and returns a future. See [Checkpoints](../training/checkpoints/README.md) and [Fault tolerance](../training/fault-tolerance/README.md).
+Replace `snapshot(model)` with `model.state_dict()` and the background thread serializes tensors that the optimizer is mutating in place - the file may contain a later step's weights, or a mix, and nothing will tell you. A thread works for the write because file I/O releases the GIL; if serialization itself is CPU-heavy Python, a background *process* is better (at the cost of moving the snapshot to it through shared memory). Production versions add: pinned host staging buffers reused across saves, so the GPU-to-host copy is fast; writing to a temporary name and atomically renaming on completion, so a crash mid-write never leaves a corrupt "latest" checkpoint; and an `atexit`/signal handler that joins the writer. In PyTorch's distributed checkpointing, `torch.distributed.checkpoint.async_save` implements this pattern and returns a future. See [Checkpoints](../training/fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools) and [Fault tolerance](../training/fault-tolerance-and-reproducibility.md).
 
 ### Thread pools for storage
 
@@ -997,7 +997,7 @@ with ThreadPoolExecutor(max_workers=8) as pool:   # the pool size *is* your conc
 print(f"read {total / 2**20:.0f} MB in {time.perf_counter() - t0:.3f} s")
 ```
 
-On a local SSD with warm page cache this won't show much difference from a serial loop; the payoff appears on network storage where each request spends most of its time waiting. The pool size is a semaphore in disguise: too small leaves bandwidth unused, too large overloads the storage service (which then throttles you - and every rank of a 1000-GPU job does this simultaneously). For data loading at scale this is how streaming dataset libraries fetch shards ahead of the training loop, and it composes with DataLoader workers: each worker process can run a small thread pool of its own. See [Storage](../storage/README.md).
+On a local SSD with warm page cache this won't show much difference from a serial loop; the payoff appears on network storage where each request spends most of its time waiting. The pool size is a semaphore in disguise: too small leaves bandwidth unused, too large overloads the storage service (which then throttles you - and every rank of a 1000-GPU job does this simultaneously). For data loading at scale this is how streaming dataset libraries fetch shards ahead of the training loop, and it composes with DataLoader workers: each worker process can run a small thread pool of its own. See [Storage](storage-and-data.md).
 
 
 
@@ -1037,7 +1037,7 @@ Both ranks print the first all_reduce result (`1.0`), rank 0 prints "done", and 
 
 With NCCL on GPUs the same thing happens, with two twists. First, NCCL operations are themselves asynchronous kernels on a CUDA stream, so the Python call returns immediately and the hang shows up later at a sync point - one more reason a stack trace of a hung job can point at an innocent line. Second, the default timeouts are long (minutes - 10 minutes for NCCL in recent PyTorch versions, as far as I know; check `torch.distributed.constants` for your version), so a hung 512-GPU job can burn thousands of GPU-minutes before it errors out. PyTorch's NCCL watchdog thread monitors collectives and aborts the process group on timeout; `TORCH_NCCL_ASYNC_ERROR_HANDLING` controls what happens then; and the flight recorder (`TORCH_NCCL_TRACE_BUFFER_SIZE`) records recent collectives per rank so you can see which rank diverged. `TORCH_DISTRIBUTED_DEBUG=DETAIL` adds checks that collectives match across ranks, at a performance cost. Verify these environment variable names against your PyTorch version; they have been renamed before (the `NCCL_*` prefixed forms were the older spelling).
 
-Everything from Part 2 transfers: collectives are barriers, a missing rank is a deadlock, timeouts are preemption, and consistent collective order is lock ordering. The rest of the story - process groups, rendezvous, failure detection, and why distributed systems are hard - is in [Foundations: Distributed Systems](distributed-systems.md). For collective algorithms and their costs see [Network communications](../network/comms.md); for finding the stuck rank in practice see [Diagnosing Hangings and Deadlocks](../debug/torch-distributed-hanging-solutions.md) and the [NCCL debug notes](../debug/nccl-performance-debug.md).
+Everything from Part 2 transfers: collectives are barriers, a missing rank is a deadlock, timeouts are preemption, and consistent collective order is lock ordering. The rest of the story - process groups, rendezvous, failure detection, and why distributed systems are hard - is in [Foundations: Distributed Systems](distributed-systems.md). For collective algorithms and their costs see [Network communications](../network/collectives-internals.md); for finding the stuck rank in practice see [Diagnosing Hangings and Deadlocks](../development/debugging-distributed.md) and the [NCCL debug notes](../network/measuring-and-debugging.md).
 
 
 
@@ -1045,14 +1045,14 @@ Everything from Part 2 transfers: collectives are barriers, a missing rank is a 
 
 With this chapter behind you, the following parts of the book should read as applications of ideas you already have:
 
-- [Software Tune Up For The Best Performance](../training/performance/README.md) - especially the DataLoader, NUMA affinity and `torch.distributed` sections: workers, pinning, oversubscription.
-- [Checkpoints](../training/checkpoints/README.md) and [Fault Tolerance](../training/fault-tolerance/README.md) - async saves, atomic renames, and what happens when a rank dies.
-- [Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs](../debug/torch-distributed-hanging-solutions.md) - `py-spy` dumps of every rank are how you find the one that's in a different collective.
-- [NCCL: Debug and Performance](../debug/nccl-performance-debug.md) and [Network](../network/README.md) - collectives, overlap of communication with compute.
-- [Reproducibility](../training/reproducibility/README.md) - nondeterminism from atomics and from DataLoader worker seeding.
-- [Model Parallelism](../training/model-parallelism/README.md) - pipeline parallelism is a producer/consumer pipeline across GPUs, with bubbles where stages starve.
-- [Inference](../inference/README.md) - batching, continuous batching, and why serving engines separate the HTTP event loop from the GPU loop.
-- [Storage](../storage/README.md) - why concurrency levels matter for networked filesystems.
+- [Software Tune Up For The Best Performance](../training/profiling-and-optimization.md) - especially the DataLoader, NUMA affinity and `torch.distributed` sections: workers, pinning, oversubscription.
+- [Checkpoints](../training/fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools) and [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md) - async saves, atomic renames, and what happens when a rank dies.
+- [Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs](../development/debugging-distributed.md) - `py-spy` dumps of every rank are how you find the one that's in a different collective.
+- [NCCL: Debug and Performance](../network/measuring-and-debugging.md) and [Network](../network/interconnects.md) - collectives, overlap of communication with compute.
+- [Reproducibility](../training/fault-tolerance-and-reproducibility.md#reproducibility) - nondeterminism from atomics and from DataLoader worker seeding.
+- [Model Parallelism](../training/model-parallelism/derivations.md) - pipeline parallelism is a producer/consumer pipeline across GPUs, with bubbles where stages starve.
+- [Inference](../inference/arithmetic.md) - batching, continuous batching, and why serving engines separate the HTTP event loop from the GPU loop.
+- [Storage](storage-and-data.md) - why concurrency levels matter for networked filesystems.
 - [Foundations: Distributed Systems](distributed-systems.md) - the next step up: failures, consensus and coordination across machines.
 
 

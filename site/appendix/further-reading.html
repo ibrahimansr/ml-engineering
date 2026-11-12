@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appendix: Further Reading and Quick Reference - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details open><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html" class="current">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="appendix-further-reading-and-quick-reference">Appendix: Further Reading and Quick Reference</h1>
+<p>This appendix is the part of the book you come back to while working. It has three jobs:</p>
+<ol>
+<li><strong>Quick reference.</strong> Where the comparison tables (accelerator TFLOPS, memory size and speed, intra- and inter-node network speeds) and the handful of tools you reach for most often (<code>torch-dist-bench.py</code>, <code>torch-distributed-gpu-test.py</code>, <code>mamf-finder.py</code>) live in this book, with the one command you need to run each.</li>
+<li><strong>Further reading.</strong> Other guides worth your time, a few useful compilations, and every public training logbook and hardware-setup logbook we know of, with a note on what makes each one worth reading.</li>
+<li><strong>Lessons learned.</strong> A list of hard-won lessons from training and operating large models (BLOOM-176B in 2022, IDEFICS-80B in 2023, production RAG and RL systems at Contextual.AI in 2024, and Arctic Training open source work at Snowflake in 2025-2026). Each lesson is short, says what happened and what to do about it, and links to the chapter that teaches the material behind it. Read the bold headlines to find what concerns you, then follow the link.</li>
+</ol>
+<p>Conventions, as in the rest of the book: blocks marked <strong>[ran]</strong> were executed while writing this appendix on a MacBook (Apple M4, Python 3.14) and the output shown is from that run; blocks marked <strong>[GPU, untested]</strong> need GPUs and were not run here.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>This appendix assumes you have read the whole book; every term in it is taught in an earlier chapter, and each entry links back to where. The ones used most:</p>
+<ul>
+<li><a href="../compute/accelerators.html">Accelerators</a>: <a href="../compute/accelerators.html#tflops">TFLOPS</a>, <a href="../compute/accelerators.html#mamf-and-msmf">MAMF and MSMF</a> (the measured matmul ceilings).</li>
+<li><a href="../network/interconnects.html">Interconnects</a>: <a href="../network/interconnects.html#unidirectional-vs-bidirectional-duplex">unidirectional vs duplex bandwidth</a>, <a href="../network/interconnects.html#sharp">SHARP</a>, <a href="../network/interconnects.html#intra-node-networking">intra-node</a> and <a href="../network/interconnects.html#inter-node-networking">inter-node</a> networking.</li>
+<li><a href="../network/measuring-and-debugging.html">Measuring and debugging networks</a>: <a href="../network/measuring-and-debugging.html#torch-dist-bench">torch-dist-bench</a>.</li>
+<li><a href="../foundations/storage-and-data.html">Storage and data</a>, <a href="../orchestration/slurm/from-zero.html">Slurm from zero</a>, <a href="../training/profiling-and-optimization.html">Profiling and optimization</a>, <a href="../training/stability.html">Training stability</a>, <a href="../training/fault-tolerance-and-reproducibility.html">Fault tolerance and reproducibility</a>, <a href="../platform/getting-compute.html">Getting compute</a>.</li>
+<li><a href="../foundations/linux-and-os.html">Linux and the OS</a>: <a href="../foundations/linux-and-os.html#gdb-basics">gdb basics</a>, <a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now">py-spy</a>, <a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path">shared libraries and LD_LIBRARY_PATH</a>.</li>
+</ul>
+<h2 id="quick-reference">Quick reference</h2>
+<h3 id="comparison-tables">Comparison tables</h3>
+<p>The tables you look up most often while choosing hardware or checking a measurement against the spec. All of them are theoretical (vendor) numbers except the MAMF table, which is measured; <a href="../network/interconnects.html#unidirectional-vs-bidirectional-duplex">Unidirectional vs bidirectional (duplex)</a> explains why you must check which kind of bandwidth a network number is before comparing it to anything.</p>
+<table>
+<thead>
+<tr>
+<th>What you want to look up</th>
+<th>Where it lives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Theoretical dense TFLOPS per accelerator and dtype</td>
+<td><a href="../compute/accelerators.html#tflops-comparison-table">TFLOPS comparison table</a></td>
+</tr>
+<tr>
+<td>What you can actually get from a matmul (measured)</td>
+<td><a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MAMF and MSMF comparison table</a></td>
+</tr>
+<tr>
+<td>Accelerator memory size and bandwidth</td>
+<td><a href="../compute/accelerators.html#accelerator-memory-size-and-speed">Accelerator memory size and speed</a></td>
+</tr>
+<tr>
+<td>Intra-node (GPU-to-GPU inside one box) speed</td>
+<td><a href="../network/interconnects.html#intra-node-networking">Intra-node networking</a></td>
+</tr>
+<tr>
+<td>Inter-node (box-to-box) speed</td>
+<td><a href="../network/interconnects.html#inter-node-networking">Inter-node networking</a></td>
+</tr>
+</tbody>
+</table>
+<p>A habit that saves you from most mistakes with these tables: express every measurement as a fraction of the matching spec. Healthy systems land around 80% of the unidirectional network spec and, depending on the accelerator, roughly 60-85% of the theoretical matmul TFLOPS (see the MAMF table for your chip):</p>
+<pre><code class="language-python"># spec_fraction.py - is my measurement healthy?
+measured_busbw, spec_unidir = 376, 450        # GBps, all-reduce on 8x H200 vs NVLink 4 unidirectional spec
+measured_tflops, spec_tflops = 1745, 2250     # B200 bf16 matmul, measured vs theoretical
+print(f&quot;network {measured_busbw / spec_unidir:.0%} of spec, matmul {measured_tflops / spec_tflops:.0%} of spec&quot;)
+</code></pre>
+<p><strong>[ran]</strong> output:</p>
+<pre><code class="language-text">network 84% of spec, matmul 78% of spec
+</code></pre>
+<p>How to read it: 84% of the unidirectional spec is a healthy network; if you had divided by the duplex number (900GBps) you would have seen 42% and gone looking for a problem that isn't there. For matmul, compare against the measured MAMF of your chip, not the theoretical peak.</p>
+<h3 id="tools">Tools</h3>
+<p>Three scripts in this repository you will run again and again. Each is explained in full in the linked section; here is just the command.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it answers</th>
+<th>Explained in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../network/benchmarks/torch-dist-bench.py">torch-dist-bench.py</a></td>
+<td>What network bandwidth do collectives actually get? An easier alternative to nccl-tests (it used to be called <code>all_reduce_bench.py</code>).</td>
+<td><a href="../network/measuring-and-debugging.html#torch-dist-bench">torch-dist-bench</a>, <a href="../network/measuring-and-debugging.html#running-the-benchmark-across-nodes">Running the benchmark across nodes</a></td>
+</tr>
+<tr>
+<td><a href="../debug/torch-distributed-gpu-test.py">torch-distributed-gpu-test.py</a></td>
+<td>Can all my GPUs, within a node and across nodes, talk to each other at all?</td>
+<td><a href="../network/measuring-and-debugging.html#use-a-small-test-script-not-your-application">Use a small test script, not your application</a></td>
+</tr>
+<tr>
+<td><a href="../compute/accelerator/benchmarks/mamf-finder.py">mamf-finder.py</a></td>
+<td>What TFLOPS can a matmul really reach on this accelerator and software stack?</td>
+<td><a href="../compute/accelerators.html#the-mamf-finder-mamf-finderpy">The MAMF finder: <code>mamf-finder.py</code></a></td>
+</tr>
+</tbody>
+</table>
+<p><strong>[GPU, untested]</strong> (run from the repository root):</p>
+<pre><code class="language-bash"># network bandwidth, one node, 8 GPUs
+python -u -m torch.distributed.run --nproc_per_node 8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d \
+    network/benchmarks/torch-dist-bench.py
+
+# connectivity check with NCCL's setup logged
+NCCL_DEBUG=INFO torchrun --nproc_per_node 8 --nnodes 1 debug/torch-distributed-gpu-test.py
+
+# maximum achievable matmul FLOPS, auto search, log to a timestamped file
+python compute/accelerator/benchmarks/mamf-finder.py --output_file=$(date +'%Y-%m-%d-%H:%M:%S').txt
+</code></pre>
+<p>How to read the outputs: <code>torch-dist-bench.py</code> prints <code>busbw</code> per payload size, which you compare to the unidirectional spec as above; <code>torch-distributed-gpu-test.py</code> prints one OK line per rank, and a hang or missing rank is the finding; <code>mamf-finder.py</code> prints the best TFLOPS it found and the matmul shape that reached it, which you compare to the <a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MAMF table</a>.</p>
+<h3 id="guides">Guides</h3>
+<table>
+<thead>
+<tr>
+<th>You need</th>
+<th>Go to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Copy-paste fixes for a PyTorch program that hangs or crashes</td>
+<td><a href="../development/debugging-pytorch.html">Debugging PyTorch</a>, and for multi-GPU / multi-node hangs <a href="../development/debugging-distributed.html">Debugging distributed</a></td>
+</tr>
+<tr>
+<td>A Slurm cheatsheet and tricks</td>
+<td><a href="../orchestration/slurm/from-zero.html#day-to-day-user-recipes">Day-to-day user recipes</a></td>
+</tr>
+<tr>
+<td>Tiny models, tokenizers and datasets for fast debugging</td>
+<td><a href="../development/debugging-pytorch.html">Debugging PyTorch</a></td>
+</tr>
+<tr>
+<td>Other teams' LLM/VLM training chronicles</td>
+<td><a href="#public-llm-and-vlm-training-logbooks">Public LLM and VLM training logbooks</a> below</td>
+</tr>
+</tbody>
+</table>
+<h2 id="similar-online-guides">Similar online guides</h2>
+<p>Other long-form guides that cover parts of this book's ground from a different angle. Reading a second explanation of a hard topic (pipeline parallelism, the roofline model) is one of the fastest ways to make it stick.</p>
+<ul>
+<li><strong>Boris Dayma, <a href="https://wandb.ai/craiyon/report/reports/Recipe-Training-Large-Models--VmlldzozNjc4MzQz">A Recipe for Training Large Models</a>.</strong> Practical advice from training the Craiyon (DALL-E mini) models; a compact companion to <a href="../training/stability.html">Training stability</a>.</li>
+<li><strong>Hugging Face, <a href="https://huggingface.co/spaces/nanotron/ultrascale-playbook">The Ultra-Scale Playbook: Training LLMs on GPU Clusters</a>.</strong> Data, tensor, pipeline, context and expert parallelism built up step by step with measurements; pairs with <a href="../training/model-parallelism/derivations.html">Model parallelism: derivations</a>.</li>
+<li><strong>Jacob Austin et al., <a href="https://jax-ml.github.io/scaling-book/">How to Scale Your Model: A Systems View of LLMs on TPUs</a>.</strong> Rooflines, sharding and the arithmetic of training and inference, worked out for TPUs; the arithmetic transfers directly to GPUs (<a href="../training/arithmetic.html">Training arithmetic</a>, <a href="../inference/arithmetic.html">Inference arithmetic</a>).</li>
+<li><strong>Harvard Edge, <a href="https://github.com/harvard-edge/cs249r_book">Machine Learning Systems</a></strong> (the CS249r textbook; site: <a href="http://mlsysbook.ai/">mlsysbook.ai</a>). A full university-course textbook on ML systems, broader and gentler than this book.</li>
+</ul>
+<h2 id="useful-compilations">Useful compilations</h2>
+<ul>
+<li><strong><a href="https://docs.google.com/spreadsheets/d/14vbBbuRMEHoqeuMHkTfw3uiZVmyXNuoSp8s-aHvfvZk/edit#gid=0">Common LLM Settings spreadsheet</a></strong>, created by <a href="https://github.com/StellaAthena">@StellaAthena</a>. Hyperparameters and settings (sizes, learning rates, batch sizes, and more) of many known LLM trainings in one table. Very useful when you are about to start a new LLM training and want to see what others chose at your scale (<a href="../training/stability.html">Training stability</a> explains why those choices matter).</li>
+<li><strong><a href="https://discuss.huggingface.co/t/model-pre-training-precision-database-fp16-fp32-bf16/5671">Model pre-training precision database</a></strong>, started by Stas Bekman: which dtype (fp16, bf16, fp32) various models were pretrained in. It covers only a handful of models, but is still useful if you research dtypes. He used it while trying to write a <a href="https://github.com/stas00/ml-ways/blob/master/numbers/detect-model-pretrained-in-bf16-fp16-fp32.ipynb">model pretraining dtype auto-detector</a>, and there is a related <a href="https://github.com/stas00/ml-ways/blob/master/numbers/bfloat16-vs-float16-study.ipynb">float16 vs bfloat16 numerical properties comparison</a>. Why the pretraining dtype matters when you fine-tune is covered in <a href="../training/arithmetic.html">Training arithmetic</a>.</li>
+</ul>
+<h2 id="public-llm-and-vlm-training-logbooks">Public LLM and VLM training logbooks</h2>
+<p>A <strong>VLM</strong> is a vision-language model: an LLM that also takes images as input (see <a href="../models/beyond-transformers.html#multimodal-llms">Multimodal LLMs</a>). A <strong>logbook</strong> (or <strong>chronicle</strong>) is the running diary a team keeps during a training run: what broke, what they tried, what the loss did.</p>
+<p>Logbooks, chronicles and technical reports of LLM/VLM trainings are among the best sources to learn from about training instabilities, infrastructure and scaling problems, and choosing good hyperparameters. The older entries below are diaries kept during the run. Increasingly the same lessons appear as dedicated sections of technical reports, typically titled <em>Infrastructure, Scaling, and Efficiency</em> or <em>Engineering Challenges and Solutions</em>, and often covering reliability and operational problems that never make it into a model card.</p>
+<p>How to read one efficiently: the loss curve tells you <em>when</em> something happened, and the diary tells you <em>why</em>. Search for the words that mark incidents, then read around them. For a chronicle you have downloaded as markdown, for example:</p>
+<pre><code class="language-bash"># list incident-like lines in a chronicle, with line numbers to jump to (untested on these exact files)
+grep -n -i -E &quot;spike|diverg|nan|hang|restart|rollback|lr |skip&quot; chronicles.md | head -40
+</code></pre>
+<p>Each hit is a place where the team noticed something; the paragraphs after it are usually the diagnosis and the fix. <a href="../training/stability.html">Training loss patterns</a> teaches you to recognize the curves they describe.</p>
+<p>If you know of a public logbook, or a technical report with such a section, that is missing here, the upstream book welcomes it via <a href="https://github.com/stas00/ml-engineering/issues">an Issue</a> or a PR. The list is grouped by year and in no particular order within a year. Several of the original repositories have been moved or deleted over time, so Stas Bekman keeps backups; they are listed next to each entry.</p>
+<h3 id="2021">2021</h3>
+<ul>
+<li><strong>BigScience pre-BLOOM 104B training experiments</strong> (the repository directory says 104B; it is often referred to as 108B): <a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md">chronicles</a> | <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr8-104B-wide">the full spec and discussions</a> (backup: <a href="https://github.com/stas00/bigscience-backup/blob/master/train/tr8-104B-wide/chronicles.md">1</a> | <a href="https://github.com/stas00/bigscience-backup/tree/master/train/tr8-104B-wide">2</a>). Worth reading because it <em>failed</em>: repeated early divergence, with fp16 and uncleaned web data as the main suspects. The post-mortem became the recipe for BLOOM-176B (<a href="../training/stability.html#a-very-failed-training">A very failed training</a>).</li>
+</ul>
+<h3 id="2022">2022</h3>
+<ul>
+<li><strong>BigScience BLOOM-176B</strong>: <a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr11-176B-ml/chronicles-prequel.md">chronicles-prequel</a> | <a href="https://github.com/bigscience-workshop/bigscience/blob/master/train/tr11-176B-ml/chronicles.md">chronicles</a> | <a href="https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml">the full spec and discussions</a> (backup: <a href="https://github.com/stas00/bigscience-backup/blob/master/train/tr11-176B-ml/chronicles-prequel.md">1</a> | <a href="https://github.com/stas00/bigscience-backup/blob/master/train/tr11-176B-ml/chronicles.md">2</a> | <a href="https://github.com/stas00/bigscience-backup/tree/master/train/tr11-176B-ml">3</a>). The prequel covers the weeks of throughput tuning before launch; the chronicles cover a ~3-month run on 384 A100s, hardware failures, the kill switch and watchdogs. Many of the lessons below come from here.</li>
+<li><strong>Meta OPT-175B</strong>: <a href="https://github.com/facebookresearch/metaseq/tree/main/projects/OPT/chronicles">logbook</a> | <a href="https://www.youtube.com/watch?v=p9IxoSkvZ-M">video</a> (backup: <a href="https://github.com/stas00/metaseq-backup/tree/main/projects/OPT/chronicles">1</a>). Unusually candid: many restarts, loss spikes handled by rolling back and lowering the learning rate, and a lot of hardware trouble. The best single document on what manual babysitting of a large run looks like.</li>
+<li><strong>THUDM GLM-130B</strong>: <a href="https://github.com/zai-org/GLM-130B/blob/main/logs/main-log-en.md">English logbook</a> | <a href="https://github.com/zai-org/GLM-130B/blob/main/logs/main-log.md">Mandarin version</a> (backup: <a href="https://github.com/stas00/GLM-130B-backup/blob/main/logs/main-log-en.md">1</a> | <a href="https://github.com/stas00/GLM-130B-backup/blob/main/logs/main-log.md">2</a>). A bilingual 130B model; the log documents the stability tricks they converged on, a useful counterpoint to the BLOOM and OPT choices.</li>
+</ul>
+<h3 id="2023">2023</h3>
+<ul>
+<li><strong>Hugging Face IDEFICS-80B</strong> (multimodal, an open reproduction of DeepMind's Flamingo): <a href="https://github.com/huggingface/m4-logs/blob/master/memos/README.md">learning log</a> | <a href="https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md">training chronicles</a> (backup: <a href="https://github.com/stas00/m4-logs-backup/blob/master/memos/README.md">1</a> | <a href="https://github.com/stas00/m4-logs-backup/blob/master/tr-190-80b/chronicles.md">2</a>). Read it for the VLM-specific pain: streaming a multi-TB image-text dataset from cloud storage, DataLoader memory, and a slow CPU memory leak (lessons 1.4, 5.2 and 6.7 below).</li>
+<li><strong>BloombergGPT 50B</strong>: section C of <a href="https://arxiv.org/abs/2303.17564">BloombergGPT: A Large Language Model for Finance</a>. A training chronicle inside a paper appendix: the loss-curve incidents and how they were handled.</li>
+</ul>
+<h3 id="2024">2024</h3>
+<ul>
+<li><strong>ByteDance, <a href="https://arxiv.org/abs/2402.15627">MegaScale: Scaling Large Language Model Training to More Than 10,000 GPUs</a>.</strong> Covers many training problems and their resolutions at more than 10,000 GPUs: diagnosis tooling, stragglers, network tuning, fault tolerance. The models are proprietary, but the infrastructure lessons are just as useful.</li>
+<li><strong>Imbue, <a href="https://imbue.com/blog/70b-infrastructure">From bare metal to a 70B model: infrastructure set-up and scripts</a>.</strong> A very detailed technical post on the training problems they had to overcome while training a proprietary 70B model (it also appears under <a href="#hardware-setup-logbooks">Hardware setup logbooks</a>).</li>
+<li><strong>Meta, <a href="https://arxiv.org/abs/2407.21783">The Llama 3 Herd of Models</a>.</strong> <a href="https://arxiv.org/pdf/2407.21783#page=12">§3.3 Infrastructure, Scaling, and Efficiency</a> covers the training stack, including §3.3.4 <em>Reliability and Operational Challenges</em>. Unique among these reports: it documents how the environment perturbed training throughput, through diurnal (day-night) temperature swings and through the fluctuating power draw of tens of thousands of GPUs stressing the datacenter's power grid.</li>
+</ul>
+<h3 id="2025">2025</h3>
+<ul>
+<li><strong>Project Apertus</strong> (ETH Zürich, EPFL, CSCS), <a href="https://arxiv.org/abs/2509.14233">Apertus v1 Technical Report: Democratizing Open and Compliant LLMs for Global Language Environments</a>. A fully open 8B/70B model suite trained on 15T tokens across more than 1800 languages, using up to 4096 GPUs on CSCS's Alps supercomputer. Its <em>Infrastructure, Scaling, and Efficiency</em> and <em>Engineering Challenges and Solutions</em> sections (~5 pages) read like a logbook of the run.</li>
+</ul>
+<h3 id="2026">2026</h3>
+<ul>
+<li><strong>Ai2, <a href="https://allenai.org/papers/olmocore3">Supercharging Olmo-core for Efficient and Scalable MoE Training</a>.</strong> Practical, current recommendations for training large <a href="../models/architectures.html#mixture-of-experts">Mixture of Experts</a> (MoE) models.</li>
+<li><strong>Marin 535B-A23B MoE, <a href="https://mtracker.oa.dev/hero-run-535b">live tracker</a>.</strong> &quot;535B-A23B&quot; means 535B total parameters of which 23B are active per token, the usual way of naming an MoE model. Each short tracker entry links to a GitHub Issue with the details, so you can follow the run as it happens. Retrospectives of finished Marin trainings: <a href="https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/">8B</a>, <a href="https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/">32B</a>.</li>
+<li><strong>Project Apertus, <a href="https://arxiv.org/abs/2610.15542">Apertus v1.5 Technical Report: From Open Text Models to Open Multimodal Reasoners</a>.</strong> Continued multimodal pretraining of the Apertus 8B/70B models; like v1 it includes <em>Infrastructure, Scaling, and Efficiency</em> and <em>Engineering Challenges and Solutions</em> sections (~5 pages).</li>
+</ul>
+<h2 id="hardware-setup-logbooks">Hardware setup logbooks</h2>
+<p>The training logbooks above start once the cluster works. These start earlier: racking, cabling, burn-in and acceptance testing.</p>
+<ul>
+<li><strong>Imbue, <a href="https://imbue.com/blog/70b-infrastructure">From bare metal to a 70B model: infrastructure set-up and scripts</a>.</strong> A detailed log of how they set up a 512-node <a href="../network/interconnects.html#infiniband">InfiniBand</a> cluster wired as a <a href="../foundations/networking.html#top-of-rack-leaf-spine-fat-tree">fat tree</a> and got it to work. They also open-sourced the <a href="https://github.com/imbue-ai/cluster-health">cluster tooling</a> they wrote in the process (health checks for GPUs, InfiniBand and hosts), which is worth reading next to <a href="../training/fault-tolerance-and-reproducibility.html">Fault tolerance and reproducibility</a>.</li>
+<li><strong>SemiAnalysis, <a href="https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy">What it takes to set up a Neocloud cluster</a>.</strong> A detailed write-up of building and operating a GPU cloud. A <strong>neocloud</strong> is a GPU-focused cloud provider such as CoreWeave or Lambda, as opposed to the big general-purpose clouds (<a href="../platform/getting-compute.html#tier-1-vs-tier-2-clouds">Tier 1 vs Tier 2 clouds</a>). It is the source of the burn-in and acceptance-test durations quoted in <a href="../platform/getting-compute.html#accelerators-need-to-be-burned-in">Accelerators need to be burned in</a>.</li>
+</ul>
+<h2 id="lessons-learned">Lessons learned</h2>
+<p><img src="../courses/lesson-learned/lesson-learned-cover.png" alt="Machine Learning Engineering - Lessons Learned from Training LLMs" /></p>
+<p>These lessons come from Stas Bekman's work on BLOOM-176B (2022), IDEFICS-80B (2023), production RAG and RL systems at Contextual.AI (2024) and Arctic Training open source work at Snowflake (2025-2026), and from his book <a href="https://github.com/stas00/the-art-of-debugging">The Art of Debugging</a> (section 9). You can use them as a self-guided course, or teach them: read the headlines, skim the bullets for the reasoning, and follow the &quot;Covered in&quot; link for the full explanation, scripts and benchmarks. Lessons whose content is not taught elsewhere in this book are kept here in full, with code.</p>
+<p>Most lessons hinge on a number. This script re-derives them, so you can see where each comes from:</p>
+<pre><code class="language-python"># lesson_numbers.py - re-derive the numbers quoted in the lessons below
+import math
+
+# 1.3 block size waste: 16 MiB blocks holding 16 KiB files
+print(f&quot;1.3  block waste            : {(16 &lt;&lt; 20) // (16 &lt;&lt; 10)}x&quot;)
+
+# 2.1 duplex vs unidirectional
+for name, meas, spec in [(&quot;A100 vs duplex 600&quot;, 235, 600), (&quot;A100 vs uni 300&quot;, 235, 300),
+                         (&quot;H200 vs uni 450&quot;, 376, 450)]:
+    print(f&quot;2.1  {name:&lt;22}: {meas / spec:.0%}&quot;)
+
+# 2.3 all-reduce sends per rank: ring vs NVLS (in-switch reduction), N = 8 GPUs
+N = 8
+print(f&quot;2.3  sends, ring 2N vs NVLS N+1 (N={N}): {2 * N} vs {N + 1}&quot;)
+
+# 4.1 achieved vs theoretical matmul TFLOPS on B200
+print(f&quot;4.1  B200 MAMF / spec        : {1745.0 / 2250:.1%}&quot;)
+
+# 6.2 checkpoint overhead: 40 s per save, every 3 h, ~90-day run
+days, save_s, every_h = 90, 40, 3
+n = days * 24 / every_h
+hours = n * save_s / 3600
+print(f&quot;6.2  {n:.0f} saves, {hours:.1f} h     : {hours / (days * 24):.2%} of the run&quot;)
+print(f&quot;6.2  same on 5x slower IO   : {5 * hours / (days * 24):.2%} of the run&quot;)
+print(f&quot;6.5  disk per day           : {24 / every_h * 2.3:.1f} TB&quot;)
+
+# 7.1 init std for BLOOM-176B hidden size
+h = 14336
+print(f&quot;7.1  sqrt(2/(5h)) = {math.sqrt(2 / (5 * h)):.5f}, sqrt(1/(3h)) = {math.sqrt(1 / (3 * h)):.5f}&quot;)
+
+# 9.2 git bisect rounds for 1024 candidate commits
+print(f&quot;9.2  bisect rounds for 1024 : {math.ceil(math.log2(1024))}&quot;)
+</code></pre>
+<p><strong>[ran]</strong> output:</p>
+<pre><code class="language-text">1.3  block waste            : 1024x
+2.1  A100 vs duplex 600    : 39%
+2.1  A100 vs uni 300       : 78%
+2.1  H200 vs uni 450       : 84%
+2.3  sends, ring 2N vs NVLS N+1 (N=8): 16 vs 9
+4.1  B200 MAMF / spec        : 77.6%
+6.2  720 saves, 8.0 h     : 0.37% of the run
+6.2  same on 5x slower IO   : 1.85% of the run
+6.5  disk per day           : 18.4 TB
+7.1  sqrt(2/(5h)) = 0.00528, sqrt(1/(3h)) = 0.00482
+9.2  bisect rounds for 1024 : 10
+</code></pre>
+<p>How to read it: each line is labelled with the lesson that quotes it. The &quot;5x slower IO&quot; line is the ~2% checkpoint tax of lesson 6.2; the two std values are the two init formulas of lesson 7.1.</p>
+<h3 id="1-storage-and-filesystems">1. Storage and filesystems</h3>
+<p><strong>1.1. Fast parallel storage is a game changer for checkpointing.</strong></p>
+<ul>
+<li>Parallel distributed filesystems such as GPFS and WekaIO let hundreds to thousands of clients hit the same storage at once without hotspots, and the difference is dramatic.</li>
+<li>At the JeanZay HPC in 2021, a 2.3TB checkpoint was written in parallel by 384 processes in 40 seconds, because the cluster ran GPFS over NVMe drives.</li>
+<li>GPFS over NVMe versus a generic cloud NFS mount can differ by many multiples in wall-clock time.</li>
+<li>Takeaway: benchmark your filesystem with your workload to know its overhead.</li>
+</ul>
+<p>Covered in: <a href="../foundations/storage-and-data.html#which-file-system-to-choose">Which file system to choose</a>.</p>
+<p><strong>1.2. Slow shared storage kills developer productivity, not just training throughput.</strong></p>
+<ul>
+<li>On GCP's Zonal Filestore over NFS, <code>python -c &quot;import torch&quot;</code> took 20 seconds uncached (about 2 seconds once cached), and creating a conda environment with a handful of prebuilt packages could take 20-30 minutes.</li>
+<li>None of this shows up in a training-throughput benchmark, but it slows every developer every day, multiplied across the team.</li>
+<li>The fix: before committing to any storage, run a &quot;perception benchmark&quot; (timed <code>import torch</code>, <code>conda create</code>, <code>git status</code>, <code>pytest --collect-only</code>) and compare it with a local NVMe baseline.</li>
+<li>If a proposed shared filesystem is only 2x faster than what you have, it is probably not worth switching. Aim for something within roughly 5-10x of local NVMe before it stops being a daily frustration.</li>
+<li>Use <code>uv</code> instead of <code>pip</code> to install packages: it is 5-50x faster, and fewer seconds spent per install means fewer slow small-file operations on the shared filesystem.</li>
+</ul>
+<p>A minimal perception benchmark, run once on local NVMe and once on the candidate filesystem:</p>
+<pre><code class="language-bash"># perception.sh - run from a directory on the filesystem under test (untested as a whole; each line is standard)
+time python -c &quot;import torch&quot;
+time uv venv /path/on/fs/under/test/venv &amp;&amp; time uv pip install --python /path/on/fs/under/test/venv numpy
+time git status
+time pytest --collect-only -q &gt; /dev/null
+</code></pre>
+<p>Compare the <code>real</code> times line by line between the two filesystems; the ratio is what your team will feel.</p>
+<p>Covered in: <a href="../foundations/storage-and-data.html#which-file-system-to-choose">Which file system to choose</a>, <a href="../foundations/storage-and-data.html#usability-perception-io-benchmarks">Usability perception IO benchmarks</a>. Not covered elsewhere: the &quot;2x is not worth switching&quot; rule and the <code>uv</code> speed-up.</p>
+<p><strong>1.3. Python's tens of thousands of tiny files can exhaust inodes long before you run out of bytes.</strong></p>
+<ul>
+<li>On a partition with a large block size (16MiB, common for GPFS partitions tuned for big files), files averaging 16KiB waste up to 1,024x the space each, and more importantly they burn through the inode budget rather than the byte budget.</li>
+<li>This happened at JeanZay: each conda environment installs tens of thousands of tiny files, the team kept running out of inodes on the normal GPFS partitions, and had to request a dedicated partition just for conda environments.</li>
+<li>The fix: keep at least two differently tuned partitions, a small block size (4-8KiB) for millions of tiny files (venvs, package caches) and a large one (2-16MiB) for a few huge files (checkpoints, datasets). Modern GPFS sub-blocks help by packing tiny files together.</li>
+<li>Always check <code>df -i</code> next to <code>df -h</code>: a partition can show plenty of free space and have no inodes left.</li>
+</ul>
+<pre><code class="language-bash">df -h /path   # bytes:  Size Used Avail Use%
+df -i /path   # inodes: Inodes IUsed IFree IUse%  - 100% here means &quot;disk full&quot; even if df -h says otherwise
+</code></pre>
+<p>Covered in: <a href="../foundations/storage-and-data.html#file-block-size">File block size</a>.</p>
+<p><strong>1.4. Avoid loading training data directly from cloud storage if you possibly can.</strong></p>
+<ul>
+<li>During IDEFICS-80B there wasn't enough local disk for the multi-TB multimodal dataset, so it was streamed from cloud storage. Weeks of effort went into making that robust, and it never quite got there.</li>
+<li>The core problem: the streaming DataLoader of the time didn't save and restore the sampler's RNG state across resumes, so every crash-and-resume either skipped or repeated data, and the run never saw a single clean epoch of unique data.</li>
+<li>Prefer enough local disk for the data. Offload only checkpoints to the cloud, asynchronously (from cron or a separate Slurm job), and always keep the last couple of checkpoints locally for a fast resume.</li>
+<li>If you must stream, verify that your solution resumes exactly, without losing or repeating data, and without needing a huge number of local DataLoader worker processes.</li>
+</ul>
+<p>Covered in: <a href="../foundations/storage-and-data.html#local-storage-beats-cloud-storage">Local storage beats cloud storage</a>.</p>
+<h3 id="2-network-and-interconnects">2. Network and interconnects</h3>
+<p><strong>2.1. Check whether a bandwidth number is unidirectional or bidirectional (duplex) before comparing it to a measurement.</strong></p>
+<ul>
+<li>Most benchmark tools report unidirectional bandwidth; vendor marketing prefers duplex, which is about 2x larger.</li>
+<li>Rule of thumb: if you measure about 40% of the advertised number, the advertisement was probably duplex. Halve it and your efficiency becomes a normal ~80%.</li>
+<li>Example: an A100 node advertised at 600GBps intra-node measured 235GBps, a disappointing 39%, until it was compared with the 300GBps unidirectional spec (78%).</li>
+<li>Same today on H200: NVLink is advertised at 900GBps (duplex), and an all-reduce benchmark reaching about 376GBps checks out at 84% of the 450GBps unidirectional spec.</li>
+</ul>
+<p>Covered in: <a href="../network/interconnects.html#unidirectional-vs-bidirectional-duplex">Unidirectional vs bidirectional (duplex)</a>. The H200 all-reduce figure (376GBps) is quoted only here; that chapter gives H200 copy-bandwidth measurements instead.</p>
+<p><strong>2.2. A slow inter-node network can dictate your training framework, not just your throughput ceiling.</strong></p>
+<ul>
+<li>At JeanZay the Omni-Path interconnect was stuck at 135Gbps.</li>
+<li>That forced BLOOM-176B onto Megatron-DeepSpeed (tensor + pipeline parallelism, which moves far less data between nodes) instead of the much simpler DeepSpeed ZeRO (which needs much more bandwidth to shard optimizer states and gradients).</li>
+<li>Such a choice can't be undone once a multi-month run is underway, so measure the network and factor it into your parallelism strategy at the very start.</li>
+<li>On a slow inter-node network, prefer strategies that exchange only activations (pipeline and tensor parallelism) over those that exchange full gradients and optimizer state (ZeRO-DP, FSDP).</li>
+</ul>
+<p>Covered in: <a href="../network/interconnects.html#omni-path">Omni-Path</a>, and the bytes each strategy moves in <a href="../training/model-parallelism/derivations.html">Model parallelism: derivations</a>.</p>
+<p><strong>2.3. An all-reduce that beats the wire's theoretical maximum is not a measurement bug: it is SHARP.</strong></p>
+<ul>
+<li>On an H100 node, an intra-node NVLink 4 all-reduce reported 480GBps for a 4GiB payload, above the 450GBps unidirectional spec.</li>
+<li>NVIDIA's SHARP lets NCCL do the reduction inside the switch. When NCCL detects InfiniBand or NVSwitch SHARP support it uses the <code>NVLS</code> algorithm, which needs about <code>N+1</code> sends instead of the ring's <code>2N</code>.</li>
+<li>So the standard <code>busbw</code> formula, which assumes <code>2N</code>, over-states the bytes on the wire once NVLS is active: a number that looks &quot;too good&quot; is a smarter algorithm, not an instrumentation error.</li>
+<li>You need more than about 4 GPUs in the collective (the exact switch-over depends on the hardware), and <code>NCCL_NVLS_ENABLE</code> must not be set to <code>0</code>.</li>
+<li>SHARP applies only to <code>all-reduce</code>. A full-node <code>all-gather</code> or <code>reduce-scatter</code> runs the ring path and lands at the ordinary ~80% of the unidirectional spec.</li>
+</ul>
+<p>Covered in: <a href="../network/interconnects.html#sharp">SHARP</a>.</p>
+<p><strong>2.4. On a shared inter-node network, performance tuning is nearly impossible: you can't tell whether your change or your neighbours changed the number.</strong></p>
+<ul>
+<li>At JeanZay, before BLOOM-176B, the identical configuration gave noticeably different throughput every run, because other users' jobs shared the fabric at unpredictable intensity.</li>
+<li>When the noise floor moves by double digits between runs, you can't attribute a change to your tweak.</li>
+<li>The fix: just before the BLOOM-176B launch the team got an exclusive, isolated Slurm partition on the then-new A100s, and tuning finally became tractable.</li>
+<li>For serious pre-training performance work, insist on a dedicated, isolated network partition for the benchmarking phase.</li>
+</ul>
+<p>Covered in: <a href="../network/interconnects.html#shared-internode-network">Shared internode network</a>, <a href="../network/measuring-and-debugging.html#crucial-reproducibility-requirements">Crucial reproducibility requirements</a>.</p>
+<h3 id="3-compute-accelerators-and-memory">3. Compute, accelerators and memory</h3>
+<p><strong>3.1. Coherent (unified) memory hardware can OOM unpredictably, and the fix is a driver mode, not a code change.</strong></p>
+<ul>
+<li>On NVIDIA's coherent-memory platforms (DGX Station, DGX Spark, GH200, GB300), Linux can transparently borrow GPU HBM when it runs out of CPU RAM, but not the other way round, and <code>nvidia-smi</code> may not even show the borrowing.</li>
+<li>While tuning the maximum sequence length for Qwen3-32B post-training on a DGX Station, with optimizer states offloaded to CPU RAM, the team saw seemingly random alternation between CPU OOM and GPU OOM, depending on which background daemons happened to be running.</li>
+<li>The fix was a system setting: switching from the default NUMA coherent-memory mode to CDMM (Coherent Driver-based Memory Management, &quot;driver&quot; mode, where the NVIDIA driver alone manages GPU memory) via <code>/etc/modprobe.d/nvidia-openrm.conf</code> and a reboot. After that, CPU and GPU memory stopped silently borrowing from each other.</li>
+<li>If you see unexplained, apparently non-deterministic OOMs on coherent-memory NVIDIA hardware, check the <code>CoherentGPUMemoryMode</code> setting before debugging your training script.</li>
+</ul>
+<pre><code class="language-bash"># [GPU, untested] which coherent memory mode is the driver in?
+nvidia-smi -q | grep -i -A1 coherent
+</code></pre>
+<p>Covered in: <a href="../development/debugging-pytorch.html">Debugging PyTorch</a> (the coherent memory section, with the exact <code>modprobe</code> configuration).</p>
+<p><strong>3.2. Cryptic asynchronous CUDA errors may need the debug flag on permanently, and the flag may cost nothing.</strong></p>
+<ul>
+<li>CUDA runs asynchronously, so by the time an error surfaces the program has moved on: tracebacks point at the wrong line, and NCCL may refuse to produce one at all.</li>
+<li><code>CUDA_LAUNCH_BLOCKING=1</code> makes every kernel launch synchronous. Normally that costs real performance, but in exchange you get an accurate, in-context traceback.</li>
+<li>BLOOM-176B ran its <em>entire</em> training with <code>CUDA_LAUNCH_BLOCKING=1</code> (training otherwise hung for a reason never diagnosed), and saw no measurable throughput loss.</li>
+<li>Don't assume a debug flag is a performance tax until you've measured it for your case; it might also be the fix.</li>
+</ul>
+<pre><code class="language-bash">CUDA_LAUNCH_BLOCKING=1 torchrun --nproc_per_node 8 train.py   # [GPU, untested] compare tokens/s with and without
+</code></pre>
+<p>Covered in: <a href="../development/debugging-pytorch.html">Debugging PyTorch</a> (async CUDA bugs).</p>
+<p><strong>3.3. Memory profilers catch leaks that are invisible in code review.</strong></p>
+<ul>
+<li>While implementing a tricky custom <code>TiledMLP</code> <code>torch.autograd.Function</code>, a leak hid in the implementation and became obvious only when rendered by PyTorch's memory profiler: <code>torch.cuda.memory._record_memory_history()</code> plus <code>torch.cuda.memory._dump_snapshot()</code>, viewed at <a href="https://pytorch.org/memory_viz">pytorch.org/memory_viz</a>.</li>
+<li>Normal allocations appear as bars that start and end. The leaked tensors appeared as bars that started in one layer's forward pass and never ended, repeated for every following layer.</li>
+<li>Clicking a bar gives the Python traceback of the allocating line, turning &quot;there's a leak somewhere&quot; into &quot;line X of file Y&quot; in minutes.</li>
+<li>The same view is great for comparing how two implementations of &quot;the same&quot; algorithm use GPU memory over time, for example normal versus CPU-offloaded activation checkpointing.</li>
+</ul>
+<pre><code class="language-python"># [GPU, untested]
+import torch
+torch.cuda.memory._record_memory_history(max_entries=100_000)
+run_a_few_steps()                                   # your code
+torch.cuda.memory._dump_snapshot(&quot;snapshot.pickle&quot;) # drag this file onto pytorch.org/memory_viz
+torch.cuda.memory._record_memory_history(enabled=None)
+</code></pre>
+<p>Covered in: <a href="../development/debugging-pytorch.html">Debugging PyTorch</a> (PyTorch memory profiler), and reading memory snapshots in <a href="../training/profiling-and-optimization.html">Profiling and optimization</a>.</p>
+<p><strong>3.4. Precisely placed memory sampling finds framework bugs too, not just bugs in your code.</strong></p>
+<ul>
+<li>Explicit control over <em>when</em> you sample GPU and CPU memory (a &quot;sample now&quot; call at strategic points, via a helper derived from DeepSpeed's <code>see_memory_usage</code>) can isolate a leak a passive profiler misses.</li>
+<li>This technique exposed a real leak inside PyTorch's own <code>all_gather_object</code> (<a href="https://github.com/pytorch/pytorch/issues/150798">pytorch#150798</a>, since fixed), and several other PyTorch-internal leaks were found the same way.</li>
+<li>Releasing a Python variable doesn't free its tensor immediately, because Python's garbage collector runs on its own schedule. Call <code>gc.collect()</code> before sampling or you'll see phantom &quot;still allocated&quot; numbers.</li>
+<li>Turn this tooling off in production: frequent <code>gc.collect()</code> calls and sampling cost real time.</li>
+</ul>
+<p>Covered in: <a href="../development/debugging-pytorch.html">Debugging PyTorch</a> (strategic memory allocation tracing).</p>
+<p><strong>3.5. Hyper-Threading can wreck network throughput on some hardware; the only way to know is to benchmark both settings.</strong></p>
+<ul>
+<li>On AWS p4 nodes, enabling Hyper-Threading (HT, normally &quot;free&quot; extra CPU parallelism) cut network throughput to about a quarter of the non-HT value.</li>
+<li>Because of that measurement, HT stayed disabled on that setup, rather than left at the Slurm configuration's (often HT-enabled) default.</li>
+<li>It isn't universal in either direction: on other setups disabling HT (<code>--hint=nomultithread</code>) is what hurts.</li>
+<li>Benchmark your workload's network throughput with HT on and off on your hardware and keep the winner.</li>
+</ul>
+<p>Covered in: <a href="../orchestration/slurm/from-zero.html#hyper-threads-on-or-off">Hyper-Threads: on or off?</a>.</p>
+<h3 id="4-training-performance-and-throughput">4. Training performance and throughput</h3>
+<p><strong>4.1. Spec sheets give unreachable numbers: benchmark matmul on your own hardware.</strong></p>
+<ul>
+<li>Theoretical peak TFLOPS assume perfectly shaped matrices, no memory-movement overhead, and boost clocks held indefinitely. None of that happens in real training.</li>
+<li>Example: a B200 SXM may reach only ~1745 TFLOPS (bf16) out of a 2250 TFLOPS spec (~77.6%), and even that depends on the software-stack version and the exact matrix shapes.</li>
+<li>That's why MAMF (Maximum Achievable Matmul FLOPS) exists as a metric distinct from the spec: <code>mamf-finder.py</code> brute-force searches matmul shapes on your hardware and software and gives the realistic ceiling to optimize against.</li>
+<li>Once your measured training TFLOPS approach your MAMF (not the theoretical peak), stop optimizing and start training.</li>
+</ul>
+<p>Covered in: <a href="../compute/accelerators.html#mamf-and-msmf-comparison-table">MAMF and MSMF comparison table</a> (whose current B200 entry, from a newer software stack, is 1737 TFLOPS, 77.2%: a reminder that the number moves with the stack).</p>
+<p><strong>4.2. Throughput tuning is a journey with diminishing returns, and you have to decide when to stop.</strong></p>
+<ul>
+<li>In BLOOM-176B's tuning phase the team started below 100 TFLOPS per GPU and, over a few weeks of accumulated small wins (no silver bullet), reached 150 TFLOPS by launch.</li>
+<li>Once there was no meaningful headroom left relative to what similar setups achieved (~155 TFLOPS for 80GB A100s in 2022), they stopped optimizing and started training.</li>
+<li>Budget explicit calendar time for this phase before launch. Treated as an afterthought, it means either months of compute at low efficiency or an endlessly delayed launch.</li>
+</ul>
+<p>Covered in: <a href="../training/profiling-and-optimization.html#tflops-as-a-performance-metric">TFLOPS as a performance metric</a>.</p>
+<p><strong>4.3. Global batch size ramp-up matters far more than intuition suggests, especially with pipeline parallelism.</strong></p>
+<ul>
+<li>For BLOOM-176B, starting small was disastrous: GBS=16 gave only 8 TFLOPS, because with pipeline parallelism a small global batch means a large pipeline bubble of idle GPU time.</li>
+<li>The team started at GBS=192 (73 TFLOPS) and ramped up by 16 every ~9.77M samples, reaching GBS=2048 at 150 TFLOPS.</li>
+<li>Why ramp at all: early training is nearly random and doesn't yet benefit from large, precise batches, but there's no reason to pay the bubble cost of a tiny batch either.</li>
+<li>With pipeline parallelism, benchmark achieved TFLOPS at a few candidate starting GBS values before choosing a ramp schedule.</li>
+</ul>
+<p>Covered in: <a href="../training/stability.html#global-batch-size-ramp-up">Global batch size ramp up</a>.</p>
+<h3 id="5-dataloaders">5. DataLoaders</h3>
+<p><strong>5.1. Several DataLoaders in one process can hang randomly; the workaround may be to stop using one of them.</strong></p>
+<ul>
+<li>In BLOOM-176B the training DataLoader ran fine with <code>num_workers=2</code>, but adding an evaluation DataLoader caused random hangs, a known, long-unresolved class of PyTorch multi-worker DataLoader bugs.</li>
+<li>The workaround: <code>num_workers=0</code> for the eval loader only (accepting blocking IO, since eval ran rarely), and eventually dropping in-training eval altogether in favour of asynchronous evaluation of saved checkpoints with EleutherAI's <a href="https://github.com/EleutherAI/lm-evaluation-harness">lm-evaluation-harness</a> (a tool that runs standard benchmarks against a saved model).</li>
+<li>Bonus: removing in-loop eval also sped up training, since nothing shared resources with a second DataLoader any more.</li>
+</ul>
+<p>Covered in: <a href="../training/profiling-and-optimization.html#asynchronous-dataloader">Asynchronous DataLoader</a>.</p>
+<p><strong>5.2. A streaming DataLoader can quietly become the bottleneck when workers use a lot of memory and CPU RAM is limited.</strong></p>
+<ul>
+<li>In IDEFICS-80B the multimodal streaming DataLoader used huge, spiky amounts of memory per worker, and with ~1TiB of CPU RAM per node the team couldn't spawn enough workers to keep the GPUs fed.</li>
+<li>Unlike a GPU OOM, which fails loudly, an under-provisioned DataLoader just caps throughput without crashing anything.</li>
+<li>There was no time to engineer a fix, so the run finished at that DataLoader-bound ceiling.</li>
+<li>For multimodal or other memory-hungry streaming pipelines, budget CPU RAM for DataLoader workers as carefully as GPU memory for the model.</li>
+</ul>
+<p>Covered in: <a href="../training/profiling-and-optimization.html#asynchronous-dataloader">Asynchronous DataLoader</a>.</p>
+<h3 id="6-fault-tolerance-and-reliability">6. Fault tolerance and reliability</h3>
+<p><strong>6.1. Beware of newly minted GPUs: a fresh batch often has a 3-10% failure rate, worse for the first units of a new generation.</strong></p>
+<ul>
+<li>This is common enough that burn-in practices exist: OEMs typically burn in for 3-4 weeks, and cloud providers then run a further 2-3 day acceptance test, though not every provider does this rigorously or says whether it did.</li>
+<li>Plan for spare nodes (5-10% extra is reasonable) and make sure your scheduler can drain and replace bad nodes automatically.</li>
+<li>Once you've spent weeks separating good accelerators from bad ones, insist on a <strong>fixed</strong> allocation, so the good nodes stay yours across reboots instead of returning to a shared pool.</li>
+<li>Ask any provider how long and how rigorously your specific nodes were burned in. &quot;We burned them in&quot; without a duration is not an answer.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#always-plan-to-have-more-nodes-than-needed">Always plan to have more nodes than needed</a>, <a href="../platform/getting-compute.html#accelerators-need-to-be-burned-in">Accelerators need to be burned in</a>, <a href="../platform/getting-compute.html#keep-your-good-accelerators-on-reboot">Keep your good accelerators on reboot</a>.</p>
+<p><strong>6.2. Checkpoint overhead scales inversely with IO speed.</strong></p>
+<ul>
+<li>BLOOM-176B checkpoints were fast: 2.3TB in 40 seconds, every ~3 hours over a ~3-month run, about 720 checkpoints and only ~8 hours in total, a ~0.37% tax on wall-clock time.</li>
+<li>The same cadence on IO 5x slower (a normal gap between premium and standard cloud storage tiers) grows to about 2% of the run, a significant cost at scale.</li>
+<li>The math: measured save time x number of saves, compared with the expected training duration (the script at the top of this section does it).</li>
+<li>If you offload checkpoints to the cloud, always keep the two most recent ones locally for a fast resume, since the latest may be corrupt from a crash mid-save.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#frequent-checkpoint-saving">Frequent checkpoint saving</a>.</p>
+<p><strong>6.3. Build a kill switch: Slurm has no notion of group job ownership.</strong></p>
+<ul>
+<li>On an HPC cluster, if a colleague launches a long job or job array and goes to sleep, you can't stop or modify it without <code>sudo</code>: Slurm permissions are per user, not per team.</li>
+<li>BLOOM-176B's fix was a file-based kill switch: before each iteration the training loop checks for a specific file and, if it exists, saves a checkpoint and exits cleanly, so <em>any</em> team member can intervene.</li>
+<li>A second check at the very start of <code>main()</code> lets a long queued job array from a sleeping teammate &quot;burn through&quot; in seconds instead of each job running first.</li>
+<li>A few lines of code buy a lot of operational safety; build it into any shared multi-user training setup from day one.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#kill-switch">Kill switch</a>.</p>
+<p><strong>6.4. Watch the watchers: a scheduled job-status watchdog catches &quot;training silently stopped and nobody noticed&quot;.</strong></p>
+<ul>
+<li>During BLOOM-176B, <code>slurm-status.py</code> ran about hourly (through cron emulation on Slurm, since real <code>crontab</code> usually isn't available there) and checked whether the named job was running or at least queued.</li>
+<li>If neither, it emailed an alert, and it also appended its result to the main training log for a paper trail.</li>
+<li>It costs almost nothing and catches a whole class of expensive failures (hours or days of idle compute) that would otherwise surface only when someone happened to look.</li>
+<li>Don't just build the training loop; build the thing that watches it.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#is-job-running-watchdog">Is-job-running watchdog</a>.</p>
+<p><strong>6.5. Monitor disk usage and inode usage aggressively; checkpoint-heavy training eats storage faster than you expect.</strong></p>
+<ul>
+<li>BLOOM-176B checkpointing wrote about 18.4TB per day. On a shared cluster where other jobs write too, that rate burns through a &quot;should be plenty&quot; allocation fast.</li>
+<li><code>fs-watchdog.py</code> monitored both the disk-usage percentage and the inode usage of every relevant partition, since those are two independent ways to run out of space.</li>
+<li>Tune alert thresholds per partition rather than one blanket percentage; what matters is how many days of runway the free space gives at the current daily burn rate.</li>
+<li>This turns &quot;we ran out of disk at 3am and lost the run&quot; into &quot;we got an email three days ago and added storage in time&quot;.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#low-disk-space-alerts">Low disk space alerts</a>.</p>
+<p><strong>6.6. On some distributed filesystems 80% is the new 100%: free space in <code>df</code> is no guarantee.</strong></p>
+<ul>
+<li>Distributed storage is built from many physical disks (each typically 0.3-2TB). If rebalancing doesn't happen often enough, a single disk can hit 100% and reject writes while the aggregate <code>df</code> shows a comfortable 80% used.</li>
+<li>This exact failure hit IDEFICS-80B training, where 80% really was the practical ceiling.</li>
+<li>It depends on the technology: Lustre is known to have this problem (about 80% reliably usable); GPFS vendors say GPFS doesn't.</li>
+<li>Ask your storage provider what fraction of nominal capacity is reliably usable, and provision for that ceiling.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#low-disk-space-alerts">Low disk space alerts</a>.</p>
+<p><strong>6.7. Sometimes the right call is to work around a leak instead of chasing its root cause, especially under time pressure.</strong></p>
+<ul>
+<li>During IDEFICS-80B a slow CPU memory leak took several days to grow into an OOM crash, a timescale that makes root-causing painfully slow to iterate on.</li>
+<li>Rather than halting training to hunt for it, the team added an in-loop watchdog that checked resident memory and exited voluntarily past a threshold, so the next queued job resumed with memory reclaimed.</li>
+<li>Concrete pattern: once per iteration check <code>psutil.virtual_memory().percent</code> (or, for GPU, <code>torch.cuda.mem_get_info()</code> after <code>gc.collect()</code> and <code>torch.cuda.empty_cache()</code>) and exit cleanly past a threshold. Cheap insurance, worth adding whether or not you suspect a leak.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#dealing-with-slow-memory-leaks">Dealing with slow memory leaks</a>.</p>
+<p><strong>6.8. Handle forced preemption gracefully: know how much time your program needs to save and exit, and tell it up front.</strong></p>
+<ul>
+<li>Slurm jobs on shared clusters have hard time limits (about 20 hours is common; BLOOM-176B's jobs ran up to 100 hours), and letting the job be killed wastes every step since the last checkpoint.</li>
+<li>BLOOM-176B's approach A, <code>--exit-duration-in-mins</code>: tell the program at launch how many minutes it has. It starts a timer and, before each iteration, checks (with an <code>all_reduce</code>-synchronized flag so all ranks agree) whether the budget is spent; if so it saves and exits before Slurm's hard kill.</li>
+<li>Sizing the budget: one iteration plus one checkpoint save, then doubled for margin. Exiting early costs nothing; exiting late costs the whole checkpoint.</li>
+<li>Approach B: signals (<code>--signal=B:USR1@&lt;seconds&gt;</code>), trapped directly or relayed through the launcher for <code>torchrun</code>, <code>accelerate</code> or <code>deepspeed</code>, for when you can't compute a fixed time budget in advance.</li>
+</ul>
+<p>Covered in: <a href="../training/fault-tolerance-and-reproducibility.html#approach-a-tell-the-program-at-launch-time-when-it-should-start-the-exiting-process">Approach A: tell the program at launch time when it should start the exiting process</a>, and approach B in <a href="../training/fault-tolerance-and-reproducibility.html#dealing-with-forced-job-preemption">Dealing with forced job preemption</a>.</p>
+<h3 id="7-training-stability">7. Training stability</h3>
+<p><strong>7.1. Initialization std matters enormously; get it wrong and a large model can't get past the first few thousand iterations.</strong></p>
+<ul>
+<li>In the pre-BLOOM 104B experiments the team couldn't get past early training until they realized Megatron-LM's then-default <code>--init-method-std</code> of 0.02 was far too large for that hidden size.</li>
+<li>Two published formulas were considered: &quot;Transformers without Tears&quot;, <code>sqrt(2/(NHIDDEN*5))</code>, and the 530B paper's <code>sqrt(1/(NHIDDEN*3))</code>. The team chose the smaller (530B) one as more conservative.</li>
+<li>For BLOOM-176B's <code>NHIDDEN=14336</code> that gives <code>std=0.00482</code>, a tiny, easy-to-get-wrong number, and one of the main reasons the 176B run never fully diverged.</li>
+<li>Scale init std with the hidden size using a published formula; never copy a fixed constant from a smaller model's config.</li>
+</ul>
+<p>Covered in: <a href="../training/stability.html#initialization-std">Initialization std</a>.</p>
+<p><strong>7.2. Learn from a failed training instead of abandoning it: the failed 104B experiments produced the recipe that made BLOOM-176B work.</strong></p>
+<ul>
+<li>The 104B attempts kept diverging early. The post-mortem pointed at two suspects: fp16 (narrow dynamic range, prone to overflow) and training data full of uncleaned web-scraped garbage.</li>
+<li>For BLOOM-176B the team changed three things at once: fp16 to bf16, much cleaner data, and an added embedding LayerNorm. The combination made all the difference: an almost perfectly smooth loss curve, with one spike that recovered within 200 steps.</li>
+<li>Note that changing three things at once means nobody knows which one mattered; at that scale the team couldn't afford separate runs. The point isn't &quot;use bf16&quot;: a failed multi-month experiment, analysed rather than written off, produced the fix for the next, larger attempt.</li>
+</ul>
+<p>Covered in: <a href="../training/stability.html#a-very-failed-training">A very failed training</a>.</p>
+<h3 id="8-cloud-providers-and-procurement">8. Cloud providers and procurement</h3>
+<p><strong>8.1. A crowd on the support call is not support; negotiate real remedies into the contract.</strong></p>
+<ul>
+<li>&quot;We will do our best&quot; often means ten-plus people on an escalation call with no ability to fix anything. Reaching the two people who matter, one product manager and the responsible engineer, can take weeks to months (faster with personal connections).</li>
+<li>The customer is legally obliged to keep paying and generally can't break the contract unilaterally, so &quot;best effort&quot; is one-sided unless the contract has quantifiable delivery metrics for each critical component.</li>
+<li>The most useful remedy to negotiate: payment pauses until a defined problem is fixed, the one lever that gives the provider a reason to prioritize the fix.</li>
+<li>Negotiate this <em>before</em> signing; afterwards you have essentially no leverage.</li>
+</ul>
+<p>Covered in: <a href="../platform/getting-compute.html#the-we-will-do-our-best-clause">The &quot;we will do our best&quot; clause</a>.</p>
+<p><strong>8.2. Accelerators are what fail: about 95% of hardware failures on a cluster are the accelerators, not CPUs, storage or network gear.</strong></p>
+<ul>
+<li>Let this shape fault-tolerance planning: storage and network resilience don't deserve the same engineering effort as GPU-failure resilience.</li>
+<li>Ask for a fast, ideally automated replacement path (an API, not a support ticket), how many spares the provider keeps, and how quickly it commits to swapping a failed unit.</li>
+<li>Since instant replacement is rarely available, the standard mitigation is to pay for ~10% more nodes than needed, using the extras for day-to-day development and as instant fallbacks when a production node fails.</li>
+<li>That overprovisioning is real money, but cheap compared with a multi-hundred-GPU job stalled on a support ticket.</li>
+</ul>
+<p>Covered in: <a href="../platform/getting-compute.html#dealing-with-accelerator-failures">Dealing with accelerator failures</a>.</p>
+<p><strong>8.3. The network can take accelerator memory you paid for, without telling you.</strong></p>
+<ul>
+<li>On one cloud, about 5GiB of <em>each</em> GPU's memory was already used by the provider's networking software before any user workload started. This was found after signing, not disclosed during sales.</li>
+<li>As accelerator memory grows (141GiB on H200, about 180GiB usable on B200), a fixed 5GiB matters proportionally less, but on an 80GiB H100 it can be the difference between a batch size fitting and an OOM.</li>
+<li>Ask before signing exactly how much GPU memory the provider's software reserves and how much is available to you, and get the number in writing. You can also check it yourself on a fresh node:</li>
+</ul>
+<pre><code class="language-bash"># [GPU, untested] memory already in use before you run anything
+nvidia-smi --query-gpu=index,memory.used,memory.total --format=csv
+</code></pre>
+<p>Covered in: <a href="../platform/getting-compute.html#does-the-network-steal-accelerator-memory">Does the network steal accelerator memory?</a>.</p>
+<p><strong>8.4. Provider software stacks can trap you on old, unsupported OS versions.</strong></p>
+<ul>
+<li>More than once, a provider's required driver, orchestration or monitoring stack didn't support any Ubuntu release newer than a fairly old one, forcing an outdated OS under a modern ML stack.</li>
+<li>Nobody demos &quot;which Ubuntu can I run&quot;, so it's easy to miss during evaluation, but it bites later: security patches, kernel features, drivers and some ML dependencies assume a newer base OS.</li>
+<li>Ask during evaluation, not after signing, which OS and software versions are supported and required, and get a commitment on how quickly newer ones will be supported.</li>
+</ul>
+<p>Covered in: <a href="../platform/getting-compute.html#up-to-date-software-and-os-versions">Up-to-date software and OS versions</a>.</p>
+<h3 id="9-debugging-methodology">9. Debugging methodology</h3>
+<p>These lessons come from <a href="https://github.com/stas00/the-art-of-debugging">The Art of Debugging</a>. This book teaches the tools (<a href="../foundations/linux-and-os.html#gdb-basics">gdb basics</a>, <a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now">py-spy</a>, <a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path">shared libraries</a>) but not all of the methodology, so the lessons are kept here in full.</p>
+<p><strong>9.1. Reduce a failing import or component to a one-liner instead of debugging it inside a large, slow-starting program.</strong></p>
+<ul>
+<li>If a large program fails at startup (a failing <code>import torch</code>, or a model, tokenizer or config load failing on a missing Hugging Face auth token), extract exactly that operation into a standalone one-line command and reproduce it there.</li>
+<li>Fast debug cycles and small reproductions are the two most important prerequisites for successful debugging. At ten minutes per attempt over thirty attempts, you lose track of which hypothesis you actually tested.</li>
+<li>One-liners such as <code>python -c &quot;import torch&quot;</code> are atomic (findable in shell history), trivially copy-pasted to a remote machine, and easy to save in a file of reusable variations.</li>
+<li>The same trick lets you pre-download and cache a large model or dataset in parallel with other work:</li>
+</ul>
+<pre><code class="language-bash">python -c &quot;import torch; print(torch.__version__, torch.cuda.is_available())&quot;
+python -c 'import sys; from transformers import AutoTokenizer; AutoTokenizer.from_pretrained(sys.argv[1])' t5-small
+</code></pre>
+<p>The first prints the torch version and whether CUDA is visible, in about a second, instead of after your whole program's startup; the second only downloads and caches the <code>t5-small</code> tokenizer.</p>
+<p>Read more: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/methodology/README.md#the-power-of-one-liner-programs">The power of one-liner programs</a>.</p>
+<p><strong>9.2. Bisect to find the breaking commit instead of reading hundreds of commits by eye.</strong></p>
+<ul>
+<li>The common scenario: you were pinned to a known-good release, upgraded to bleeding-edge <code>main</code> for a new feature, and something broke somewhere in the hundreds of commits in between.</li>
+<li><code>git bisect</code> is a binary search: give it one good and one bad commit, it checks out the midpoint, you test and mark it <code>good</code> or <code>bad</code>, repeat. 1,024 candidate commits take about 10 rounds.</li>
+<li>Standard handles for complications: <code>git bisect skip</code> for commits you can't test, and custom terms (<code>git bisect start --term-new=fixed --term-old=broken</code>) when you're hunting for the commit that <em>fixed</em> something rather than broke it.</li>
+<li>When it converges, the first bad commit's GitHub page almost always links to the PR that introduced it, an immediate, informed place to ask for help.</li>
+</ul>
+<p>If the test can be scripted, <code>git bisect run</code> does every round for you: the command's exit code (0 = good, non-zero = bad) is the verdict. A self-contained demo, a repository of 16 commits where commit 11 introduces a bug:</p>
+<pre><code class="language-bash"># bisect_demo.sh - 16 commits, commit 11 introduces a bug; let git find it
+git init -q . &amp;&amp; git config user.email d@d &amp;&amp; git config user.name d
+for i in $(seq 1 16); do
+  if [ $i -ge 11 ]; then bug=&quot;/0&quot;; else bug=&quot;&quot;; fi
+  echo &quot;x = $i$bug&quot; &gt; lib.py                 # commits 11..16: ZeroDivisionError on import
+  git add lib.py &amp;&amp; git commit -qm &quot;commit $i&quot;
+done
+git bisect start HEAD HEAD~15 &gt;/dev/null     # bad = newest, good = commit 1
+git bisect run python3 -c &quot;import lib&quot; 2&gt;/dev/null | grep -E &quot;first bad commit|^    commit|^running&quot;
+git bisect reset &gt;/dev/null
+</code></pre>
+<p><strong>[ran]</strong> in an empty directory, output:</p>
+<pre><code class="language-text">running 'python3' '-c' 'import lib'
+running 'python3' '-c' 'import lib'
+running 'python3' '-c' 'import lib'
+running 'python3' '-c' 'import lib'
+cb7fa6171e2359bdb76fb1f198b43837c41b5ce1 is the first bad commit
+    commit 11
+bisect found first bad commit
+Previous HEAD position was cb7fa61 commit 11
+Switched to branch 'master'
+</code></pre>
+<p>How to read it: four <code>running</code> lines means four test rounds for 15 candidate commits (<span class="math inline"><span class="math-inline">\lceil\log_2 16\rceil = 4</span></span>), and git names commit 11 as the first bad one. In real use the test is your one-liner from 9.1 or a single pytest test.</p>
+<p>Read more: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/methodology/README.md#finding-a-breaking-commit-by-bisecting-revisions">Finding a breaking commit by bisecting revisions</a>.</p>
+<p><strong>9.3. Get a backtrace from the core file to turn a useless native crash into one actionable line.</strong></p>
+<ul>
+<li>When a compiled extension (a CUDA kernel, NCCL, any C/C++ library) segfaults, Python can't raise a meaningful exception; you get nothing, or an unreadable native dump.</li>
+<li>Load the core file into gdb with <code>gdb -c /path/to/core /path/to/program</code> and type <code>bt</code>: it walks the call stack at the moment of the crash and shows the exact source line. <code>bt full</code> also prints local variable values (a pointer showing <code>0x0</code>, for example, reveals it was dereferenced uninitialized).</li>
+<li>For multi-threaded programs (essentially every serious PyTorch/CUDA program), <code>thread apply all bt</code> shows every thread's stack, since the real cause sometimes lives in a different thread from the one that crashed.</li>
+<li>This is how real PyTorch crash reports get root-caused.</li>
+</ul>
+<pre><code class="language-bash">ulimit -c unlimited                        # allow core files (see gdb basics for where they go)
+python train.py                            # ... Segmentation fault (core dumped)
+gdb -c /path/to/core $(which python)       # program = the binary that crashed: python, not train.py
+(gdb) bt                                   # stack of the crashing thread
+(gdb) bt full                              # same, with local variables
+(gdb) thread apply all bt                  # every thread
+</code></pre>
+<p>Read more: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/compiled-programs/README.md#get-the-backtrace-from-the-core-file">Get the backtrace from the core file</a>.</p>
+<p><strong>9.4. Backtrace a live, hung process instead of waiting for it to crash or time out.</strong></p>
+<ul>
+<li>A deadlock isn't a segfault: the process is alive but makes no progress, so there's no crash to produce a core dump.</li>
+<li><code>gdb --pid=&lt;pid&gt;</code> attaches to the running process without restarting it, and <code>thread apply all bt</code> shows what every thread is doing. This is how a real PyTorch deadlock was once diagnosed.</li>
+<li>To keep the state for later analysis (or free the resources right away), <code>gcore &lt;pid&gt;</code> writes a core file of the running process, and <code>kill -ABRT &lt;pid&gt;</code> makes the process dump core and die. (The original lesson says both terminate the process; <code>gcore</code> as shipped with gdb detaches and leaves it running, so check on your system before relying on either behaviour.)</li>
+<li>Use live attach for spinning or fully hung processes, and the core-file technique of 9.3 for processes that already crashed.</li>
+<li>If the hang is in Python code, <code>py-spy dump --pid &lt;pid&gt;</code> is the fastest answer (<a href="../foundations/linux-and-os.html#py-spy-what-is-python-doing-right-now">py-spy</a>).</li>
+</ul>
+<pre><code class="language-bash">gdb --pid=4033 -batch -ex &quot;thread apply all bt&quot; &gt; stacks.txt   # attach, dump all stacks, detach
+gcore 4033                                                      # write core.4033 for later
+py-spy dump --pid 4033 --native                                 # Python + native frames
+</code></pre>
+<p>Read more: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/compiled-programs/README.md#get-the-backtrace-from-the-still-running-process">Get the backtrace from the still running process</a>, <a href="https://github.com/stas00/the-art-of-debugging/tree/master/pytorch#py-spy">py-spy</a>. Hangs across many ranks: <a href="../development/debugging-distributed.html">Debugging distributed</a>.</p>
+<p><strong>9.5. Run flaky or segfaulting tests under gdb from the start instead of trying to reproduce the crash blind.</strong></p>
+<ul>
+<li>For a <code>pytest</code> test that segfaults intermittently, launch the whole invocation under gdb rather than trying to catch the crash separately afterwards.</li>
+<li>When it segfaults, gdb stops at its prompt at that exact moment; <code>bt</code> or <code>bt full</code> works as in 9.3, and <code>c</code> continues if you want.</li>
+<li>This sidesteps &quot;it didn't crash when I tried to reproduce it separately&quot;.</li>
+<li>Together with the two backtrace techniques above, this is enough to diagnose roughly 95% of real-world native crashes in ML codebases.</li>
+</ul>
+<pre><code class="language-bash">gdb -ex r --args python -m pytest -sv tests/test_failing.py   # -ex r: start running immediately
+(gdb) bt
+(gdb) c
+</code></pre>
+<p>Read more: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/compiled-programs/README.md#run-the-program-under-gdb">Run the program under gdb</a>. Writing tests that catch these crashes earlier: <a href="../development/testing.html">Testing</a>.</p>
+<p><strong>9.6. A missing symbol is usually a link-time or library-version problem, and <code>nm</code> lets you check what's actually there.</strong></p>
+<ul>
+<li><code>undefined symbol: util_b</code> at runtime, even though the function exists in your codebase, is often caused by an older build of a shared library being loaded (for example via an <code>LD_LIBRARY_PATH</code> pointing at it).</li>
+<li><code>nm</code> lists the symbols (names of functions and global variables) a binary or library defines or needs. In <code>nm ./your_program | grep symbol_name</code>, <code>T</code> means defined there and <code>U</code> means referenced but undefined (to be found in some other library).</li>
+<li><code>ldd</code> shows which library files a binary actually resolved to (<a href="../foundations/linux-and-os.html#shared-libraries-and-ld_library_path">Shared libraries and LD_LIBRARY_PATH</a>). With both, you can compare two same-named builds and see that one has the symbol and the other doesn't.</li>
+<li><code>nm</code> for &quot;is the symbol here?&quot; plus <code>ldd</code> for &quot;which file got loaded?&quot; resolves most missing-symbol errors.</li>
+</ul>
+<p>A self-contained demo with two builds of &quot;the same&quot; library:</p>
+<pre><code class="language-bash"># nm_demo.sh - two builds of &quot;the same&quot; library, only the new one defines util_b
+echo 'int util_a(void){return 1;}'                               &gt; old.c
+echo 'int util_a(void){return 1;} int util_b(void){return 2;}'  &gt; new.c
+echo 'int util_b(void); int main(void){return util_b();}'        &gt; app.c
+cc -shared -fPIC old.c -o libold.so
+cc -shared -fPIC new.c -o libnew.so
+cc -c app.c -o app.o
+echo &quot;--- app.o needs:&quot;;      nm app.o      | grep util
+echo &quot;--- libold.so defines:&quot;; nm libold.so | grep util
+echo &quot;--- libnew.so defines:&quot;; nm libnew.so | grep util
+</code></pre>
+<p><strong>[ran]</strong> on macOS (which prefixes C symbols with <code>_</code>; on Linux the names appear without it), output:</p>
+<pre><code class="language-text">--- app.o needs:
+                 U _util_b
+--- libold.so defines:
+00000000000002d0 T _util_a
+--- libnew.so defines:
+00000000000002d0 T _util_a
+00000000000002d8 T _util_b
+</code></pre>
+<p>How to read it: the application needs <code>util_b</code> (<code>U</code>), only <code>libnew.so</code> defines it (<code>T</code>), so if <code>ldd</code> shows the application resolving to the old build, you have found your &quot;undefined symbol&quot; error. On Linux use <code>nm -D</code> for the dynamic symbol table of a stripped <code>.so</code>.</p>
+<p>Read more: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/compiled-programs/README.md#nm">nm</a>.</p>
+<h2 id="you-can-now-read">You can now read</h2>
+<p>You have reached the end of the book. From here, the logbooks above are the natural next step: with every chapter behind you, you can read the BLOOM-176B, OPT-175B and IDEFICS-80B chronicles and the Llama 3, MegaScale and Apertus infrastructure sections and follow every decision in them.</p>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
+<h2 id="further-reading">Further reading</h2>
+<ul>
+<li>Stas Bekman, <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a>, the original source of much of this book's material, and his <a href="https://github.com/stas00/the-art-of-debugging">The Art of Debugging</a>, the source of section 9 of the lessons.</li>
+<li>Stas Bekman, <a href="https://www.youtube.com/watch?v=IBJUt9JPKHk">Building resilient ML Engineering skills</a>, a talk given on 2026-01-10 for the <a href="https://github.com/gpu-mode">GPU MODE community</a>: the performance reality of accelerators, network and storage, and how each one can decide the performance of the whole cluster. A spoken companion to <a href="../platform/getting-compute.html">Getting compute</a> and the lessons above.</li>
+<li>Stas Bekman, <a href="https://github.com/stas00/python-cookbook">Python Cookbook</a>: everyday Python and standard-library recipes, the third of his open books.</li>
+<li>Everything in <a href="#similar-online-guides">Similar online guides</a>, <a href="#public-llm-and-vlm-training-logbooks">Public LLM and VLM training logbooks</a> and <a href="#hardware-setup-logbooks">Hardware setup logbooks</a> above.</li>
+</ul>
+
+</article>
+<footer><a class="prev" href="../development/testing.html">&larr; Writing and Running Tests</a><a class="next" href="../build/README.html">Book Building &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

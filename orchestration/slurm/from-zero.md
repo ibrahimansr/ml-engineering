@@ -1,16 +1,17 @@
 # Slurm From Zero
 
-The other Slurm chapters in this book are cheatsheets written for someone who already uses Slurm every day. This chapter is the on-ramp they assume. It starts with what a batch scheduler is, explains how Slurm is put together and what happens between typing `sbatch` and your processes running on GPUs, and then builds up to complete multi-node PyTorch jobs that survive preemption. It ends with enough administration to understand what the people running the cluster do, and with a comparison against Kubernetes.
+Unless you have a dedicated cluster that is completely under your control, you will almost certainly share GPUs with other people through Slurm; and even when an HPC centre gives you a dedicated partition, you still go through Slurm to use it. This chapter is both the on-ramp and the reference. It starts with what a batch scheduler is, explains how Slurm is put together and what happens between typing `sbatch` and your processes running on GPUs, and then builds up to complete multi-node PyTorch jobs that survive preemption. Along the way it collects the day-to-day recipes that make Slurm bearable (reusing allocations, rejoining nodes, finding faulty nodes, emulating cron, ready-made launcher scripts), the settings that silently cost performance, and enough administration to understand, or do, what the people running the cluster do. It ends with a comparison against Kubernetes and the other orchestrators you'll meet.
 
 Conventions:
 
 - **Nothing Slurm-related was run while writing this chapter.** Slurm daemons need Linux and a cluster, and this chapter was written on a Mac. All `sinfo`/`squeue`/`sacct`/`scontrol` output below is **sketched**: it follows the real formats (as of Slurm 23.x-25.x), but the job IDs, node names and numbers are made up. All `#SBATCH` scripts and config files are **untested** as written.
-- The Python helpers (the output parser, the GPU-hours and fair-share calculator, the training script and a local `srun` emulator) **were run**, on macOS with CPython 3.14 and PyTorch 2.15 on CPU. Their output is pasted as-is.
+- The Python helpers (the output parser, the GPU-hours and fair-share calculator, the training script and a local `srun` emulator) **were run**, on macOS with CPython 3.14 and PyTorch 2.15 on CPU. Their output is pasted as-is. Two shell one-liners from the recipes (the hostfile generator and the "Kill task failed" node-list extractor) were run on the same Mac against a stub `scontrol` that only implements `show hostnames`; that is said where it applies.
 - Slurm's spelling: the project now writes "Slurm" (it used to be "SLURM", for Simple Linux Utility for Resource Management). Both appear in this book.
 
 ## Prerequisites
 
 - [Linux and the OS](../../foundations/linux-and-os.md): processes, users and UIDs, signals, cgroups, systemd. Slurm is a layer on top of all of these.
+- [Computer architecture: cores and hardware threads](../../foundations/computer-architecture.md#cores-and-hardware-threads): what a "CPU" means to Slurm when hyper-threading is on.
 - [Networking](../../foundations/networking.md): hostnames, ports, InfiniBand/RoCE. Multi-node training needs ranks to find each other over the network.
 - [Distributed systems](../../foundations/distributed-systems.md): controllers, heartbeats, rendezvous, failure detection.
 - [Containers and virtualization](../../foundations/containers-and-virtualization.md): images and namespaces, for the containers-on-Slurm section.
@@ -20,13 +21,15 @@ Conventions:
 - [Collectives internals: timeouts and hangs](../../network/collectives-internals.md#timeouts-and-hangs): why one dead rank makes every other rank hang in an all-reduce.
 - Forward links (later chapters, not needed first): [Kubernetes from zero](../kubernetes-from-zero.md) and [Orchestration internals](../internals.md), referenced for comparisons and for how the scheduler works inside.
 
-After this chapter, the deeper material is:
+Where the reference material lives in this chapter, if you are coming back to look something up:
 
-- [SLURM for Users](users.md) - a long list of recipes (reusing allocations, rejoining nodes, finding faulty nodes, crontab emulation).
-- [SLURM Administration](admin.md) - admin recipes (pdsh, draining, undraining, auto-reboot).
-- [SLURM Performance](performance.md) - `--cpus-per-task` inheritance and hyper-threads.
-- [Launchers](launchers/README.md) - ready-made `torchrun`, `accelerate`, Lightning and `srun` launcher scripts.
-- [Orchestration internals](../internals.md) - how `select/cons_tres`, topology plugins, multifactor priority, backfill and preemption work inside.
+- [CPU cores per task and hyper-threads](#cpu-cores-per-task-and-hyper-threads) - the `--cpus-per-task` inheritance trap and whether to use hyper-threads.
+- [Ready-made launcher scripts](#ready-made-launcher-scripts) - complete `torchrun`, `accelerate`, Lightning and `srun` launcher scripts, and the `SLURM_PROCID` interpolation trap.
+- [Day-to-day user recipes](#day-to-day-user-recipes) - reusing and rejoining allocations, node lists, state codes, accounting, fair share, kill switches.
+- [Finding faulty nodes](#finding-faulty-nodes-and-excluding-them) and [py-spy on every node](#py-spy-traces-from-every-node).
+- [Cron and self-perpetuating jobs](#cron-and-self-perpetuating-jobs).
+- [Admin recipes](#a-small-cluster-admin-intro) - pdsh, draining and undraining, safe reboots, changing time limits.
+- [Orchestration internals](../internals.md) (a later chapter) - how `select/cons_tres`, topology plugins, multifactor priority, backfill and preemption work inside.
 
 
 ## Why a batch scheduler exists
@@ -69,7 +72,7 @@ The key properties a training cluster needs, and that a batch scheduler provides
 | Time limits | Every job declares a maximum runtime, so the scheduler can plan and nobody holds nodes forever |
 | Accounting | Every job's resource use is recorded per user and account |
 
-Slurm is the dominant open-source batch scheduler: it runs a majority of the TOP500 (the twice-yearly list of the world's fastest supercomputers) and most academic and many industrial GPU clusters. Alternatives you may hear of are PBS/Torque, LSF (IBM) and HTCondor, plus Kubernetes-based stacks (covered at the [end](#slurm-vs-kubernetes)). SchedMD, the company that develops Slurm, was acquired by NVIDIA (announced December 2025), with Slurm staying open source.
+Slurm is the dominant open-source batch scheduler: it runs a majority of the TOP500 (the twice-yearly list of the world's fastest supercomputers) and most academic and many industrial GPU clusters. It has been around for more than two decades, you are practically guaranteed to find it in any HPC environment, and most GPU cloud providers offer it. Alternatives you may hear of are PBS/Torque, LSF (IBM) and HTCondor, plus Kubernetes-based stacks (covered at the [end](#slurm-vs-kubernetes), together with the [other orchestrators](#other-orchestrators)). SchedMD, the company that develops Slurm, was acquired by NVIDIA (announced December 2025), with Slurm staying open source.
 
 You can see the scheduler's view of a cluster with one command. This is the first thing to run on any new cluster:
 
@@ -213,7 +216,7 @@ Step by step:
 9. `slurmd` runs the epilog, kills any leftover processes in the job's cgroups, and the nodes return to `idle`. While this cleanup runs the job shows state `CG` (completing).
 10. The controller sends the final record (start, end, nodes, exit code, TRES used: the CPUs, memory and GPUs consumed; TRES is defined [below](#cpus-memory-gpus-gres-and-tres)) to `slurmdbd`.
 
-The two most common beginner mistakes both come from this picture: running `python train.py` in the batch script *without* `srun` (it runs once, on one node, while the other nodes sit idle), and expecting `SLURM_PROCID` in the batch script to differ per rank (it is 0, because the batch script is one process; see [early interpolation](users.md#slurm_procid-early-interpolation)).
+The two most common beginner mistakes both come from this picture: running `python train.py` in the batch script *without* `srun` (it runs once, on one node, while the other nodes sit idle), and expecting `SLURM_PROCID` in the batch script to differ per rank (it is 0, because the batch script is one process; see [early interpolation](#slurm_procid-early-interpolation)).
 
 
 ## Core concepts
@@ -227,7 +230,7 @@ The two most common beginner mistakes both come from this picture: running `pyth
 - A **node** is one computer, as Slurm knows it: a name, a CPU layout (sockets, cores, threads), memory, GRES (GPUs) and **features** (free-form tags like `h100,ib`, which jobs can require with `--constraint`).
 - A **partition** is a named group of nodes with its own policy: maximum time limit, who may use it, default and maximum resources per job, priority tier. Think of it as a queue. A node can be in several partitions (e.g. `gpu` and `gpu-preempt`). On the command line, `-p` selects one.
 
-Node states you'll see in `sinfo` (full list in [node state codes](users.md#node-state-codes)):
+Node states you'll see in `sinfo` (full list in [node state codes](#node-state-codes)):
 
 | State | Meaning |
 |---|---|
@@ -294,7 +297,7 @@ JobID             JobName  AllocCPUS      State ExitCode    Elapsed
 
 ### CPUs, memory, GPUs, GRES and TRES
 
-- **CPU** in Slurm means whatever the node exposes as the smallest allocatable unit: usually a hardware thread if hyper-threading is on (`ThreadsPerCore=2`), so a 2x48-core node is `CPUs=192`. See [hyper-threads](users.md#hyper-threads) and [performance](performance.md#to-enable-hyper-threads-or-not).
+- **CPU** in Slurm means whatever the node exposes as the smallest allocatable unit: usually a hardware thread if hyper-threading is on (`ThreadsPerCore=2`), so a 2x48-core node is `CPUs=192`. See [hyper-threads on or off](#hyper-threads-on-or-off).
 - **Memory** is requested per node (`--mem`), per CPU (`--mem-per-cpu`) or per GPU (`--mem-per-gpu`), in MB by default. `--mem=0` means "all of the node's memory".
 - **GRES** (generic resources) are countable devices that aren't CPUs or memory, defined in `gres.conf`. GPUs are `gpu`, optionally typed: `gpu:h100:8`. You request them with `--gres=gpu:8` (per node) or the newer `--gpus-per-node=8`, `--gpus=16` (per job) or `--gpus-per-task=1`.
 - **TRES** (trackable resources) is the umbrella accounting name: `cpu`, `mem`, `node`, `gres/gpu`, `billing`, etc. Limits and accounting are expressed in TRES: `MaxTRESPerUser=gres/gpu=16`.
@@ -337,7 +340,7 @@ $ sprio -l -j 4261
            4261 gpu            bob  ablate       4180          0        120       3930        130          0          0
 ```
 
-(Sketched.) `sprio` shows the components of a pending job's priority; `sshare` (shown in [users.md](users.md#fairshare)) shows usage and fair-share factors.
+(Sketched.) `sprio` shows the components of a pending job's priority; `sshare` (shown in [FairShare scores](#fairshare-scores-with-sshare)) shows usage and fair-share factors.
 
 
 ## Looking at the cluster: sinfo, squeue, sacct, scontrol
@@ -381,7 +384,7 @@ $ squeue -p gpu
  4251_2       gpu    sweep    alice  R      12:01      1 gpu017
 ```
 
-(Sketched.) Columns: `ST` is the state code (`PD` pending, `R` running, `CG` completing, `CF` configuring/booting nodes, `S` suspended; full list in [job state codes](users.md#job-state-codes)). For running jobs the last column is the node list; for pending jobs it is the **reason** in parentheses. `4251_[3-9]` is a job array with tasks 3-9 still pending.
+(Sketched.) Columns: `ST` is the state code (`PD` pending, `R` running, `CG` completing, `CF` configuring/booting nodes, `S` suspended; full list in [job state codes](#job-state-codes)). For running jobs the last column is the node list; for pending jobs it is the **reason** in parentheses. `4251_[3-9]` is a job array with tasks 3-9 still pending.
 
 Useful variants:
 
@@ -469,7 +472,7 @@ gpu047$ exit
 salloc: Relinquishing job allocation 4270
 ```
 
-(Sketched.) Where the shell runs depends on the site: with `LaunchParameters=use_interactive_step` (common on recent installs) you land on the first compute node, as above. Without it, the shell stays **on the login node** with `SLURM_JOB_ID` set, and you must use `srun` to run anything on the allocated node. Check with `hostname` before running anything heavy. Exiting the shell releases the allocation; to keep it alive across disconnects see [keeping an salloc alive](users.md#how-to-keep-an-salloc-allocation-alive-while-exiting-its-shell) and [rejoining it](users.md#how-to-rejoin-the-allocated-node-interactively).
+(Sketched.) Where the shell runs depends on the site: with `LaunchParameters=use_interactive_step` (common on recent installs) you land on the first compute node, as above. Without it, the shell stays **on the login node** with `SLURM_JOB_ID` set, and you must use `srun` to run anything on the allocated node. Check with `hostname` before running anything heavy. Exiting the shell releases the allocation; to keep it alive across disconnects see [keeping an salloc alive](#keeping-an-salloc-allocation-alive-after-you-exit-its-shell) and [rejoining it](#rejoining-an-allocation-interactively).
 
 ### srun: launching a step
 
@@ -561,7 +564,7 @@ NVIDIA H100 80GB HBM3
 | `--exclude=NODES` / `--nodelist=NODES` | Avoid / require specific nodes. `--exclude` is how you dodge a known-bad node |
 | `--switches=1@2:00:00` | Topology: at most 1 leaf switch, wait up to 2 h for it ([internals](../internals.md#topology-topologytree)) |
 | `--hint=nomultithread` | Use physical cores only |
-| `--export=ALL` / `NONE` / `VAR=val` | Which environment to pass in (default ALL); see [users.md](users.md#environment-variables) |
+| `--export=ALL` / `NONE` / `VAR=val` | Which environment to pass in (default ALL); see [which environment the job inherits](#which-environment-the-job-inherits) |
 | `--chdir=DIR` | Working directory (default: where you ran `sbatch`) |
 | `--mail-type=END,FAIL --mail-user=me@x` | Email on events, if the site configured mail |
 | `--begin=now+1hour` | Don't start before this time |
@@ -605,12 +608,108 @@ source .venv/bin/activate
 export MASTER_ADDR=$(hostname)
 export MASTER_PORT=$((10000 + SLURM_JOB_ID % 50000))
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK   # see performance.md: srun may not inherit it
+export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK   # srun may not inherit it, see "CPU cores per task" below
 
 srun --kill-on-bad-exit=1 python -u train.py --config configs/sft.yaml
 ```
 
 Untested. `train.py` is the script in the [multi-node section](#multi-node-pytorch-training); it reads `SLURM_PROCID`/`SLURM_LOCALID` itself. `git status --porcelain` prints one line per modified file, so `dirty=0` means a clean tree. `--kill-on-bad-exit=1` kills all ranks as soon as one exits non-zero (instead of leaving the rest hung in a collective), and `python -u` disables output buffering so log lines appear immediately.
+
+
+## CPU cores per task and hyper-threads
+
+Two Slurm settings decide how many CPU cores your processes actually get, and both fail silently: the job runs, just slower. This section is about those two.
+
+### srun may not inherit the CPU count
+
+A training process needs CPU cores: at least one for the Python process that drives each GPU, plus a few more for its `DataLoader` worker processes, all running in parallel. With 8 GPUs per node and 2 `DataLoader` workers per GPU, that is at least $8 \cdot (1 + 2) = 24$ cores per node.
+
+You ask for cores with `--cpus-per-task` on `sbatch` or `salloc`. Originally `srun` inherited that value, so a script like this gave `myprogram` 48 cores:
+
+```bash
+#SBATCH --cpus-per-task=48
+[...]
+
+srun myprogram
+```
+
+That changed. From the `sbatch` man page:
+
+> NOTE: Beginning with 22.05, srun will not inherit the --cpus-per-task value requested by salloc or sbatch. It must be requested again with the call to srun or set with the SRUN_CPUS_PER_TASK environment variable if desired for the task(s).
+
+So with the script above, on a current Slurm, `myprogram` gets **1 core** (unless the site changed `srun`'s default), and its 16 `DataLoader` workers share it. In practice the change landed somewhere in the 22.05 series: Slurm 22.05.09 was observed to still inherit the value, and the whole 23.x series doesn't.
+
+You can check what a process may run on with `os.sched_getaffinity(0)`, which returns the set of CPU cores the kernel will schedule the calling process on (Linux only; the cgroup and CPU-affinity mechanics are in [Linux and the OS](../../foundations/linux-and-os.md)). A test job:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=test-cpu-cores-per-task
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=48   # adapt to your env if you have less than 48 cpu cores
+#SBATCH --time=0:10:00
+#SBATCH --partition=x        # adapt to your env to the right partition name
+#SBATCH --output=%x-%j.out
+
+srun python -c 'import os; print(f"visible cpu cores: {len(os.sched_getaffinity(0))}")'
+```
+
+Untested. How to read the output: `visible cpu cores: 48` means you are not affected; `visible cpu cores: 1`, or anything below 48, means `srun` did not inherit the value. Any of these three fixes works:
+
+```bash
+#SBATCH --cpus-per-task=48
+[...]
+srun --cpus-per-task=48 myprogram          # 1. repeat it on srun
+```
+
+```bash
+#SBATCH --cpus-per-task=48
+[...]
+export SRUN_CPUS_PER_TASK=48               # 2. srun reads this variable
+srun myprogram
+```
+
+```bash
+#SBATCH --cpus-per-task=48
+[...]
+export SRUN_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK   # 3. write once, never think about it again
+srun myprogram
+```
+
+The third form is what every script in this chapter uses.
+
+### Hyper-threads on or off
+
+A physical core can expose two **hardware threads** (Intel calls this Hyper-Threading, HT; the generic name is simultaneous multithreading, SMT; see [cores and hardware threads](../../foundations/computer-architecture.md#cores-and-hardware-threads)). If the CPUs have it enabled, Slurm counts each hardware thread as one "CPU" and uses them by default. To get one thread per physical core instead, add `--hint=nomultithread`.
+
+Example: a node with 2 CPU sockets of 24 cores each and 2 threads per core has $2 \cdot 24 \cdot 2 = 96$ hardware threads, or 48 physical cores. To use the whole node:
+
+```bash
+#SBATCH --cpus-per-task=96                 # with hyper-threads: all 96 threads
+```
+
+or, without hyper-threads:
+
+```bash
+#SBATCH --cpus-per-task=48                 # one thread per physical core: 48 "CPUs"
+#SBATCH --hint=nomultithread
+```
+
+To check whether a node has hyper-threading on:
+
+```console
+$ lscpu | grep Thread
+Thread(s) per core: 2
+```
+
+(Sketched.) `2` means HT is enabled, `1` means it isn't.
+
+Which is faster depends on the workload and, surprisingly, on the network setup, so measure both and keep the winner. Two observations from real clusters that point in opposite directions:
+
+- On some AWS setups the all-reduce throughput degraded dramatically when `--hint=nomultithread` was used.
+- On AWS p4 nodes (AWS's 8x A100 instance type), enabling HT made the network throughput 4x slower, so HT was kept disabled on that setup from then on.
+
+One variable at a time: run the same job with and without `--hint=nomultithread` (and the matching `--cpus-per-task`), and compare both step time and an all-reduce benchmark ([network measuring](../../network/measuring-and-debugging.md)).
 
 
 ## Job arrays and dependencies
@@ -652,7 +751,85 @@ $ scontrol update job 4300 ArrayTaskThrottle=8      # change the %4 limit while 
 $ scancel 4300_7                                    # cancel one task
 ```
 
-(Sketched; untested.) Each task is a separate job with its own ID in `sacct` (`4300_0`, ...). The maximum array index is `MaxArraySize` (default 1001, so indices 0-1000). Job arrays can also chain a long training run through repeated time slots with `%1`; see [job arrays](users.md#job-arrays) and [job array trains](users.md#job-array-trains-and-their-suspend-and-release).
+(Sketched; untested.) Each task is a separate job with its own ID in `sacct` (`4300_0`, ...). The maximum array index is `MaxArraySize` (default 1001, so indices 0-1000). Job arrays can also chain a long training run through repeated time slots with `%1`; see [job array trains](#job-array-trains).
+
+### A toy array to watch
+
+To see how an array behaves before trusting it with a training run, submit ten tiny jobs that run one at a time:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=array-test
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time 00:02:00
+#SBATCH --output=%x-%j.out           # stdout
+#SBATCH --error=%x-%j.out            # stderr into the same file, so there is one file to watch
+#SBATCH --partition=dev
+
+echo $SLURM_JOB_ID
+echo "I am job ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+date
+sleep 10
+date
+```
+
+```console
+$ sbatch --array=1-10%1 array-test.slurm
+$ squeue -u `whoami` -o "%.10i %9P %26j %.8T %.10M %.6D %.20S %R"
+     JOBID PARTITION                       NAME    STATE       TIME  NODES           START_TIME NODELIST(REASON)
+591970_[2-   dev             array-test  PENDING       0:00      1  2021-07-28T20:01:06 (JobArrayTaskLimit)
+```
+
+(Sketched; untested.) `--array` can be on the command line, as here, or in the script as `#SBATCH --array=1-10%1`. `%1` limits the array to one running task at a time; without it Slurm tries to run all ten at once, which is what you want for a sweep and not for a training run. How to read the `squeue` line: `591970_[2-` is the truncated `591970_[2-10%1]`, the tasks 2 to 10 of array `591970` that haven't started yet, held back by `(JobArrayTaskLimit)`, i.e. the `%1`; the running task, `591970_1`, would be on its own line.
+
+`$SLURM_ARRAY_TASK_ID` is the task's index. `$SLURM_ARRAY_JOB_ID` is the array's ID for every task; for the *first* task it equals `$SLURM_JOB_ID`, while each later task gets its own `SLURM_JOB_ID` ([Slurm job array docs](https://slurm.schedmd.com/job_array.html)). Cancel the whole array with the number before the `_`, or one task with the full name:
+
+```bash
+scancel 591970          # the whole array
+scancel 591970_2        # just task 2
+```
+
+To get the array and task IDs into log file names, use `%A` (array job ID) and `%a` (task index): `#SBATCH --output=%x-%j.%A_%a.log`.
+
+### Job array trains
+
+Slurm is unforgiving: a small mistake in a script can cost days of waiting in the queue. A pending job's priority includes its **age** (how long it has been waiting; see the multifactor priority in [internals](../internals.md#priority-prioritymultifactor)). A job you just submitted has no age and lines up behind everyone who submitted earlier, unless its project has a high priority. So cancelling and resubmitting to fix a script throws away your place.
+
+A **job array train** keeps the place. It does two things: lets you change what the *next* job runs, and lets you pause the train without losing its age.
+
+1. Submit a long array that runs one task at a time, e.g. `--array=1-50%1`. Each task is one time slot of training that resumes from the last checkpoint.
+2. Make the array's script contain nothing but `source another-script.slurm`, so you can edit (or re-symlink) the real script before the next task starts.
+3. To stop the train, don't cancel it: put it on hold.
+4. When ready, release it. Only the time on hold doesn't count toward its age; the age accumulated before is kept.
+
+```bash
+$ cat train-64n.slurm
+#!/bin/bash
+#SBATCH --job-name=tr8-104B
+#SBATCH --nodes=64
+#SBATCH --ntasks-per-node=1          # one torchrun per node
+#SBATCH --cpus-per-task=96
+#SBATCH --gres=gpu:8
+#SBATCH --time 20:00:00
+#SBATCH --output=%x-%j.out
+#SBATCH --partition=dev
+
+source tr8-104B-64.slurm
+$ sbatch --array=1-50%1 train-64n.slurm
+```
+
+Untested. Now edit `tr8-104B-64.slurm` whenever you like. The current task keeps running the old version; to switch immediately, kill just the running task (e.g. `scancel 1557903_5`, not the array `1557903`) and the next task starts with the edited script and resumes from the checkpoint. `tr8-104B-64.slurm` itself is unchanged and can still be submitted on its own.
+
+If a fix takes ten minutes or ten hours, hold the train and release it later. `<jobid>` can be a normal job, a whole array, or one array task:
+
+```bash
+scontrol hold <jobid>
+scontrol release <jobid>
+```
+
+The node count, time limit, hardware and partition of a *running* job can't be changed, but pending tasks of the array can be: `scontrol update jobid=<desired_job_id> numnodes=<new number> partition=<new partition>`. With `sudo` (admins) you can also change the running job's time limit ([changing a job's time limit](#changing-a-running-jobs-time-limit)).
 
 ### Dependencies and pipelines
 
@@ -681,6 +858,30 @@ echo "preprocess=$PRE train=$TRAIN eval=$EVAL notify=$NOTIFY"
 ```
 
 If `train` fails, `eval`'s dependency can never be satisfied; it shows `(DependencyNeverSatisfied)` and sits in the queue forever unless `--kill-on-invalid-dep=yes` (or the site's `kill_invalid_depend` setting) cancels it. `--dependency=singleton` with a fixed job name is an easy way to make sure only one copy of a long training run is ever active, even if you submit several in advance.
+
+To queue the next segment of a run behind the one that is running (or still pending), the bare form also works; with no type, Slurm uses `afterany`:
+
+```bash
+sbatch --dependency=CURRENTLY_RUNNING_JOB_ID tr1-13B-round1.slurm
+```
+
+### Starting at a given time
+
+`--begin` (on `salloc` or `sbatch`) keeps a job out of the queue until a given time. At that time it is queued as if you had submitted it then: if resources are free it starts right away, otherwise it waits like any other job.
+
+```bash
+salloc --begin=YYYY-MM-DDTHH:MM:SS     # absolute
+# other accepted forms:
+#   --begin now+2hours
+#   --begin=16:00
+#   --begin=now+1hour
+#   --begin=now+60                     # seconds by default
+#   --begin=2010-01-20T12:34:00
+```
+
+Relative units can be `seconds` (the default), `minutes`, `hours`, `days` or `weeks`.
+
+Prefer `--dependency` over `--begin` to start a job right after another one. If the `--begin` time you guess leaves even a few minutes after the first job stops, the scheduler fills the freed nodes with other jobs, even lower-priority ones, because it ignores a `--begin` job entirely until its time arrives. A dependency is in the queue (accumulating age) the whole time and becomes eligible the moment the first job ends.
 
 
 ## Environment variables and torch.distributed ranks
@@ -882,7 +1083,7 @@ Design notes, each a real failure mode:
 
 - **The signal handler only sets a flag.** Python runs handlers between bytecodes on the main thread; doing I/O or collectives inside one can deadlock. The loop checks the flag at a step boundary.
 - **The stop decision is all-reduced.** Slurm may deliver the signal to some ranks before others, or the signal may arrive during different steps on different ranks. If rank 2 stops and the rest call the next all-reduce, they hang until the NCCL timeout. One scalar `MAX` all-reduce per step costs microseconds compared to a gradient all-reduce. (For very short steps, check every N steps instead.)
-- **Checkpoint is written to a temp file and renamed.** `os.replace` is atomic on a POSIX filesystem, so a kill during the save never corrupts `last.pt`. Real runs with sharded state use `torch.distributed.checkpoint`; see [checkpoints](../../training/checkpoints/README.md).
+- **Checkpoint is written to a temp file and renamed.** `os.replace` is atomic on a POSIX filesystem, so a kill during the save never corrupts `last.pt`. Real runs with sharded state use `torch.distributed.checkpoint`; see [checkpoints](../../training/fault-tolerance-and-reproducibility.md).
 - **Per-rank log files** (`logs/<job>-rank0042.log`) plus rank 0 on stdout. When one rank out of 512 misbehaves, you want its own file, not 512 interleaved streams.
 
 ### Testing the Slurm path without Slurm
@@ -989,7 +1190,7 @@ echo "nodes=$SLURM_JOB_NODELIST master=$MASTER_ADDR:$MASTER_PORT world=$SLURM_NT
 srun --kill-on-bad-exit=1 --wait=60 -l python -u train.py
 ```
 
-Untested. The `python` here runs once per task (32 times), and `train.py` reads `SLURM_PROCID` and friends at runtime, so there is no [early-interpolation](users.md#slurm_procid-early-interpolation) problem. The book's [srun launcher](launchers/srun-launcher.slurm) does the same by setting `RANK=\$SLURM_PROCID` inside `bash -c`.
+Untested. The `python` here runs once per task (32 times), and `train.py` reads `SLURM_PROCID` and friends at runtime, so there is no [early-interpolation](#slurm_procid-early-interpolation) problem. The book's [srun launcher](launchers/srun-launcher.slurm) does the same by setting `RANK=\$SLURM_PROCID` inside `bash -c`.
 
 ### Launch with torchrun
 
@@ -1029,7 +1230,7 @@ srun --kill-on-bad-exit=1 bash -c 'torchrun \
     train.py'
 ```
 
-Untested. `--tee 3` makes torchrun copy each worker's stdout and stderr (3 = both) into the agent's output. `--max_restarts 0` leaves restarting to Slurm (requeue), which also moves you off a bad node; see [what happens on a worker failure](../internals.md#what-happens-on-a-worker-failure) for when in-place restarts help. The book's [torchrun launcher](launchers/torchrun-launcher.slurm) is the same pattern with more comments. Note that `SIGUSR1` from `--signal` reaches the torchrun agent, not your workers, and the agent's default response is to die; to forward it, use the `trap` recipe in [Fault Tolerance](../../training/fault-tolerance/README.md#approach-b2-choosing-which-process-to-send-the-signal-to). This is one reason this chapter's preemption example uses srun-launched ranks.
+Untested. `--tee 3` makes torchrun copy each worker's stdout and stderr (3 = both) into the agent's output. `--max_restarts 0` leaves restarting to Slurm (requeue), which also moves you off a bad node; see [what happens on a worker failure](../internals.md#what-happens-on-a-worker-failure) for when in-place restarts help. The book's [torchrun launcher](launchers/torchrun-launcher.slurm) is the same pattern with more comments. Note that `SIGUSR1` from `--signal` reaches the torchrun agent, not your workers, and the agent's default response is to die; to forward it, use the `trap` recipe in [fault tolerance](../../training/fault-tolerance-and-reproducibility.md) (the approach that chooses which process receives the signal). This is one reason this chapter's preemption example uses srun-launched ranks.
 
 ### NCCL settings and per-rank logging
 
@@ -1052,7 +1253,7 @@ export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 # export TORCH_DISTRIBUTED_DEBUG=DETAIL
 ```
 
-Don't copy NCCL tuning variables (`NCCL_ALGO`, `NCCL_PROTO`, buffer sizes) from other clusters; the defaults are tuned per topology and wrong overrides cost bandwidth. Verify the fabric with a bus-bandwidth test first ([nccl-tests and debugging](../../debug/nccl-performance-debug.md), [network benchmarks](../../network/benchmarks/README.md)). Variable names have changed over PyTorch versions (`NCCL_ASYNC_ERROR_HANDLING` became `TORCH_NCCL_ASYNC_ERROR_HANDLING`), so check against your version's docs.
+Don't copy NCCL tuning variables (`NCCL_ALGO`, `NCCL_PROTO`, buffer sizes) from other clusters; the defaults are tuned per topology and wrong overrides cost bandwidth. Verify the fabric with a bus-bandwidth test first ([NCCL performance debugging](../../development/debugging-distributed.md), [network benchmarks](../../network/measuring-and-debugging.md)). Variable names have changed over PyTorch versions (`NCCL_ASYNC_ERROR_HANDLING` became `TORCH_NCCL_ASYNC_ERROR_HANDLING`), so check against your version's docs.
 
 Three levels of per-rank output, from coarse to fine:
 
@@ -1062,6 +1263,178 @@ srun --output=logs/%x-%j-%t.out python -u train.py          # one file per task 
 # plus the per-rank logging.FileHandler inside train.py, which survives whatever srun does with stdout
 grep -l Traceback logs/4242/*rank*.log | head               # -l: list only the files that match. Which ranks crashed?
 ```
+
+
+## Ready-made launcher scripts
+
+The scripts in the previous section were written for this chapter's `train.py`. The repository also ships complete two-node launcher scripts, one per common launcher, that you can copy and edit. They live next to this chapter and stay there:
+
+| Script | Launcher | Tasks per node | Use with |
+|---|---|---|---|
+| [torchrun-launcher.slurm](launchers/torchrun-launcher.slurm) | `torchrun` (`python -m torch.distributed.run`) | 1 | Plain [PyTorch distributed](https://github.com/pytorch/pytorch) |
+| [accelerate-launcher.slurm](launchers/accelerate-launcher.slurm) | `accelerate launch` | 1 | [HF Accelerate](https://github.com/huggingface/accelerate), Hugging Face's library that runs a plain PyTorch training loop on many GPUs/nodes with few code changes; it reads an Accelerate config YAML |
+| [lightning-launcher.slurm](launchers/lightning-launcher.slurm) | none: plain `python -u` | 8 (one per GPU) | [Lightning](https://lightning.ai/) ("PyTorch Lightning" and "Lightning Fabric", frameworks that structure the training code and read Slurm's variables themselves) |
+| [srun-launcher.slurm](launchers/srun-launcher.slurm) | `srun` itself | 8 (one per GPU) | Any `torch.distributed` program; the script sets `RANK=\$SLURM_PROCID LOCAL_RANK=\$SLURM_LOCALID` and `WORLD_SIZE=$SLURM_NPROCS`, the mapping from [Mapping to torch.distributed](#mapping-to-torchdistributed) |
+
+All four have the same skeleton, which is worth knowing because you will meet it in many repositories:
+
+- `#SBATCH` lines with `EDIT` comments: node count, `--ntasks-per-node`, `--cpus-per-task`, `--gres=gpu:8`, `--time`, `--exclusive`, `--partition`.
+- `set -eo pipefail` (fail on any error) and `set -x` (print every command, so the log shows exactly what ran).
+- `MASTER_ADDR` = first host of the node list, `MASTER_PORT=6000`.
+- `LAUNCHER` and `PROGRAM` strings combined into `CMD`, run as `srun $SRUN_ARGS bash -c "$CMD" 2>&1 | tee -a main_log.txt`. `bash -c` is what makes the delayed interpolation of `\$SLURM_PROCID` work (next section).
+- `SRUN_ARGS` = `--wait=60 --kill-on-bad-exit=1 --jobid $SLURM_JOB_ID`: kill the remaining tasks 60 seconds after the first one exits, and the whole step as soon as any task exits non-zero.
+- Commented-out debugging switches: `NCCL_DEBUG=INFO` (NCCL's logging), `CUDA_LAUNCH_BLOCKING=1` (makes CUDA calls synchronous so an asynchronous error's traceback points at the right line, at a large speed cost), `TORCH_NCCL_ASYNC_ERROR_HANDLING=1` (crash instead of hanging, e.g. on a hung broadcast), and `TMPDIR=/scratch` (`/tmp` is often tiny on compute nodes; point it at a local SSD).
+
+The test program they all run is [torch-distributed-gpu-test.py](../../debug/torch-distributed-gpu-test.py), a short script that initializes `torch.distributed`, runs a barrier and an all-reduce on every GPU and reports per rank; it is the first thing to run on a new cluster. Copy it next to the launcher (from this directory: `cp ../../debug/torch-distributed-gpu-test.py .`) or replace `PROGRAM` with your own script.
+
+### A two-node starter: example.slurm
+
+[example.slurm](example.slurm) is the quickest starting point: a two-node `torchrun` job that runs the same GPU test. Copy it and adapt `--cpus-per-task`, `--partition` and the environment setup. Its core:
+
+```bash
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=1          # crucial - only 1 task per node: torchrun spawns the 8 workers
+#SBATCH --cpus-per-task=96
+#SBATCH --gres=gpu:8
+#SBATCH --exclusive
+[...]
+export LAUNCHER="python -u -m torch.distributed.run \
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
+    --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT \
+    --rdzv_backend c10d \
+    --max_restarts 0 \
+    --tee 3 \
+    "
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1        # crash on NCCL problems such as a hanging broadcast
+srun --wait=60 --kill-on-bad-exit=1 --jobid $SLURM_JOB_ID \
+    bash -c "$LAUNCHER --node_rank \$SLURM_PROCID --role \$SLURMD_NODENAME: $CMD" 2>&1 | tee -a $LOG_PATH
+```
+
+Untested. `--role \$SLURMD_NODENAME:` makes torchrun prefix every log line with the node's name. The file also contains, commented out, `NCCL_DEBUG_SUBSYS=COLL`, `NCCL_SOCKET_NTHREADS=1` and `NCCL_NSOCKS_PERTHREAD=1` (NCCL socket-transport tuning knobs, for debugging only), and a `py-spy top` variant of the launch line for watching where time goes live.
+
+### `SLURM_PROCID` early interpolation
+
+The most common way to make these launchers hang. In a multi-node launcher the node's rank must be passed as `\$SLURM_PROCID`, with the backslash:
+
+```
+"--machine_rank \$SLURM_PROCID"
+```
+
+If you write `"--machine_rank $SLURM_PROCID"` instead, the launcher hangs. The `LAUNCHER` string is built **once**, by the batch script, which runs on the first node where `$SLURM_PROCID` is `0` (see [what happens from sbatch to processes](#what-happens-from-sbatch-to-processes-on-nodes)). So every node would claim to be rank 0 and the rendezvous waits forever for ranks 1..N-1. With `\$`, the string contains the literal text `$SLURM_PROCID`, and it is only expanded by `bash -c` inside each `srun` task, where it holds that task's own value.
+
+Keeping the launcher separate from the program makes this a one-time fix. With Accelerate:
+
+```bash
+export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+export MASTER_PORT=3333
+ACCELERATE_CONFIG_FILE=path/to/accelerate.config.yaml # edit me
+LAUNCHER="python -u -m accelerate.commands.launch \
+    --rdzv_conf "rdzv_backend=c10d,rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT" \
+    --config_file $ACCELERATE_CONFIG_FILE \
+    --main_process_ip $MASTER_ADDR \
+    --main_process_port $MASTER_PORT \
+    --machine_rank \$SLURM_PROCID \
+    --role \$(hostname -s|tr -dc '0-9'): --tee 3 \
+    "
+PROGRAM="myprogram.py"
+
+CMD="$LAUNCHER $PROGRAM"
+
+SRUN_ARGS=" \
+    --wait=60 \
+    --kill-on-bad-exit=1 \
+    --unbuffered \
+    --jobid $SLURM_JOBID \
+    "
+
+srun $SRUN_ARGS bash -c "$CMD" 2>&1 | tee -a main_log.txt
+```
+
+Untested. In the `srun` arguments, `--unbuffered` passes output through immediately. `tr -dc '0-9'` deletes everything but the digits from the hostname, so `--role` prefixes each log line with a short node number; `\$(...)` delays that command substitution to each task too. `2>&1 | tee -a main_log.txt` merges stderr into stdout and appends everything to a log file while still printing it. Users now only edit `PROGRAM`.
+
+The same with `torchrun`:
+
+```bash
+GPUS_PER_NODE=8
+NNODES=$SLURM_NNODES
+export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+export MASTER_PORT=3333
+# note `\$SLURM_PROCID` and `\$(hostname ...)` - interpolate at `srun` time, not here
+LAUNCHER="python -u -m torch.distributed.run \
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
+    --node_rank \$SLURM_PROCID \
+    --rdzv_endpoint $MASTER_ADDR:$MASTER_PORT \
+    --rdzv_backend c10d \
+    --max_restarts 0 \
+    --role \$(hostname -s|tr -dc '0-9'): \
+    --tee 3 \
+    "
+```
+
+This chapter's own [torchrun script](#launch-with-torchrun) avoids the problem differently: it puts the whole command in single quotes, so nothing is expanded until each task runs it.
+
+### Node count mismatches
+
+If the launcher fails right away, check that the number of nodes Slurm gave you matches the number the launcher expects:
+
+```console
+$ grep -ir nodes= tr123-test.slurm
+#SBATCH --nodes=40
+NNODES=64
+```
+
+That can't work: torchrun waits for 64 nodes that will never come. Either add a sanity check:
+
+```bash
+#SBATCH --nodes=2
+[...]
+NNODES=2
+
+# sanity check for having NNODES and `#SBATCH --nodes` match, assuming you use NNODES variable
+if [ "$NNODES" != "$SLURM_NNODES" ]; then
+    echo "Misconfigured script: NNODES=$NNODES != SLURM_NNODES=$SLURM_NNODES"
+    exit 1
+fi
+```
+
+or, simpler, never write the number twice:
+
+```bash
+#SBATCH --nodes=2
+[...]
+NNODES=$SLURM_NNODES
+```
+
+### Hostfiles for DeepSpeed and MPI launchers
+
+Some multi-node launchers (DeepSpeed's and MPI's) want a **hostfile**: a text file with one host per line followed by `slots=N`, the number of processes (usually GPUs) to start there. This function builds one from inside a job:
+
+```bash
+# usage:
+# makehostfile > hostfile
+# relies on SLURM_STEP_GPUS=0,1,2... to get how many gpu slots per node
+function makehostfile() {
+  local slots
+  slots=$(perl -F, -lane 'print scalar @F' <<<"${SLURM_STEP_GPUS:-0}")
+  scontrol show hostnames "$SLURM_JOB_NODELIST" | perl -slne 'print "$_ slots=$s"' -- -s="$slots"
+}
+```
+
+How it works: `SLURM_STEP_GPUS` holds the GPU indices given to this step, e.g. `0,1,2,3`. The first `perl` splits it on commas (`-F,`; the string is fed in through the `<<<` here-string, which passes a string as stdin) and prints the number of fields, i.e. the GPU count. `scontrol show hostnames` expands the compact node list (so mixed forms like `node-[42,49-51]` work; see [node lists](#node-lists-and-job-information)), and the second `perl` appends ` slots=<count>` to every host, with `-s` turning `-s="$slots"` into the Perl variable `$s`.
+
+Run on a Mac with a stub `scontrol` that only expands host lists, and `SLURM_JOB_NODELIST='node-[42,49-51]' SLURM_STEP_GPUS=0,1,2,3,4,5,6,7`:
+
+```console
+$ makehostfile
+node-42 slots=8
+node-49 slots=8
+node-50 slots=8
+node-51 slots=8
+```
+
+How to read it: four hosts from the compact list, eight slots each because eight GPU indices were given.
 
 
 ## Preemption, requeue and checkpointing
@@ -1078,6 +1451,14 @@ A running job can be stopped by Slurm for three reasons, and each gives you a di
 | Node failure | Nothing: the node is gone | None. Only periodic checkpoints help |
 
 So a preemption-safe job needs: periodic checkpoints (for node failures), a handler that checkpoints on `SIGTERM` within `GraceTime` (for preemption), and a `--signal` that fires early enough to checkpoint before the time limit. The script above handles both signals. How often to checkpoint periodically is the Young/Daly calculation in [internals](../internals.md#optimal-checkpoint-interval-youngdaly).
+
+The full syntax of the early-warning option is:
+
+```
+--signal=[[R][B]:]<sig_num>[@<sig_time>]
+```
+
+`<sig_num>` is the signal, as a number or a name like `USR1`; `@<sig_time>` is how many seconds before the time limit to send it (60 if omitted); the `B:` prefix sends it only to the batch shell instead of to every task of every step, and `R:` is described in `man sbatch`. The other variants of graceful exit (trapping the signal in the batch shell and choosing which process to forward it to, save and kill switches, watchdogs) are covered in [fault tolerance](../../training/fault-tolerance-and-reproducibility.md).
 
 ### The self-requeuing batch script
 
@@ -1134,7 +1515,7 @@ Untested. What happens in each case:
 - **A node dies**: the job ends with `NODE_FAIL`. If the site sets `JobRequeue=1` (or you passed `--requeue`), Slurm requeues it and it resumes from the last periodic checkpoint. The bad node is drained by the health check and won't be picked again.
 - **A real bug** (exit 1): no requeue; you read the log.
 
-Why not catch `SIGUSR1` in the batch shell with `trap` instead? You can (it's Approach B.2 in [Fault Tolerance](../../training/fault-tolerance/README.md#dealing-with-forced-job-preemption)), but then the shell must forward the signal to the right processes. Without `B:`, Slurm delivers it to every task directly, which is simpler when tasks are your ranks.
+Why not catch `SIGUSR1` in the batch shell with `trap` instead? You can (it's the "choose which process gets the signal" approach in [fault tolerance](../../training/fault-tolerance-and-reproducibility.md)), but then the shell must forward the signal to the right processes. Without `B:`, Slurm delivers it to every task directly, which is simpler when tasks are your ranks.
 
 To test this on a real cluster without waiting hours:
 
@@ -1145,7 +1526,387 @@ scancel --signal=USR1 4242            # to all tasks; add --batch (-b) to signal
 sacct -j 4242 --format=JobID,State,ExitCode,Start,End --duplicates   # --duplicates shows each requeued run
 ```
 
-The alternative to requeueing the same job is a chain: submit the next job with `--dependency=afterany:$SLURM_JOB_ID` at the start of each run, or use a job array with `%1` ([job array trains](users.md#job-array-trains-and-their-suspend-and-release)). Chains give each segment its own job ID and log, which some people find easier to read; requeue keeps one ID and keeps your queue position logic simple.
+The alternative to requeueing the same job is a chain: submit the next job with `--dependency=afterany:$SLURM_JOB_ID` at the start of each run, or use a job array with `%1` ([job array trains](#job-array-trains)). Chains give each segment its own job ID and log, which some people find easier to read; requeue keeps one ID and keeps your queue position logic simple.
+
+
+## Day-to-day user recipes
+
+Short recipes for things you'll do every week. The examples use a cluster with two partitions, `dev` and `prod`. All output is **sketched** unless it says otherwise, and the commands are **untested** here.
+
+### Partitions and the cluster's config
+
+```bash
+sinfo -p dev                                  # nodes, their state and hostnames in one partition
+sinfo -p prod
+scontrol show partition                       # every partition's limits and settings
+scontrol show config | grep -i slurmconf      # where this cluster loads slurm.conf from
+```
+
+The path of `slurm.conf` is site-dependent: often `/etc/slurm/`, sometimes `/opt/slurm/etc/`. `scontrol show config` prints the running configuration, which is what matters anyway.
+
+To see when your pending jobs are expected to start:
+
+```bash
+squeue -u `whoami` --start
+```
+
+They may start sooner than shown if other users' jobs end before their time limits.
+
+### Holding an allocation and reusing it
+
+For repeated interactive experiments, waiting in the queue before every attempt is painful. Allocate once for a long window and run as many `srun` steps inside it as you like:
+
+```console
+$ salloc --partition=dev --nodes=1 --ntasks-per-node=1 --cpus-per-task=96 --gres=gpu:8 --time=6:00:00 bash
+salloc: Pending job allocation 1732778
+salloc: job 1732778 queued and waiting for resources
+salloc: job 1732778 has been allocated resources
+salloc: Granted job allocation 1732778
+```
+
+Then, from inside that `bash`:
+
+```bash
+srun --jobid $SLURM_JOBID --pty bash
+```
+
+If that step times out or you exit it, run it again: the allocation is still yours. From a different shell, pass `--jobid` explicitly. `srun` can of course run the training command directly instead of `bash`. As explained in [salloc](#getting-an-allocation-with-salloc), on sites without `use_interactive_step` the `salloc` shell is on the login node, not the compute node; find the node's hostname (printed when the allocation is granted, or from `squeue`) and `ssh` to it, or use `srun` as above.
+
+The allocation is billed the whole time it exists, used or not, so release it as soon as you're done: exit the `salloc` shell or `scancel JOBID`. For a single node, `srun` alone both allocates and gives you a shell:
+
+```bash
+srun --pty --partition=dev --nodes=1 --ntasks=1 --cpus-per-task=96 --gres=gpu:8 --time=60 bash
+```
+
+The same trick lets you run several different jobs on an identical set of nodes:
+
+```bash
+# shell 1
+salloc --partition=prod --nodes=16 --ntasks=16 --cpus-per-task=96 --gres=gpu:8 --time=3:00:00 bash
+echo $SLURM_JOBID
+
+# shell 2
+export SLURM_JOBID=<JOB ID FROM ABOVE>
+srun --jobid=$SLURM_JOBID ...
+```
+
+To run a diagnostic step alongside a step that holds the GPUs, ask for none, e.g. to check the shared memory (`/dev/shm`) size on every node:
+
+```bash
+srun --jobid 631078 --gres=gpu:0 bash -c 'echo $(hostname) $(df -h | grep shm)'
+```
+
+### Keeping an salloc allocation alive after you exit its shell
+
+An allocation made with `salloc ... bash` ends when that shell exits, including when your SSH connection drops:
+
+```bash
+salloc --partition=dev --nodes=1 --ntasks-per-node=1 --time=1:00:00 bash
+```
+
+To get an allocation that survives, use `--no-shell` and no command; then join it as in the [next section](#rejoining-an-allocation-interactively):
+
+```bash
+salloc --no-shell --partition=dev --nodes=1 --ntasks-per-node=1 --time=1:00:00
+```
+
+A second trap: if you `ssh` to the allocated node, start a program normally and then disconnect, the program dies, because the closing shell sends `SIGHUP` (hang-up) to its children ([signals](../../foundations/linux-and-os.md#signals)). Run it under `nohup` and in the background (`&`, see [job control](../../foundations/linux-and-os.md#job-control--jobs-fg-bg-ctrl-z)):
+
+```bash
+nohup my-program &                       # ignores SIGHUP; stdout+stderr appended to ./nohup.out
+nohup my-program >> some-file.txt &      # or choose the file yourself
+```
+
+The program now survives disconnects, but you can't interact with it when you come back (its streams go to a file); you can still kill it by PID or change its `nice` value like any process. To detach and later reattach to a live program, use a terminal multiplexer: [`tmux`](https://github.com/tmux/tmux) (see [tmux](../../foundations/linux-and-os.md#tmux-dont-lose-work-when-your-laptop-sleeps)) or [GNU `screen`](https://www.gnu.org/software/screen/), which keep a server process on the node; [`mosh`](https://github.com/mobile-shell/mosh) additionally survives flaky connections.
+
+### Rejoining an allocation interactively
+
+To open several interactive shells in the same job, use `--overlap`:
+
+```console
+# console A
+$ salloc --partition=dev --nodes=1 --ntasks-per-node=1 --cpus-per-task=26 --gres=gpu:1 --time=2:00:00 bash
+salloc: Granted job allocation 1916
+salloc: Nodes my-node-1 are ready for job
+
+# console B, C, ... (repeat as often as you like)
+$ srun --overlap --pty --jobid 1916 bash
+```
+
+The first shell into an allocation doesn't need `--overlap`; additional ones do. It works the same if the allocation was made with `srun --pty`:
+
+```bash
+srun --pty -p dev --gpus 8 --time=2:00:00 bash
+```
+
+Why not plain `ssh` to the node? If the site uses Slurm to virtualize the node per job (give each user only some GPUs, a private `/tmp` or `/scratch` cleaned up at exit), an SSH session doesn't see the job's view: a job with 2 GPUs sees all 8 from SSH, which goes badly when you share the node.
+
+With a multi-node allocation you land on the first node. To enter a specific one, say `node-3` of `node-[1-4]`, use `-w`:
+
+```bash
+srun --pty -p dev --gpus 8 --time=2:00:00 -w node-3 bash
+```
+
+If that fails with
+
+```
+srun: error: Unable to create step for job 1930: Invalid generic resource (gres) specification
+```
+
+add `--gres=gpu:8` (not needed if the original allocation used `--gres=gpu:8`).
+
+### Choosing and avoiding nodes
+
+```bash
+sbatch --exclude nodeA,nodeB ...      # avoid nodes you know are broken but still show IDLE; or #SBATCH --exclude ...
+sbatch --nodelist=nodeA,nodeB ...     # require these nodes; -w is the short form
+sbatch --constraint=example ...       # only nodes the admin tagged with Feature=example in slurm.conf
+```
+
+### Which environment the job inherits
+
+`#SBATCH --export=...` controls which variables from the **submission shell** (the shell where you ran `sbatch`) are copied into the job. On stock Slurm the default is `ALL`; some sites change it (via `SBATCH_EXPORT` / `SLURM_EXPORT_ENV` or a `cli_filter` plugin). Two things are always there regardless: the `SLURM_*` variables, and anything you `export KEY=value` inside the job script itself; `--export` only governs inheritance from the submit shell. The four useful forms:
+
+| Directive | Effect |
+|---|---|
+| `#SBATCH --export=ALL` | The full submit-shell environment. Same as omitting it on stock Slurm, so alone it's a no-op; use it to undo a site default of `NONE`, or combined as in the last row |
+| `#SBATCH --export=NONE` | Drop the submit-shell environment. Good for reproducible jobs that shouldn't depend on whatever was exported in your login shell |
+| `#SBATCH --export=KEY1,KEY2=value` | **Only** these: the current value of `KEY1`, and `KEY2` set to `value`. Everything else is dropped; this is a replacement list, not an addition to `ALL` |
+| `#SBATCH --export=ALL,KEY=value` | Everything **and** set or override `KEY`. Without `ALL` in the list you get the previous row |
+
+### Node lists and job information
+
+Slurm writes node lists compactly, `node-[42,49-51]`. To expand one:
+
+```console
+$ scontrol show hostnames node-[42,49-51]
+node-42
+node-49
+node-50
+node-51
+```
+
+For example, to list the nodes that were drained because a job's processes were too slow to exit (there's usually nothing wrong with them; the admin recipe to [undrain them](#undraining-nodes-drained-by-a-slow-process-exit) uses this):
+
+```bash
+sinfo -R | grep "Kill task failed" | perl -lne '/(node-.*[\d\]]+)/ && print $1' | xargs -n1 scontrol show hostnames
+```
+
+`sinfo -R` lists down and drained nodes with their reasons, node list in the last column. `perl -lne` runs its code on every line and prints the part matched by the parenthesized regex, the compact node list; `xargs -n1` runs `scontrol show hostnames` on each list. Run on a Mac against a three-line fake `sinfo -R` output (two "Kill task failed" rows, `node-[42,49-51]` and `node-60`, and one `NHC: ib0 link down` row) with a stub `scontrol`, it printed:
+
+```console
+node-42
+node-49
+node-50
+node-51
+node-60
+```
+
+How to read it: one hostname per line, only from the "Kill task failed" rows; the NHC-drained node is correctly left out.
+
+Inside a job script, the usual derived values:
+
+```bash
+export HOSTNAMES=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+export NUM_NODES=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | wc -l)
+export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+```
+
+When a `SLURM_*` variable doesn't have what you need, the full record has more; `-d` adds per-node details:
+
+```bash
+scontrol show -d job $SLURM_JOB_ID
+```
+
+For example, the total number of GPUs a running job holds is in its `JOB_GRES=gpu:` entry. For a job started with
+
+```bash
+srun --pty --partition=dev --nodes=2 --ntasks-per-node=1 --gres=gpu:8 --time=8:00:00 bash
+```
+
+(16 GPUs):
+
+```console
+$ TOTAL_JOB_GPUS=$(scontrol show job -d $SLURM_JOBID | perl -ne 'm|JOB_GRES=gpu:(\d+)| && print $1')
+$ echo $TOTAL_JOB_GPUS
+16
+```
+
+Outside the job, replace `$SLURM_JOBID` with the job ID from `squeue`.
+
+### Viewing jobs and their history
+
+```bash
+squeue -u `whoami`                  # my jobs (same as squeue --me)
+squeue -j JOBID                     # one job
+squeue --partition=dev              # one partition
+```
+
+For a finished job, ask the accounting database with `sacct` (see [sacct](#sacct-what-happened)), which is the tool for analysing past events:
+
+```bash
+sacct -j JOBID
+sacct -j JOBID --format=jobid,start,end,state,exitcode,nodelist%300
+sacct -j JOBID --long
+# all my jobs and their steps in one partition:
+sacct -u `whoami` --partition=dev  --format=jobid,start,end,state,exitcode,nodelist%300
+sacct -u `whoami` --partition=prod --format=jobid,start,end,state,exitcode,nodelist%300
+# exactly how the job and each of its srun steps were launched:
+sacct -j JOBID -o submitline -P
+```
+
+`nodelist%300` widens that column to 300 characters so long node lists aren't truncated (e.g. to see which nodes ran your recent GPU jobs); `-o` picks the fields, `-P` prints them `|`-separated without padding; `man sacct` lists all fields. `sacct -j` also lists every `srun` step in an allocation, including finished and cancelled ones, which is how you find the step ID to kill a runaway step with `scancel <jobid>.<step-id>`. An interactive job keeps running even if you cancel all its steps.
+
+How long did a finished job run?
+
+```console
+$ sacct -j 22171 --format=JobID,JobName,State,Elapsed
+JobID           JobName      State    Elapsed
+------------ ---------- ---------- ----------
+22171          example   COMPLETED   00:01:49
+```
+
+How to read it: `Elapsed` is wall-clock time, `D-HH:MM:SS`: this job took under two minutes.
+
+### Cancelling jobs
+
+```bash
+scancel JOBID                       # one job
+scancel -u <userid>                 # all of my jobs
+scancel -u <userid> -p <partition>  # all of my jobs in one partition
+```
+
+### Aliases
+
+Handy shell aliases. In `squeue -o`, each `%` code is a column: `%i` job ID, `%u` user, `%P` partition, `%j` job name, `%T` state, `%M` time used, `%l` time limit, `%D` node count, `%S` start time, `%R` reason or node list; the number is the column width and a leading `.` right-aligns. `sinfo -o '%A'` prints allocated/idle node counts.
+
+```bash
+alias myjobs='squeue -u `whoami` -o "%.16i %9P %26j %.8T %.10M %.8l %.6D %.20S %R"'
+alias groupjobs='squeue -u foo,bar,tar -o "%.16i %u %9P %26j %.8T %.10M %.8l %.6D %.20S %R"'
+alias myjobs-pending="squeue -u `whoami` --start"
+alias idle-nodes="sinfo -p prod -o '%A'"
+```
+
+### Per-node log files
+
+To tell which node misbehaves (say, one with a bad GPU), it helps to have one log file per node. `%N` is the short hostname:
+
+```bash
+#SBATCH --output=%x-%j-%N.out
+```
+
+Careful: in `#SBATCH --output`, `%N` expands to the *first* node only, because the batch script runs there. For one file per node, pass the pattern to `srun --output`, as in [py-spy traces](#py-spy-traces-from-every-node) (`--output=trace-%N.out`). `torchrun` can attribute the first failure to a host and rank if the entry point is wrapped with `@record` (`torch.distributed.elastic.multiprocessing.errors.record`, which writes the exception to an error file that torchrun reports), but undecorated scripts still produce a bare traceback, and one summary doesn't replace a log per node.
+
+### Killing leftover processes
+
+If processes are left running on the nodes after a crash ("zombies" in cluster slang; not the exited-but-unreaped [zombie processes](../../foundations/linux-and-os.md#parents-children-exit-status-zombies-and-orphans) of Linux), one command inside the allocation kills them on every node:
+
+```bash
+srun pkill python      # kill every process of yours named python, on every node of the allocation
+```
+
+### Reading node availability
+
+```bash
+sinfo -p PARTITION
+sinfo -s
+```
+
+```
+NODES(A/I/O/T) "allocated/idle/other/total".
+597/0/15/612
+```
+
+How to read it: 597 of 612 nodes are allocated, 0 are idle, and 15 are unavailable for other reasons (drained, down). For one partition:
+
+```console
+$ sinfo -p gpu_p1 -o "%A"
+NODES(A/I)
+236/24
+```
+
+24 nodes free on `gpu_p1` (on the cluster where this was recorded, a partition of 4x V100-32GB nodes).
+
+The basic states in `sinfo`:
+
+- `idle`: no jobs running
+- `alloc`: allocated to jobs that are executing
+- `mix`: some CPUs allocated, others idle
+- `drain`: unavailable for an administrative reason
+- `drng`: running a job, but won't be available after it finishes, for an administrative reason
+
+### Node state codes
+
+A node state can be followed by one character with a special meaning:
+
+| Suffix | Meaning |
+|---|---|
+| `*` | Not responding; gets no new work. If it stays non-responsive it becomes DOWN (except when COMPLETING, DRAINED, DRAINING, FAIL, FAILING) |
+| `~` | Powered off |
+| `#` | Being powered up or configured |
+| `!` | Pending power down |
+| `%` | Being powered down |
+| `$` | In a reservation with the `maintenance` flag |
+| `@` | Pending reboot |
+| `^` | Reboot was issued |
+| `-` | Planned by the backfill scheduler for a higher-priority job |
+
+### Job state codes
+
+| Code | State | Meaning |
+|---|---|---|
+| `CD` | Completed | Finished successfully |
+| `CG` | Completing | Finishing, but some processes are still active |
+| `F` | Failed | Exited non-zero |
+| `PD` | Pending | Waiting for resources; will eventually run |
+| `PR` | Preempted | Terminated to make room for another job |
+| `R` | Running | Allocated and running |
+| `S` | Suspended | Stopped, and its cores released to other jobs |
+| `ST` | Stopped | Stopped, its cores retained |
+
+### Drained nodes
+
+All drained nodes and why; the columns are `%E` reason (`50` = width; make it longer or shorter), `%U` who set it, `%H` when, `%t` node state, `%N` nodes:
+
+```bash
+sinfo -R -o "%50E %12U %19H %6t %N"
+sinfo -R                                  # the short version
+```
+
+### FairShare scores with sshare
+
+On clusters with fair share (see [accounts, QoS and fair share](#accounts-associations-qos-and-fair-share)), the more you use, the lower your priority, and with preemption, the more likely your jobs are to be preempted. `sshare` shows the scores:
+
+```console
+$ sshare
+Account                    User  RawShares  NormShares    RawUsage  EffectvUsage  FairShare
+-------------------- ---------- ---------- ----------- ----------- ------------- ----------
+root                                          0.000000   711506073      1.000000
+ all                                     1    0.500000   711506073      1.000000
+  all                      stas          1    0.022727    14106989      0.019827   0.288889
+```
+
+(From a real cluster, as recorded by the user `stas`; not rerun here.) How to read it: rows form a tree of accounts and users; `RawShares`/`NormShares` are the share allotted (absolute, and as a fraction); `RawUsage`/`EffectvUsage` the decayed usage consumed; `FairShare` the resulting factor between 0 and 1 that feeds your jobs' priority. Above 0.5 means you've used less than your share; below 0.5, more (here 0.29: over). That 0.5 reading comes from the classic formula $F = 2^{-U/S}$; Slurm's default Fair Tree algorithm ranks users differently but moves in the same direction (see the [calculator](#gpu-hours-and-fair-share-calculator)). Usage decays over time, so a low score recovers if you use the cluster less.
+
+```bash
+sshare -u username                  # one user
+sshare --all | sort -nk7 -r         # everyone, sorted by FairShare (numeric sort on column 7, highest first)
+```
+
+The sorted view matters most: your score alone means little; what counts is where you are relative to everyone else. Everyone above you is more likely to start first and less likely to be preempted. Fair share is only one priority factor; age in queue, job size, QoS and partition usually count too, weighted however your admins configured it.
+
+### Stopping a teammate's job: the kill switch
+
+Slurm has no group ownership of jobs: only the submitting user (or an admin) can cancel a job. If a teammate submits an array of 10 jobs of 20 hours each and goes on vacation, and something is wrong, you can't stop them without `sudo`.
+
+A workaround is a **kill switch** in the training program: at startup it is given a file path, and it polls for that file; if the file appears, it exits. [Megatron-DeepSpeed](https://github.com/bigscience-workshop/Megatron-DeepSpeed/blob/e52bdabbde3c6895aceb76c1bced295c2646121f/megatron/training.py#L104) implements it as `--kill-switch-path`. Start with `--kill-switch-path $WORK/tmp/training17-kill-switch`, and anyone with write access to that directory can stop the run:
+
+```bash
+touch $WORK/tmp/training17-kill-switch      # the next check sees it and the program exits voluntarily
+rm $WORK/tmp/training17-kill-switch         # don't forget, once the jobs are stopped
+```
+
+With a job array, each task will start, see the switch and exit, one after another. It doesn't help with a **hung** job, which never reaches the check; then only the admins can kill it. (A simple hang often ends by itself when PyTorch's distributed timeout fires, 10 minutes by default, but not always.) More switches of this kind (save switch, watchdogs) are in [fault tolerance](../../training/fault-tolerance-and-reproducibility.md).
 
 
 ## Debugging pending, stuck and failed jobs
@@ -1183,6 +1944,8 @@ sshare -U -l                                   # my usage vs share
 sinfo -p gpu -s                                # is the partition actually full?
 ```
 
+One trick for interactive work: if an `salloc` is scheduled to start much later than you need, cancel it and ask for a shorter `--time`. Backfill can often fit a shorter allocation into a gap much sooner.
+
 ### Why is my running job stuck?
 
 A job that is `R` but makes no progress (log stopped updating) is usually a hung collective: one rank crashed, OOMed or is in a different code path, and the others wait in an all-reduce until the NCCL timeout (10 minutes by default, longer if you raised it). To look inside:
@@ -1193,7 +1956,17 @@ srun --jobid=4242 --overlap --ntasks-per-node=1 bash -c 'hostname; nvidia-smi --
 sstat -j 4242.0 --format=JobID,AveCPU,MaxRSS,MaxDiskRead,MaxDiskWrite  # live usage of a running step
 ```
 
-Then get Python stack traces from every rank with `py-spy dump`: the recipe is in [running py-spy on all nodes](users.md#run-py-spy-or-any-other-monitor-program-across-all-nodes), and how to read them is in [diagnosing hangs](../../debug/torch-distributed-hanging-solutions.md). The rank whose stack is in a different place is the culprit. 100% GPU utilization on all GPUs with no progress is the signature of NCCL spinning in a collective.
+Then get Python stack traces from every rank with `py-spy dump`: the recipe is in [py-spy traces from every node](#py-spy-traces-from-every-node), and how to read them is in [debugging distributed training](../../development/debugging-distributed.md). The rank whose stack is in a different place is the culprit. 100% GPU utilization on all GPUs with no progress is the signature of NCCL spinning in a collective.
+
+Some sites automate this. LLNL's [io-watchdog](https://github.com/grondo/io-watchdog) is a Slurm plugin that treats a job as hung when its output stops for a set time and then runs "action" scripts. LLNL's configuration ran [STAT](https://github.com/LLNL/STAT) (the Stack Trace Analysis Tool, which gathers and merges the stack traces of every process of a parallel job) and then cancelled the job. Users wrote a config file such as
+
+```
+search /usr/local/tools/io-watchdog/actions
+timeout = 20m
+actions = STAT, kill
+```
+
+(no output from rank 0 for 20 minutes counts as a hang: collect stack traces, then `scancel`), and launched with `srun --io-watchdog mpi_application`. Untested here; it only works where the admins installed the plugin. A watchdog of your own is described in [fault tolerance](../../training/fault-tolerance-and-reproducibility.md).
 
 ### Why did my job fail?
 
@@ -1227,6 +2000,218 @@ $ grep -n -m3 -E 'Error|error:|Traceback' logs/pretrain-7b-4101.out
 | Job fails instantly with no log | Output directory doesn't exist, or the script isn't readable from the compute node |
 
 `seff JOBID` (a contrib tool, installed on many clusters) prints CPU and memory efficiency of a finished job, useful for right-sizing `--mem` and `--cpus-per-task`.
+
+### Finding faulty nodes and excluding them
+
+Sometimes one node is broken and your job fails on it; resubmitting often lands on the same nodes again. The fix is to find the bad node and exclude it with `sbatch --exclude=...`. The method: a tiny check that every node runs and reports, so the bad one stands out.
+
+Is CUDA available on this node?
+
+```bash
+python -c 'import torch, socket; print(f"{socket.gethostname()}: {torch.cuda.is_available()}")'
+# only print the failures:
+python -c 'import torch, socket; torch.cuda.is_available() or print(f"Broken node: {socket.gethostname()}") '
+# the problem might be different, e.g. the GPU can't allocate memory: do a small allocation instead
+python -c "import torch; torch.ones(1000,1000).cuda()"
+```
+
+The check must run on every node, not just the first, so it goes through `srun`:
+
+```bash
+srun --jobid $SLURM_JOBID bash -c 'python -c "import torch, socket; print(socket.gethostname(), torch.cuda.is_available())"'
+```
+
+The nested quotes get awkward quickly; a real script avoids them:
+
+```bash
+$ cat << EOT >> test-nodes.py
+#!/usr/bin/env python
+import torch, socket
+print(socket.gethostname(), torch.cuda.is_available())
+EOT
+$ chmod a+x ./test-nodes.py
+```
+
+and a driver job with a short time limit, so the scheduler starts it sooner:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=test-nodes
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=96
+#SBATCH --gres=gpu:8
+#SBATCH --time 0:05:00
+#SBATCH --output=%x-%j.out
+#SBATCH --partition=prod
+
+source $six_ALL_CCFRWORK/start-prod   # edit me - site-specific env setup
+srun --jobid $SLURM_JOBID ./test-nodes.py
+```
+
+Untested. Any host that printed `False` is one to exclude:
+
+```bash
+sbatch --exclude=hostname1,hostname2 ...
+```
+
+and report it to the admins. The next three subsections are checks for other kinds of breakage.
+
+### Broken NCCL on a node
+
+When the failure only shows up with a distributed setup, the test has to start `torch.distributed` and run a collective. This job writes a test script, launches it with `torchrun` on every node and checks that a barrier completes:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=test-nodes-nccl
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=96
+#SBATCH --gres=gpu:8
+#SBATCH --time 0:05:00
+#SBATCH --output=%x-%j.out
+#SBATCH --partition=prod
+
+source $six_ALL_CCFRWORK/start-prod   # edit me - site-specific env setup
+
+NNODES=2
+
+GPUS_PER_NODE=4
+MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+MASTER_PORT=6000
+
+export LAUNCHER="python -u -m torch.distributed.run \
+    --nproc_per_node $GPUS_PER_NODE \
+    --nnodes $NNODES \
+    --master_addr $MASTER_ADDR \
+    --master_port $MASTER_PORT \
+    "
+
+export SCRIPT=test-nodes-nccl.py
+
+cat << EOT > $SCRIPT
+#!/usr/bin/env python
+import torch.distributed as dist
+import torch
+import socket
+import os
+import fcntl
+
+def printflock(*msgs):
+    """ print """
+    with open(__file__, "r") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            print(*msgs)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+local_rank = int(os.environ["LOCAL_RANK"])
+torch.cuda.set_device(local_rank)
+dist.init_process_group("nccl")
+header = f"{socket.gethostname()}-{local_rank}"
+try:
+    dist.barrier()
+    printflock(f"{header}: NCCL {torch.cuda.nccl.version()} is OK")
+except:
+    printflock(f"{header}: NCCL {torch.cuda.nccl.version()} is broken")
+    raise
+EOT
+
+echo $LAUNCHER --node_rank $SLURM_PROCID $SCRIPT
+
+srun --jobid $SLURM_JOBID bash -c '$LAUNCHER --node_rank $SLURM_PROCID $SCRIPT'
+```
+
+Untested. Single quotes around the `srun` command again delay `$SLURM_PROCID` to each task. `printflock` solves interleaved output from many processes: `fcntl.flock` takes an exclusive lock on a file (the script itself), so only one process at a time is inside `print`. Every GPU should print `... is OK`; a node whose GPUs print `is broken`, or never print at all (a hang), is the suspect. A more thorough version of the same idea is [torch-distributed-gpu-test.py](../../debug/torch-distributed-gpu-test.py), used by the [launcher scripts](#ready-made-launcher-scripts).
+
+### GPU memory check
+
+This checks that every GPU on the allocated nodes can allocate 77 GiB, which is what you'd test on 80 GB A100s (a few GiB are subtracted for the CUDA context and kernels). `gbs * 2**28` float32 elements of 4 bytes each is exactly `gbs` GiB: $77 \cdot 2^{28} \cdot 4 = 77 \cdot 2^{30}$ bytes. It reads `LOCAL_RANK`, so launch it with `torchrun` through `srun` like the NCCL test above.
+
+```python
+import torch, os
+import time
+import socket
+hostname = socket.gethostname()
+
+local_rank = int(os.environ["LOCAL_RANK"]);
+
+gbs = 77
+try:
+    torch.ones((gbs*2**28)).cuda(local_rank).contiguous() # alloc on cpu, then move to gpu
+    print(f"{local_rank} {hostname} is OK")
+except:
+    print(f"{local_rank} {hostname} failed to allocate {gbs}GiB of accelerator memory")
+    pass
+
+time.sleep(5)
+```
+
+Untested on GPUs (the byte arithmetic was checked: `77*2**28*4/2**30` prints `77.0`). Lines with `failed to allocate` name the GPU and host. Note that the tensor is allocated on the CPU first and then copied, so the node also needs 77 GiB of free host RAM per GPU tested at once.
+
+### Broken network
+
+A node whose network is broken makes the others fail to connect to it. It typically looks like:
+
+```
+work = default_pg.barrier(opts=opts)
+RuntimeError: NCCL error in: /opt/conda/conda-bld/pytorch_1616554793803/work/torch/lib/c10d/ProcessGroupNCCL.cpp:825, unhandled system error, NCCL version 2.7.8
+ncclSystemError: System call (socket, malloc, munmap, etc) failed.
+```
+
+To find which node:
+
+1. Add `export NCCL_DEBUG=INFO` before the `srun` command and rerun.
+2. Search the log for connection failures:
+
+```
+r11i6n2:486514:486651 [1] include/socket.h:403 NCCL WARN Connect to 10.148.3.247<56821> failed : Connection refused
+```
+
+How to read it: the line starts with `host:pid:tid [local GPU index]` of the process that complained; `10.148.3.247<56821>` is the IP address and port it tried to reach, i.e. the node that refused. Reverse-resolve the IP to a hostname:
+
+```console
+$ nslookup 10.148.3.247
+247.3.148.10.in-addr.arpa       name = r10i6n5.ib0.xa.idris.fr.
+```
+
+(Output as recorded on the Jean Zay cluster at IDRIS, where this was diagnosed; not rerun here.) Add `--exclude=r10i6n5` to your `sbatch` command and report the node to the admins.
+
+### py-spy traces from every node
+
+When a job hangs, the most useful evidence is a Python stack trace of every process ([py-spy](../../foundations/linux-and-os.md#py-spy-what-is-python-doing-right-now) reads one from a running process without stopping it). The same pattern runs any command on all nodes of a running job, e.g. `nvidia-smi` to dump memory usage of each process.
+
+Start the training inside an allocation you control:
+
+```bash
+cd ~/prod/code/tr8b-104B/bigscience/train/tr11-200B-ml/
+
+salloc --partition=prod --nodes=40 --ntasks-per-node=1 --cpus-per-task=96 --gres=gpu:8 --time 20:00:00
+
+bash 200B-n40-bf16-mono.slurm
+```
+
+In another shell, find the job ID of that `salloc`:
+
+```bash
+squeue -u `whoami` -o "%.16i %9P %26j %.8T %.10M %.8l %.6D %.20S %R"
+```
+
+then, with the right job ID and node count:
+
+```bash
+srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 --output=trace-%N.out sh -c 'ps aux | grep python | egrep -v "grep|srun" | grep `whoami` | awk "{print \$2}" | xargs -I {} py-spy dump --native --pid {}' || echo "failed"
+```
+
+Untested. How the pipeline works: `ps aux` lists all processes, the `grep`s keep your own `python` processes (dropping the `grep` and `srun` lines themselves), `awk` prints the second column (the PID), and `xargs -I {}` runs `py-spy dump --native` (which also shows C/C++ frames) on each PID. Each node writes to its own `trace-<nodename>.out` in the current directory (`%N` in `srun --output` is the node name).
+
+- `--gres=gpu:0` is the key: without it this second step asks for GPUs, which the training step holds, and blocks forever.
+- `--nodes=40` is probably redundant, since the allocation already knows its node count.
+- `py-spy` must be on the `PATH` on the compute nodes. The command assumes a conda env with `py-spy` is activated from `~/.bashrc`; if not, activate it inside the `sh -c` before calling `py-spy`.
+- Release the allocation when you are done.
+
+How to read the traces and find the odd rank out is in [debugging distributed training](../../development/debugging-distributed.md) and [py-spy on all ranks](../../foundations/distributed-systems.md#py-spy-on-all-ranks).
 
 ### A parser for squeue and sacct output
 
@@ -1474,6 +2459,115 @@ How to read it: team A used 4x its normal rate (512 GPUs instead of 128) for thr
 The preemption line is the other half of the trade: a `low` QoS that's 6% more expensive per useful GPU-hour (at 6 preemptions per 3 days and a 1-hour checkpoint interval) is a good deal if it starts days earlier.
 
 
+## Cron and self-perpetuating jobs
+
+`cron` ([cron](../../foundations/linux-and-os.md#cron)) is the standard Unix way to run something on a schedule, but a Slurm cluster usually doesn't let users run cron on its nodes. A job that resubmits itself emulates it. Everything here is **untested** as written.
+
+The examples use `$WORK/cron/` as the base directory, where `WORK` is an environment variable pointing at your project space (set it in `~/.bash_profile` for bash, or your shell's equivalent startup file).
+
+### A self-perpetuating scheduler job
+
+Three directories: `scheduler` for the scheduler jobs, `cron.daily` for jobs to run daily, `cron.hourly` for hourly ones:
+
+```bash
+mkdir -p $WORK/cron/scheduler
+mkdir -p $WORK/cron/cron.daily
+mkdir -p $WORK/cron/cron.hourly
+```
+
+Copy the two scheduler scripts, [cron-daily.slurm](cron-daily.slurm) and [cron-hourly.slurm](cron-hourly.slurm), into `$WORK/cron/scheduler`, edit their partition and account lines for your site, and start them once:
+
+```bash
+cd $WORK/cron/scheduler
+sbatch cron-hourly.slurm
+sbatch cron-daily.slurm
+```
+
+Each one does two things, in this order (the hourly one, abridged):
+
+```bash
+#SBATCH --job-name=cron-hourly
+#SBATCH --time=0:30:00
+#SBATCH --partition=PARTITION     # edit me
+#SBATCH --account=GROUP@PARTITION # edit me
+# do not set -e - we must run all of it
+
+cd $WORK/cron/scheduler
+sbatch --begin=now+1hour cron-hourly.slurm     # 1. resubmit myself first, to start in an hour
+
+cd $WORK/cron/cron.hourly
+for f in *.slurm; do                           # 2. submit every job in cron.hourly
+  sbatch "$f"
+done
+```
+
+Resubmitting itself first, and not using `set -e`, means a failing job in the directory can't break the chain. The jobs keep themselves going indefinitely; you only need to restart them if something makes Slurm lose all its jobs.
+
+### Daily and hourly jobs
+
+To run something once a day, write an ordinary Slurm job and drop it into `$WORK/cron/cron.daily`. For example, rebuilding a file-name index of `$WORK` with `updatedb` (on current distributions that is usually `plocate`'s `updatedb`; older systems had `mlocate`):
+
+```bash
+$ cat $WORK/cron/cron.daily/mlocate-update.slurm
+#!/bin/bash
+#SBATCH --job-name=mlocate-update    # job name
+#SBATCH --ntasks=1                   # number of MP tasks
+#SBATCH --nodes=1
+#SBATCH --hint=nomultithread         # we get physical cores not logical
+#SBATCH --time=1:00:00               # maximum execution time (HH:MM:SS)
+#SBATCH --output=%x-%j.out           # output file name
+#SBATCH --partition=PARTITION     # edit me
+#SBATCH --account=GROUP@PARTITION # edit me
+
+set -e
+date
+echo "updating file index db"
+/usr/bin/updatedb -o $WORK/lib/mlocate/work.db -U $WORK --require-visibility 0
+```
+
+`updatedb` scans the tree given by `-U` and writes a filename database to `-o`; `--require-visibility 0` skips per-user permission filtering. You can then find files instantly with:
+
+```bash
+/usr/bin/locate -d $WORK/lib/mlocate/work.db pattern
+```
+
+To stop a job, move it out of `cron.daily`. `cron.hourly` works the same way. The timing is approximate, because every run waits in the queue; for a more precise start, ask for a specific time with `--begin`. Other frequencies (every 30 minutes, every 12 hours) are a copy of the scheduler script with a different `--begin`.
+
+Two nuances: the scheduler, and every job it launches, runs with the Unix permissions of whoever submitted the scheduler job. And most clusters have cheap CPU-only partitions next to the GPU ones: put jobs that don't need a GPU there.
+
+### Cleaning up the logs
+
+Every scheduler run leaves a log file (useful when something stops working). They are tiny, but tens of thousands of them can exhaust your inode quota (the limit on the number of files; see [storage and data](../../foundations/storage-and-data.md)). A daily cleanup job:
+
+```bash
+find $WORK/cron -name "*.out" -mtime +7 -exec rm -f {} +
+```
+
+`-mtime +7` matches files last modified more than 7 days ago, so the latest week of logs stays for diagnosis; `-exec rm -f {} +` passes many files to each `rm` call.
+
+### Self-perpetuating standalone jobs
+
+The same pattern makes any single job repeat, e.g. a watchdog that checks a training run every hour:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=watchdog          # job name
+#SBATCH --ntasks=1                   # number of MP tasks
+#SBATCH --nodes=1
+#SBATCH --time=0:30:00               # maximum execution time (HH:MM:SS)
+#SBATCH --output=%x-%j.out           # output file name
+#SBATCH --partition=PARTITION        # edit me
+
+# ensure to restart self first 1h from now
+RUN_FREQUENCY_IN_HOURS=1
+sbatch --begin=now+${RUN_FREQUENCY_IN_HOURS}hour watchdog.slurm
+
+... do the watchdog work here ...
+```
+
+Launch it once with `sbatch watchdog.slurm`. It immediately schedules its next run an hour out, then does its work; whether the work succeeds or fails, it keeps relaunching itself about once an hour. "About", because of scheduling overhead and node availability; with at least one spare node and a quick job, that's good enough.
+
+
 ## Containers on Slurm
 
 ### Why not just Docker
@@ -1523,7 +2617,7 @@ With either runtime, the container's CUDA userspace must be compatible with the 
 
 ## A small-cluster admin intro
 
-This section is enough to understand what admins do and to build a two-node test cluster. It is not a production guide; see [SLURM Administration](admin.md) for more recipes and the [official quick start admin guide](https://slurm.schedmd.com/quickstart_admin.html) for the full procedure. Everything here is **untested**.
+This section is enough to understand what admins do and to build a two-node test cluster. It is not a production guide; the recipes at its end cover common admin chores, and the [official quick start admin guide](https://slurm.schedmd.com/quickstart_admin.html) for the full procedure. Everything here is **untested**.
 
 ### Install and munge
 
@@ -1692,7 +2786,118 @@ sudo scontrol create reservation reservationname=maint starttime=2026-11-10T08:0
      nodes=ALL users=root flags=maint,ignore_jobs
 ```
 
-Adding a node means adding it to the `NodeName` and `PartitionName` lines everywhere. On older releases that required restarting `slurmctld` and all `slurmd`s rather than just `reconfigure`; newer releases also support dynamic nodes (`slurmd -Z` registering itself). Check the docs for your version before doing it on a live cluster. More node management recipes (pdsh across nodes, undraining nodes killed by slow exits, auto-reboot) are in [admin.md](admin.md#node-management), and automatic health-check draining is in [internals](../internals.md#automatic-node-draining).
+Adding a node means adding it to the `NodeName` and `PartitionName` lines everywhere. On older releases that required restarting `slurmctld` and all `slurmd`s rather than just `reconfigure`; newer releases also support dynamic nodes (`slurmd -Z` registering itself). Check the docs for your version before doing it on a live cluster. More node management recipes (pdsh across nodes, undraining nodes drained by slow exits, safe reboots) follow, and automatic health-check draining is in [internals](../internals.md#automatic-node-draining).
+
+The running configuration, and how to reload it after editing `/etc/slurm/slurm.conf` on the controller:
+
+```bash
+sudo scontrol show config            # every setting the controller is actually using
+sudo scontrol reconfigure            # run on the controller after editing slurm.conf
+```
+
+`scontrol update` changes a node's state. Besides `state=resume`, you'll see `state=idle` used to put a drained node back into service:
+
+```bash
+scontrol update nodename=node-5 state=idle                        # undrain a node that is ready
+scontrol update nodename=node-5 state=drain reason="maintenance"   # take it out of the pool
+```
+
+### Running a command on many nodes: pdsh
+
+`pdsh` runs one command on many hosts in parallel. Two preparations:
+
+1. SSH asks you to confirm each host's key the first time you connect ([ssh](../../foundations/networking.md#ssh-keys-config-tunnels)):
+
+    ```
+    Are you sure you want to continue connecting (yes/no/[fingerprint])?
+    ```
+
+    With hundreds of nodes you can turn that check off:
+
+    ```bash
+    echo "Host *" >> ~/.ssh/config
+    echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+    ```
+
+    Decide whether that is secure enough for you. It assumes you're already inside the cluster and only SSH between its nodes; otherwise skip it and approve each new node by hand.
+
+2. Install `pdsh`.
+
+Then, e.g., `date` on five nodes:
+
+```console
+$ PDSH_RCMD_TYPE=ssh pdsh -w node-[21,23-26] date
+node-25: Sat Oct 14 02:10:01 UTC 2023
+node-21: Sat Oct 14 02:10:02 UTC 2023
+node-23: Sat Oct 14 02:10:02 UTC 2023
+node-24: Sat Oct 14 02:10:02 UTC 2023
+node-26: Sat Oct 14 02:10:02 UTC 2023
+```
+
+(Recorded on a real cluster; not rerun here.) `PDSH_RCMD_TYPE=ssh` makes it connect over SSH (instead of its old default, `rsh`); `-w` takes a Slurm-style host list, `node-[21,23-26]` = `node-21`, `node-23` ... `node-26`. How to read the output: each line is prefixed with the host it came from, in whatever order the hosts answered.
+
+Something more useful: kill every GPU-holding process that didn't exit when its Slurm job was cancelled. This lists the PIDs of processes using the GPUs (`sort | uniq` removes duplicates):
+
+```bash
+nvidia-smi --query-compute-apps=pid --format=csv,noheader | sort | uniq
+```
+
+and this kills them on all five nodes at once; `xargs -n1` runs `sudo kill -9` once per PID, and `-9` is SIGKILL, which a process can't catch:
+
+```bash
+PDSH_RCMD_TYPE=ssh pdsh -w node-[21,23-26]  "nvidia-smi --query-compute-apps=pid --format=csv,noheader | sort | uniq | xargs -n1 sudo kill -9"
+```
+
+### Undraining nodes drained by a slow process exit
+
+When a job is cancelled, its processes are sometimes slow to exit. If Slurm is configured not to wait forever (`UnkillableStepTimeout`), it drains such nodes with the reason `Kill task failed`. Usually nothing is wrong with them, and they should go back to the users.
+
+The procedure: list the nodes drained for that reason (`sinfo -R | grep "Kill task failed"`), expand the node lists (the one-liner in [node lists](#node-lists-and-job-information)), check that no process still holds a GPU (or kill them with the pdsh command above and check again), and set the clean ones back to `idle`. [undrain-good-nodes.sh](undrain-good-nodes.sh), next to this chapter, does all of it:
+
+```bash
+nodes=( $(sinfo -R | grep "Kill task failed" | perl -lne '/(node-.*[\d\]]+)/ && print $1' | xargs -n1 scontrol show hostnames) )
+for n in "${nodes[@]}"; do
+    output=$(PDSH_RCMD_TYPE=ssh pdsh -w $n "nvidia-smi --query-compute-apps=pid --format=csv,noheader")
+    # if not empty: pdsh ... | xargs -n1 sudo kill -9, sleep 3, check again
+    # if empty now: sudo scontrol update NodeName=$n State=idle Reason="undrained by $USER"
+    # else: print "ssh into $n and manually check the state of the node"
+done
+```
+
+(Abridged; untested.) Run it, and every node that is drained but ready to serve becomes `idle` again.
+
+### Rebooting nodes safely
+
+To reboot nodes without killing running jobs (e.g. after the node image was updated):
+
+```bash
+scontrol reboot ASAP node-[1-64]
+```
+
+Idle nodes reboot right away. Each busy node waits until its current job ends, then reboots and comes back as `idle`; `ASAP` also stops new jobs from starting on it meanwhile. This needs a reboot program in `/etc/slurm/slurm.conf` on the controller (then `scontrol reconfigure` if you just added it):
+
+```
+RebootProgram = "/sbin/reboot"
+```
+
+### Changing a running job's time limit
+
+Admins can change the time limit of a running job (users can only lower limits; see [scontrol](#scontrol-the-full-record-and-changing-things)). `TimeLimit` takes `days-hours:minutes:seconds`:
+
+```bash
+scontrol update JobID=$SLURM_JOB_ID TimeLimit=2-00:00:00     # set it to 2 days
+scontrol update JobID=$SLURM_JOB_ID TimeLimit=+10:00:00      # add 10 hours to the current limit
+```
+
+`$SLURM_JOB_ID` is only set inside the job; from outside, use the job ID from `squeue`.
+
+### When something goes wrong: slurmctld.log
+
+The controller's log records every event: why a node's jobs were cancelled early, why a node was removed from service, and so on.
+
+```bash
+sudo cat /var/log/slurm/slurmctld.log      # path from SlurmctldLogFile in slurm.conf
+```
 
 
 ## Slurm vs Kubernetes
@@ -1717,7 +2922,7 @@ How labs use them in practice:
 - **Pre-training and large fine-tuning** usually run on Slurm, or on Kubernetes with a gang scheduler bolted on. Researchers like the SSH-and-`sbatch` workflow, the shared filesystem and the direct InfiniBand access.
 - **Inference serving** almost always runs on Kubernetes: it needs autoscaling, load balancing, rolling deploys and health checks, none of which Slurm does. See [inference serving orchestration](../internals.md#inference-serving-orchestration) and [serving hands-on](../../inference/serving-hands-on.md).
 - **RL** is the awkward middle: trainers look like Slurm jobs, rollout/inference workers look like a service, and environments look like many small sandboxes. Labs run all of it in one large Slurm allocation, all of it on Kubernetes, or the trainer on Slurm and the rest on k8s. See [RL infrastructure](../../platform/rl-infrastructure.md).
-- **Cloud GPU providers** increasingly offer "Slurm on Kubernetes" (Slinky, Soperator, SUNK), so users get `sbatch` while the platform team runs k8s underneath. The trade-offs are in [Slurm on k8s](../internals.md#slurm-on-k8s-and-k8s-alongside-slurm).
+- **Cloud GPU providers** increasingly offer ["Slurm on Kubernetes"](#slurm-on-kubernetes) (Slinky, Soperator, SUNK), so users get `sbatch` while the platform team runs k8s underneath. The trade-offs are in [Slurm on k8s](../internals.md#slurm-on-k8s-and-k8s-alongside-slurm).
 
 For a single team with a few hundred GPUs doing mostly training, Slurm is less to learn and less to operate. Once you also serve models, run CI and data pipelines on the same hardware, Kubernetes' generality starts paying for its complexity.
 
@@ -1759,17 +2964,41 @@ spec:
 
 Untested. The k8s version needs an image built and pushed, an operator installed, and a queue configured; in return it gets declarative restarts and lives alongside everything else on the platform. The [Kubernetes from zero](../kubernetes-from-zero.md) chapter builds this up properly; the `PyTorchJob` API version and operator names change over time, so check the Kubeflow docs for the current ones.
 
+For a longer outside comparison focused on 512-GPU training jobs, see Fluidstack's [Is Kubernetes or Slurm the best orchestrator for 512-GPU jobs?](https://web.archive.org/web/20250324222116/https://www.fluidstack.io/post/is-kubernetes-or-slurm-the-best-orchestrator-for-512-gpu-jobs). The practical case against Kubernetes for interactive training work is in [Kubernetes from zero](../kubernetes-from-zero.md#training-on-kubernetes-gotchas).
+
+### Slurm on Kubernetes
+
+These frameworks run Slurm on top of Kubernetes: `slurmctld`, `slurmd` and friends run as Kubernetes pods, so one cluster serves both Slurm users (who keep `sbatch` and a login node) and Kubernetes workloads (serving, pipelines):
+
+- [Slinky](https://github.com/slinkyproject) - from SchedMD, the developers of Slurm.
+- [Soperator](https://github.com/nebius/soperator) - from Nebius.
+- [SUNK](https://www.coreweave.com/products/sunk) - from CoreWeave; not open source, only available to CoreWeave customers.
+
+How they work and what they trade off is in [Slurm on k8s](../internals.md#slurm-on-k8s-and-k8s-alongside-slurm).
+
+### Other orchestrators
+
+Slurm and Kubernetes dominate, but you will meet these too:
+
+| Tool | What it is |
+|---|---|
+| [dstack](https://github.com/dstackai/dstack) | A lightweight open-source alternative to Kubernetes and Slurm for AI container orchestration, multi-cloud and on-prem; supports NVIDIA, AMD and TPU |
+| [SkyPilot](https://github.com/skypilot-org/skypilot) | Runs AI and batch workloads on any infrastructure (many clouds, Kubernetes, on-prem) through one interface, picking the cheapest/available GPUs; see also [getting compute](../../platform/getting-compute.md) |
+| [OpenHPC](https://github.com/openhpc/ohpc) | Pre-built packages for deploying and managing an HPC Linux cluster: provisioning tools, resource management (including Slurm), I/O clients, runtimes, development tools, containers and scientific libraries |
+| [run.ai](https://www.nvidia.com/en-us/software/run-ai/) | A Kubernetes-based GPU scheduling platform, acquired by NVIDIA, which announced plans to open-source it (its scheduler was released as KAI; see [internals](../internals.md#kueue-vs-volcano-vs-kai)) |
+| [Docker Swarm](https://docs.docker.com/engine/swarm/) | Docker's built-in container orchestration |
+| [IBM Spectrum LSF](https://www.ibm.com/products/hpc-workload-management) | IBM's Platform Load Sharing Facility suites: a workload management platform and job scheduler for distributed HPC |
+
 
 ## You can now read
 
-- [SLURM for Users](users.md) - every recipe there should now make sense: reusing allocations, rejoining nodes, finding faulty nodes, crontab emulation.
-- [Launchers](launchers/README.md) - the complete torchrun, accelerate, Lightning and srun launcher scripts.
-- [SLURM Performance](performance.md) and [SLURM Administration](admin.md).
+- [Kubernetes from zero](../kubernetes-from-zero.md) - the other half of GPU orchestration, including the gotchas of training on it.
 - [Orchestration internals](../internals.md) - how Slurm's node selection, topology, priority, backfill and preemption work, and the same problems on Kubernetes.
-- [Fault Tolerance](../../training/fault-tolerance/README.md) - signal-handling variants, kill and save switches, watchdogs.
-- [Diagnosing hangs](../../debug/torch-distributed-hanging-solutions.md) and [NCCL debugging](../../debug/nccl-performance-debug.md).
-- [Kubernetes from zero](../kubernetes-from-zero.md) - the other half of GPU orchestration.
+- [Fault tolerance and reproducibility](../../training/fault-tolerance-and-reproducibility.md) - signal-handling variants, kill and save switches, watchdogs, checkpoints.
+- [Debugging distributed training](../../development/debugging-distributed.md) - reading the py-spy traces from a hung job, and NCCL performance debugging.
 - [Decentralized training](../../training/decentralized-training.md) - what changes when there's no single scheduler owning all the nodes.
+
+Parts of this chapter are adapted from Stas Bekman's [Machine Learning Engineering Open Book](https://github.com/stas00/ml-engineering) (CC BY-SA 4.0).
 
 
 ## Further reading
@@ -1781,3 +3010,6 @@ Untested. The k8s version needs an image built and pushed, an operator installed
 - PyTorch, [torchrun (Elastic Launch)](https://pytorch.org/docs/stable/elastic/run.html) and [torch.distributed](https://pytorch.org/docs/stable/distributed.html) (environment variable initialization).
 - NVIDIA, [NCCL environment variables](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html).
 - [LBNL Node Health Check (NHC)](https://github.com/mej/nhc) - the common `HealthCheckProgram`.
+- [pdsh](https://github.com/chaos/pdsh) - parallel remote shell.
+- [Slurm_tools](https://github.com/OleHolmNielsen/Slurm_tools) - a large collection of admin and user scripts for Slurm clusters (node and job reports, accounting, partition overviews).
+- LLNL's [SCR](https://github.com/LLNL/scr) (Scalable Checkpoint/Restart) library, with a [Python module](https://github.com/LLNL/scr/tree/develop/python#installing-the-scr-python-module) and an [example checkpoint loop](https://github.com/LLNL/scr/blob/1878de8756c2b51882a7cda7b97b142eae4e3995/python/scr_example.py#L64-L105); and [mpibind](https://github.com/LLNL/mpibind/tree/master/python), which computes NUMA-aware CPU and GPU bindings for each task and can be used from Python.

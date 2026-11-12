@@ -12,72 +12,35 @@ foundations/storage-and-data.md
 models/architectures.md
 models/beyond-transformers.md
 
-compute/README.md
-compute/accelerator/README.md
+compute/accelerators.md
 compute/accelerator/execution-model.md
 compute/accelerator/writing-kernels.md
 compute/gpu-software-stack.md
-compute/accelerator/benchmarks/README.md
-compute/accelerator/nvidia/debug.md
-compute/accelerator/amd/debug.md
-compute/accelerator/amd/performance.md
-compute/cpu/README.md
-compute/cpu-memory/README.md
-storage/README.md
-network/README.md
-network/comms.md
+network/interconnects.md
 network/collectives-internals.md
-network/debug/README.md
-network/benchmarks/README.md
+network/measuring-and-debugging.md
 
-orchestration/README.md
 orchestration/slurm/from-zero.md
-orchestration/slurm/README.md
-orchestration/slurm/users.md
-orchestration/slurm/admin.md
-orchestration/slurm/performance.md
-orchestration/slurm/launchers/README.md
 orchestration/kubernetes-from-zero.md
-orchestration/kubernetes/README.md
 orchestration/internals.md
 
-training/README.md
-training/dtype.md
 training/arithmetic.md
-training/model-parallelism/README.md
 training/model-parallelism/derivations.md
-training/performance/README.md
 training/profiling-and-optimization.md
-training/hparams.md
-training/instabilities/README.md
-training/instabilities/training-loss-patterns.md
-training/checkpoints/README.md
-training/fault-tolerance/README.md
-training/reproducibility/README.md
-training/datasets.md
-training/emulate-multi-node.md
-training/re-train-hub-models.md
+training/stability.md
+training/fault-tolerance-and-reproducibility.md
 training/decentralized-training.md
 
-inference/README.md
 inference/arithmetic.md
 inference/serving-engine-internals.md
 inference/serving-hands-on.md
 
 platform/control-planes.md
 platform/rl-infrastructure.md
+platform/getting-compute.md
 
-insights/ai-battlefield.md
-insights/how-to-choose-cloud-provider.md
-insights/when-to-upgrade-gpus/README.md
+development/debugging-pytorch.md
+development/debugging-distributed.md
+development/testing.md
 
-debug/README.md
-debug/pytorch.md
-debug/tools.md
-debug/tiny-scripts/README.md
-testing/README.md
-
-resources/README.md
-courses/lesson-learned/README.md
-contributors.md
-build/README.md
+appendix/further-reading.md

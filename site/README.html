@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Machine Learning Engineering Open Book - Machine Learning Engineering</title>
+<title>Machine Learning Engineering - Machine Learning Engineering</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
 <link rel="stylesheet" href="assets/style.css">
@@ -10,46 +10,33 @@
 <nav id="sidebar">
   <a class="home" href="index.html">Machine Learning Engineering</a>
   <input id="filter" type="search" placeholder="Filter pages...">
-  <details open><summary>Start here</summary><ul><li><a href="README.html" class="current">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+  <details open><summary>Start here</summary><ul><li><a href="README.html" class="current">Machine Learning Engineering</a></li></ul></details>
 <details><summary>Part 1. Foundations</summary><ul><li><a href="foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
 <details><summary>Part 2. Model Architectures</summary><ul><li><a href="models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
-<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="compute/README.html">Compute (Stas)</a></li><li><a href="compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="compute/cpu/README.html">CPU (Stas)</a></li><li><a href="compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="network/comms.html">Communication Patterns (Stas)</a></li><li><a href="network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="network/debug/README.html">Network Debug (Stas)</a></li><li><a href="network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
-<details><summary>Part 4. Orchestration</summary><ul><li><a href="orchestration/README.html">Orchestration (Stas)</a></li><li><a href="orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
-<details><summary>Part 5. Training</summary><ul><li><a href="training/README.html">Training (Stas)</a></li><li><a href="training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
-<details><summary>Part 6. Inference</summary><ul><li><a href="inference/README.html">Inference (Stas)</a></li><li><a href="inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
-<details><summary>Part 7. Platforms</summary><ul><li><a href="platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
-<details><summary>Part 8. Insights</summary><ul><li><a href="insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
-<details><summary>Part 9. Development</summary><ul><li><a href="debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="debug/tools.html">Debug Tools (Stas)</a></li><li><a href="debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
-<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="resources/README.html">Resources (Stas)</a></li><li><a href="courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="contributors.html">Contributors (Stas)</a></li><li><a href="build/README.html">Book Building (Stas)</a></li></ul></details>
-<details><summary>Other pages: build</summary><ul><li><a href="build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
-<details><summary>Other pages: debug</summary><ul><li><a href="debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
-<details><summary>Other pages: model-parallelism</summary><ul><li><a href="model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
-<details><summary>Other pages: skills</summary><ul><li><a href="skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
-<details><summary>Other pages: stabs</summary><ul><li><a href="stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
-<details><summary>Other pages: top level</summary><ul><li><a href="SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="development/testing.html">Writing and Running Tests</a></li><li><a href="appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="build/README.html">Book Building - build/README.md</a></li></ul></details>
 </nav>
 <main>
 <article>
-<h1 id="machine-learning-engineering-open-book">Machine Learning Engineering Open Book</h1>
-<!-- not-in-ebook-start -->
-<p><a href="#ebook-versions-of-the-book"><img src="images/Machine-Learning-Engineering-book-cover-200x259.png" align="right" width="200" height="259" alt="Machine Learning Engineering Open Book cover"></a></p>
-<!-- not-in-ebook-end -->
-<p>This is an open collection of methodologies, tools and step by step instructions to help with successful training and fine-tuning (further training of an already-trained model on new data) of large language models and multi-modal models (models that take images, audio or video as well as text) and their inference.</p>
-<p>This is a technical material suitable for LLM/VLM (vision-language model) training engineers and operators. That is the content here contains lots of scripts and copy-n-paste commands to enable you to quickly address your needs.</p>
-<p>This repo is an ongoing brain dump of my experiences training Large Language Models (LLM) (and VLMs); a lot of the know-how I acquired while training the open-source <a href="https://huggingface.co/bigscience/bloom">BLOOM-176B</a> model in 2022 and <a href="https://huggingface.co/HuggingFaceM4/idefics-80b-instruct">IDEFICS-80B</a> multi-modal model in 2023, and RAG (retrieval-augmented generation: models that look up documents before answering) models at <a href="https://contextual.ai/">Contextual.AI</a> in 2024.</p>
-<p>I've been compiling this information mostly for myself so that I could quickly find solutions I have already researched in the past and which have worked, but as usual I'm happy to share these notes with the wider ML community.</p>
+<h1 id="machine-learning-engineering">Machine Learning Engineering</h1>
+<p>A from-zero path through the systems side of modern machine learning: the hardware, operating systems, networks and distributed systems underneath training and serving large models, and the engineering of training runs, inference servers and RL infrastructure on top of them.</p>
+<p>It assumes you know Python, the basics of PyTorch (tensors, <code>nn.Module</code>, writing a training loop) and the math of deep learning. It assumes nothing else. Read it top to bottom: nothing is used before it is taught, every chapter starts with a <strong>Prerequisites</strong> list, and almost every section has code you can run.</p>
 <h2 id="table-of-contents">Table of Contents</h2>
-<p>The book is ordered as a learning path: read top to bottom and nothing is used before it is taught. Each part starts with the from-zero chapters; the pages marked <strong>(Stas)</strong> are Stas Bekman's original chapters, placed where they make sense - an overview before the chapter that builds on it, practical recipes and reference notes after. Every chapter starts with a <strong>Prerequisites</strong> list, so you can also jump to a topic and follow the links backwards.</p>
 <p><strong>Part 1. Foundations</strong> - systems from zero</p>
 <ol>
 <li><strong><a href="foundations/toolkit.html">The Working Toolkit</a></strong> - terminal basics, running the book's code, git, JSON/YAML/TOML, regex, Make, reading C</li>
-<li><strong><a href="foundations/computer-architecture.html">Computer Architecture</a></strong> - number formats, CPUs, memory hierarchy, PCIe, what a GPU is</li>
+<li><strong><a href="foundations/computer-architecture.html">Computer Architecture</a></strong> - number formats, CPUs, memory hierarchy, PCIe, what a GPU is, sizing the CPU side of a GPU node</li>
 <li><strong><a href="foundations/linux-and-os.html">Linux and Operating Systems</a></strong> - shell, processes, memory, filesystems, ssh, systemd, CUDA versions</li>
 <li><strong><a href="foundations/concurrency.html">Concurrency and Parallelism</a></strong> - threads, processes, the GIL, asyncio, DataLoader internals, CUDA streams</li>
 <li><strong><a href="foundations/networking.html">Computer Networking</a></strong> - TCP/IP, sockets, DNS/HTTP/TLS, data center networks, RDMA, InfiniBand</li>
 <li><strong><a href="foundations/distributed-systems.html">Distributed Systems</a></strong> - failures, clocks, consensus, Raft, leases, linearizability, fault tolerance</li>
 <li><strong><a href="foundations/containers-and-virtualization.html">Containers, VMs, MicroVMs and Sandboxing</a></strong> - namespaces, cgroups, Docker, KVM, Firecracker, gVisor, untrusted code</li>
-<li><strong><a href="foundations/storage-and-data.html">Storage, Checkpoints and Data Pipelines</a></strong> - block/file/object storage, safetensors, checkpoint I/O, datasets at scale</li>
+<li><strong><a href="foundations/storage-and-data.html">Storage, Checkpoints and Data Pipelines</a></strong> - file systems, object storage, benchmarking IO, checkpoint I/O, datasets at scale, cleaning up</li>
 </ol>
 <p><strong>Part 2. Model Architectures</strong></p>
 <ol>
@@ -58,199 +45,70 @@
 </ol>
 <p><strong>Part 3. Hardware and Kernels</strong></p>
 <ol>
-<li><strong><a href="compute/README.html">Compute</a></strong> (Stas) - overview of accelerators, CPUs and CPU memory</li>
-<li><strong><a href="compute/accelerator/README.html">Accelerators</a></strong> (Stas) - what GPUs and other accelerators are rated at: TFLOPS, memory, achievable FLOPS</li>
+<li><strong><a href="compute/accelerators.html">Accelerators</a></strong> - specs, vendors, TFLOPS, memory, achievable FLOPS and how to measure them</li>
 <li><strong><a href="compute/accelerator/execution-model.html">GPU Execution Model</a></strong> - SMs, warps, memory hierarchy, tensor cores, rooflines, FlashAttention, torch.compile</li>
 <li><strong><a href="compute/accelerator/writing-kernels.html">Writing GPU Kernels</a></strong> - CUDA C++ and Triton, from vector add to tensor-core GEMM and FlashAttention</li>
-<li><strong><a href="compute/gpu-software-stack.html">The GPU Node Software Stack</a></strong> - drivers, CUDA, NCCL, RDMA and node bring-up</li>
-<li><strong><a href="compute/accelerator/benchmarks/README.html">Accelerator Benchmarks</a></strong> (Stas) - measuring achievable matmul FLOPS</li>
-<li><strong><a href="compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs</a></strong> (Stas) - Xid errors, diagnostics, ECC</li>
-<li><strong><a href="compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs</a></strong> (Stas)</li>
-<li><strong><a href="compute/accelerator/amd/performance.html">AMD GPU Performance</a></strong> (Stas)</li>
-<li><strong><a href="compute/cpu/README.html">CPU</a></strong> (Stas) - cores, affinity, what the CPU must do for the GPUs</li>
-<li><strong><a href="compute/cpu-memory/README.html">CPU Memory</a></strong> (Stas) - how much host memory is enough</li>
-<li><strong><a href="storage/README.html">Storage</a></strong> (Stas) - local, distributed and shared file systems, benchmarks</li>
-<li><strong><a href="network/README.html">Network</a></strong> (Stas) - intra- and inter-node networking hardware</li>
-<li><strong><a href="network/comms.html">Communication Patterns</a></strong> (Stas) - what each collective does</li>
-<li><strong><a href="network/collectives-internals.html">Collective Communication Internals</a></strong> - ring/tree algorithms, NCCL internals, cost models</li>
-<li><strong><a href="network/debug/README.html">Network Debug</a></strong> (Stas) - diagnosing NCCL and network problems</li>
-<li><strong><a href="network/benchmarks/README.html">Network Benchmarks</a></strong> (Stas) - measuring real network throughput</li>
+<li><strong><a href="compute/gpu-software-stack.html">The GPU Node Software Stack</a></strong> - drivers, CUDA, NCCL, RDMA, node bring-up and GPU troubleshooting</li>
+<li><strong><a href="network/interconnects.html">Interconnect Hardware</a></strong> - NVLink, NVSwitch, InfiniBand, RoCE, EFA, SHARP and what they really deliver</li>
+<li><strong><a href="network/collectives-internals.html">Collective Communication Internals</a></strong> - communication patterns, ring/tree algorithms, NCCL internals, cost models</li>
+<li><strong><a href="network/measuring-and-debugging.html">Measuring and Debugging the Network</a></strong> - benchmarks, NCCL diagnostics, performance settings</li>
 </ol>
 <p><strong>Part 4. Orchestration</strong></p>
 <ol>
-<li><strong><a href="orchestration/README.html">Orchestration Systems</a></strong> (Stas) - overview</li>
-<li><strong><a href="orchestration/slurm/from-zero.html">Slurm From Zero</a></strong> - architecture, jobs, multi-node PyTorch, preemption, admin basics</li>
-<li><strong><a href="orchestration/slurm/README.html">Working in a SLURM Environment</a></strong> (Stas) - overview of the SLURM pages</li>
-<li><strong><a href="orchestration/slurm/users.html">SLURM for Users</a></strong> (Stas) - recipes and cheatsheet</li>
-<li><strong><a href="orchestration/slurm/admin.html">SLURM Administration</a></strong> (Stas) - admin recipes</li>
-<li><strong><a href="orchestration/slurm/performance.html">SLURM Performance</a></strong> (Stas) - settings that affect performance</li>
-<li><strong><a href="orchestration/slurm/launchers/README.html">SLURM Launchers</a></strong> (Stas) - ready-made multi-node launcher scripts</li>
+<li><strong><a href="orchestration/slurm/from-zero.html">Slurm From Zero</a></strong> - architecture, jobs, multi-node PyTorch, preemption, day-to-day recipes, admin basics</li>
 <li><strong><a href="orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></strong> - objects, controllers, operators, GPU workloads</li>
-<li><strong><a href="orchestration/kubernetes/README.html">Kubernetes</a></strong> (Stas) - practical notes on Kubernetes for ML</li>
 <li><strong><a href="orchestration/internals.html">Orchestration Internals</a></strong> - gang scheduling, topology, elastic launch, failure arithmetic</li>
 </ol>
 <p><strong>Part 5. Training</strong></p>
 <ol>
-<li><strong><a href="training/README.html">Training</a></strong> (Stas) - overview of the training pages</li>
-<li><strong><a href="training/dtype.html">Tensor Precision / Data Types</a></strong> (Stas) - fp32, bf16, fp16, fp8 and mixed precision</li>
-<li><strong><a href="training/arithmetic.html">Training Arithmetic and Numerics</a></strong> - FLOPs, memory, mixed precision, FP8, optimizers</li>
-<li><strong><a href="training/model-parallelism/README.html">Model Parallelism</a></strong> (Stas) - survey of DP, ZeRO, TP, PP, SP and their implementations</li>
-<li><strong><a href="training/model-parallelism/derivations.html">Parallelism From First Principles</a></strong> - DDP, ZeRO/FSDP, TP, SP/CP, PP, EP, composing them</li>
-<li><strong><a href="training/performance/README.html">Software Tune Up for the Best Performance</a></strong> (Stas) - batch sizes, checkpointing, DataLoader, model shapes</li>
-<li><strong><a href="training/profiling-and-optimization.html">Profiling and Optimizing Training</a></strong> - hands-on bottleneck hunting</li>
-<li><strong><a href="training/hparams.html">Selecting Training Hyper-Parameters and Model Initializations</a></strong> (Stas)</li>
-<li><strong><a href="training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities</a></strong> (Stas)</li>
-<li><strong><a href="training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns</a></strong> (Stas)</li>
-<li><strong><a href="training/checkpoints/README.html">Checkpoints</a></strong> (Stas)</li>
-<li><strong><a href="training/fault-tolerance/README.html">Fault Tolerance</a></strong> (Stas)</li>
-<li><strong><a href="training/reproducibility/README.html">Reproducibility</a></strong> (Stas)</li>
-<li><strong><a href="training/datasets.html">Dealing with Datasets</a></strong> (Stas)</li>
-<li><strong><a href="training/emulate-multi-node.html">Emulating a Multi-Node Setup on a Single Node</a></strong> (Stas)</li>
-<li><strong><a href="training/re-train-hub-models.html">Re-training HF Hub Models From Scratch</a></strong> (Stas)</li>
+<li><strong><a href="training/arithmetic.html">Training Arithmetic and Numerics</a></strong> - FLOPs, memory, data types, mixed precision, FP8/FP4, optimizers</li>
+<li><strong><a href="training/model-parallelism/derivations.html">Parallelism From First Principles</a></strong> - DDP, ZeRO/FSDP, TP, SP/CP, PP, EP, composing them, implementations</li>
+<li><strong><a href="training/profiling-and-optimization.html">Profiling and Optimizing Training</a></strong> - finding the bottleneck, MFU, memory, model sizing, DataLoader, NUMA</li>
+<li><strong><a href="training/stability.html">Training Stability</a></strong> - hyperparameters, initialization, instabilities, reading loss curves</li>
+<li><strong><a href="training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></strong> - surviving failures and preemption, checkpoints, determinism</li>
 <li><strong><a href="training/decentralized-training.html">Training Across Datacenters and the Internet</a></strong> - DiLoCo, compression, elastic and decentralized training</li>
 </ol>
 <p><strong>Part 6. Inference</strong></p>
 <ol>
-<li><strong><a href="inference/README.html">Inference</a></strong> (Stas) - overview and vocabulary</li>
-<li><strong><a href="inference/arithmetic.html">Inference Arithmetic</a></strong> - rooflines, KV cache sizing, quantization, capacity planning</li>
+<li><strong><a href="inference/arithmetic.html">Inference Arithmetic</a></strong> - vocabulary and metrics, rooflines, KV cache sizing, quantization, capacity planning</li>
 <li><strong><a href="inference/serving-engine-internals.html">Inside a Serving Engine</a></strong> - paged attention, scheduling, speculative decoding, disaggregation</li>
-<li><strong><a href="inference/serving-hands-on.html">Serving LLMs in Practice</a></strong> - vLLM/SGLang, load testing, gateways, multi-node serving</li>
+<li><strong><a href="inference/serving-hands-on.html">Serving LLMs in Practice</a></strong> - vLLM/SGLang, choosing a framework, load testing, gateways, multi-node serving</li>
 </ol>
 <p><strong>Part 7. Platforms</strong></p>
 <ol>
 <li><strong><a href="platform/control-planes.html">Control Planes and Fleet Management</a></strong> - placement, node agents, leases, reconciliation, operating services</li>
 <li><strong><a href="platform/rl-infrastructure.html">Infrastructure for Large-Scale RL</a></strong> - generators vs trainers, async RL, weight sync, environments and sandboxes</li>
+<li><strong><a href="platform/getting-compute.html">Getting Compute</a></strong> - renting vs buying, choosing a cloud provider, evaluating a cluster, when to upgrade GPUs</li>
 </ol>
-<p><strong>Part 8. Insights</strong> - putting it together</p>
+<p><strong>Part 8. Development</strong></p>
 <ol>
-<li><strong><a href="insights/ai-battlefield.html">The AI Battlefield Engineering</a></strong> (Stas) - what you need to know in order to succeed</li>
-<li><strong><a href="insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider</a></strong> (Stas) - questions for a successful compute cloud experience</li>
-<li><strong><a href="insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs?</a></strong> (Stas) - deciding whether a GPU upgrade is worth its cost</li>
+<li><strong><a href="development/debugging-pytorch.html">Debugging PyTorch Programs</a></strong> - tiny models, memory, tensors, crashes, git bisect</li>
+<li><strong><a href="development/debugging-distributed.html">Debugging Distributed Programs and Performance</a></strong> - hangs across ranks, NCCL, multi-node, profiling</li>
+<li><strong><a href="development/testing.html">Writing and Running Tests</a></strong> - pytest for ML code, including GPU and distributed tests</li>
 </ol>
-<p><strong>Part 9. Development</strong></p>
+<p><strong>Appendix</strong></p>
 <ol>
-<li><strong><a href="debug/README.html">Debugging and Troubleshooting</a></strong> (Stas) - overview</li>
-<li><strong><a href="debug/pytorch.html">Debugging PyTorch Programs</a></strong> (Stas)</li>
-<li><strong><a href="debug/tools.html">Debug Tools</a></strong> (Stas)</li>
-<li><strong><a href="debug/tiny-scripts/README.html">Tiny Scripts</a></strong> (Stas)</li>
-<li><strong><a href="testing/README.html">Testing</a></strong> (Stas) - tips and tools for writing tests</li>
-<li><strong><a href="https://github.com/stas00/the-art-of-debugging">And more debugging</a></strong> (Stas) - The Art of Debugging, a companion book</li>
-</ol>
-<p><strong>Part 10. Miscellaneous</strong></p>
-<ol>
-<li><strong><a href="resources/README.html">Resources</a></strong> (Stas) - LLM/VLM chronicles</li>
-<li><strong><a href="courses/lesson-learned/README.html">Lessons Learned from Training LLMs</a></strong> (Stas)</li>
-<li><strong><a href="contributors.html">Contributors</a></strong> (Stas)</li>
-<li><strong><a href="build/README.html">Building the Book</a></strong> (Stas) - pdf, website and equation tooling</li>
+<li><strong><a href="appendix/further-reading.html">Further Reading and Quick Reference</a></strong> - comparison tables, tools, training logbooks, lessons learned</li>
 </ol>
 <h3 id="reading-paths">Reading paths</h3>
 <p>After Part 1, pick the path closest to the work you want to do. Each path lists its chapters in book order, so prerequisites always come first:</p>
 <ul>
-<li><strong>Distributed training:</strong> Collective Communication Internals → Slurm From Zero → Training Arithmetic → Model Parallelism → Parallelism From First Principles → Profiling and Optimizing Training → Training Across Datacenters</li>
-<li><strong>Inference:</strong> Kubernetes From Zero → Inference → Inference Arithmetic → Inside a Serving Engine → Serving LLMs in Practice → Control Planes</li>
-<li><strong>RL infrastructure:</strong> Model Parallelism → Parallelism From First Principles → Inference Arithmetic → Inside a Serving Engine → Infrastructure for Large-Scale RL (the sandboxing material is in Part 1's Containers chapter)</li>
-<li><strong>Sandboxes and compute platforms:</strong> The GPU Node Software Stack → Kubernetes From Zero → Orchestration Internals → Control Planes (building on Part 1's Containers, VMs and MicroVMs)</li>
+<li><strong>Distributed training:</strong> Collective Communication Internals → Slurm From Zero → Training Arithmetic → Parallelism From First Principles → Profiling and Optimizing Training → Training Stability → Fault Tolerance → Training Across Datacenters</li>
+<li><strong>Inference:</strong> Kubernetes From Zero → Inference Arithmetic → Inside a Serving Engine → Serving LLMs in Practice → Control Planes</li>
+<li><strong>RL infrastructure:</strong> Parallelism From First Principles → Inference Arithmetic → Inside a Serving Engine → Infrastructure for Large-Scale RL (the sandboxing material is in Part 1's Containers chapter)</li>
+<li><strong>Sandboxes and compute platforms:</strong> The GPU Node Software Stack → Kubernetes From Zero → Orchestration Internals → Control Planes → Getting Compute (building on Part 1's Containers, VMs and MicroVMs)</li>
 <li><strong>Kernels and performance:</strong> Accelerators → GPU Execution Model → Writing GPU Kernels → Profiling and Optimizing Training → Inside a Serving Engine (attention kernels)</li>
 <li><strong>Model architectures:</strong> Part 2, then Inference Arithmetic for what each design costs at serving time</li>
 </ul>
-<h2 id="updates">Updates</h2>
-<p>I announce any significant updates on my twitter channel <a href="https://twitter.com/StasBekman">https://twitter.com/StasBekman</a>.</p>
-<h2 id="ebook-versions-of-the-book">Ebook versions of the book</h2>
-<p>You can download various ebook formats of this book:</p>
+<h2 id="reading-it">Reading it</h2>
 <ul>
-<li><a href="https://huggingface.co/stas/ml-engineering-book/resolve/main/Stas%20Bekman%20-%20Machine%20Learning%20Engineering.pdf?download=true">PDF</a></li>
-<li><a href="https://huggingface.co/stas/ml-engineering-book/resolve/main/Stas%20Bekman%20-%20Machine%20Learning%20Engineering.epub?download=true">EPUB</a></li>
+<li><strong>On GitHub:</strong> start at <a href="foundations/toolkit.html">The Working Toolkit</a>. Equations render natively.</li>
+<li><strong>As a website:</strong> the <code>site/</code> folder is a ready-to-serve static site with a sidebar, search filter and rendered equations. See <a href="build/README.html">Building the book</a>.</li>
+<li><strong>As a PDF:</strong> <code>make pdf</code> (see <a href="build/README.html">Building the book</a>).</li>
 </ul>
-<p>I will try to rebuild these once in a few weeks or so, but if you want the latest ebook versions, the instructions for building are <a href="build/README.html">here</a>.</p>
-<p>Thanks to HuggingFace for giving me permission to host my book's ebook formats at the <a href="https://huggingface.co/stas/ml-engineering-book">HF hub</a>.</p>
-<h2 id="skills-for-ai-agents">Skills for AI agents</h2>
-<p>A <em>skill</em> here is a markdown file of instructions (<code>SKILL.md</code>) that an AI coding agent can load to work on a specific kind of task.</p>
-<p>I maintain two <a href="skills/README.html">SKILL.md</a> files that you can use to teach your AI agent:</p>
-<ul>
-<li><a href="skills/ml-engineering/SKILL.html">Machine Learning Engineering</a> — train and operate large-scale ML models.</li>
-<li><a href="skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster</a> — trial-node / acceptance loop: compute, network, and storage, then a markdown report.</li>
-</ul>
-<p>See also the companion skills: <a href="https://github.com/stas00/the-art-of-debugging/blob/master/SKILL.md">The Art of Debugging</a> and <a href="https://github.com/stas00/python-cookbook/blob/master/SKILL.md">Stas' Python Cookbook</a>.</p>
-<h2 id="courses">Courses</h2>
-<ul>
-<li><strong><a href="courses/lesson-learned/README.html">Lessons Learned from Training LLMs</a></strong> - provides a very different way of reading my open books, by going over the terse learned insights and allowing you to quickly dive deeper when you need to.</li>
-</ul>
-<h2 id="lecturestalks">Lectures/Talks</h2>
-<ul>
-<li><a href="https://www.youtube.com/watch?v=IBJUt9JPKHk">Building resilient ML Engineering skills</a> given on 2026-01-10 for the <a href="https://github.com/gpu-mode">GPU Mode community</a>. Only had time to discuss performance reality of accelerators, network and storage and how each of them can be crucial to the ensemble's performance. Thanks to <a href="https://github.com/msaroufim">Mark Saroufim</a> for organizing and providing an awesome support during the talk.</li>
-</ul>
-<h2 id="discussions">Discussions</h2>
-<p>If you want to discuss something related to ML engineering this repo has the <a href="https://github.com/stas00/ml-engineering/discussions">community discussions</a> available - so please don't hesitate to share your experience or start a new discussion about something you're passionate about.</p>
-<h2 id="key-comparison-tables">Key comparison tables</h2>
-<p>These and the shortcuts below are reference material for when you're working; the terms in them (TFLOPS, intra-/inter-node, nccl-tests, MAMF, SLURM) are all taught in the chapters above.</p>
-<p>High end accelerators:</p>
-<ul>
-<li><a href="compute/accelerator/README.html#tflops-comparison-table">Theoretical accelerator TFLOPS</a></li>
-<li><a href="compute/accelerator/README.html#accelerator-memory-size-and-speed">Accelerator memory size and speed</a></li>
-</ul>
-<p>Networks:</p>
-<ul>
-<li><a href="network/README.html#inter-node-networking">Theoretical inter-node speed</a></li>
-<li><a href="network/README.html#intra-node-networking">Theoretical intra-node speed</a></li>
-</ul>
-<h2 id="shortcuts">Shortcuts</h2>
-<p>Things that you are likely to need to find quickly and often.</p>
-<p>Tools:</p>
-<ul>
-<li><a href="network/benchmarks/torch-dist-bench.py">torch-dist-bench.py</a> - a much easier way to benchmark network throughput than nccl-tests (used to be called <code>all_reduce_bench.py</code>).</li>
-<li><a href="debug/torch-distributed-gpu-test.py">torch-distributed-gpu-test.py</a> - a tool to quickly test your inter-node connectivity</li>
-<li><a href="compute/accelerator/benchmarks/mamf-finder.py">mamf-finder.py</a> - what is the actual TFLOPS measurement you can get from your accelerator.</li>
-</ul>
-<p>Guides:</p>
-<ul>
-<li><a href="debug/pytorch.html">debugging pytorch applications</a> - quick copy-n-paste solutions to resolve hanging or breaking pytorch applications</li>
-<li><a href="orchestration/slurm/users.html">slurm for users</a> - a slurm cheatsheet and tricks</li>
-<li><a href="debug/pytorch.html#faster-debug-and-development-with-tiny-models-tokenizers-and-datasets">make tiny models/datasets/tokenizers</a></li>
-<li><a href="resources/README.html#publicly-available-training-llmvlm-logbooks">LLM/VLM chronicles collection</a></li>
-</ul>
-<h2 id="gratitude">Gratitude</h2>
-<p>None of this would have been possible without me being entrusted with doing the specific LLM/VLM trainings I have learned the initial know-how from. This is a privilege that only a few enjoy due to the prohibitively expensive cost of renting huge ML compute clusters. So hopefully the rest of the ML community will vicariously learn from these notes.</p>
-<p>Special thanks go to <a href="https://github.com/thomwolf">Thom Wolf</a> who proposed that I lead the BLOOM-176B training back when I didn't know anything about large scale training. This was the project that catapulted me into the intense learning process. And, of course, HuggingFace for giving me the opportunity to work full time on BLOOM-176B and later on IDEFICS-80B trainings.</p>
-<p>Recently, I continued expanding my knowledge and experience while training models and building scalable training/inference systems at <a href="https://contextual.ai/">Contextual.AI</a> and I'm grateful for that opportunity to Aman and Douwe.</p>
-<p>I'd also like to thank the numerous <a href="contributors.html">contributors</a> who have been making this text awesome and error-free.</p>
-<h2 id="contributing">Contributing</h2>
-<p>If you found a bug, typo or would like to propose an improvement please don't hesitate to open an <a href="https://github.com/stas00/ml-engineering/issues">Issue</a> or contribute a PR.</p>
-<h2 id="related-open-books">Related Open Books</h2>
-<ul>
-<li><a href="https://github.com/stas00/the-art-of-debugging">The Art of Debugging Open Book</a> — methodologies and recipes for debugging Unix, Python and PyTorch programs.</li>
-<li><a href="https://github.com/stas00/python-cookbook">Stas' Python Cookbook</a> — everyday Python and standard-library recipes.</li>
-</ul>
-<h2 id="license">License</h2>
-<p>The content of this site is distributed under <a href="LICENSE-CC-BY-SA">Attribution-ShareAlike 4.0 International</a>.</p>
-<h2 id="citation">Citation</h2>
-<pre><code class="language-bibtex">@misc{bekman2024mlengineering,
-  author = {Bekman, Stas},
-  title = {Machine Learning Engineering Open Book},
-  year = {2023-2026},
-  publisher = {Stasosphere Online Inc.},
-  journal = {GitHub repository},
-  url = {https://github.com/stas00/ml-engineering}
-}
-</code></pre>
-<h2 id="my-repositories-map">My repositories map</h2>
-<p>✔ <strong>Books:</strong>
-<a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering</a> |
-<a href="https://github.com/stas00/the-art-of-debugging">The Art of Debugging</a> |
-<a href="https://github.com/stas00/python-cookbook">Stas' Python Cookbook</a></p>
-<p>✔ <strong>Applications:</strong>
-<a href="https://github.com/stas00/ipyexperiments">ipyexperiments</a></p>
-<p>✔ <strong>Tools and Cheatsheets:</strong>
-<a href="https://github.com/stas00/bash-tools">bash</a> |
-<a href="https://github.com/stas00/conda-tools">conda</a> |
-<a href="https://github.com/stas00/git-tools">git</a> |
-<a href="https://github.com/stas00/jupyter-notebook-tools">jupyter-notebook</a> |
-<a href="https://github.com/stas00/make-tools">make</a> |
-<a href="https://github.com/stas00/python-tools">python</a> |
-<a href="https://github.com/stas00/tensorboard-tools">tensorboard</a> |
-<a href="https://github.com/stas00/unix-tools">unix</a></p>
-<p>✔ <strong>Other Machine Learning:</strong>
-<a href="https://github.com/stas00/ml-ways">ML ways</a> |
-<a href="https://github.com/stas00/porting">Porting</a></p>
+<h2 id="license-and-credits">License and credits</h2>
+<p>This book is a fork of, and substantially rewrites, Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a>. Material adapted from it is marked at the end of each chapter that uses it. Thanks to Stas Bekman and <a href="https://github.com/stas00/ml-engineering/blob/master/contributors.md">the original book's contributors</a>.</p>
+<p>The content is distributed under <a href="LICENSE-CC-BY-SA">Attribution-ShareAlike 4.0 International</a>.</p>
 
 </article>
 <footer><a class="next" href="foundations/toolkit.html">Foundations: The Working Toolkit &rarr;</a></footer>

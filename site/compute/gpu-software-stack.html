@@ -10,29 +10,22 @@
 <nav id="sidebar">
   <a class="home" href="../index.html">Machine Learning Engineering</a>
   <input id="filter" type="search" placeholder="Filter pages...">
-  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering Open Book (Stas)</a></li></ul></details>
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
 <details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
 <details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
-<details open><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/README.html">Compute (Stas)</a></li><li><a href="../compute/accelerator/README.html">Accelerators (Stas)</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html" class="current">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks (Stas)</a></li><li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs (Stas)</a></li><li><a href="../compute/accelerator/amd/performance.html">AMD GPUs Performance (Stas)</a></li><li><a href="../compute/cpu/README.html">CPU (Stas)</a></li><li><a href="../compute/cpu-memory/README.html">CPU Memory (Stas)</a></li><li><a href="../storage/README.html">Storage: File Systems and IO (Stas)</a></li><li><a href="../network/README.html">Inter-Node and Intra-Node Networking Hardware (Stas)</a></li><li><a href="../network/comms.html">Communication Patterns (Stas)</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/debug/README.html">Network Debug (Stas)</a></li><li><a href="../network/benchmarks/README.html">Networking Benchmarks (Stas)</a></li></ul></details>
-<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/README.html">Orchestration (Stas)</a></li><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/slurm/README.html">Working in SLURM Environment (Stas)</a></li><li><a href="../orchestration/slurm/users.html">SLURM for Users (Stas)</a></li><li><a href="../orchestration/slurm/admin.html">SLURM Administration (Stas)</a></li><li><a href="../orchestration/slurm/performance.html">SLURM Performance (Stas)</a></li><li><a href="../orchestration/slurm/launchers/README.html">Single and Multi-Node Launchers with SLURM (Stas)</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/kubernetes/README.html">Kubernetes (Stas)</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
-<details><summary>Part 5. Training</summary><ul><li><a href="../training/README.html">Training (Stas)</a></li><li><a href="../training/dtype.html">Tensor Precision / Data Types (Stas)</a></li><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/README.html">Model Parallelism (Stas)</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/performance/README.html">Software Tune Up For The Best Performance (Stas)</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/hparams.html">Selecting Training Hyper-Parameters And Model Initializations (Stas)</a></li><li><a href="../training/instabilities/README.html">Avoiding, Recovering From and Understanding Instabilities (Stas)</a></li><li><a href="../training/instabilities/training-loss-patterns.html">Understanding Training Loss Patterns (Stas)</a></li><li><a href="../training/checkpoints/README.html">Checkpoints (Stas)</a></li><li><a href="../training/fault-tolerance/README.html">Fault Tolerance (Stas)</a></li><li><a href="../training/reproducibility/README.html">Reproducibility (Stas)</a></li><li><a href="../training/datasets.html">Dealing with Datasets (Stas)</a></li><li><a href="../training/emulate-multi-node.html">Emulate a Multi-Node Setup Using Just a Single Node (Stas)</a></li><li><a href="../training/re-train-hub-models.html">Re-Train HF Hub Models From Scratch Using Finetuning Examples (Stas)</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
-<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/README.html">Inference (Stas)</a></li><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
-<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li></ul></details>
-<details><summary>Part 8. Insights</summary><ul><li><a href="../insights/ai-battlefield.html">The AI Battlefield Engineering - What You Need To Know (Stas)</a></li><li><a href="../insights/how-to-choose-cloud-provider.html">How to Choose a Cloud Provider (Stas)</a></li><li><a href="../insights/when-to-upgrade-gpus/README.html">When Is It Worth Upgrading GPUs? (Stas)</a></li></ul></details>
-<details><summary>Part 9. Development</summary><ul><li><a href="../debug/README.html">Debugging and Troubleshooting (Stas)</a></li><li><a href="../debug/pytorch.html">Debugging PyTorch Programs (Stas)</a></li><li><a href="../debug/tools.html">Debug Tools (Stas)</a></li><li><a href="../debug/tiny-scripts/README.html">A Backup of Scripts (Stas)</a></li><li><a href="../testing/README.html">Writing and Running Tests (Stas)</a></li></ul></details>
-<details><summary>Part 10. Miscellaneous</summary><ul><li><a href="../resources/README.html">Resources (Stas)</a></li><li><a href="../courses/lesson-learned/README.html">Lessons Learned from Training LLMs (a course) (Stas)</a></li><li><a href="../contributors.html">Contributors (Stas)</a></li><li><a href="../build/README.html">Book Building (Stas)</a></li></ul></details>
-<details><summary>Other pages: build</summary><ul><li><a href="../build/SESSION.html">Session Preferences (Stas) - build/SESSION.md</a></li><li><a href="../build/consistency-checks.html">Consistency Checks (maintainer runbook) (Stas) - build/consistency-checks.md</a></li><li><a href="../build/cover/README.html">build/cover/README.md (Stas) - build/cover/README.md</a></li></ul></details>
-<details><summary>Other pages: debug</summary><ul><li><a href="../debug/make-tiny-models-tokenizers-datasets.html">Faster Debug and Development with Tiny Models, Tokenizers and Datasets (Stas) - debug/make-tiny-models-tokenizers-datasets.md</a></li><li><a href="../debug/nccl-performance-debug.html">NCCL: Debug and Performance (Stas) - debug/nccl-performance-debug.md</a></li><li><a href="../debug/torch-distributed-hanging-solutions.html">Diagnosing Hangings and Deadlocks in Multi-Node Multi-GPU Python Programs (Stas) - debug/torch-distributed-hanging-solutions.md</a></li><li><a href="../debug/underflow_overflow.html">Underflow and Overflow Detection (Stas) - debug/underflow_overflow.md</a></li></ul></details>
-<details><summary>Other pages: model-parallelism</summary><ul><li><a href="../model-parallelism/README.html">Model Parallelism (Stas) - model-parallelism/README.md</a></li></ul></details>
-<details><summary>Other pages: skills</summary><ul><li><a href="../skills/README.html">Skills (Stas) - skills/README.md</a></li><li><a href="../skills/evaluate-cluster/SKILL.html">Evaluate a GPU cluster (Stas) - skills/evaluate-cluster/SKILL.md</a></li><li><a href="../skills/ml-engineering/SKILL.html">Machine Learning Engineering (Stas) - skills/ml-engineering/SKILL.md</a></li></ul></details>
-<details><summary>Other pages: stabs</summary><ul><li><a href="../stabs/README.html">Stabs (Stas) - stabs/README.md</a></li><li><a href="../stabs/incoming.html">Things to add / integrate (Stas) - stabs/incoming.md</a></li></ul></details>
-<details><summary>Other pages: top level</summary><ul><li><a href="../SKILL.html">Machine Learning Engineering skill (Stas) - SKILL.md</a></li><li><a href="../todo.html">TODO (Stas) - todo.md</a></li></ul></details>
+<details open><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html" class="current">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
 </nav>
 <main>
 <article>
 <h1 id="the-gpu-node-software-stack-from-zero-drivers-cuda-nccl-and-fabric-bring-up">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</h1>
 <p>A GPU server fresh from the vendor is a box of very expensive silicon that does nothing. Before <code>torch.cuda.is_available()</code> returns <code>True</code> and an 8-node all-reduce runs at line rate, about a dozen pieces of software have to be installed at matching versions, in the right order, on the host or in the container. Each one can be missing, the wrong version or half-loaded. When that happens the failure usually shows up somewhere else: NCCL complains, PyTorch hangs, or a job runs at a tenth of the speed it should.</p>
-<p>This chapter goes through that stack one layer at a time, from firmware up to framework wheels. For each layer it covers what the layer is, why it exists, which versions must match, how to install and pin it on Ubuntu, and how to check it is healthy. The chapter ends with a node acceptance script that checks the whole stack and prints PASS or FAIL. An operator runs something like it on every node before a scheduler is allowed to give that node to users.</p>
+<p>This chapter goes through that stack one layer at a time, from firmware up to framework wheels. For each layer it covers what the layer is, why it exists, which versions must match, how to install and pin it on Ubuntu, and how to check it is healthy. The chapter then builds a node acceptance script that checks the whole stack and prints PASS or FAIL. An operator runs something like it on every node before a scheduler is allowed to give that node to users. It ends with troubleshooting: reading Xid and ECC errors, running diagnostics, deciding reset vs RMA, and the AMD equivalents.</p>
 <p>Conventions:</p>
 <ul>
 <li>Python marked <strong>[ran]</strong> was executed on an Apple Silicon Mac (CPython 3.14.5, macOS 15) while writing this chapter. The output pasted under it is the real output.</li>
@@ -506,7 +499,7 @@ $ nvidia-smi -q -i 0 | grep -i -A 2 Fabric
 </code></pre>
 <p><code>State: In Progress</code> is normal for a few seconds after boot. Anything other than <code>Completed / Success</code> once FM is up means the GPU isn't part of the NVLink fabric. Look at <code>journalctl -u nvidia-fabricmanager</code> and <code>/var/log/fabricmanager.log</code>.</p>
 <h3 id="nvlink-and-topology-checks">NVLink and topology checks</h3>
-<p>Once FM is happy, check that the links actually trained and at what speed, and look at how GPUs and NICs connect. The <a href="../compute/accelerator/nvidia/debug.html#how-to-check-error-counters-of-nvlink-links">NVIDIA debug chapter</a> covers NVLink error counters and <a href="../network/debug/README.html#how-to-check-if-p2p-is-supported">P2P checks</a> in detail. The bring-up version: <strong>[untested]</strong></p>
+<p>Once FM is happy, check that the links actually trained and at what speed, and look at how GPUs and NICs connect. <a href="#nvlink-error-counters">NVLink error counters</a> in section 11 covers the error counters, and <a href="../network/measuring-and-debugging.html#how-to-check-if-p2p-is-supported">P2P checks</a> whether GPUs can reach each other directly. The bring-up version: <strong>[untested]</strong></p>
 <pre><code class="language-bash">$ nvidia-smi nvlink -s | head -4                 # every link should show a speed, none &quot;&lt;inactive&gt;&quot;
 GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-...)
          Link 0: 26.562 GB/s
@@ -522,9 +515,9 @@ NIC0    PIX   NODE  ...   X    NODE
 Legend: NV# = NVLink (# links), PIX = same PCIe switch, NODE = same NUMA node, SYS = across sockets
 </code></pre>
 <p>The two things to check in <code>topo -m</code>: every GPU pair is <code>NV18</code> (all 18 links, on H100), and every GPU has a NIC at <code>PIX</code> distance. A GPU whose nearest NIC is <code>SYS</code> sends its network traffic across the CPU socket link, which roughly halves its inter-node bandwidth. If that happens, something is wrong with the cabling, the BIOS or the slot assignment.</p>
-<p>18 links times 25 GBps per link per direction gives the H100's advertised 450 GBps per direction. The 26.562 shown per link is the raw signalling rate before encoding overhead. <a href="../network/README.html#nvlink">network/README.md</a> has the arithmetic.</p>
+<p>18 links times 25 GBps per link per direction gives the H100's advertised 450 GBps per direction. The 26.562 shown per link is the raw signalling rate before encoding overhead. <a href="../network/interconnects.html#nvlink">NVLink</a> has the arithmetic.</p>
 <h3 id="ecc-row-remapping-clocks-and-gpu-reset">ECC, row remapping, clocks and GPU reset</h3>
-<p><strong>ECC</strong> (error-correcting code) memory stores a few extra check bits per word, so the hardware can fix single-bit flips and at least detect multi-bit ones. A <em>corrected</em> error is silent and harmless; an <em>uncorrected</em> one means data was lost and the process using it is killed. <strong>Row remapping</strong> is how HBM retires a bad memory row: the GPU records the row and swaps in a spare one at the next reset. These health fields are queryable in one CSV line per GPU. The acceptance script below uses exactly this query. The <a href="../compute/accelerator/nvidia/debug.html#how-to-check-gpu-memory-row-remapping-health">NVIDIA debug chapter</a> explains how to read row remapping and <a href="../compute/accelerator/nvidia/debug.html#xid-errors">Xid errors</a>. <strong>[untested]</strong></p>
+<p><strong>ECC</strong> (error-correcting code) memory stores a few extra check bits per word, so the hardware can fix single-bit flips and at least detect multi-bit ones. A <em>corrected</em> error is silent and harmless; an <em>uncorrected</em> one means data was lost and the process using it is killed. <strong>Row remapping</strong> is how HBM retires a bad memory row: the GPU records the row and swaps in a spare one at the next reset. These health fields are queryable in one CSV line per GPU. The acceptance script below uses exactly this query. Section 11 explains how to read <a href="#checking-row-remapping-health-before-a-job-dies">row remapping</a> and <a href="#xid-errors-reading-finding-and-looking-them-up">Xid errors</a>. <strong>[untested]</strong></p>
 <pre><code class="language-bash">$ nvidia-smi --query-gpu=index,ecc.mode.current,ecc.errors.uncorrected.volatile.total,remapped_rows.pending,remapped_rows.failure,pcie.link.width.current,pcie.link.width.max,clocks_event_reasons.hw_slowdown --format=csv,noheader
 0, Enabled, 0, No, No, 16, 16, Not Active
 ...
@@ -546,7 +539,7 @@ $ dcgmi health -c                         # ...and later ask whether anything tr
 $ dcgmi diag -r 1                         # seconds: deployment/software checks
 $ dcgmi diag -r 2                         # ~minutes: + short stress, PCIe, memory
 </code></pre>
-<p>Level 1 belongs in every job prolog (a <strong>prolog</strong> is a script the scheduler runs on each node just before a job starts; an <strong>epilog</strong> runs just after it ends. Slurm's are introduced in <a href="../orchestration/slurm/from-zero.html#what-happens-from-sbatch-to-processes-on-nodes">Slurm from zero</a>). Level 2 belongs in acceptance and after any hardware intervention. Levels 3 and 4 (tens of minutes) are for burn-in and RMA evidence. <a href="../compute/accelerator/nvidia/debug.html#running-diagnostics">The debug chapter</a> has example failure output and a Slurm script.</p>
+<p>Level 1 belongs in every job prolog (a <strong>prolog</strong> is a script the scheduler runs on each node just before a job starts; an <strong>epilog</strong> runs just after it ends. Slurm's are introduced in <a href="../orchestration/slurm/from-zero.html#what-happens-from-sbatch-to-processes-on-nodes">Slurm from zero</a>). Level 2 belongs in acceptance and after any hardware intervention. Levels 3 and 4 (tens of minutes) are for burn-in and RMA evidence. <a href="#running-diagnostics-with-dcgmi-diag">Running diagnostics with <code>dcgmi diag</code></a> in section 11 has example failure output and a Slurm script.</p>
 <h3 id="sharing-one-gpu-mig-and-mps">Sharing one GPU: MIG and MPS</h3>
 <p>Training nodes use whole GPUs. Inference and RL rollout fleets often have many small workloads, such as a 1B reward model or a tokenizer service, and one H100 per small workload is wasteful. There are three ways to share a GPU:</p>
 <table>
@@ -636,9 +629,9 @@ nvidia-ctk cdi list            # nvidia.com/gpu=0 ... nvidia.com/gpu=7, nvidia.c
 docker run --rm --device nvidia.com/gpu=all nvidia/cuda:13.0.2-base-ubuntu24.04 nvidia-smi -L
 </code></pre>
 <p>Regenerate the CDI spec after every driver upgrade. It contains versioned library paths such as <code>libcuda.so.580.95.05</code>, so a stale spec points at files that no longer exist.</p>
-<p>For multi-node training containers you also need the RDMA devices (<code>/dev/infiniband/*</code>), <code>--ulimit memlock=-1</code> (RDMA pins memory) and a larger <code>/dev/shm</code>. Those are listed in <a href="../network/debug/README.html#nccl-with-docker-containers">NCCL with docker containers</a>.</p>
+<p>For multi-node training containers you also need the RDMA devices (<code>/dev/infiniband/*</code>), <code>--ulimit memlock=-1</code> (RDMA pins memory) and a larger <code>/dev/shm</code>. Those are listed in <a href="../network/measuring-and-debugging.html#nccl-with-docker-containers">NCCL with docker containers</a>.</p>
 <h2 id="6-the-rdma-side-of-the-node">6. The RDMA side of the node</h2>
-<p>The GPUs talk to each other inside the node over NVLink. Between nodes they talk through NICs on the <strong>backend network</strong>, usually InfiniBand or RoCE (<a href="../network/README.html#cluster-networks">cluster networks</a>). The <a href="../foundations/networking.html#hpc-networking-rdma-infiniband-roce-efa">networking foundations chapter</a> explains RDMA, queue pairs and verbs. This section is the operator's view of the same thing: what to install, what healthy looks like, and how to measure it.</p>
+<p>The GPUs talk to each other inside the node over NVLink. Between nodes they talk through NICs on the <strong>backend network</strong>, usually InfiniBand or RoCE (<a href="../network/interconnects.html#cluster-networks">cluster networks</a>). The <a href="../foundations/networking.html#hpc-networking-rdma-infiniband-roce-efa">networking foundations chapter</a> explains RDMA, queue pairs and verbs. This section is the operator's view of the same thing: what to install, what healthy looks like, and how to measure it.</p>
 <h3 id="the-software-inbox-rdma-core-vs-doca-ofed">The software: inbox rdma-core vs DOCA-OFED</h3>
 <p>The RDMA stack has the same shape as the GPU stack:</p>
 <pre><code> libnccl / UCX / MPI / perftest            (apps)
@@ -817,7 +810,7 @@ if __name__ == &quot;__main__&quot;:
 </code></pre>
 <p><code>perfquery -x</code> (from <code>infiniband-diags</code>) reads the same counters through the management interface, and <code>perfquery -x -R</code> resets them. Resetting before a test makes any errors during the test stand out.</p>
 <h3 id="perftest-measuring-one-link">perftest: measuring one link</h3>
-<p><code>ib_write_bw</code> measures a single NIC-to-NIC path with RDMA writes and no NCCL involved. It is the first thing to run between two new nodes. <a href="../network/README.html#measuring-the-inter-node-fabric-on-its-own">network/README.md</a> explains what it does and does not isolate. <strong>[untested]</strong></p>
+<p><code>ib_write_bw</code> measures a single NIC-to-NIC path with RDMA writes and no NCCL involved. It is the first thing to run between two new nodes. <a href="../network/interconnects.html#measuring-the-inter-node-fabric-on-its-own">network/README.md</a> explains what it does and does not isolate. <strong>[untested]</strong></p>
 <pre><code class="language-bash"># node A (server)
 ib_write_bw -d mlx5_0 -F --report_gbits -D 10
 # node B (client): same flags + server address. RoCE: add -x &lt;gid index&gt; on both sides
@@ -836,14 +829,14 @@ ib_write_lat -d mlx5_0 -F 10.0.19.12         # latency: expect low single-digit 
 <li><strong><code>nvidia_peermem</code></strong>, a kernel module shipped with the driver (since R470) that plugs into the RDMA core's peer-memory interface. Load it with <code>modprobe nvidia_peermem</code> and persist it in <code>/etc/modules-load.d/</code>.</li>
 <li><strong>DMA-BUF</strong>, the mainline Linux mechanism for sharing device memory between drivers (kernel 5.12+). It needs the open GPU kernel modules and a NIC driver and rdma-core that support it. Recent NCCL versions use it automatically when it is available, so <code>nvidia_peermem</code> is not needed on such systems.</li>
 </ul>
-<p>The PCIe side must also cooperate. <strong>ACS</strong> (Access Control Services) on PCIe switches forces peer-to-peer traffic up to the root complex, which kills GDR performance. Disable it for bare metal (<a href="../network/benchmarks/README.html#disable-access-control-services">how</a>). An IOMMU in translating mode can do the same, so <code>iommu=pt</code> (passthrough) on the kernel command line (the boot options the bootloader hands to Linux; you can read the current ones in <code>/proc/cmdline</code>) is common on GPU nodes. ACS and the IOMMU were introduced in <a href="../foundations/containers-and-virtualization.html#iommu-vfio-and-pcie-passthrough">IOMMU, VFIO and PCIe passthrough</a>.</p>
+<p>The PCIe side must also cooperate. <strong>ACS</strong> (Access Control Services) on PCIe switches forces peer-to-peer traffic up to the root complex, which kills GDR performance. Disable it for bare metal (<a href="../network/measuring-and-debugging.html#disable-access-control-services">how</a>). An IOMMU in translating mode can do the same, so <code>iommu=pt</code> (passthrough) on the kernel command line (the boot options the bootloader hands to Linux; you can read the current ones in <code>/proc/cmdline</code>) is common on GPU nodes. ACS and the IOMMU were introduced in <a href="../foundations/containers-and-virtualization.html#iommu-vfio-and-pcie-passthrough">IOMMU, VFIO and PCIe passthrough</a>.</p>
 <p>Checking that GDR is actually used. The NCCL log is the ground truth. <code>NCCL_DEBUG=INFO</code> makes NCCL print its setup decisions and <code>NCCL_DEBUG_SUBSYS</code> limits that to some subsystems; <code>torchrun ...</code> stands for whatever launch command your job uses (<a href="../foundations/networking.html#step-2-nccl-builds-its-own-connections">how NCCL builds its connections and how to read these lines</a>). <strong>[untested]</strong></p>
 <pre><code class="language-bash">$ lsmod | grep nvidia_peermem || echo &quot;no peermem (fine if NCCL uses DMA-BUF)&quot;
 $ NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,NET torchrun ... 2&gt;&amp;1 | grep -E 'GPU Direct RDMA|DMA-BUF|via NET'
 NCCL INFO NET/IB : GPU Direct RDMA (nvidia-peermem) enabled for HCA 0 'mlx5_0'
 NCCL INFO Channel 00/0 : 0[0] -&gt; 8[0] [send] via NET/IB/0/GDRDMA
 </code></pre>
-<p><code>via NET/IB/0/GDRDMA</code> means GDR is used. <code>via NET/IB/0</code> without <code>/GDRDMA</code> means traffic is staged through host memory. <code>via NET/Socket</code> means no RDMA at all, which is the order-of-magnitude slowdown <a href="../network/debug/README.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">network debug</a> teaches you to spot. The exact wording of these log lines changes between NCCL versions, so grep loosely.</p>
+<p><code>via NET/IB/0/GDRDMA</code> means GDR is used. <code>via NET/IB/0</code> without <code>/GDRDMA</code> means traffic is staged through host memory. <code>via NET/Socket</code> means no RDMA at all, which is the order-of-magnitude slowdown <a href="../network/measuring-and-debugging.html#how-to-diagnose-nccl-multi-gpu-and-multi-node-connectivity-issues">network debug</a> teaches you to spot. The exact wording of these log lines changes between NCCL versions, so grep loosely.</p>
 <h2 id="7-nccl-install-configure-test">7. NCCL: install, configure, test</h2>
 <h3 id="which-nccl-you-are-running">Which NCCL you are running</h3>
 <p><strong>NCCL</strong> is the library that implements collectives (all-reduce, all-gather, ...) across GPUs. It picks NVLink, PCIe, InfiniBand or sockets per connection (<a href="../network/collectives-internals.html">collectives internals</a>). It is a user-space library, so it lives with the framework, not on the host: <code>torch</code> 2.15.0 pins <code>nvidia-nccl-cu13==2.30.7</code>, while the CUDA apt repo had <code>libnccl2 2.32.3-1+cuda13.4</code> and PyPI had <code>nvidia-nccl-cu13 2.32.3</code> <strong>[apt, verified; ran]</strong>. Two NCCLs on one node is normal. What matters is which one <em>your process</em> loaded. <strong>[untested]</strong></p>
@@ -855,7 +848,7 @@ NCCL_DEBUG=VERSION torchrun --nproc_per_node 2 your_script.py 2&gt;&amp;1 | grep
 <h3 id="network-plugins">Network plugins</h3>
 <p>NCCL natively speaks IB verbs (which covers RoCE) and TCP sockets. Other fabrics use a <strong>net plugin</strong>, a shared library NCCL loads at start-up (<code>libnccl-net.so</code>, or one chosen with <code>NCCL_NET_PLUGIN</code>). Examples: AWS's <code>aws-ofi-nccl</code> for EFA, Google's plugins for GPUDirect-TCPX/gIB, and the SHARP plugin for in-network reductions on IB. If a cloud image ships a plugin, it must be visible inside your container too. A missing plugin shows up as a silent fallback to <code>NET/Socket</code>.</p>
 <h3 id="the-environment-variables-an-operator-sets">The environment variables an operator sets</h3>
-<p>The full list is in <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html">NCCL's env docs</a>. Debug variables are explained in <a href="../network/debug/README.html#useful-nccl-debug-environment-variables">network debug</a> and performance variables in <a href="../network/benchmarks/README.html#performance-oriented-nccl-environment-variables">network benchmarks</a>. The ones that are really <em>node configuration</em> rather than tuning, and so belong in <code>/etc/nccl.conf</code> or the cluster's job environment (the networking chapter showed <a href="../foundations/networking.html#which-interface-does-nccl-pick">which interface NCCL picks and why <code>NCCL_SOCKET_IFNAME</code> matters</a>):</p>
+<p>The full list is in <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html">NCCL's env docs</a>. Debug variables are explained in <a href="../network/measuring-and-debugging.html#useful-nccl-debug-environment-variables">network debug</a> and performance variables in <a href="../network/measuring-and-debugging.html#performance-oriented-nccl-environment-variables">network benchmarks</a>. The ones that are really <em>node configuration</em> rather than tuning, and so belong in <code>/etc/nccl.conf</code> or the cluster's job environment (the networking chapter showed <a href="../foundations/networking.html#which-interface-does-nccl-pick">which interface NCCL picks and why <code>NCCL_SOCKET_IFNAME</code> matters</a>):</p>
 <pre><code class="language-bash"># /etc/nccl.conf  (NCCL reads KEY=VALUE lines from here; the environment overrides it)
 NCCL_SOCKET_IFNAME=enp157s0f0np0     # bootstrap/OOB (out-of-band setup traffic) interface: the frontend NIC, NOT docker0/lo
 NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7   # backend NICs only; excludes the frontend mlx5_8
@@ -865,7 +858,7 @@ NCCL_IB_GID_INDEX=3                  # RoCE only: the RoCEv2/IPv4 GID found abov
 </code></pre>
 <p>Everything else (<code>NCCL_ALGO</code>, <code>NCCL_PROTO</code>, channel counts) is tuning. Leave it at the defaults unless a benchmark shows a specific improvement.</p>
 <h3 id="nccl-tests-single-node-then-two-then-all">nccl-tests: single node, then two, then all</h3>
-<p><a href="https://github.com/NVIDIA/nccl-tests">nccl-tests</a> is the standard burn-in. <a href="../network/benchmarks/README.html#nccl-tests">Network benchmarks</a> shows how to build it against the NCCL your PyTorch uses. For multi-node runs build with MPI (<code>make MPI=1 MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi</code>; <code>make VAR=value</code> passes a setting to the Makefile, see Make in the <a href="../foundations/toolkit.html#make-and-makefiles">toolkit</a>). The bring-up sequence: <strong>[untested]</strong></p>
+<p><a href="https://github.com/NVIDIA/nccl-tests">nccl-tests</a> is the standard burn-in. <a href="../network/measuring-and-debugging.html#nccl-tests">Network benchmarks</a> shows how to build it against the NCCL your PyTorch uses. For multi-node runs build with MPI (<code>make MPI=1 MPI_HOME=/usr/lib/x86_64-linux-gnu/openmpi</code>; <code>make VAR=value</code> passes a setting to the Makefile, see Make in the <a href="../foundations/toolkit.html#make-and-makefiles">toolkit</a>). The bring-up sequence: <strong>[untested]</strong></p>
 <p>Just enough to read the launch lines below. <strong>MPI</strong> (Message Passing Interface) is the older HPC standard for multi-process programs; nccl-tests uses it only to start one process per GPU on every node and tell each its rank, the job <code>torchrun</code> does for PyTorch (<a href="../foundations/distributed-systems.html#core-vocabulary">launchers</a>). <code>mpirun -np 16 -N 8 --hostfile hosts</code> starts 16 processes, 8 per node, on the machines listed one per line in the file <code>hosts</code> (over SSH), and <code>-x VAR</code> copies an environment variable to all of them. <code>srun -N 2 --ntasks-per-node=8 --gpus-per-task=1</code> is Slurm's way to do the same on 2 allocated nodes, with one GPU per process; <code>--mpi=pmix</code> tells Slurm to hand MPI the rank information through the PMIx interface. Slurm and <code>srun</code> are taught in <a href="../orchestration/slurm/from-zero.html#srun-launching-a-step">Slurm from zero</a>. In the nccl-tests flags, <code>-b</code>/<code>-e</code> are the smallest and largest message size, <code>-f 2</code> doubles the size each step, and <code>-g</code> is GPUs per process.</p>
 <pre><code class="language-bash"># 1. one node, NVLink only: one process driving 8 GPUs
 ./build/all_reduce_perf -b 8 -e 8G -f 2 -g 8
@@ -882,8 +875,8 @@ mpirun -np 16 -N 8 --hostfile hosts -x NCCL_DEBUG=WARN -x NCCL_IB_HCA ./build/al
 # Out of bounds values : 0 OK
 # Avg bus bandwidth    : ...
 </code></pre>
-<p>Read <code>busbw</code> at the large sizes and <code>#wrong</code> everywhere. A non-zero <code>#wrong</code> means <strong>data corruption</strong>, which is a hardware problem: fail the node. <code>algbw</code> (algorithm bandwidth) is simply message size divided by time. <span class="math inline"><span class="math-inline">\text{busbw} = \text{algbw} \times 2(n-1)/n</span></span> for all-reduce, where <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> is the per-rank traffic factor of the <a href="../foundations/networking.html#ring-all-reduce-step-by-step">ring all-reduce</a> (the full derivation is in the next chapter, <a href="../network/collectives-internals.html#algbw-vs-busbw">algbw vs busbw</a>). It is normalized so that it can be compared with link bandwidth regardless of <span class="math inline"><span class="math-inline">n</span></span> (<a href="../network/benchmarks/README.html#how-the-bandwidth-is-measured">derivation</a>). For <span class="math inline"><span class="math-inline">n=8</span></span> the factor is <span class="math inline"><span class="math-inline">2 \cdot 7/8 = 1.75</span></span>. What &quot;good&quot; looks like depends on the SKU and the NCCL version. Don't use a number from a blog post. Record the value from a node you know is good and fail nodes that fall well below it. The acceptance script below has exactly that knob. <a href="../network/README.html#real-network-throughput">Network README</a> lists measured numbers for several systems.</p>
-<p>When nccl-tests hangs or is slow, work through <a href="../network/debug/README.html">network debug</a> and <a href="../debug/nccl-performance-debug.html">NCCL performance debug</a>. Most of what you'll find is in the layers covered above: a missing <code>nvidia_peermem</code>, a port at the wrong rate, the wrong GID index, or FM not running.</p>
+<p>Read <code>busbw</code> at the large sizes and <code>#wrong</code> everywhere. A non-zero <code>#wrong</code> means <strong>data corruption</strong>, which is a hardware problem: fail the node. <code>algbw</code> (algorithm bandwidth) is simply message size divided by time. <span class="math inline"><span class="math-inline">\text{busbw} = \text{algbw} \times 2(n-1)/n</span></span> for all-reduce, where <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> is the per-rank traffic factor of the <a href="../foundations/networking.html#ring-all-reduce-step-by-step">ring all-reduce</a> (the full derivation is in the next chapter, <a href="../network/collectives-internals.html#algbw-vs-busbw">algbw vs busbw</a>). It is normalized so that it can be compared with link bandwidth regardless of <span class="math inline"><span class="math-inline">n</span></span> (<a href="../network/measuring-and-debugging.html#how-the-bandwidth-is-measured">derivation</a>). For <span class="math inline"><span class="math-inline">n=8</span></span> the factor is <span class="math inline"><span class="math-inline">2 \cdot 7/8 = 1.75</span></span>. What &quot;good&quot; looks like depends on the SKU and the NCCL version. Don't use a number from a blog post. Record the value from a node you know is good and fail nodes that fall well below it. The acceptance script below has exactly that knob. <a href="../network/interconnects.html#real-network-throughput">Network README</a> lists measured numbers for several systems.</p>
+<p>When nccl-tests hangs or is slow, work through <a href="../network/measuring-and-debugging.html">network debug</a> and <a href="../network/measuring-and-debugging.html">NCCL performance debug</a>. Most of what you'll find is in the layers covered above: a missing <code>nvidia_peermem</code>, a port at the wrong rate, the wrong GID index, or FM not running.</p>
 <h2 id="8-amd--rocm-equivalents">8. AMD / ROCm equivalents</h2>
 <p>The architecture is the same and the names differ. On AMD the kernel driver is <code>amdgpu</code>, which is in the mainline kernel. AMD also ships a newer copy as <code>amdgpu-dkms</code>. ROCm is the user-space stack, and RCCL is AMD's NCCL fork. It keeps NCCL's API and reads the same <code>NCCL_*</code> environment variables.</p>
 <table>
@@ -948,7 +941,7 @@ mpirun -np 16 -N 8 --hostfile hosts -x NCCL_DEBUG=WARN -x NCCL_IB_HCA ./build/al
 <tr>
 <td>device selection</td>
 <td><code>CUDA_VISIBLE_DEVICES</code></td>
-<td><code>HIP_VISIBLE_DEVICES</code> / <code>ROCR_VISIBLE_DEVICES</code> (<a href="../compute/accelerator/amd/debug.html#hip_visible_devices--cuda_visible_devices--rocr_visible_devices">details</a>)</td>
+<td><code>HIP_VISIBLE_DEVICES</code> / <code>ROCR_VISIBLE_DEVICES</code> (<a href="#amd-hiding-devices">details</a>)</td>
 </tr>
 </tbody>
 </table>
@@ -959,7 +952,7 @@ rocminfo | grep -E '^\s+Name:\s+gfx' | sort | uniq -c    # &quot;8  Name: gfx942
 amd-smi topology                      # xGMI link matrix, like nvidia-smi topo -m
 python -c 'import torch; print(torch.__version__, torch.version.hip, torch.cuda.device_count())'
 </code></pre>
-<p>The same version rule applies: the kernel driver is on the host and ROCm is in the container. AMD publishes a compatibility matrix between ROCm releases and <code>amdgpu</code> driver versions on the <a href="https://rocm.docs.amd.com/en/latest/">ROCm docs site</a>. On AMD multi-GPU nodes, IOMMU settings are a frequent cause of hangs (<a href="../compute/accelerator/amd/debug.html#hangs-or-slow-multi-gpu-runs-and-iommu">AMD debug</a>).</p>
+<p>The same version rule applies: the kernel driver is on the host and ROCm is in the container. AMD publishes a compatibility matrix between ROCm releases and <code>amdgpu</code> driver versions on the <a href="https://rocm.docs.amd.com/en/latest/">ROCm docs site</a>. On AMD multi-GPU nodes, IOMMU settings are a frequent cause of hangs (<a href="#amd-hangs-or-slow-multi-gpu-runs-and-the-iommu">AMD: hangs and the IOMMU</a>); <code>rocm-smi</code> and <code>rocminfo</code> output is read line by line in <a href="#amd-rocm-smi-and-amd-smi">section 11</a>.</p>
 <h2 id="9-bring-up-order-the-runbook">9. Bring-up order: the runbook</h2>
 <p>Bring a node up from the bottom of the stack to the top, and test each layer before moving to the next. A failure is then always in the layer you just added.</p>
 <table>
@@ -1473,21 +1466,797 @@ NODE PASS: 12 pass, 0 fail, 0 skip
 <h3 id="wiring-it-into-the-scheduler">Wiring it into the scheduler</h3>
 <p>Preview: this uses Slurm and Kubernetes vocabulary taught in <a href="../orchestration/slurm/from-zero.html">Slurm from zero</a> and <a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>; skim it now and come back. Just enough to follow: <code>slurm.conf</code> is Slurm's cluster-wide config file, and its <code>HealthCheckProgram</code> setting names a script every node runs periodically. A Kubernetes <strong>DaemonSet</strong> runs one copy of a container on every node (<a href="../orchestration/kubernetes-from-zero.html#daemonset">DaemonSet</a>); an <strong>init container</strong> runs to completion before a pod's main container starts; <strong>labels</strong> are key/value tags on a node, and a <strong>taint</strong> marks a node so that ordinary workloads are not scheduled on it (<a href="../orchestration/kubernetes-from-zero.html#taints-and-tolerations">taints and tolerations</a>).</p>
 <ul>
-<li><strong>Slurm</strong>: run a fast subset as the node health check (<code>HealthCheckProgram</code> in <code>slurm.conf</code>, typically every few minutes, which drains the node on a non-zero exit). Run <code>--dcgm-level 1</code> in the job prolog. Run the full version, with DCGM level 2 and nccl-tests, after reboots and repairs, before <code>scontrol update state=resume</code>. See <a href="../orchestration/slurm/README.html">Slurm</a>.</li>
+<li><strong>Slurm</strong>: run a fast subset as the node health check (<code>HealthCheckProgram</code> in <code>slurm.conf</code>, typically every few minutes, which drains the node on a non-zero exit). Run <code>--dcgm-level 1</code> in the job prolog. Run the full version, with DCGM level 2 and nccl-tests, after reboots and repairs, before <code>scontrol update state=resume</code>. See <a href="../orchestration/slurm/from-zero.html">Slurm</a>.</li>
 <li><strong>Kubernetes</strong>: run it as a DaemonSet or as an init container of a &quot;node validator&quot; pod that labels or taints the node on failure. The NVIDIA GPU Operator's own validator does a subset of this (<a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a>).</li>
-<li>Log every run, with the node's GPU UUIDs, to persistent storage. When a &quot;new&quot; cloud node fails, that history tells you whether you got <a href="../compute/accelerator/nvidia/debug.html#how-to-detect-if-you-get-the-same-broken-node-again-and-again">the same broken GPUs again</a>.</li>
+<li>Log every run, with the node's GPU UUIDs, to persistent storage. When a &quot;new&quot; cloud node fails, that history tells you whether you got <a href="#detecting-that-you-got-the-same-broken-node-again">the same broken GPUs again</a>.</li>
 </ul>
 <p>Not covered here: multi-node acceptance (bisecting a slow all-reduce across a whole cluster), and burn-in under thermal load (hours of <code>dcgmi diag -r 4</code> or a training job). Both build on this script. <a href="../training/profiling-and-optimization.html">Profiling and optimization</a> covers what to do once the node passes and the job is still slow.</p>
+<h2 id="11-troubleshooting-gpus-errors-diagnostics-and-health-checks">11. Troubleshooting GPUs: errors, diagnostics and health checks</h2>
+<p>Sections 4 and 10 set up the health checks and the acceptance gate. This section is what you need when one of them fails, or when a job crashes and you suspect a GPU. It covers how to read the errors the driver reports, how to run deeper diagnostics, how to tell a GPU that needs a reset from one that has to go back to the vendor, and the AMD equivalents.</p>
+<p>No hardware is perfect. Manufacturing defects and wear (especially from long exposure to heat) mean that GPUs hit hardware faults. Many of them are corrected by the hardware without you ever noticing, and if the application keeps running there is usually nothing to do. When an application crashes because of a hardware fault, you need to know why and what to do about it. With a handful of GPUs you may never see one. At hundreds or thousands of GPUs you will see them every week.</p>
+<p>All GPU-side shell sessions in this section are <strong>[untested]</strong> here (no GPU hardware); their output is real output quoted from production nodes or vendor documentation, as noted. The Python and shell examples marked <strong>[ran]</strong> were run on the Mac.</p>
+<h3 id="glossary">Glossary</h3>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DBE</td>
+<td>Double Bit ECC Error: more than one bit flipped in a word, which ECC can detect but not fix (&quot;uncorrectable&quot;)</td>
+</tr>
+<tr>
+<td>DCGM</td>
+<td>(NVIDIA) Data Center GPU Manager, see <a href="#dcgm-the-health-daemon-and-diagnostics">DCGM</a></td>
+</tr>
+<tr>
+<td>ECC</td>
+<td>Error-Correcting Code, see <a href="#ecc-row-remapping-clocks-and-gpu-reset">ECC, row remapping, clocks and GPU reset</a></td>
+</tr>
+<tr>
+<td>FB</td>
+<td>Frame Buffer: NVIDIA's name for the GPU's own memory, i.e. its HBM</td>
+</tr>
+<tr>
+<td>HBM</td>
+<td>High Bandwidth Memory, the GPU's main DRAM</td>
+</tr>
+<tr>
+<td>RMA</td>
+<td>Return Merchandise Authorization: sending a faulty part back to the vendor for a replacement</td>
+</tr>
+<tr>
+<td>SBE</td>
+<td>Single Bit ECC Error: one flipped bit, which ECC fixes (&quot;correctable&quot;)</td>
+</tr>
+<tr>
+<td>SDC</td>
+<td>Silent Data Corruption: a wrong result that no error counter caught</td>
+</tr>
+<tr>
+<td>VBIOS</td>
+<td>the GPU's firmware, stored on the card itself (<a href="#the-layers-bottom-to-top">the layers</a>)</td>
+</tr>
+<tr>
+<td>Xid</td>
+<td>a numbered error report that the NVIDIA kernel driver writes to the kernel log</td>
+</tr>
+</tbody>
+</table>
+<p>For diagnosing crashes from the software side (stack traces, hangs, <code>CUDA_LAUNCH_BLOCKING</code>, compute-sanitizer), see <a href="../development/debugging-pytorch.html">Debugging PyTorch</a>; for multi-GPU hangs see <a href="../development/debugging-distributed.html">Debugging distributed training</a>.</p>
+<h3 id="xid-errors-reading-finding-and-looking-them-up">Xid errors: reading, finding and looking them up</h3>
+<p>In the system logs you will occasionally see lines like this one:</p>
+<pre><code>NVRM: Xid (PCI:0000:10:1c): 63, pid=1896, Row Remapper: New row marked for remapping, reset gpu to activate.
+</code></pre>
+<p>How to read it, left to right: <code>NVRM</code> is the NVIDIA kernel driver; <code>PCI:0000:10:1c</code> is the PCI bus id of the GPU that reported it (the same id <code>nvidia-smi</code> shows in its <code>Bus-Id</code> column); <code>63</code> is the Xid number you look up; <code>pid</code> is the process that was using the GPU; the rest is the driver's description.</p>
+<p>To get these lines out of the kernel log (the kernel log and <code>dmesg</code> are covered in <a href="../foundations/linux-and-os.html#logs-journalctl-and-dmesg">Logs: journalctl and dmesg</a>), one of these should work:</p>
+<pre><code class="language-bash">sudo grep Xid /var/log/syslog
+sudo dmesg -T | grep Xid
+</code></pre>
+<p>As long as training doesn't crash, these errors usually mean the hardware corrected the problem itself.</p>
+<p>Where to look an Xid up:</p>
+<ul>
+<li>NVIDIA's <a href="https://docs.nvidia.com/deploy/xid-errors/latest/index.html">full list of Xid errors</a> gives each number's meaning.</li>
+<li>NVIDIA's <a href="https://docs.nvidia.com/deploy/xid-errors/analyzing-xid-catalog.html">Xid Catalog</a> goes further for Ampere and newer GPUs. For each Xid it lists which GPUs can log it, what triggers it, and what to do: an immediate action, such as <code>RESTART_APP</code> or <code>CONTACT_SUPPORT</code>, and a follow-up action, such as <code>CHECK_APP/CUDA</code>. It can be downloaded as a spreadsheet, which helps when you want to map the Xids in your logs to actions automatically. For Xid 13 and 31, which it says are typically application bugs, its first recommendation is Compute Sanitizer's <code>memcheck</code> (how to run it on a PyTorch program is in <a href="../development/debugging-pytorch.html">Debugging PyTorch</a>).</li>
+<li>Many Xid lines carry far more fields than the one above, and they are cryptic. <a href="https://www.abhik.ai/articles/gpu-xid31-mmu-faults">Xid 31 MMU Faults: What Causes Them and How to Fix Production GPU Crashes</a> is a good worked example of decoding one. It takes an Xid 31 line from <code>dmesg</code> and decodes every field: the faulting engine and hardware unit, the virtual address, <code>FAULT_PDE</code> vs <code>FAULT_PTE</code> (whether the GPU's page-table walk failed at a page directory entry or at a page table entry; page tables are in <a href="../foundations/computer-architecture.html#pages-and-address-translation">Pages and address translation</a>), and the access type. It follows them to the cause, a use-after-free between the PyTorch, CuPy (a NumPy-like GPU array library) and NVDEC (the GPU's hardware video decoder) memory allocators. It also shows that not every Xid is a hardware problem: this one was caused by software.</li>
+<li>NVIDIA's <a href="https://docs.nvidia.com/deploy/gpu-debug-guidelines/index.html">GPU debug guidelines</a> go deeper still. They include a triage chart for deciding when to RMA a GPU and more on Xid 63-like errors.</li>
+</ul>
+<p>The Xids you will meet most in this section:</p>
+<table>
+<thead>
+<tr>
+<th>Xid</th>
+<th>Meaning</th>
+<th>Typical action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>13, 31</td>
+<td>graphics engine exception / GPU memory page fault (MMU fault)</td>
+<td>usually an application bug: run compute-sanitizer</td>
+</tr>
+<tr>
+<td>48</td>
+<td>DBE (uncorrectable ECC error); the application crashes</td>
+<td>reset the GPU; the page is blacklisted</td>
+</tr>
+<tr>
+<td>63</td>
+<td>ECC page retirement or row remapping recording event</td>
+<td>reset when convenient so the remap takes effect</td>
+</tr>
+<tr>
+<td>64</td>
+<td>ECC page retirement or row remapping recorder failure</td>
+<td>if it recurs after a reset: RMA</td>
+</tr>
+<tr>
+<td>94</td>
+<td>contained uncorrectable ECC error</td>
+<td>restart the affected application, reset later</td>
+</tr>
+</tbody>
+</table>
+<p>A log scraper only needs the bus id and the number. A minimal parser for the line format above, with its own check: <strong>[ran]</strong></p>
+<pre><code class="language-python"># xid_triage.py - parse NVRM Xid lines and the row-remapper CSV, decide reset vs RMA.
+import re
+
+XID = re.compile(r&quot;NVRM: Xid \(PCI:(?P&lt;bus&gt;[0-9a-fA-F:.]+)\): (?P&lt;xid&gt;\d+), (?:pid=(?P&lt;pid&gt;\d+|'&lt;unknown&gt;'), )?(?P&lt;msg&gt;.*)&quot;)
+
+def parse_xid(line):
+    m = XID.search(line)
+    return None if m is None else (m[&quot;bus&quot;], int(m[&quot;xid&quot;]), m[&quot;msg&quot;])
+
+def remap_verdict(row):
+    # row: &quot;gpu_name, bus_id, failure, pending, correctable, uncorrectable&quot;
+    name, bus, failure, pending, corr, uncorr = [f.strip() for f in row.split(&quot;,&quot;)]
+    if failure == &quot;Yes&quot;:
+        return bus, &quot;RMA: remapping failed&quot;
+    if pending == &quot;Yes&quot;:
+        return bus, &quot;reset GPU when convenient (remap pending, a page may be offlined)&quot;
+    return bus, f&quot;ok ({corr} correctable, {uncorr} uncorrectable rows already remapped)&quot;
+
+log = [
+    &quot;[Wed Jun  7 19:32:16 2023] NVRM: Xid (PCI:0000:10:1c): 63, pid=1896, Row Remapper: New row marked for remapping, reset gpu to activate.&quot;,
+    &quot;[Wed Jun  7 19:40:02 2023] nvidia-peermem nv_get_p2p_free_callback:127 ERROR detected invalid context&quot;,
+]
+for line in log:
+    print(parse_xid(line))
+
+csv = &quot;&quot;&quot;NVIDIA H200, 00000000:59:00.0, No, No, 0, 0
+NVIDIA H200, 00000000:5A:00.0, No, Yes, 1, 0
+NVIDIA H200, 00000000:A5:00.0, Yes, No, 0, 0&quot;&quot;&quot;
+for row in csv.splitlines():
+    print(remap_verdict(row))
+
+assert parse_xid(log[0]) == (&quot;0000:10:1c&quot;, 63, &quot;Row Remapper: New row marked for remapping, reset gpu to activate.&quot;)
+assert parse_xid(log[1]) is None
+</code></pre>
+<pre><code>('0000:10:1c', 63, 'Row Remapper: New row marked for remapping, reset gpu to activate.')
+None
+('00000000:59:00.0', 'ok (0 correctable, 0 uncorrectable rows already remapped)')
+('00000000:5A:00.0', 'reset GPU when convenient (remap pending, a page may be offlined)')
+('00000000:A5:00.0', 'RMA: remapping failed')
+</code></pre>
+<p>The first line is the Xid split into its three useful fields; the second log line isn't an Xid, so it returns <code>None</code>. The remap verdicts are explained in <a href="#checking-row-remapping-health-before-a-job-dies">Row-remapping health</a> below; the CSV rows are the format of that section's query.</p>
+<h3 id="ecc-errors-and-row-remapping-in-nvidia-smi--q">ECC errors and row remapping in <code>nvidia-smi -q</code></h3>
+<p>After an Xid, <code>nvidia-smi -q</code> shows the error counters. In its output, <code>SRAM</code> counts errors in the on-chip memories (register files, caches, shared memory) and <code>DRAM</code> errors in HBM. For the Xid 63 above you'd see something like this (a real A100 node):</p>
+<pre><code>Timestamp                                 : Wed Jun  7 19:32:16 2023
+Driver Version                            : 510.73.08
+CUDA Version                              : 11.6
+
+Attached GPUs                             : 8
+GPU 00000000:10:1C.0
+    Product Name                          : NVIDIA A100-SXM4-80GB
+    [...]
+    ECC Errors
+        Volatile
+            SRAM Correctable              : 0
+            SRAM Uncorrectable            : 0
+            DRAM Correctable              : 177
+            DRAM Uncorrectable            : 0
+        Aggregate
+            SRAM Correctable              : 0
+            SRAM Uncorrectable            : 0
+            DRAM Correctable              : 177
+            DRAM Uncorrectable            : 0
+    Retired Pages
+        Single Bit ECC                    : N/A
+        Double Bit ECC                    : N/A
+        Pending Page Blacklist            : N/A
+    Remapped Rows
+        Correctable Error                 : 1
+        Uncorrectable Error               : 0
+        Pending                           : Yes
+        Remapping Failure Occurred        : No
+        Bank Remap Availability Histogram
+            Max                           : 639 bank(s)
+            High                          : 1 bank(s)
+            Partial                       : 0 bank(s)
+            Low                           : 0 bank(s)
+            None                          : 0 bank(s)
+[...]
+</code></pre>
+<p>How to read it:</p>
+<ul>
+<li><strong>Volatile vs Aggregate.</strong> <code>Volatile</code> counts errors since the last reboot or GPU reset (driver reload). <code>Aggregate</code> counts them over the GPU's whole life.</li>
+<li><strong>Correctable vs Uncorrectable.</strong> A correctable error is an SBE: the memory was faulty but ECC recovered the right value, and the application is unaffected. An uncorrectable error is a DBE: more than one bit was wrong, and the application using it crashes. The memory page with the uncorrectable error is blacklisted and stays inaccessible until the GPU is reset.</li>
+<li><strong>Xid 63</strong> here means &quot;ECC page retirement or row remapping recording event&quot;. It has three possible causes: hardware error, driver error, or frame buffer (FB) corruption. One memory row is malfunctioning, and at the next reboot or GPU reset one of the spare rows (640 on the A100) replaces it. <code>Pending: Yes</code> says that replacement is waiting for the reset.</li>
+<li><strong>Bank Remap Availability Histogram.</strong> This sorts the memory banks by how many of their spare rows are still unused. <code>Max</code> means none used yet; <code>High</code>, <code>Partial</code> and <code>Low</code> mean progressively more used; <code>None</code> means the bank has no spare rows left. Here 639 banks are untouched and one has started using its spares, which is the remap just recorded.</li>
+<li><strong>Retired Pages</strong> is the older mechanism, used before Ampere (on the A100 above it reads <code>N/A</code>). The driver retires a whole memory page after 1 DBE or 2 SBEs at the same address (<a href="https://docs.nvidia.com/deploy/dynamic-page-retirement/index.html">dynamic page retirement</a>). If pages are scheduled for retirement you'll see:</li>
+</ul>
+<pre><code>    Retired pages
+        Single Bit ECC             : 2
+        Double Bit ECC             : 0
+        Pending Page Blacklist    : Yes
+</code></pre>
+<p>Each retired page reduces the memory available to applications, but retirement is capped at 4 MiB in total, so it barely dents an 80 GB GPU.</p>
+<p>The debug guidelines linked above suggest, for example:</p>
+<blockquote>
+<p>If associated with XID 94, the application that encountered the error needs to be restarted. All other applications on the system can keep running as is until there is a convenient time to reboot for row remapping to activate.</p>
+</blockquote>
+<p>If after a reboot the same condition occurs at the same memory address, remapping has failed and the driver emits <strong>Xid 64</strong>. If that keeps happening after reboots, the GPU needs to be RMA'ed. In the <code>Remapped Rows</code> block it looks like this. This is <a href="https://docs.crusoecloud.com/resources/troubleshooting">Crusoe Cloud's published signature</a> for a GPU that qualifies for replacement:</p>
+<pre><code>Remapped Rows
+        Correctable Error                 : 0
+        Uncorrectable Error               : 0
+        Pending                           : No
+        Remapping Failure Occurred        : Yes
+        Bank Remap Availability Histogram
+            Max                           : 639 bank(s)
+            High                          : 0 bank(s)
+            Partial                       : 0 bank(s)
+            Low                           : 0 bank(s)
+            None                          : 1 bank(s)
+</code></pre>
+<p>Not a single row was remapped successfully, yet a failure was recorded, and one bank sits at <code>None</code>: it has no spare rows left to remap into. That combination is what distinguishes a GPU that needs replacing from one that just needs a reset. To print only this block instead of the whole report, use <code>nvidia-smi -q -d ROW_REMAPPER</code>.</p>
+<p>At other times Xid 63 or 64 comes with a crash and further Xids. Most of the time that means the error was uncorrectable, a DBE, which is reported as Xid 48.</p>
+<p>To reset a GPU, reboot the machine or run:</p>
+<pre><code class="language-bash">nvidia-smi -r -i gpu_id
+</code></pre>
+<p>where <code>gpu_id</code> is the GPU's index, e.g. <code>0</code> for the first one. Without <code>-i</code>, all GPUs are reset. As <a href="#ecc-row-remapping-clocks-and-gpu-reset">section 4</a> says, a reset needs root and fails while any process still holds the GPU.</p>
+<h3 id="cuda-error-uncorrectable-ecc-error-encountered">&quot;CUDA error: uncorrectable ECC error encountered&quot;</h3>
+<p>If a job dies with:</p>
+<pre><code>CUDA error: uncorrectable ECC error encountered
+</code></pre>
+<p>the <code>ECC Errors</code> entries of <code>nvidia-smi -q</code> tell you which GPU it was. If you just need a quick yes/no to decide whether to recycle a node:</p>
+<pre><code class="language-bash">$ nvidia-smi -q | grep -i correctable | grep -v 0
+            SRAM Uncorrectable            : 1
+            SRAM Uncorrectable            : 5
+</code></pre>
+<p>On a good node this prints nothing, because every counter is 0. Here one GPU is broken. There are two lines because the full record was:</p>
+<pre><code>    ECC Errors
+        Volatile
+            SRAM Correctable              : 0
+            SRAM Uncorrectable            : 1
+            DRAM Correctable              : 0
+            DRAM Uncorrectable            : 0
+        Aggregate
+            SRAM Correctable              : 0
+            SRAM Uncorrectable            : 5
+            DRAM Correctable              : 0
+            DRAM Uncorrectable            : 0
+</code></pre>
+<p>The first line is the <code>Volatile</code> counter (1 since the last driver reload) and the second the <code>Aggregate</code> one (5 over the GPU's life), so this is not the first time this GPU has had the problem. It typically corresponds to Xid 94, most likely without Xid 48.</p>
+<p>One trap in that one-liner: <code>grep -v 0</code> drops every line containing the digit 0 <em>anywhere</em>, so a count of 10 or 105 is hidden too. Drop only the zero counts with <code>grep -v ': 0$'</code>. On a canned sample: <strong>[ran]</strong></p>
+<pre><code class="language-bash">$ printf '  SRAM Correctable : 0\n  SRAM Uncorrectable : 1\n  DRAM Correctable : 10\n  DRAM Uncorrectable : 0\n' &gt; ecc.txt
+$ grep -i correctable ecc.txt | grep -v 0
+  SRAM Uncorrectable : 1
+$ grep -i correctable ecc.txt | grep -v ': 0$'
+  SRAM Uncorrectable : 1
+  DRAM Correctable : 10
+</code></pre>
+<p>The fix is the same as before: reset the GPU (<code>nvidia-smi -r -i gpu_id</code>) or reboot the machine. If the Aggregate SRAM Uncorrectable count is above 4, that is usually reason enough to RMA the GPU.</p>
+<h3 id="running-diagnostics-with-dcgmi-diag">Running diagnostics with <code>dcgmi diag</code></h3>
+<p><a href="#dcgm-the-health-daemon-and-diagnostics">DCGM</a> was installed in section 4. Its <code>dcgmi diag</code> is the quickest way to find a bad GPU when you suspect one on a node. Reference: the <a href="https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/index.html">DCGM user guide</a>; downloads and quickstart are on <a href="https://github.com/NVIDIA/DCGM#quickstart">GitHub</a>.</p>
+<p>The levels, from fast to thorough:</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Time on an 8-GPU node</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-r 1</code></td>
+<td>seconds</td>
+<td>deployment and software checks; job prolog</td>
+</tr>
+<tr>
+<td><code>-r 2</code></td>
+<td>a few minutes</td>
+<td>short stress, PCIe, memory; in practice it already catches most faulty GPUs</td>
+</tr>
+<tr>
+<td><code>-r 3</code></td>
+<td>about 10 minutes</td>
+<td>in-depth; when you suspect a GPU and <code>-r 2</code> passed</td>
+</tr>
+<tr>
+<td><code>-r 4</code></td>
+<td>more than an hour</td>
+<td>the most thorough; the only level that can catch some silent data corruption</td>
+</tr>
+</tbody>
+</table>
+<p>A Slurm script that runs level 3 on one whole node (Slurm is taught in <a href="../orchestration/slurm/from-zero.html">Slurm from zero</a>; the minimum to read it is below):</p>
+<pre><code class="language-bash">$ cat dcgmi-1n.slurm
+#!/bin/bash
+#SBATCH --job-name=dcgmi-1n
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=96
+#SBATCH --gres=gpu:8
+#SBATCH --exclusive
+#SBATCH --output=%x-%j.out
+
+set -x -e
+echo &quot;START TIME: $(date)&quot;
+srun --cpus-per-task=$SLURM_CPUS_PER_TASK --output=%x-%j-%N.out dcgmi diag -r 3
+echo &quot;END TIME: $(date)&quot;
+</code></pre>
+<p>How to read it: <code>--gres=gpu:8</code> asks for all 8 GPUs; <code>--exclusive</code> keeps other jobs off the node; in the output file names, <code>%x</code>, <code>%j</code> and <code>%N</code> expand to the job name, the job id and the node name; <code>set -x -e</code> echoes each command and stops at the first failure; and <code>srun</code> launches <code>dcgmi diag</code> inside the allocation. <code>sbatch</code> submits the script, and <code>--nodelist</code> pins it to the named node, so to test specific nodes:</p>
+<pre><code class="language-bash">sbatch --nodelist=node-115 dcgmi-1n.slurm
+sbatch --nodelist=node-151 dcgmi-1n.slurm
+sbatch --nodelist=node-170 dcgmi-1n.slurm
+</code></pre>
+<p>If the node is drained or down and Slurm won't run jobs on it, <code>ssh</code> into it and run the command directly:</p>
+<pre><code class="language-bash">dcgmi diag -r 3
+</code></pre>
+<p>If that finds nothing but the application still fails, run level 4 (more than an hour):</p>
+<pre><code class="language-bash">dcgmi diag -r 4
+</code></pre>
+<p>On a node that keeps throwing Xid 64, the report is likely to include:</p>
+<pre><code>+---------------------------+------------------------------------------------+
+| Diagnostic                | Result                                         |
++===========================+================================================+
+|-----  Deployment  --------+------------------------------------------------|
+| Error                     | GPU 3 has uncorrectable memory errors and row  |
+|                           |  remappings are pending                        |
+</code></pre>
+<p>so you know which GPU to RMA if remapping fails.</p>
+<p>In practice, <code>-r 2</code> already detects most faulty GPUs and takes only a few minutes. Its output on a faulty node:</p>
+<pre><code>| GPU Memory                | Pass - GPUs: 1, 2, 3, 4, 5, 6, 7               |
+|                           | Fail - GPU: 0                                  |
+| Warning                   | GPU 0 Thermal violations totaling 13.3 second  |
+|                           | s started at 9.7 seconds into the test for GP  |
+|                           | U 0 Verify that the cooling on this machine i  |
+|                           | s functional, including external, thermal mat  |
+|                           | erial interface, fans, and any other componen  |
+|                           | ts.
+</code></pre>
+<p>Read it per row: <code>GPU Memory</code> passed on GPUs 1-7 and failed on GPU 0, and the warning says GPU 0 also spent 13.3 s throttled for heat, so check its cooling as well as its memory.</p>
+<p><strong>Silent data corruption.</strong> SDC can apparently only be detected with <code>dcgmi diag -r 4</code>, and even then some is missed. It happens occasionally, and you may not know that a GPU is getting a <code>matmul</code> wrong now and then. Stas Bekman describes a case that was most likely this: training showed weird glitches, many days with the NVIDIA team failed to diagnose it, and the problem eventually disappeared, probably because the bad GPUs were replaced after other reported failures. The <a href="#10-a-node-acceptance-script">acceptance script</a>'s matmul-vs-fp64 check is a cheap partial guard.</p>
+<p>The fast levels fit in a Slurm <strong>epilog</strong> (a script the cluster admins configure to run on each node right after a job ends; see <a href="../orchestration/slurm/from-zero.html#what-happens-from-sbatch-to-processes-on-nodes">Slurm from zero</a>). That checks the node is fit for the next job, instead of the next user discovering it when their job crashes.</p>
+<p>When filing an RMA, the vendor will ask for the output of <code>nvidia-bug-report.sh</code>. It ships with the driver, needs root, and collects the driver state and logs into <code>nvidia-bug-report.log.gz</code> in the current directory. Keep the diagnostics logs too, one per node:</p>
+<pre><code class="language-bash">dcgmi diag -r 2 | tee -a dcgmi-r2-`hostname`.txt
+dcgmi diag -r 3 | tee -a dcgmi-r3-`hostname`.txt
+dcgmi diag -r 4 | tee -a dcgmi-r4-`hostname`.txt
+</code></pre>
+<p><code>`hostname`</code> is the older backtick form of <code>$(hostname)</code>, so each node's log gets its own name, and <code>tee -a</code> shows the output while appending it to the file.</p>
+<h3 id="vbios-version">VBIOS version</h3>
+<p>The VBIOS version can matter when researching an issue (vendors fix bugs in firmware, and a mixed fleet behaves inconsistently). Query it together with the name and bus id:</p>
+<pre><code class="language-bash">$ nvidia-smi --query-gpu=gpu_name,gpu_bus_id,vbios_version --format=csv
+name, pci.bus_id, vbios_version
+NVIDIA H100 80GB HBM3, 00000000:04:00.0, 96.00.89.00.01
+[...]
+NVIDIA H100 80GB HBM3, 00000000:8B:00.0, 96.00.89.00.01
+</code></pre>
+<p>Every GPU on a node, and on every node of a fleet, should show the same version. To list dozens of other queryable fields:</p>
+<pre><code class="language-bash">nvidia-smi --help-query-gpu
+</code></pre>
+<h3 id="is-the-gpus-pcie-generation-actually-used">Is the GPU's PCIe generation actually used?</h3>
+<p>The kernel reports at boot when a device's PCIe link is slower than the device could do:</p>
+<pre><code class="language-bash">$ sudo dmesg | grep -i 'limited by'
+[   10.735323] pci 0000:04:00.0: 252.048 Gb/s available PCIe bandwidth, limited by 16.0 GT/s PCIe x16 link at 0000:01:00.0 (capable of 504.112 Gb/s with 32.0 GT/s PCIe x16 link)
+[...]
+[   13.301989] pci 0000:8b:00.0: 252.048 Gb/s available PCIe bandwidth, limited by 16.0 GT/s PCIe x16 link at 0000:87:00.0 (capable of 504.112 Gb/s with 32.0 GT/s PCIe x16 link)
+</code></pre>
+<p>How to read it: each line names a device by its PCI bus id, the bandwidth it actually gets, the link that limits it (<code>16.0 GT/s PCIe x16</code> is a gen4 link of 16 lanes, <code>32.0 GT/s</code> would be gen5, and <code>at 0000:01:00.0</code> is the upstream device that link belongs to) and, in parentheses, what the device itself could do. PCIe generations and lanes are covered in <a href="../foundations/computer-architecture.html#pcie">PCIe</a>, and the spec tables are in <a href="../network/interconnects.html#pcie">PCIe</a>.</p>
+<p>The PCIe 5 x16 spec is about 504 Gbps, so on this node only half of the possible bandwidth is usable, because the PCIe switch is gen4. Since the GPUs most likely talk to each other over <a href="../network/interconnects.html#nvlink">NVLink</a>, this doesn't matter for GPU-to-GPU traffic. It does slow every transfer between GPU and host, because a path is only as fast as its slowest link. (Remember the trap from <a href="#ecc-row-remapping-clocks-and-gpu-reset">section 4</a>: <code>nvidia-smi</code> shows the <em>current</em> generation, which drops at idle. The boot message above is about what the link <em>can</em> negotiate.)</p>
+<h3 id="nvlink-error-counters">NVLink error counters</h3>
+<p>If you suspect an NVLink is malfunctioning, check its error counters:</p>
+<pre><code class="language-bash">$ nvidia-smi nvlink -e
+GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-abcdefab-cdef-abdc-abcd-abababababab)
+         Link 0: Replay Errors: 0
+         Link 0: Recovery Errors: 0
+         Link 0: CRC Errors: 0
+
+         Link 1: Replay Errors: 0
+         Link 1: Recovery Errors: 0
+         Link 1: CRC Errors: 0
+
+         [...]
+
+         Link 17: Replay Errors: 0
+         Link 17: Recovery Errors: 0
+         Link 17: CRC Errors: 0
+</code></pre>
+<p>How to read it: <code>CRC Errors</code> count data that arrived corrupted (its checksum didn't match); <code>Replay Errors</code> count retransmissions triggered by such corruption; <code>Recovery Errors</code> count times the link had to be retrained. Healthy links read 0 or grow very slowly. Counters that keep rising under load point at a bad link.</p>
+<p><code>nvidia-smi nvlink --status</code> (short form <code>-s</code>, used in <a href="#nvlink-and-topology-checks">NVLink and topology checks</a>) shows each link's current speed:</p>
+<pre><code class="language-bash">$ nvidia-smi nvlink --status
+GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-abcdefab-cdef-abdc-abcd-abababababab)
+         Link 0: 26.562 GB/s
+         [...]
+         Link 17: 26.562 GB/s
+</code></pre>
+<p><code>nvidia-smi nvlink -h</code> lists the rest (reporting, resetting counters, and so on). Whether two GPUs can do peer-to-peer at all is checked in <a href="../network/measuring-and-debugging.html#how-to-check-if-p2p-is-supported">How to check if P2P is supported</a>.</p>
+<h3 id="checking-row-remapping-health-before-a-job-dies">Checking row-remapping health before a job dies</h3>
+<p>Row remapping is how Ampere and later GPUs handle memory that has gone bad: a degrading row in an HBM bank is replaced by one of the spare rows each bank reserves for this. It is <a href="https://docs.nvidia.com/deploy/a100-gpu-mem-error-mgmt/latest/row-remapping.html">NVIDIA's replacement for page retirement</a>, with a much larger budget: up to 512 remappings for the frame buffer, against 64 page retirements before. The <a href="#ecc-errors-and-row-remapping-in-nvidia-smi--q">ECC section above</a> read it after an Xid 63 or 64. This one checks it deliberately, before a job dies.</p>
+<p><code>nvidia-smi -q</code> prints a long block per GPU. For a whole node, a CSV query gives one line per GPU:</p>
+<pre><code class="language-bash">$ nvidia-smi --query-remapped-rows=gpu_name,gpu_bus_id,remapped_rows.failure,remapped_rows.pending,remapped_rows.correctable,remapped_rows.uncorrectable --format=csv
+gpu_name, gpu_bus_id, remapped_rows.failure, remapped_rows.pending, remapped_rows.correctable, remapped_rows.uncorrectable
+NVIDIA H200, 00000000:59:00.0, No, No, 0, 0
+[...]
+NVIDIA H200, 00000000:A5:00.0, No, No, 0, 0
+</code></pre>
+<p>That is a healthy node: no failures, nothing pending, no rows remapped. When it isn't all <code>No</code> and <code>0</code> (this is what <code>remap_verdict</code> in <code>xid_triage.py</code> above encodes):</p>
+<ul>
+<li><code>correctable</code> and <code>uncorrectable</code> count the rows already remapped, after repeated SBEs and after a DBE respectively. A non-zero count alone is not a reason to pull the GPU: it means the sparing did its job.</li>
+<li><code>pending: Yes</code> means a remap has been decided but takes effect only at the next GPU reset. It doesn't put the running job at risk of touching the bad cell. It does change how much memory the GPU has: when the trigger was an uncorrectable error, the driver offlines the page containing it immediately, and that page stays out of the allocatable pool until the reset remaps the row in hardware and returns the address space. So a job sized to fill HBM can start hitting OOM on this GPU while still fitting on a healthy one.</li>
+<li><code>failure: Yes</code> means a remap was attempted and failed. This one means RMA rather than reset-and-return.</li>
+</ul>
+<p>The same fields are available in <code>--query-gpu</code>, alongside other per-GPU columns (the acceptance script uses this form), e.g. <code>nvidia-smi --query-gpu=gpu_bus_id,remapped_rows.pending,remapped_rows.failure --format=csv</code>. For the full field list, including the <code>remapped_rows.sbe</code>/<code>.dbe</code> aliases:</p>
+<pre><code class="language-bash">nvidia-smi --help-query-remapped-rows
+</code></pre>
+<h3 id="detecting-a-node-with-missing-gpus">Detecting a node with missing GPUs</h3>
+<p>A new VM occasionally comes up with fewer GPUs than it should have. A quick check that there are exactly 8:</p>
+<pre><code class="language-bash">#!/bin/bash
+# test-gpu-count.sh
+expected=8
+n=$(nvidia-smi -q | grep -c UUID)
+if [ &quot;$n&quot; -ne &quot;$expected&quot; ]; then echo &quot;broken node: $n GPUs, expected $expected&quot;; exit 1; fi
+echo &quot;ok: $n GPUs&quot;
+</code></pre>
+<p>Run it with <code>bash test-gpu-count.sh</code>; the exit code is 1 on a broken node and 0 on a good one, so a scheduler health check can use it directly. With a fake <code>nvidia-smi</code> on <code>PATH</code> that reports 7 GPUs: <strong>[ran]</strong></p>
+<pre><code>$ PATH=$PWD/fakebin:$PATH bash test-gpu-count.sh; echo rc=$?
+broken node: 7 GPUs, expected 8
+rc=1
+</code></pre>
+<p>Why the <code>if</code>: the tempting one-liner <code>test $(...) != 8 &amp;&amp; echo &quot;broken node&quot; &amp;&amp; false</code> reports correctly, but its exit code is wrong. On a good node the <code>test</code> fails, and since it's the last command that ran, the script exits 1 on a good node too. The acceptance script's <code>gpu count</code> check does the same job inside the full suite.</p>
+<h3 id="detecting-that-you-got-the-same-broken-node-again">Detecting that you got the same broken node again</h3>
+<p>This matters mostly to cloud users who rent GPU VMs. You launch a VM, find a broken GPU, discard it, launch a new one, and the GPUs are broken again. Chances are you got the same physical machine with the same broken GPUs. Each GPU has a unique UUID, so log them before discarding the node:</p>
+<pre><code class="language-bash">$ nvidia-smi -q | grep UUID
+    GPU UUID                              : GPU-2b416d09-4537-ecc1-54fd-c6c83a764be9
+    GPU UUID                              : GPU-0309d0d1-8620-43a3-83d2-95074e75ec9e
+    GPU UUID                              : GPU-4fa60d47-b408-6119-cf63-a1f12c6f7673
+    GPU UUID                              : GPU-fc069a82-26d4-4b9b-d826-018bc040c5a2
+    GPU UUID                              : GPU-187e8e75-34d1-f8c7-1708-4feb35482ae0
+    GPU UUID                              : GPU-43bfd251-aad8-6e5e-ee31-308e4292bef3
+    GPU UUID                              : GPU-213fa750-652a-6cf6-5295-26b38cb139fb
+    GPU UUID                              : GPU-52c408aa-3982-baa3-f83d-27d047dd7653
+</code></pre>
+<p>On the new VM, run it again. If the UUIDs match, you have the same broken GPUs. Once a VM is gone it's too late to collect them, so add this to the node's startup:</p>
+<pre><code class="language-bash">nvidia-smi -q | grep UUID &gt; nvidia-uuids.$(hostname).$(date '+%Y-%m-%d-%H:%M').txt
+</code></pre>
+<p>Save it on a persistent filesystem that survives the VM; if there is none, write it locally and copy it to cloud storage immediately.</p>
+<p>What to do with that knowledge:</p>
+<ul>
+<li>Sometimes a reboot gets you new hardware. With some providers that happens almost every reboot, with others never, and the behavior can change.</li>
+<li>If you keep getting the same broken node, allocate a new VM while still holding the broken one, and discard the broken one only once the new one is running. That guarantees different GPUs (though not working ones). If the workload allows, a static cluster makes keeping good hardware much easier.</li>
+<li>This matters most when GPUs fail only after some use, so the problem isn't obvious at first. Even after you report a node, the technician may not reproduce the failure and may put it back into circulation. Keep a log of bad UUIDs so you recognize a lemon immediately instead of 10 hours in.</li>
+<li>Report bad nodes through the provider's mechanism, not just discard them. Most users just discard, so the next user gets the bad node; in some situations users get a very high percentage of bad nodes.</li>
+</ul>
+<h3 id="real-gpu-utilization-dcgm-exporter">Real GPU utilization: dcgm-exporter</h3>
+<p>The <code>GPU-Util</code> column of <code>nvidia-smi</code> is not GPU utilization. As <a href="https://arthurchiao.art/blog/understanding-gpu-performance/">this article</a> explains, it is the percentage of time during which one or more kernels were executing. It says nothing about whether one SM or all of them were busy, so a tiny <code>matmul</code> running continuously shows a very high <code>GPU-Util</code> while most of the GPU idles. (Stas Bekman noticed this when <code>GPU-Util</code> read 100% on every GPU of a node while one GPU had stopped responding and all the others were blocked waiting for it.)</p>
+<p>What you want is how much of the available capacity is used, sometimes called saturation. <code>nvidia-smi</code> doesn't report it. DCGM's profiling metrics do, and <a href="https://github.com/NVIDIA/dcgm-exporter">dcgm-exporter</a> serves them over HTTP in the text format of <a href="https://prometheus.io/">Prometheus</a> (the time-series database from <a href="#dcgm-the-health-daemon-and-diagnostics">section 4</a>, which scrapes such endpoints periodically and stores the values for dashboards and alerts). It needs DCGM (<code>datacenter-gpu-manager</code>), root access, and (to build it) a recent Go toolchain. It works only on datacenter NVIDIA GPUs, not consumer ones. <strong>[untested]</strong></p>
+<p>Build it:</p>
+<pre><code class="language-bash">git clone https://github.com/NVIDIA/dcgm-exporter.git
+cd dcgm-exporter
+make binary
+</code></pre>
+<p>Write a config file listing the metrics to export:</p>
+<pre><code class="language-bash">$ cat &lt;&lt; EOT &gt; dcp-metrics-custom.csv
+DCGM_FI_PROF_SM_OCCUPANCY,       gauge, The ratio of number of warps resident on an SM.
+DCGM_FI_PROF_PIPE_TENSOR_ACTIVE, gauge, Ratio of cycles the tensor (HMMA) pipe is active.
+DCGM_FI_PROF_PIPE_FP16_ACTIVE,   gauge, Ratio of cycles the fp16 pipes are active.
+DCGM_FI_PROF_PIPE_FP32_ACTIVE,   gauge, Ratio of cycles the fp32 pipes are active.
+EOT
+</code></pre>
+<p>Each line is a DCGM field name, its Prometheus metric type (<code>gauge</code> is a value that can go up and down) and a description. Warps, SM occupancy and the tensor pipe (HMMA is the matrix-multiply-accumulate instruction) are covered in <a href="../compute/accelerator/execution-model.html#sms-warps-and-schedulers">SMs, warps and schedulers</a> and <a href="../compute/accelerator/execution-model.html#tensor-cores">Tensor cores</a>. The repo's <code>etc/dcp-metrics-included.csv</code> lists all available metrics if you want more.</p>
+<p>Launch the daemon (root is required); <code>-c 500</code> refreshes every 0.5 s:</p>
+<pre><code class="language-bash">$ sudo cmd/dcgm-exporter/dcgm-exporter -c 500 -f dcp-metrics-custom.csv
+[...]
+INFO[0000] Starting webserver
+INFO[0000] Listening on                                  address=&quot;[::]:9400&quot;
+</code></pre>
+<p>Then, with a GPU workload running in another console, poll it:</p>
+<pre><code class="language-bash">watch -n 0.5 &quot;curl http://localhost:9400/metrics&quot;
+</code></pre>
+<p>(<code>watch -n 0.5</code> re-runs the command every 0.5 seconds and redraws the screen.) The last column of each metric line is the value, where <code>1.0</code> means 100%.</p>
+<p>That's the quick way. The intended use is to have Prometheus scrape it and chart it. The article's dashboard shows SM occupancy and tensor core, FP16 and FP32 pipe utilization in its second row:</p>
+<p><img src="accelerator/nvidia/images/dcgm-metrics.png" alt="dcgm-metrics" /></p>
+<p>(<a href="https://arthurchiao.art/blog/understanding-gpu-performance/">source</a>)</p>
+<p>The same article demonstrates the problem with a kernel that does nothing except occupy one SM:</p>
+<pre><code class="language-bash">$ cat &lt;&lt; EOT &gt; 1_sm_kernel.cu
+__global__ void simple_kernel() {
+    while (true) {}
+}
+
+int main() {
+    simple_kernel&lt;&lt;&lt;1, 1&gt;&gt;&gt;();
+    cudaDeviceSynchronize();
+}
+EOT
+</code></pre>
+<p><code>&lt;&lt;&lt;1, 1&gt;&gt;&gt;</code> launches a single block of a single thread, so the kernel occupies one SM and leaves the rest idle (kernel launches and <code>nvcc</code> are covered in <a href="../compute/accelerator/writing-kernels.html#cuda-c-from-zero">CUDA C++ from zero</a>). Compile it, run it in console A:</p>
+<pre><code class="language-bash">nvcc 1_sm_kernel.cu -o 1_sm_kernel
+./1_sm_kernel
+</code></pre>
+<p>and in console B:</p>
+<pre><code class="language-bash">$ nvidia-smi
+Tue Oct  8 09:49:34 2024
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 550.90.12              Driver Version: 550.90.12      CUDA Version: 12.4     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100 80GB PCIe          Off |   00000000:01:00.0 Off |                    0 |
+| N/A   32C    P0             69W /  300W |     437MiB /  81920MiB |    100%      Default |
+|                                         |                        |             Disabled |
+</code></pre>
+<p><code>GPU-Util</code> reads <code>100%</code>, yet 1 of the A100's 108 SMs is in use, and it isn't computing anything, just spinning in an infinite loop. The honest number for &quot;is my training using the GPU&quot; is MFU, covered in <a href="../training/profiling-and-optimization.html">Profiling and optimization</a>.</p>
+<h3 id="amd-hiding-devices">AMD: hiding devices</h3>
+<p><a href="#8-amd--rocm-equivalents">Section 8</a> mapped the AMD stack onto NVIDIA's; the hardware terms (CU, wavefront, XCD, LDS) are in <a href="../compute/accelerator/execution-model.html#amd-differences">AMD differences</a>. This and the next subsections are AMD's troubleshooting tools. AMD's tooling story is younger than NVIDIA's, so expect fewer tools and rougher edges.</p>
+<p>ROCm has more than one &quot;visible devices&quot; variable because devices can be hidden at different layers of the stack. From the top down: PyTorch calls <strong>HIP</strong>, AMD's CUDA-like runtime API; HIP sits on <strong>ROCr</strong>, the ROCm runtime (AMD's implementation of the HSA, Heterogeneous System Architecture, runtime API), which talks to the kernel driver.</p>
+<p>For PyTorch on ROCm, the usual CUDA-style choice is at the HIP level:</p>
+<pre><code class="language-bash">HIP_VISIBLE_DEVICES=0,1 python my-program.py
+</code></pre>
+<p><code>CUDA_VISIBLE_DEVICES</code> is honored the same way on AMD (a CUDA-compatible alias for HIP's variable). Both only filter what the <strong>HIP</strong> runtime exposes. ROCr can still initialize every GPU, and non-HIP clients that sit on ROCr are unaffected: OpenCL (a vendor-neutral GPU compute API), AOMP (AMD's OpenMP offloading compiler), UCX (a communication library that MPI and others use), and so on. To hide devices from the whole user-mode ROCm stack, filter at the <strong>ROCr</strong> level:</p>
+<pre><code class="language-bash">ROCR_VISIBLE_DEVICES=0,1 python my-program.py
+</code></pre>
+<p><code>ROCR_VISIBLE_DEVICES</code> also accepts UUID strings; HIP's list takes indices only. If both are set, HIP sees only the devices ROCr left visible, so HIP's indices are relative to that filtered set: with <code>ROCR_VISIBLE_DEVICES=4,5,6,7 HIP_VISIBLE_DEVICES=1</code>, the process gets physical GPU 5.</p>
+<p>On Linux, AMD's isolation docs use <code>ROCR_VISIBLE_DEVICES</code> when you want stack-wide isolation; for ordinary single-framework PyTorch work, <code>HIP_VISIBLE_DEVICES</code> or <code>CUDA_VISIBLE_DEVICES</code> is enough. See AMD's <a href="https://rocm.docs.amd.com/en/latest/reference/system-optimization/gpu-isolation.html">GPU isolation techniques</a>.</p>
+<h3 id="amd-rocm-smi-and-amd-smi">AMD: <code>rocm-smi</code> and <code>amd-smi</code></h3>
+<p><code>rocm-smi</code> is the <code>nvidia-smi</code> equivalent: a condensed state of all ROCm accelerators. <code>amd-smi</code> is its newer replacement with the same role (<a href="#8-amd--rocm-equivalents">section 8</a> shows its inventory commands). An 8x MI300X node:</p>
+<pre><code class="language-bash">$ rocm-smi
+========================================= ROCm System Management Interface =========================================
+=================================================== Concise Info ===================================================
+Device  [Model : Revision]    Temp        Power     Partitions      SCLK    MCLK    Fan  Perf  PwrCap  VRAM%  GPU%
+        Name (20 chars)       (Junction)  (Socket)  (Mem, Compute)
+====================================================================================================================
+0       [0x74a1 : 0x00]       45.0°C      173.0W    NPS1, SPX       132Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+1       [0x74a1 : 0x00]       41.0°C      179.0W    NPS1, SPX       132Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+2       [0x74a1 : 0x00]       47.0°C      180.0W    NPS1, SPX       131Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+3       [0x74a1 : 0x00]       45.0°C      178.0W    NPS1, SPX       131Mhz  900Mhz  0%   auto  750.0W   17%   0%
+        AMD Instinct MI300X
+4       [0x74a1 : 0x00]       45.0°C      175.0W    NPS1, SPX       132Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+5       [0x74a1 : 0x00]       43.0°C      175.0W    NPS1, SPX       132Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+6       [0x74a1 : 0x00]       45.0°C      175.0W    NPS1, SPX       132Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+7       [0x74a1 : 0x00]       43.0°C      176.0W    NPS1, SPX       132Mhz  900Mhz  0%   auto  750.0W    0%   0%
+        AMD Instinct MI300X
+====================================================================================================================
+=============================================== End of ROCm SMI Log ================================================
+</code></pre>
+<p>How to read the columns:</p>
+<ul>
+<li><code>[Model : Revision]</code> is the PCI device id (<code>0x74a1</code> = MI300X) and revision.</li>
+<li><code>Temp (Junction)</code> is the hottest on-die sensor; <code>Power (Socket)</code> is the whole package's draw; <code>PwrCap</code> is the power limit.</li>
+<li><code>Partitions (Mem, Compute)</code> are the memory and compute partitioning modes. <code>NPS1</code> means all HBM is one NUMA node, and <code>SPX</code> means all XCDs (the MI300X's compute dies) act as one GPU. The MI300X can also be split into several smaller GPUs.</li>
+<li><code>SCLK</code> is the compute (shader) clock and <code>MCLK</code> the memory clock. The 132 MHz <code>SCLK</code> here is an idle GPU's clock.</li>
+<li><code>Perf</code> is the performance-level policy.</li>
+<li><code>VRAM%</code> is the share of HBM in use, and <code>GPU%</code> the busy percentage. Like <code>nvidia-smi</code>'s <code>GPU-Util</code>, <code>GPU%</code> is the share of time something ran, not how much of the GPU it used (<a href="#real-gpu-utilization-dcgm-exporter">Real GPU utilization</a>).</li>
+</ul>
+<p>Oddly it shows memory usage only as a percentage, which isn't very practical. <code>rocm-smi --showmeminfo vram</code> prints used and total bytes per GPU.</p>
+<p>A handy alias to watch it update in real time (put it in your <code>~/.bashrc</code> to keep it; <code>watch -n 1</code> re-runs the command every second):</p>
+<pre><code class="language-bash">alias wr='watch -n 1 rocm-smi'
+</code></pre>
+<h3 id="amd-rocminfo">AMD: <code>rocminfo</code></h3>
+<p><code>rocminfo</code> is the <code>nvidia-smi -q</code> equivalent: detailed information about each device. It lists both CPUs and GPUs. HSA calls every processor that can run work an <strong>agent</strong>, CPU or GPU, and numbers them as nodes: here the two CPUs are nodes 0-1 and the eight GPUs nodes 2-9. A snippet for cpu0 and gpu0:</p>
+<pre><code class="language-bash">$ rocminfo
+ROCk module is loaded
+=====================
+HSA System Attributes
+=====================
+Runtime Version:         1.1
+System Timestamp Freq.:  1000.000000MHz
+Sig. Max Wait Duration:  18446744073709551615 (0xFFFFFFFFFFFFFFFF) (timestamp count)
+Machine Model:           LARGE
+System Endianness:       LITTLE
+Mwaitx:                  DISABLED
+DMAbuf Support:          YES
+
+==========
+HSA Agents
+==========
+*******
+Agent 1
+*******
+  Name:                    AMD EPYC 9534 64-Core Processor
+  Uuid:                    CPU-XX
+  Marketing Name:          AMD EPYC 9534 64-Core Processor
+  Vendor Name:             CPU
+  Feature:                 None specified
+  Profile:                 FULL_PROFILE
+  Float Round Mode:        NEAR
+  Max Queue Number:        0(0x0)
+  Queue Min Size:          0(0x0)
+  Queue Max Size:          0(0x0)
+  Queue Type:              MULTI
+  Node:                    0
+  Device Type:             CPU
+  Cache Info:
+    L1:                      32768(0x8000) KB
+  Chip ID:                 0(0x0)
+  ASIC Revision:           0(0x0)
+  Cacheline Size:          64(0x40)
+  Max Clock Freq. (MHz):   2450
+  BDFID:                   0
+  Internal Node ID:        0
+  Compute Unit:            128
+  SIMDs per CU:            0
+  Shader Engines:          0
+  Shader Arrs. per Eng.:   0
+  WatchPts on Addr. Ranges:1
+  Features:                None
+  Pool Info:
+    Pool 1
+      Segment:                 GLOBAL; FLAGS: FINE GRAINED
+      Size:                    792303268(0x2f3996a4) KB
+      Allocatable:             TRUE
+      Alloc Granule:           4KB
+      Alloc Alignment:         4KB
+      Accessible by all:       TRUE
+    Pool 2
+      Segment:                 GLOBAL; FLAGS: KERNARG, FINE GRAINED
+      Size:                    792303268(0x2f3996a4) KB
+      Allocatable:             TRUE
+      Alloc Granule:           4KB
+      Alloc Alignment:         4KB
+      Accessible by all:       TRUE
+    Pool 3
+      Segment:                 GLOBAL; FLAGS: COARSE GRAINED
+      Size:                    792303268(0x2f3996a4) KB
+      Allocatable:             TRUE
+      Alloc Granule:           4KB
+      Alloc Alignment:         4KB
+      Accessible by all:       TRUE
+  ISA Info:
+[...]
+
+  Name:                    gfx942
+  Uuid:                    GPU-ababaeeffecddc50
+  Marketing Name:          AMD Instinct MI300X
+  Vendor Name:             AMD
+  Feature:                 KERNEL_DISPATCH
+  Profile:                 BASE_PROFILE
+  Float Round Mode:        NEAR
+  Max Queue Number:        128(0x80)
+  Queue Min Size:          64(0x40)
+  Queue Max Size:          131072(0x20000)
+  Queue Type:              MULTI
+  Node:                    2
+  Device Type:             GPU
+  Cache Info:
+    L1:                      16(0x10) KB
+    L2:                      8192(0x2000) KB
+  Chip ID:                 29857(0x74a1)
+  ASIC Revision:           1(0x1)
+  Cacheline Size:          64(0x40)
+  Max Clock Freq. (MHz):   2100
+  BDFID:                   50688
+  Internal Node ID:        7
+  Compute Unit:            304
+  SIMDs per CU:            4
+  Shader Engines:          32
+  Shader Arrs. per Eng.:   1
+  WatchPts on Addr. Ranges:4
+  Coherent Host Access:    FALSE
+  Features:                KERNEL_DISPATCH
+  Fast F16 Operation:      TRUE
+  Wavefront Size:          64(0x40)
+  Workgroup Max Size:      1024(0x400)
+  Workgroup Max Size per Dimension:
+    x                        1024(0x400)
+    y                        1024(0x400)
+    z                        1024(0x400)
+  Max Waves Per CU:        32(0x20)
+  Max Work-item Per CU:    2048(0x800)
+  Grid Max Size:           4294967295(0xffffffff)
+  Grid Max Size per Dimension:
+    x                        4294967295(0xffffffff)
+    y                        4294967295(0xffffffff)
+    z                        4294967295(0xffffffff)
+  Max fbarriers/Workgrp:   32
+  Packet Processor uCode:: 132
+  SDMA engine uCode::      19
+  IOMMU Support::          None
+  Pool Info:
+    Pool 1
+      Segment:                 GLOBAL; FLAGS: COARSE GRAINED
+      Size:                    201310208(0xbffc000) KB
+      Allocatable:             TRUE
+      Alloc Granule:           4KB
+      Alloc Alignment:         4KB
+      Accessible by all:       FALSE
+    Pool 2
+      Segment:                 GLOBAL; FLAGS: EXTENDED FINE GRAINED
+      Size:                    201310208(0xbffc000) KB
+      Allocatable:             TRUE
+      Alloc Granule:           4KB
+      Alloc Alignment:         4KB
+      Accessible by all:       FALSE
+    Pool 3
+      Segment:                 GLOBAL; FLAGS: FINE GRAINED
+      Size:                    201310208(0xbffc000) KB
+      Allocatable:             TRUE
+      Alloc Granule:           4KB
+      Alloc Alignment:         4KB
+      Accessible by all:       FALSE
+    Pool 4
+      Segment:                 GROUP
+      Size:                    64(0x40) KB
+      Allocatable:             FALSE
+      Alloc Granule:           0KB
+      Alloc Alignment:         0KB
+      Accessible by all:       FALSE
+  ISA Info:
+    ISA 1
+      Name:                    amdgcn-amd-amdhsa--gfx942:sramecc+:xnack-
+      Machine Models:          HSA_MACHINE_MODEL_LARGE
+      Profiles:                HSA_PROFILE_BASE
+      Default Rounding Mode:   NEAR
+      Default Rounding Mode:   NEAR
+      Fast f16:                TRUE
+      Workgroup Max Size:      1024(0x400)
+      Workgroup Max Size per Dimension:
+        x                        1024(0x400)
+        y                        1024(0x400)
+        z                        1024(0x400)
+      Grid Max Size:           4294967295(0xffffffff)
+      Grid Max Size per Dimension:
+        x                        4294967295(0xffffffff)
+        y                        4294967295(0xffffffff)
+        z                        4294967295(0xffffffff)
+      FBarrier Max Size:       32
+</code></pre>
+<p>How to read it. The fields that matter most for a GPU:</p>
+<ul>
+<li><code>Name</code> is the ISA name: <code>gfx942</code> is the MI300X. <code>Compute Unit: 304</code> is the number of CUs, and <code>Wavefront Size: 64</code> the AMD equivalent of the warp size.</li>
+<li><code>Max Clock Freq.</code> and the cache sizes (<code>L1</code> 16 KB per CU, <code>L2</code> 8 MB).</li>
+<li><code>BDFID</code> is the PCI bus:device.function address packed into one number. <code>50688</code> is <code>0xC600</code>, i.e. bus <code>0xC6</code>, device 0, function 0, which you can match against <code>lspci</code>.</li>
+<li><code>Pool Info</code> sizes are the HBM: <code>201310208 KB</code> is 192 GiB per GPU. <strong>Coarse grained</strong> memory is coherent only at kernel boundaries and is the fast default for device memory; <strong>fine grained</strong> memory can be shared coherently with the host or other GPUs while a kernel runs. The <code>GROUP</code> pool (64 KB) is the per-workgroup LDS, AMD's shared memory.</li>
+<li>In the ISA string, <code>sramecc+</code> means ECC on the on-chip SRAM is enabled and <code>xnack-</code> that GPU page-fault retry is off.</li>
+<li><code>IOMMU Support</code> is what the runtime actually sees for the IOMMU, the subject of the next subsection.</li>
+</ul>
+<p>For the CPU agent, <code>Compute Unit: 128</code> is the 64-core EPYC's hardware threads (with SMT), and its <code>Pool Info</code> (about 756 GiB) is that socket's system memory.</p>
+<h3 id="amd-hangs-or-slow-multi-gpu-runs-and-the-iommu">AMD: hangs or slow multi-GPU runs and the IOMMU</h3>
+<p>If a multi-GPU ROCm run hangs or crawls, the host's IOMMU configuration is a common culprit. The IOMMU translates the addresses that devices use for DMA, and pass-through mode (<code>iommu=pt</code>) skips that translation for devices the host owns; both are introduced in <a href="../foundations/containers-and-virtualization.html#iommu-vfio-and-pcie-passthrough">IOMMU, VFIO and PCIe passthrough</a>. The correct setting is platform-specific, so match your hardware instead of blindly disabling it:</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>AMD's guidance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MI300X, MI325X, MI350X, MI355X</td>
+<td>IOMMU <strong>enabled</strong> in BIOS and in pass-through mode on the kernel command line: <code>iommu=pt</code> together with <code>amd_iommu=on</code> (or <code>intel_iommu=on</code> on Intel hosts). MI350X/MI355X (ROCm 7.0.1+) explicitly list <code>IOMMU enabled</code> + <code>iommu=pt</code>.</td>
+</tr>
+<tr>
+<td>MI100, MI200 (MI210/MI250/MI250X)</td>
+<td>AMD's qualified BIOS tables typically set the NBIO <strong>IOMMU to Disable</strong> (NBIO is the CPU's north-bridge I/O block, where the BIOS's IOMMU switch lives). <code>iommu=pt</code> is called out only for hosts with 256+ logical CPUs, so that X2APIC (the interrupt-controller mode that can address more than 255 CPUs, and needs the IOMMU for interrupt remapping) can address every core.</td>
+</tr>
+<tr>
+<td>Older systems, last resort</td>
+<td>where neither pass-through nor the BIOS default helped, fully disabling it with <code>amd_iommu=off</code> (or the softer <code>iommu=soft</code>) was the historical workaround. This is an invasive, system-wide boot change, and current AMD guidance prefers pass-through. See AMD's <a href="https://community.amd.com/t5/knowledge-base/iommu-advisory-for-multi-gpu-environments/ta-p/477468">IOMMU advisory for multi-GPU environments</a> and this <a href="https://github.com/stas00/ml-engineering/issues/1#issuecomment-1076830400">issue report</a> (that case was actually on NVIDIA A6000s, so this is not AMD-only).</td>
+</tr>
+</tbody>
+</table>
+<p>These are boot-time kernel parameters, so they need admin access. GRUB is the bootloader that passes them to the kernel; they go in <code>/etc/default/grub</code> (the path varies by OS), then you regenerate the GRUB config and reboot. <strong>[untested]</strong></p>
+<pre><code class="language-bash"># /etc/default/grub
+GRUB_CMDLINE_LINUX=&quot;... amd_iommu=on iommu=pt&quot;
+
+sudo update-grub                                  # Ubuntu/Debian
+# sudo grub2-mkconfig -o &lt;path of grub.cfg&gt;       # RHEL family
+sudo reboot
+cat /proc/cmdline                                 # after reboot: the parameters the running kernel actually got
+</code></pre>
+<p>Then check the <code>IOMMU Support</code> line of <code>rocminfo</code> above, which shows what the runtime sees.</p>
 <h2 id="you-can-now-read">You can now read</h2>
 <ul>
-<li><a href="../compute/accelerator/nvidia/debug.html">Troubleshooting NVIDIA GPUs</a>: Xid errors, DCGM output and row remapping in depth.</li>
-<li><a href="../compute/accelerator/amd/debug.html">Troubleshooting AMD GPUs</a>.</li>
-<li><a href="../network/debug/README.html">Network debug</a> and <a href="../debug/nccl-performance-debug.html">NCCL performance debug</a>: when nccl-tests is slow or hangs.</li>
-<li><a href="../network/benchmarks/README.html">Network benchmarks</a>: <code>torch-dist-bench</code>, nccl-tests, nvbandwidth and what the numbers mean.</li>
-<li><a href="../network/README.html">The network chapter</a>: fabric generations, NVLink/IB/EFA numbers.</li>
-<li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> and <a href="../orchestration/slurm/README.html">Slurm</a>: where the acceptance script plugs in.</li>
+<li><a href="../development/debugging-pytorch.html">Debugging PyTorch</a> and <a href="../development/debugging-distributed.html">Debugging distributed training</a>: the software side of a crash or hang, once section 11 has cleared the hardware.</li>
+<li><a href="../network/measuring-and-debugging.html">Network debug</a> and <a href="../network/measuring-and-debugging.html">NCCL performance debug</a>: when nccl-tests is slow or hangs.</li>
+<li><a href="../network/measuring-and-debugging.html">Network benchmarks</a>: <code>torch-dist-bench</code>, nccl-tests, nvbandwidth and what the numbers mean.</li>
+<li><a href="../network/interconnects.html">The network chapter</a>: fabric generations, NVLink/IB/EFA numbers.</li>
+<li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes from zero</a> and <a href="../orchestration/slurm/from-zero.html">Slurm</a>: where the acceptance script plugs in.</li>
 <li><a href="../training/decentralized-training.html">Decentralized training</a>: what changes when the nodes aren't on one fabric.</li>
 </ul>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
 <h2 id="further-reading">Further reading</h2>
 <ul>
 <li>NVIDIA, <a href="https://docs.nvidia.com/deploy/cuda-compatibility/">CUDA Compatibility</a>: minor-version and forward compatibility, the source of the rules in section 2.</li>
@@ -1505,7 +2274,7 @@ NODE PASS: 12 pass, 0 fail, 0 skip
 </ul>
 
 </article>
-<footer><a class="prev" href="../compute/accelerator/writing-kernels.html">&larr; Writing GPU Kernels, Hands-On</a><a class="next" href="../compute/accelerator/benchmarks/README.html">Accelerator Benchmarks &rarr;</a></footer>
+<footer><a class="prev" href="../compute/accelerator/writing-kernels.html">&larr; Writing GPU Kernels, Hands-On</a><a class="next" href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More &rarr;</a></footer>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>

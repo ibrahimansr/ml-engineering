@@ -1,6 +1,6 @@
 # Foundations: Computer Networking for ML Engineers
 
-This chapter is for readers who know the ML math well but have never had to learn how computers talk to each other. Networking does not stay hidden for long once you work at scale. Your first multi-node job will hang at `init_process_group`. Your all-reduce will run at a tenth of the advertised speed. Somebody will ask you whether the cluster is "3:1 oversubscribed". This chapter builds the vocabulary from zero. By the end you should be able to read the [network chapter](../network/README.md), [communication patterns](../network/comms.md), [network debug](../network/debug/README.md), [network benchmarks](../network/benchmarks/README.md) and the more advanced [collective communication internals](../network/collectives-internals.md).
+This chapter is for readers who know the ML math well but have never had to learn how computers talk to each other. Networking does not stay hidden for long once you work at scale. Your first multi-node job will hang at `init_process_group`. Your all-reduce will run at a tenth of the advertised speed. Somebody will ask you whether the cluster is "3:1 oversubscribed". This chapter builds the vocabulary from zero. By the end you should be able to read the [network chapter](../network/interconnects.md), [communication patterns](../network/collectives-internals.md), [network debug](../network/measuring-and-debugging.md), [network benchmarks](../network/measuring-and-debugging.md) and the more advanced [collective communication internals](../network/collectives-internals.md).
 
 The goal is to explain why things are the way they are, not only what to type. Most networking failures in ML clusters make sense once you know which layer they happen at.
 
@@ -784,7 +784,7 @@ send size  4194304 B:   59.5 Gbit/s    0.00 M sends/s
 
 (One run, Apple M4, one sender thread. An anecdote, not a benchmark.) Two lessons. Small messages are bounded by calls per second, not bytes: about half a million `send()` calls per second is the ceiling here, and Python adds its own overhead on top of the kernel's. And even with 4 MiB sends and no wire, one TCP stream on one core reaches about 60 Gbit/s, roughly one seventh of a single 400 Gbps NIC, while burning a full core. An RDMA NIC moves 400 Gbit/s with the CPU idle.
 
-NCCL can run over plain TCP sockets (its "Socket" transport). When the RDMA path is misconfigured, NCCL may silently fall back to it, and all-reduce bandwidth drops by an order of magnitude or more. Spotting `NET/Socket` instead of `NET/IB` (IB = InfiniBand, the RDMA fabric covered [below](#infiniband)) in `NCCL_DEBUG=INFO` output (the environment variable that makes NCCL log its choices) is one of the most valuable debugging skills covered in [network debug](../network/debug/README.md).
+NCCL can run over plain TCP sockets (its "Socket" transport). When the RDMA path is misconfigured, NCCL may silently fall back to it, and all-reduce bandwidth drops by an order of magnitude or more. Spotting `NET/Socket` instead of `NET/IB` (IB = InfiniBand, the RDMA fabric covered [below](#infiniband)) in `NCCL_DEBUG=INFO` output (the environment variable that makes NCCL log its choices) is one of the most valuable debugging skills covered in [network debug](../network/measuring-and-debugging.md).
 
 ### Try this
 
@@ -1407,11 +1407,11 @@ Watch the capitalization. `Gb` is gigabit and `GB` is gigabyte. Some benchmark t
 
 **Line rate vs payload.** The quoted rate is the raw signaling rate after line encoding. Packet headers, as in the MTU table above, plus protocol overhead mean that application payload always comes out a few percent lower. A well-tuned 400 Gbps InfiniBand link typically delivers somewhere in the high 300s Gbps in `ib_write_bw` (an RDMA bandwidth benchmark from the `perftest` suite; see [iperf3](#iperf3)). Do not expect 400.
 
-**Unidirectional vs bidirectional.** A full-duplex link can send at full rate in both directions at once. Many vendors quote the *sum of both directions*. NVIDIA's "900 GB/s NVLink" for H100 is bidirectional: it is 450 GB/s in each direction. A ring all-reduce sends in one direction on each link, so the per-direction number is the one that matters. The [network chapter](../network/README.md#unidirectional-vs-bidirectional-duplex) covers this in detail. **Always ask "per direction or both?"**
+**Unidirectional vs bidirectional.** A full-duplex link can send at full rate in both directions at once. Many vendors quote the *sum of both directions*. NVIDIA's "900 GB/s NVLink" for H100 is bidirectional: it is 450 GB/s in each direction. A ring all-reduce sends in one direction on each link, so the per-direction number is the one that matters. The [network chapter](../network/interconnects.md#unidirectional-vs-bidirectional-duplex) covers this in detail. **Always ask "per direction or both?"**
 
 **Aggregate vs per-link.** "3.2 Tbps per node" may mean 8 NICs × 400 Gbps. One process talking to one peer through one NIC gets only one NIC's worth.
 
-**Theoretical vs achieved.** Peak numbers assume large messages, perfect topology and no congestion. Real collectives on real jobs achieve less. That is why the book stresses measuring with [benchmarks](../network/benchmarks/README.md) rather than trusting the brochure.
+**Theoretical vs achieved.** Peak numbers assume large messages, perfect topology and no congestion. Real collectives on real jobs achieve less. That is why the book stresses measuring with [benchmarks](../network/measuring-and-debugging.md) rather than trusting the brochure.
 
 Put the conversions in code once and stop doing them in your head:
 
@@ -1564,7 +1564,7 @@ iperf3 -c server -R             # reverse direction (server sends)
 
 The `Retr` column counts TCP retransmissions; a nonzero count on a supposedly idle data center link is a sign of loss (a bad cable, a congested switch). `tput.py` in the TCP section is a poor man's `iperf3` for loopback.
 
-If one stream gets 20 Gbps on a 100 Gbps NIC and 8 streams get 90, the limit is per-stream CPU or window, not the wire. `iperf3` only tests the TCP/IP path. To test RDMA, use the `perftest` suite (`ib_write_bw`, `ib_read_lat`), and to test the whole GPU communication stack use `nccl-tests` or the book's [torch-dist-bench](../network/benchmarks/README.md#torch-dist-bench).
+If one stream gets 20 Gbps on a 100 Gbps NIC and 8 streams get 90, the limit is per-stream CPU or window, not the wire. `iperf3` only tests the TCP/IP path. To test RDMA, use the `perftest` suite (`ib_write_bw`, `ib_read_lat`), and to test the whole GPU communication stack use `nccl-tests` or the book's [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench).
 
 ### curl
 
@@ -1814,14 +1814,14 @@ print(f"P(8 flows land on 8 distinct links) = {math.factorial(8)/8**8:.4f}")
 P(8 flows land on 8 distinct links) = 0.0024
 ```
 
-With 8 elephant flows on 8 links, a perfect spread happens 0.24% of the time, and the busiest link typically carries 2-3 flows. In a synchronous collective the slowest flow sets the pace for everyone, so the job runs at roughly 40% of the fabric's capability. More flows average out the bad luck. Mitigations include more connections per peer (for example `NCCL_IB_QPS_PER_CONNECTION`, covered in [benchmarks](../network/benchmarks/README.md#nccl_ib_qps_per_connection)), InfiniBand **adaptive routing**, which picks paths per packet based on congestion, and newer Ethernet designs that spray packets across all paths.
+With 8 elephant flows on 8 links, a perfect spread happens 0.24% of the time, and the busiest link typically carries 2-3 flows. In a synchronous collective the slowest flow sets the pace for everyone, so the job runs at roughly 40% of the fabric's capability. More flows average out the bad luck. Mitigations include more connections per peer (for example `NCCL_IB_QPS_PER_CONNECTION`, covered in [benchmarks](../network/measuring-and-debugging.md#nccl_ib_qps_per_connection)), InfiniBand **adaptive routing**, which picks paths per packet based on congestion, and newer Ethernet designs that spray packets across all paths.
 
 ### East-west vs north-south
 
 - **North-south** traffic enters or leaves the data center: users hitting your inference API, downloading datasets from the Internet, pushing to the Hub.
 - **East-west** traffic stays between servers inside the data center: gradient all-reduce, reading from a parallel filesystem, checkpoint writes.
 
-Training is overwhelmingly east-west. Clusters often physically separate these into a **frontend network** (Ethernet: SSH, storage, the Internet) and a **backend/compute network** (InfiniBand or RoCE, GPU-to-GPU only), plus an **out-of-band management network** for BMCs (baseboard management controllers: a small independent computer on each server's motherboard that lets admins power-cycle it and reach its console even when the OS is dead). The [network chapter](../network/README.md#cluster-networks) describes these. When debugging, always know which of these networks a given connection is supposed to use.
+Training is overwhelmingly east-west. Clusters often physically separate these into a **frontend network** (Ethernet: SSH, storage, the Internet) and a **backend/compute network** (InfiniBand or RoCE, GPU-to-GPU only), plus an **out-of-band management network** for BMCs (baseboard management controllers: a small independent computer on each server's motherboard that lets admins power-cycle it and reach its console even when the OS is dead). The [network chapter](../network/interconnects.md#cluster-networks) describes these. When debugging, always know which of these networks a given connection is supposed to use.
 
 The volume difference is large. A back-of-envelope comparison for one data-parallel job, a 7B model in bf16 on 64 GPUs taking one step every 2 seconds, against the north-south traffic of its data and checkpoints:
 
@@ -1894,7 +1894,7 @@ The price is setup complexity. Memory must be **registered** (pinned and made kn
 - **Verbs:** the IB/RDMA programming interface (`libibverbs`). The core objects are the **Queue Pair (QP)**, a send queue plus a receive queue representing one connection, the **Completion Queue (CQ)**, where the NIC reports finished work, and **Memory Regions (MR)**, which are registered buffers. NCCL, MPI and UCX (another communication library used under MPI and some serving stacks) all speak verbs. You will rarely write verbs code yourself, but `NCCL_IB_*` environment variables and error messages use these terms.
 - **Credit-based flow control:** IB is **lossless** at the link layer. A sender transmits only when the receiver has advertised buffer credits, so switches do not drop packets because of congestion. This is a big reason IB performance is so predictable.
 
-IB link generations are named by per-lane speed: EDR, HDR, NDR, XDR. A typical port today is 4 lanes, for example NDR 4x = 400 Gbps. The [network chapter](../network/README.md#infiniband) has the table.
+IB link generations are named by per-lane speed: EDR, HDR, NDR, XDR. A typical port today is 4 lanes, for example NDR 4x = 400 Gbps. The [network chapter](../network/interconnects.md#infiniband) has the table.
 
 Useful commands (from the `infiniband-diags` and `rdma-core` packages):
 
@@ -2083,7 +2083,7 @@ $ sudo lspci -s 41:00.0 -vv | grep -E 'LnkCap|LnkSta'
 
 **NVLink** is NVIDIA's dedicated GPU-to-GPU link, far faster than PCIe. H100 has 18 NVLink 4 links totaling 900 GB/s bidirectional (450 GB/s per direction). B200 doubles that. **NVSwitch** chips connect all GPUs in a node, so any GPU can talk to any other at full NVLink bandwidth. It is literally a switch, like the leaf switches above, but inside the box, carrying load/store and copy traffic between GPU memories.
 
-Compare the numbers per GPU and per direction: about 450 GB/s over NVLink inside the node versus about 50 GB/s through a 400 Gbps NIC between nodes. That is roughly a 9x gap, and it is why parallelism strategies put the chattiest communication (tensor parallelism) inside the NVLink domain and the less frequent communication (data parallelism, pipeline stages) across nodes. In one sentence each (all derived in [Parallelism from first principles](../training/model-parallelism/derivations.md)): **data parallelism** gives every GPU a full model copy and all-reduces gradients once per step; **tensor parallelism (TP)** splits each layer's weight matrices across GPUs, so they must exchange activations inside every layer; **pipeline parallelism** gives each GPU a contiguous block of layers (a stage) and passes activations from stage to stage, one **micro-batch** (a slice of the batch) at a time. Rack-scale systems such as NVL72 extend the NVLink domain to 72 GPUs across a rack, which shifts that boundary. AMD has the equivalent Infinity Fabric/xGMI. See the [intra-node section](../network/README.md#intra-node-networking).
+Compare the numbers per GPU and per direction: about 450 GB/s over NVLink inside the node versus about 50 GB/s through a 400 Gbps NIC between nodes. That is roughly a 9x gap, and it is why parallelism strategies put the chattiest communication (tensor parallelism) inside the NVLink domain and the less frequent communication (data parallelism, pipeline stages) across nodes. In one sentence each (all derived in [Parallelism from first principles](../training/model-parallelism/derivations.md)): **data parallelism** gives every GPU a full model copy and all-reduces gradients once per step; **tensor parallelism (TP)** splits each layer's weight matrices across GPUs, so they must exchange activations inside every layer; **pipeline parallelism** gives each GPU a contiguous block of layers (a stage) and passes activations from stage to stage, one **micro-batch** (a slice of the batch) at a time. Rack-scale systems such as NVL72 extend the NVLink domain to 72 GPUs across a rack, which shifts that boundary. AMD has the equivalent Infinity Fabric/xGMI. See the [intra-node section](../network/interconnects.md#intra-node-networking).
 
 A sketch of `nvidia-smi topo -m` on an 8-GPU NVSwitch node (untested here; trimmed to four GPUs and two NICs, real tables list all devices):
 
@@ -2277,7 +2277,7 @@ node0:41721:41790 [0] NCCL INFO Channel 00/0 : 8[0] -> 0[0] [receive] via NET/IB
 
 Each line starts with `host:pid:thread [local GPU index]`. In the `Channel` lines, `0[0] -> 1[1]` means global rank 0 on GPU 0 sends to rank 1 on GPU 1. `Bootstrap : Using ens5` is the interface choice for the TCP bootstrap. `Using network IB` (versus `Socket`) is the inter-node transport. `via P2P/IPC` is NVLink/PCIe inside the node, and `NET/IB/0/GDRDMA` is RDMA on HCA 0 with GPUDirect. A bad line to see is `NET/Socket : Using [0]ens5:...` on a cluster that has InfiniBand.
 
-`NCCL_SOCKET_IFNAME` selects an *IP interface* (from `ip addr`). `NCCL_IB_HCA` selects *RDMA devices* (from `ibv_devices`). They are different namespaces, and mixing them up is a common mistake. See [network debug](../network/debug/README.md#nccl_socket_ifname) for details.
+`NCCL_SOCKET_IFNAME` selects an *IP interface* (from `ip addr`). `NCCL_IB_HCA` selects *RDMA devices* (from `ibv_devices`). They are different namespaces, and mixing them up is a common mistake. See [network debug](../network/measuring-and-debugging.md#nccl_socket_ifname) for details.
 
 ### Common failures, mapped to layers
 
@@ -2290,7 +2290,7 @@ Each line starts with `host:pid:thread [local GPU index]`. In the `Channel` line
 | Works, but all-reduce bandwidth is tiny | Transport fallback | `NCCL_DEBUG=INFO`: look for `NET/Socket` vs `NET/IB` / `NET/OFI`; `GDRDMA` present? |
 | Works on 1 node, fails on 2 | Inter-node path | Intra-node uses NVLink and never touches the network; test with `nc`, `ib_write_bw` |
 | Works in bare metal, fails in Docker | Interfaces/devices in container | `docker run` flags: `--network=host` (use the host's interfaces instead of the Docker bridge), pass RDMA devices into the container, `--ipc=host`/shm size; see [Containers](containers-and-virtualization.md#3-docker-from-zero) |
-| Random NCCL timeouts mid-run | Fabric | Link errors, congestion; see [network debug](../network/debug/README.md) |
+| Random NCCL timeouts mid-run | Fabric | Link errors, congestion; see [network debug](../network/measuring-and-debugging.md) |
 
 Most rows of that table can be checked before launch with a few lines of Python run on every node. `preflight.py` resolves the local hostname (flagging loopback), resolves the master, asks the kernel which source IP it would use to reach it, and probes the port:
 
@@ -2332,7 +2332,7 @@ TCP 127.0.0.1:29500: REFUSED (host up, nothing listening)
 
 (Some IPv6 lines removed.) Run it from every node while the master is up and you have covered names, routes and reachability in one second. The script does not check the NCCL data path; for that you need an actual collective.
 
-A good habit for the first run on any new cluster is to run a minimal all-reduce test before the real training job. The [torch-dist-bench](../network/benchmarks/README.md#torch-dist-bench) and the [network debug](../network/debug/README.md) chapter provide exactly that.
+A good habit for the first run on any new cluster is to run a minimal all-reduce test before the real training job. The [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench) and the [network debug](../network/measuring-and-debugging.md) chapter provide exactly that.
 
 ### Try this
 
@@ -2344,7 +2344,7 @@ A good habit for the first run on any new cluster is to run a minimal all-reduce
 
 ## Collective communication: an intuitive introduction
 
-Point-to-point communication is "rank A sends a tensor to rank B". Distributed training mostly uses **collectives**, where every rank in a group takes part and the result is defined over all of them. The [communication patterns](../network/comms.md) chapter has diagrams for each. Here is what each one *computes*, with tiny arrays. Let there be 3 ranks, each holding a vector:
+Point-to-point communication is "rank A sends a tensor to rank B". Distributed training mostly uses **collectives**, where every rank in a group takes part and the result is defined over all of them. The [communication patterns](../network/collectives-internals.md) chapter has diagrams for each. Here is what each one *computes*, with tiny arrays. Let there be 3 ranks, each holding a vector:
 
 ```
 rank 0: [ 1,   2,   3 ]
@@ -2538,10 +2538,10 @@ The first case was an instant `Connection refused` at the socket level, as `erro
 
 ## You can now read
 
-- [Inter-node and intra-node networking hardware](../network/README.md). The glossary, unidirectional vs bidirectional, frontend/backend/out-of-band networks, PCIe/NVLink/NVSwitch tables, InfiniBand/RoCE/EFA specs. You now know what each row means.
-- [Communication patterns](../network/comms.md). The collective diagrams and the ring/tree algorithms.
-- [Network debug](../network/debug/README.md). The NCCL debug env vars (`NCCL_DEBUG`, `NCCL_SOCKET_IFNAME`, `NCCL_IB_HCA`, `NCCL_P2P_DISABLE`), P2P checks, Docker gotchas.
-- [Network benchmarks](../network/benchmarks/README.md). How `busbw` is computed, latency vs message size, NCCL performance knobs, InfiniBand adaptive routing.
+- [Inter-node and intra-node networking hardware](../network/interconnects.md). The glossary, unidirectional vs bidirectional, frontend/backend/out-of-band networks, PCIe/NVLink/NVSwitch tables, InfiniBand/RoCE/EFA specs. You now know what each row means.
+- [Communication patterns](../network/collectives-internals.md). The collective diagrams and the ring/tree algorithms.
+- [Network debug](../network/measuring-and-debugging.md). The NCCL debug env vars (`NCCL_DEBUG`, `NCCL_SOCKET_IFNAME`, `NCCL_IB_HCA`, `NCCL_P2P_DISABLE`), P2P checks, Docker gotchas.
+- [Network benchmarks](../network/measuring-and-debugging.md). How `busbw` is computed, latency vs message size, NCCL performance knobs, InfiniBand adaptive routing.
 - [Collective communication internals and cost models](../network/collectives-internals.md). The quantitative treatment of everything in the last section.
 
 ## Further reading

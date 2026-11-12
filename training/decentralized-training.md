@@ -1217,7 +1217,7 @@ My summary, with the uncertainty stated: inference verification (TOPLOC-style) h
 ## You can now read
 
 - [Collectives internals](../network/collectives-internals.md) again, with the WAN in mind: which NCCL assumptions (lossless fabric, static membership, symmetric bandwidth) break across the internet.
-- [Fault tolerance](fault-tolerance/README.md) and [checkpoints](checkpoints/README.md): the datacenter versions of the elastic-membership and peer-checkpoint ideas above.
+- [Fault tolerance](fault-tolerance-and-reproducibility.md) and [checkpoints](fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools): the datacenter versions of the elastic-membership and peer-checkpoint ideas above.
 - [RL infrastructure](../platform/rl-infrastructure.md): decentralized RL (INTELLECT-2), where inference workers are untrusted and weight broadcast replaces gradient all-reduce.
 - [Profiling and optimization](profiling-and-optimization.md): how to measure whether a sync is actually overlapped, using the trace techniques that also apply to DiLoCo rounds.
 - [Control planes and fleet management](../platform/control-planes.md): the coordinator (Lighthouse, master, KV store) is a small control-plane service (the part of a system that decides membership and placement, as opposed to the data plane that moves the tensors) with the usual availability problems.

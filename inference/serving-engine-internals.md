@@ -14,7 +14,7 @@ Read these first if the systems side is unfamiliar; the chapter defines each sys
 - [Profiling and optimization](../training/profiling-and-optimization.md) - [Nsight Systems with NVTX](../training/profiling-and-optimization.md#nsight-systems-with-nvtx-ranges), [CPU-launch-bound loops](../training/profiling-and-optimization.md#cpu-launch-bound-loops), [torch.compile](../training/profiling-and-optimization.md#torchcompile) and [CUDA graphs](../training/profiling-and-optimization.md#cuda-graphs), which the engine-loop and compilation sections build on.
 - [Inference Internals I](arithmetic.md) - the previous chapter: rooflines, KV sizing and quantization.
 
-This chapter is about what happens inside a modern LLM serving engine - vLLM, SGLang, TensorRT-LLM and their relatives - at the level of the data structures, the scheduler loop and the kernels. It assumes [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md) for the vocabulary (prefill, decode, TTFT, TPOT/ITL, SLO, goodput) and for rooflines, KV cache sizing, quantization and capacity planning; none of that is repeated here. Continuous batching and speculative decoding are introduced in their own sections below. Links to the [Inference overview](README.md) point to an optional, lighter introduction; nothing here depends on having read it.
+This chapter is about what happens inside a modern LLM serving engine - vLLM, SGLang, TensorRT-LLM and their relatives - at the level of the data structures, the scheduler loop and the kernels. It assumes [Inference Internals I: The Arithmetic of LLM Inference](arithmetic.md) for the vocabulary (prefill, decode, TTFT, TPOT/ITL, SLO, goodput) and for rooflines, KV cache sizing, quantization and capacity planning; none of that is repeated here. Continuous batching and speculative decoding are introduced in their own sections below. The short introductions to each mechanism (batching kinds, paged attention, decoding methods, guided generation, speculative decoding) are in [Internals I's Concepts section](arithmetic.md#concepts).
 
 A note on accuracy: these engines change monthly. Where this chapter describes a specific engine's implementation it describes the design as publicly documented in its source, docs or design blogs around 2025-2026. Flag names and defaults drift - check the version you run. Where something is a recollection rather than a verified fact, it says so.
 
@@ -272,7 +272,7 @@ Decoding tokens one at a time yields `�` (the Unicode replacement character, s
 
 ## PagedAttention
 
-The [overview](README.md#paged-attention) says what it is. This section is about how it works. The name comes from OS virtual memory, where a process sees contiguous addresses but the OS maps them in fixed-size *pages* onto scattered physical memory through a page table; here the "pages" are KV blocks and the page table is the block table. Reference: Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention" (arXiv 2309.06180).
+[Paged attention](arithmetic.md#paged-attention) says what it is. This section is about how it works. The name comes from OS virtual memory, where a process sees contiguous addresses but the OS maps them in fixed-size *pages* onto scattered physical memory through a page table; here the "pages" are KV blocks and the page table is the block table. Reference: Kwon et al., "Efficient Memory Management for Large Language Model Serving with PagedAttention" (arXiv 2309.06180).
 
 The problem it solves: a request's final length is unknown when it arrives. The pre-2023 approach reserved one contiguous KV region per request sized for `max_model_len`. Most requests end far shorter, so most of the reserved memory held nothing, and the scheduler could not admit more requests because the memory *looked* full. Paging allocates memory one small block at a time as the sequence actually grows. So the wasted memory is at most one partially filled block per sequence, and it shrinks from tens of percent to well under 1% (measured in [Block size tradeoffs](#block-size-tradeoffs)).
 
@@ -553,7 +553,7 @@ What happened: the 10-token prompt filled blocks 0 and 1 and the first 2 slots o
 
 ## Continuous batching and the scheduler
 
-The [overview](README.md#continuous-batching-or-in-flight-batching) describes the idea. The original system is Orca (Yu et al., "Orca: A Distributed Serving System for Transformer-Based Generative Models", OSDI 2022 - not on arXiv as far as I know), which introduced iteration-level scheduling and *selective batching*: batch the token-wise ops (linear layers, norms) across requests of different lengths by flattening tokens, and run attention per request. That flattening is still how every engine works: the model sees a single ragged batch of shape `(total_tokens, hidden)` with no padding, and only attention needs per-sequence metadata.
+[Continuous batching](arithmetic.md#continuous-batching-or-in-flight-batching) describes the idea. The original system is Orca (Yu et al., "Orca: A Distributed Serving System for Transformer-Based Generative Models", OSDI 2022 - not on arXiv as far as I know), which introduced iteration-level scheduling and *selective batching*: batch the token-wise ops (linear layers, norms) across requests of different lengths by flattening tokens, and run attention per request. That flattening is still how every engine works: the model sees a single ragged batch of shape `(total_tokens, hidden)` with no padding, and only attention needs per-sequence metadata.
 
 **Static batching**, the thing continuous batching replaced, groups $B$ requests, runs them until the *longest* one finishes, and only then admits the next group. Two costs follow. Finished requests leave idle slots that keep being computed (or padded) until the batch ends. And a new request waits for the whole current batch, so its time to first token includes other people's generation time. **Continuous batching** (also called iteration-level scheduling or in-flight batching) re-decides the batch at *every* step: finished requests leave and waiting ones join immediately. The simulation in [A scheduler you can run](#a-scheduler-you-can-run) puts numbers on the difference.
 
@@ -1567,7 +1567,7 @@ Run this on your model's forward (with a representative input) whenever you add 
 
 ## Speculative decoding
 
-The idea in one paragraph (the [overview](README.md#speculative-decoding) has a longer version): a cheap *draft* (a small model, or extra heads on the target) proposes the next $k$ tokens one at a time. The large *target* model then scores all $k$ positions in a single forward pass. That pass is a mini-prefill of $k+1$ tokens, so while decode is memory-bound it costs about the same as one ordinary decode step. The longest prefix of drafts the target agrees with is kept, plus one token from the target itself, so each expensive step emits between 1 and $k+1$ tokens instead of exactly 1. Here: the math, the variants, and the serving-system consequences.
+The idea in one paragraph ([Internals I](arithmetic.md#speculative-decoding) walks through a worked example): a cheap *draft* (a small model, or extra heads on the target) proposes the next $k$ tokens one at a time. The large *target* model then scores all $k$ positions in a single forward pass. That pass is a mini-prefill of $k+1$ tokens, so while decode is memory-bound it costs about the same as one ordinary decode step. The longest prefix of drafts the target agrees with is kept, plus one token from the target itself, so each expensive step emits between 1 and $k+1$ tokens instead of exactly 1. Here: the math, the variants, and the serving-system consequences.
 
 Each line is one iteration: green tokens are draft proposals the target accepted, red the rejected one, blue the target's correction:
 
@@ -1921,7 +1921,7 @@ The step started with KV for positions 0-29 and verified $k + 1 = 5$ tokens at p
 
 ## Serving-time parallelism
 
-Training-side background is in [Parallelism From First Principles](../training/model-parallelism/derivations.md) (TP, PP and EP with their communication costs) and [the overview's notes](README.md#model-parallelism). Inference differs because the decode step is tiny and latency-sensitive.
+Training-side background is in [Parallelism From First Principles](../training/model-parallelism/derivations.md) (TP, PP and EP with their communication costs) and [Model parallelism for inference](arithmetic.md#model-parallelism-for-inference). Inference differs because the decode step is tiny and latency-sensitive.
 
 ### Tensor parallelism
 
@@ -2229,7 +2229,7 @@ Chunked prefill in a colocated engine is the baseline to beat. Measure goodput a
 
 ## Structured decoding
 
-Structured (constrained) decoding forces the output to match a format, such as a regex or a JSON Schema, by setting the logit of every token that would break the format to `-inf` before sampling; the [overview](README.md#guided-text-generation) covers what it is for. Internals:
+Structured (constrained) decoding forces the output to match a format, such as a regex or a JSON Schema, by setting the logit of every token that would break the format to `-inf` before sampling; [Guided text generation](arithmetic.md#guided-text-generation) covers what it is for. Internals:
 
 ### Grammar to automaton
 
@@ -2708,7 +2708,7 @@ The LoRA FLOPs are small (${\sim}2 \cdot 41.9\text{M}$ per token vs ${\sim}2 \cd
 
 ## Observability
 
-[Internals I](arithmetic.md#definitions) defines TTFT, TPOT/ITL and goodput from the client side (the [overview's metrics section](README.md#key-inference-performance-metrics) is a lighter version). From the engine side, export these (names are vLLM's Prometheus names - Prometheus being the standard metrics scraper that polls an HTTP `/metrics` endpoint; they have been renamed between versions, e.g. `gpu_cache_usage_perc` -> `kv_cache_usage_perc` and `time_per_output_token_seconds` -> `inter_token_latency_seconds` - check `/metrics` on your build; SGLang and TRT-LLM export equivalents):
+[Internals I](arithmetic.md#definitions) defines TTFT, TPOT/ITL and goodput from the client side ([Key inference performance metrics](arithmetic.md#key-inference-performance-metrics) is the user-experience version). From the engine side, export these (names are vLLM's Prometheus names - Prometheus being the standard metrics scraper that polls an HTTP `/metrics` endpoint; they have been renamed between versions, e.g. `gpu_cache_usage_perc` -> `kv_cache_usage_perc` and `time_per_output_token_seconds` -> `inter_token_latency_seconds` - check `/metrics` on your build; SGLang and TRT-LLM export equivalents):
 
 | Metric | What it tells you | Act when |
 |-|-|-|

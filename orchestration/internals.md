@@ -17,7 +17,7 @@ This chapter assumes no systems background beyond what these foundation chapters
 - [Kubernetes from zero](kubernetes-from-zero.md): explains pods, Jobs, Services, controllers, CRDs and operators, JobSet, LeaderWorkerSet and `kubectl`. This chapter does not re-teach Kubernetes basics; it starts where that chapter stops.
 - Forward links (later chapters; not needed first): [model parallelism derivations](../training/model-parallelism/derivations.md) for tensor/pipeline/expert parallelism, [inference arithmetic](../inference/arithmetic.md) and [serving engine internals](../inference/serving-engine-internals.md) for the KV cache, prefill/decode and continuous batching behind the inference section, [serving hands-on](../inference/serving-hands-on.md), and [RL infrastructure](../platform/rl-infrastructure.md).
 
-This chapter covers what happens inside the scheduler, the launcher and the health-check loop when you run a multi-node ML job, and why those internals decide how much of your GPU time turns into training steps or served tokens. The day-to-day SLURM commands are covered in [Slurm from zero](slurm/from-zero.md), [SLURM for users](slurm/users.md) and [SLURM administration](slurm/admin.md), and the recovery recipes (job arrays, signals, kill switches) are in [Fault Tolerance](../training/fault-tolerance/README.md). None of that is repeated here.
+This chapter covers what happens inside the scheduler, the launcher and the health-check loop when you run a multi-node ML job, and why those internals decide how much of your GPU time turns into training steps or served tokens. The day-to-day SLURM commands are covered in [Slurm from zero](slurm/from-zero.md), [SLURM for users](slurm/from-zero.md#day-to-day-user-recipes) and [SLURM administration](slurm/from-zero.md#a-small-cluster-admin-intro), and the recovery recipes (job arrays, signals, kill switches) are in [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md). None of that is repeated here.
 
 A warning about how current this is: the Kubernetes side of this chapter describes projects that ship a new minor release every few weeks, such as Kueue, JobSet, LeaderWorkerSet, KAI Scheduler, Slinky, the NVIDIA DRA driver and the GPU Operator. Where a claim depends on a specific version it is marked as such. Check the upstream docs before you build on any API field named here.
 
@@ -82,7 +82,7 @@ Why does this deadlock rather than just run slowly? Because a training rank that
 
 ### Why topology matters
 
-An NVLink domain is a set of GPUs connected by NVLink, NVIDIA's direct GPU-to-GPU link, which is much faster than going through the network. An all-reduce is the collective that sums a tensor across all ranks and gives every rank the result. Inside an NVLink domain, an all-reduce runs at NVLink bandwidth. Across nodes it runs at NIC (network interface card) bandwidth, which is roughly an order of magnitude lower per GPU (see [networking](../network/README.md)). In a typical cluster each node plugs into a leaf switch, and leaf switches are connected to each other through higher-level spine switches. Across spine switches you also share the fabric with other jobs and are exposed to oversubscription (the spine has less total bandwidth than all the leaves below it, so not every node can use full bandwidth at the same time). Placement matters most for:
+An NVLink domain is a set of GPUs connected by NVLink, NVIDIA's direct GPU-to-GPU link, which is much faster than going through the network. An all-reduce is the collective that sums a tensor across all ranks and gives every rank the result. Inside an NVLink domain, an all-reduce runs at NVLink bandwidth. Across nodes it runs at NIC (network interface card) bandwidth, which is roughly an order of magnitude lower per GPU (see [networking](../network/interconnects.md)). In a typical cluster each node plugs into a leaf switch, and leaf switches are connected to each other through higher-level spine switches. Across spine switches you also share the fabric with other jobs and are exposed to oversubscription (the spine has less total bandwidth than all the leaves below it, so not every node can use full bandwidth at the same time). Placement matters most for:
 
 - tensor and expert parallelism (splitting individual layers, or MoE experts, across GPUs, which makes those GPUs exchange data on every layer), which should stay inside the NVLink domain
 - pipeline stages and data-parallel groups, which should stay under as few leaf or spine switches as possible
@@ -141,11 +141,11 @@ Going from the first hour to the second, B's demand rises from 10 to 60, and the
 
 ## How SLURM implements each of these
 
-[Slurm](https://slurm.schedmd.com/) is the batch scheduler most HPC and many ML clusters run. Its central controller daemon is `slurmctld`; every compute node runs `slurmd`, which starts and tracks job processes; and `slurmdbd` stores accounting data. A **job** is a resource allocation, and a **job step** is a set of processes launched inside it with `srun`. [Slurm from zero](slurm/from-zero.md#what-happens-from-sbatch-to-processes-on-nodes) walks through the whole submit-to-run path and the [users chapter](slurm/users.md) covers more commands; this section covers what the controller does with your request.
+[Slurm](https://slurm.schedmd.com/) is the batch scheduler most HPC and many ML clusters run. Its central controller daemon is `slurmctld`; every compute node runs `slurmd`, which starts and tracks job processes; and `slurmdbd` stores accounting data. A **job** is a resource allocation, and a **job step** is a set of processes launched inside it with `srun`. [Slurm from zero](slurm/from-zero.md#what-happens-from-sbatch-to-processes-on-nodes) walks through the whole submit-to-run path and the [users chapter](slurm/from-zero.md#day-to-day-user-recipes) covers more commands; this section covers what the controller does with your request.
 
 ### The life of a multi-node training job
 
-Before looking at the plugins one by one, here is a complete job script for multi-node `torchrun` training, so you can see where each internal mechanism shows up. The [launchers directory](slurm/launchers/) has more variants (accelerate, Lightning, plain `srun`). This one adds requeue-on-signal, which the fault-tolerance sections below rely on. **Untested** (no Slurm cluster available while writing):
+Before looking at the plugins one by one, here is a complete job script for multi-node `torchrun` training, so you can see where each internal mechanism shows up. The [launchers directory](slurm/from-zero.md#ready-made-launcher-scripts) has more variants (accelerate, Lightning, plain `srun`). This one adds requeue-on-signal, which the fault-tolerance sections below rely on. **Untested** (no Slurm cluster available while writing):
 
 ```bash
 #!/bin/bash
@@ -505,7 +505,7 @@ There are two preemption types. `PreemptType=preempt/qos` makes preemption follo
 | `SUSPEND` | SIGSTOP; the processes stay in GPU memory | Rarely: GPU memory isn't freed and NCCL timeouts fire on resume |
 | `GANG` | Time-slicing between jobs | Not for GPU jobs |
 
-`GraceTime` is how long the victim has between SIGTERM and SIGKILL. A signal is an asynchronous notification the OS delivers to a process: SIGTERM asks it to exit and can be caught, SIGKILL kills it and can't be caught, and SIGSTOP freezes it. Set it to at least your emergency-checkpoint time. The [preemption section of Fault Tolerance](../training/fault-tolerance/README.md#dealing-with-forced-job-preemption) has the signal-handling side. There are a few more preemption knobs (`PreemptExemptTime`, which protects a job just after it starts, and `preempt_youngest_first` in `PreemptParameters`). Their exact names have changed between releases, so check `slurm.conf(5)`.
+`GraceTime` is how long the victim has between SIGTERM and SIGKILL. A signal is an asynchronous notification the OS delivers to a process: SIGTERM asks it to exit and can be caught, SIGKILL kills it and can't be caught, and SIGSTOP freezes it. Set it to at least your emergency-checkpoint time. The [preemption section of Fault Tolerance](../training/fault-tolerance-and-reproducibility.md#dealing-with-forced-job-preemption) has the signal-handling side. There are a few more preemption knobs (`PreemptExemptTime`, which protects a job just after it starts, and `preempt_youngest_first` in `PreemptParameters`). Their exact names have changed between releases, so check `slurm.conf(5)`.
 
 A QoS-based setup where a `low` QoS soaks up idle nodes and gets requeued when `high` work arrives (**untested**):
 
@@ -551,7 +551,7 @@ The handler only sets a flag because a signal can arrive in the middle of anythi
 
 ## Kubernetes for ML
 
-The [Kubernetes chapter](kubernetes/README.md) gives the practical case against k8s for interactive training, and [Kubernetes from zero](kubernetes-from-zero.md) teaches the objects themselves. This section explains why the case against exists and which add-ons close each gap.
+The [Kubernetes chapter](kubernetes-from-zero.md#training-on-kubernetes-gotchas) gives the practical case against k8s for interactive training, and [Kubernetes from zero](kubernetes-from-zero.md) teaches the objects themselves. This section explains why the case against exists and which add-ons close each gap.
 
 Kubernetes is built around **controllers**: programs that watch the desired state you wrote into the API server (a "spec") and keep acting until the actual state matches. That design is great for services ("keep 5 replicas running") and awkward for batch training ("start all 64 at once, and if one dies, kill the other 63"). Almost every add-on below exists to teach the controllers and the scheduler that second sentence.
 
@@ -1087,7 +1087,7 @@ There are four things to verify inside the pod before you trust it:
 - `ibv_devices` lists every NIC you expect, and `ulimit -l` is `unlimited`. RDMA registers memory (pins pages, the OS's 4 KB units of memory, so they can't be moved or swapped while the NIC accesses them), and without `IPC_LOCK` or a memlock limit you get `ibv_reg_mr` failures, or NCCL quietly falls back to sockets.
 - NCCL's init log (`NCCL_DEBUG=INFO`) shows `NET/IB` and GPUDirect RDMA (`GDRDMA`, the NIC reading GPU memory directly with no copy through host RAM), not `NET/Socket`.
 - GPU-to-NIC affinity is right. With DRA you can request a GPU and NIC pair that share a PCIe root. With device plugins you rely on the Topology Manager and luck.
-- `nccl-tests` across 2 pods on 2 nodes matches bare-metal bus bandwidth (the per-GPU throughput metric nccl-tests reports, comparable across GPU counts; see [network benchmarks](../network/benchmarks/)).
+- `nccl-tests` across 2 pods on 2 nodes matches bare-metal bus bandwidth (the per-GPU throughput metric nccl-tests reports, comparable across GPU counts; see [network benchmarks](../network/measuring-and-debugging.md)).
 
 As a shell session (**untested**; device names and the exact log text vary by NCCL version, so grep for the transport name rather than copying these lines):
 
@@ -1140,7 +1140,7 @@ spec:
 
 There are three catches:
 
-1. Pages in a memory-backed `emptyDir` **count against the container's memory limit**. If you set `memory: 256Gi` and the DataLoader puts 64 GiB in shm, the model process has only 192 GiB. With a hard limit, going over it triggers the cgroup OOM killer (cgroups are the kernel feature that enforces a container's resource limits, and the OOM killer kills processes when a memory limit is exceeded), and with `memory.oom.group=1` that kills the whole pod (see the [k8s chapter](kubernetes/README.md#overcoming-job-reset-on-cpu-oom-event)).
+1. Pages in a memory-backed `emptyDir` **count against the container's memory limit**. If you set `memory: 256Gi` and the DataLoader puts 64 GiB in shm, the model process has only 192 GiB. With a hard limit, going over it triggers the cgroup OOM killer (cgroups are the kernel feature that enforces a container's resource limits, and the OOM killer kills processes when a memory limit is exceeded), and with `memory.oom.group=1` that kills the whole pod (see the [k8s chapter](kubernetes-from-zero.md#overcoming-the-job-reset-on-a-cpu-oom-event)).
 2. `sizeLimit` is enforced by the kubelet's eviction loop, not as a hard tmpfs size, on some versions. I'm unsure of the exact behaviour across versions. Overshooting can mean eviction rather than `ENOSPC`.
 3. shm segments left behind by a crashed process stay until the pod exits. Under in-place restarts by torchrun (`--max-restarts`), leaked `/dev/shm/torch_*` files build up across restarts.
 
@@ -1196,7 +1196,7 @@ The reverse direction, running k8s workloads inside Slurm allocations, exists as
 
 ## Distributed launch internals: torchrun and torch.distributed.elastic
 
-`torchrun` is a thin CLI over `torch.distributed.elastic`. A **launcher** is the program that starts your training processes on each node and gives each one its identity (rank, world size, where to find the others). The [launchers directory](slurm/launchers/) has working SLURM recipes. This section covers what happens under the hood. Everything here was checked against the PyTorch 2.15 source and, where possible, run on CPU with gloo.
+`torchrun` is a thin CLI over `torch.distributed.elastic`. A **launcher** is the program that starts your training processes on each node and gives each one its identity (rank, world size, where to find the others). The [launchers directory](slurm/from-zero.md#ready-made-launcher-scripts) has working SLURM recipes. This section covers what happens under the hood. Everything here was checked against the PyTorch 2.15 source and, where possible, run on CPU with gloo.
 
 ### Process model
 
@@ -1249,6 +1249,36 @@ $ torchrun --nnodes=2 --nproc-per-node=1 --rdzv-backend=c10d \
 torch.distributed.elastic.rendezvous.api.RendezvousTimeoutError
 # exited with status 1 after 10 s (16:25:50 -> 16:26:00 in the log timestamps)
 ```
+
+#### When the hostname doesn't resolve to the node's routable IP
+
+"The agent whose hostname matches the endpoint" is decided by `_matches_machine_hostname(endpoint_host)` in [`torch/distributed/elastic/rendezvous/utils.py`](https://github.com/pytorch/pytorch/blob/main/torch/distributed/elastic/rendezvous/utils.py). It compares the endpoint only against `socket.gethostname()` and the addresses that hostname resolves to. Many container and Debian/Ubuntu images map the hostname to `127.0.1.1` in `/etc/hosts` (the trap described in [DNS, /etc/hosts and hostname resolution](../foundations/networking.md#dns-etchosts-and-hostname-resolution)). Then two independent failures appear, and both look like a `TCPStore` timeout:
+
+1. **Nobody hosts the store.** The endpoint is the node's real IP, say `10.0.0.1`, but its hostname resolves to `127.0.1.1`, so the check returns `False` even on the node that owns `10.0.0.1`. Every agent starts as a *client*, nothing ever listens on the port, and all nodes, the master included, time out. Setting `--rdzv-conf is_host=1` on the endpoint node only forces it to host the store (it binds `*:PORT`). `c10d_rendezvous_backend.py` reads `is_host` and skips the hostname check when it is set.
+2. **Workers get an unresolvable master address.** Once the store is up, the rendezvous publishes each agent's *hostname* (`socket.getfqdn()`) as its address, so workers on other nodes may get a `MASTER_ADDR` they can't resolve. They then retry forever with `[c10d] The IPv6 network addresses of (<hostname>, <port>) cannot be retrieved (gai error: -2 - Name or service not known)`. `--local-addr $MYIP` makes each agent publish its IP instead.
+
+Only add these flags when the probe says you need them; if the hostname already maps to the node's routable IP, leave them out. Diagnose in this order (untested here; run on the nodes):
+
+```bash
+# 1. does the endpoint node think it should host the store?          -> False means problem 1
+python -c "from torch.distributed.elastic.rendezvous.utils import _matches_machine_hostname as m; print(m('$MASTER_ADDR'))"
+# 2. with is_host=1 on that node, is the store listening?            -> expect *:PORT
+ss -ltnp | grep "$MASTER_PORT"
+# 3. can a worker reach it?                                          -> expect OPEN
+timeout 5 bash -c "echo > /dev/tcp/$MASTER_ADDR/$MASTER_PORT" && echo OPEN
+# 4. is the advertised hostname resolvable everywhere?               -> 127.0.1.1 means you need --local-addr
+getent hosts "$(hostname)"
+```
+
+The symptom cheat sheet: nothing listening on any node means problem 1; the store is listening but workers log `gai error: -2` means problem 2. When launching through `pdsh`, compute the per-node values inside the remote command so they expand on each node, not on the launch node:
+
+```bash
+MYIP=\$(hostname -I | awk '{print \$1}');
+IS_HOST=\$([ \"\$MYIP\" = \"$MASTER_ADDR\" ] && echo 1 || echo 0);
+# then add to the torchrun line:  --rdzv_conf is_host=\$IS_HOST --local_addr \$MYIP
+```
+
+Before spending GPU time, check the rendezvous alone with a CPU-only job: one process per node, `gloo` backend, `init_process_group` plus one `all_reduce`. It separates rendezvous problems from NCCL problems, and `--rdzv-conf join_timeout=60` keeps a failed attempt to a minute instead of the 600 s default. (Some guides write `timeout=60`; the c10d backend ignores that key and reads `join_timeout`, as the run above shows.)
 
 #### Building the same protocol yourself
 
@@ -1489,9 +1519,9 @@ A finding from writing this, which I have not root-caused: with a plain `dist.in
 Practical consequences:
 
 - **In-place restarts only help with software or transient failures.** If the failure is a dead GPU, the restarted worker fails again on the same GPU, and you burn through `--max-restarts`. For hardware failures the node has to go away, which means a scheduler-level requeue on a new node set (SLURM job array or `--requeue`, JobSet `failurePolicy`).
-- **A node that dies outright** (kernel panic, which is a fatal OS crash, or a network partition, where the node is alive but unreachable) takes down its agent, so no error is reported. The other agents only find out through missed heartbeats in the rendezvous or, more commonly, through an NCCL timeout in their own workers. With `NCCL_TIMEOUT` / `TORCH_NCCL_*` timeouts at the default of 10 minutes, that's 10 minutes of lost work per failure before recovery even begins. `TORCH_NCCL_ASYNC_ERROR_HANDLING` and `TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC` control this. See [hanging and deadlocks](../debug/torch-distributed-hanging-solutions.md).
+- **A node that dies outright** (kernel panic, which is a fatal OS crash, or a network partition, where the node is alive but unreachable) takes down its agent, so no error is reported. The other agents only find out through missed heartbeats in the rendezvous or, more commonly, through an NCCL timeout in their own workers. With `NCCL_TIMEOUT` / `TORCH_NCCL_*` timeouts at the default of 10 minutes, that's 10 minutes of lost work per failure before recovery even begins. `TORCH_NCCL_ASYNC_ERROR_HANDLING` and `TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC` control this. See [hanging and deadlocks](../development/debugging-distributed.md).
 - **Scale-up.** A new node joining with `--nnodes=MIN:MAX` triggers a restart of everyone, at full restart cost. Elastic scale-up is seldom worth it for LLM training, because the restart costs as much as a failure. Most large runs use a fixed `--nnodes=N` and a scheduler-level requeue.
-- PyTorch 2.14 adds experimental in-place process group reconfiguration. See [Fault Tolerance](../training/fault-tolerance/README.md#rebuilding-the-process-group-in-place).
+- PyTorch 2.14 adds experimental in-place process group reconfiguration. See [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md#rebuilding-the-process-group-in-place).
 
 The timeout is set per process group. Shortening it trades false positives (a slow checkpoint save declared a hang) for faster recovery; the [distributed systems chapter](../foundations/distributed-systems.md#heartbeats-timeouts-and-slow-vs-dead) explains why no value is right in every case. **[GPU]**, untested:
 
@@ -1738,7 +1768,7 @@ The storage write is seconds to minutes. The per-GPU device-to-host copy (GPU me
 
 - Host memory: $346\ \text{MB} \times 8 = 2.8\ \text{GB}$ per 8-GPU node in this example, which is fine. When the data-parallel degree (the number of model replicas the optimizer state is sharded across) is small, each GPU holds tens of GB of optimizer state, and pinned host buffers can become the limit.
 - The next checkpoint can't start until the previous upload has finished, so `tau` has to be longer than the time to write one checkpoint to storage.
-- The write is not durable until the upload finishes. A failure during the upload means you fall back to the checkpoint before it. Keep at least 2 checkpoints (see [Frequent checkpoint saving](../training/fault-tolerance/README.md#frequent-checkpoint-saving)).
+- The write is not durable until the upload finishes. A failure during the upload means you fall back to the checkpoint before it. Keep at least 2 checkpoints (see [Frequent checkpoint saving](../training/fault-tolerance-and-reproducibility.md#frequent-checkpoint-saving)).
 
 The difference between "blocked" and "total" is visible even on a laptop, with a single CPU process and 1.07 GB of tensors. The script also mutates the weights right after `async_save` returns, then checks that the checkpoint still holds the old values, which is the property that makes async saving safe: the snapshot is taken before control returns **[ran]**:
 
@@ -1817,7 +1847,7 @@ while p < 0.99:              # p99 of Poisson(lam)
 print(lam, k - 1)            # 7.86, 15
 ```
 
-So 16 spares (0.8%) cover the 99th percentile of concurrent failures, under the independence assumption. Correlated failures, such as a rack PDU (power distribution unit), a leaf switch or a bad firmware rollout, break that assumption, which is why the [5-10% advice in Fault Tolerance](../training/fault-tolerance/README.md#always-plan-to-have-more-nodes-than-needed) is reasonable for new hardware even though the Poisson calculation gives a lower number. For topology-constrained jobs, spares have to be **inside the same block**. One spare tray per NVL72 rack is a very different cost from 16 spare nodes anywhere in the cluster.
+So 16 spares (0.8%) cover the 99th percentile of concurrent failures, under the independence assumption. Correlated failures, such as a rack PDU (power distribution unit), a leaf switch or a bad firmware rollout, break that assumption, which is why the [5-10% advice in Fault Tolerance](../training/fault-tolerance-and-reproducibility.md#always-plan-to-have-more-nodes-than-needed) is reasonable for new hardware even though the Poisson calculation gives a lower number. For topology-constrained jobs, spares have to be **inside the same block**. One spare tray per NVL72 rack is a very different cost from 16 spare nodes anywhere in the cluster.
 
 In Slurm, the simplest form of a hot spare is to allocate more nodes than the job uses and pick the healthy subset at launch. A sketch (**untested**; `node_ok.sh` stands for your own fast health check, as in the next section):
 
@@ -1835,7 +1865,7 @@ The spares cost 2/66 = 3% of the allocation, which buys a restart that doesn't g
 
 ### Health checks before the job starts (DCGM diag levels)
 
-DCGM (NVIDIA Data Center GPU Manager) is NVIDIA's daemon and tool set for GPU health and telemetry, and `dcgmi` is its CLI. `dcgmi diag -r N` runs increasingly long test suites. The [NVIDIA debug chapter](../compute/accelerator/nvidia/debug.md#running-diagnostics) has the commands and sample output. Durations vary by GPU and DCGM version. These are rough figures:
+DCGM (NVIDIA Data Center GPU Manager) is NVIDIA's daemon and tool set for GPU health and telemetry, and `dcgmi` is its CLI. `dcgmi diag -r N` runs increasingly long test suites. The [NVIDIA debug chapter](../compute/gpu-software-stack.md#running-diagnostics-with-dcgmi-diag) has the commands and sample output. Durations vary by GPU and DCGM version. These are rough figures:
 
 | Level | Runtime (approx.) | Covers | Where to run it |
 |---|---|---|---|
@@ -1905,7 +1935,7 @@ health signal (prolog fail / epilog fail / NHC / Xid / DCGM health watch / NCCL 
 Some design points:
 
 - **Drain, don't down.** A drained node lets running jobs finish. The node is just no longer scheduled.
-- **The reason string is data.** Encode the failure class and a timestamp so you can count recurrences per GPU serial (see [detecting the same broken node](../compute/accelerator/nvidia/debug.md#how-to-detect-if-you-get-the-same-broken-node-again-and-again)). Undraining automatically after a reboot without a diag pass brings flaky nodes back into the pool. [undrain-good-nodes.sh](slurm/undrain-good-nodes.sh) is the narrow, safe version of this.
+- **The reason string is data.** Encode the failure class and a timestamp so you can count recurrences per GPU serial (see [detecting the same broken node](../compute/gpu-software-stack.md#detecting-that-you-got-the-same-broken-node-again)). Undraining automatically after a reboot without a diag pass brings flaky nodes back into the pool. [undrain-good-nodes.sh](slurm/undrain-good-nodes.sh) is the narrow, safe version of this.
 - **Attributing an NCCL timeout is hard.** Every rank times out, and only one node is at fault. The NCCL flight recorder (`TORCH_NCCL_TRACE_BUFFER_SIZE`, with dumps on timeout) shows which rank never entered the collective. Llama 3 used it extensively. Automate the analysis that picks the suspect, or you'll drain the wrong node or all of them.
 - **Rate-limit draining.** A bug in a health check or a shared-storage hiccup can drain 30% of the cluster in a minute. Cap automatic drains per time window and page a human above that cap.
 
@@ -1958,7 +1988,7 @@ Training is scheduled as one huge long-lived gang. Inference is many replicas, e
 
 ### Autoscale on queue depth and KV-cache use, not CPU
 
-An **autoscaler** changes the number of replicas in response to a metric. An LLM server's CPU is mostly idle. GPU "utilization" from NVML (NVIDIA's management library) is the fraction of time any kernel (a function launched on the GPU) ran, which reads close to 100% at batch size 1 and at batch size 256 alike, so it says nothing about headroom (see [real GPU utilization](../compute/accelerator/nvidia/debug.md#how-to-get-the-real-gpu-utilization-metrics)). The signals that do track saturation in a continuous-batching server (one that adds and removes requests from the running batch at every decoding step):
+An **autoscaler** changes the number of replicas in response to a metric. An LLM server's CPU is mostly idle. GPU "utilization" from NVML (NVIDIA's management library) is the fraction of time any kernel (a function launched on the GPU) ran, which reads close to 100% at batch size 1 and at batch size 256 alike, so it says nothing about headroom (see [real GPU utilization](../compute/gpu-software-stack.md#real-gpu-utilization-dcgm-exporter)). The signals that do track saturation in a continuous-batching server (one that adds and removes requests from the running batch at every decoding step):
 
 | Signal | vLLM metric name (changes across versions; check `/metrics`) | Meaning |
 |---|---|---|
@@ -2048,7 +2078,7 @@ local NVMe  : image 10s + weights    5.6s =   15.6s (+ engine init)
 P2P doubling: 8 rounds x 5.6s = 45s (+ 5.6s for the first copy from storage)
 ```
 
-The [model loading section of the inference chapter](../inference/README.md#speeding-up-model-loading-time) covers engine-side techniques: pre-sharded weights, tensorizer, and loading directly to GPU.
+The [model loading section of the inference chapter](../inference/serving-hands-on.md#speeding-up-model-loading-time) covers engine-side techniques: pre-sharded weights, tensorizer, and loading directly to GPU.
 
 ### Model weight distribution
 
@@ -2147,7 +2177,7 @@ The [dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter) field list is confi
 | Field | Why |
 |---|---|
 | `DCGM_FI_PROF_SM_ACTIVE`, `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` | Real compute use, unlike `DCGM_FI_DEV_GPU_UTIL`. A per-rank drop shows a straggler or a rank stuck in a collective |
-| `DCGM_FI_DEV_XID_ERRORS` | The most recent Xid; any change should page or drain (see [Xid errors](../compute/accelerator/nvidia/debug.md#xid-errors)) |
+| `DCGM_FI_DEV_XID_ERRORS` | The most recent Xid; any change should page or drain (see [Xid errors](../compute/gpu-software-stack.md#xid-errors-reading-finding-and-looking-them-up)) |
 | `DCGM_FI_DEV_ECC_DBE_VOL_TOTAL` (ECC double-bit errors: memory errors that error-correcting codes detect but can't fix), `DCGM_FI_DEV_ROW_REMAP_PENDING`, `DCGM_FI_DEV_ROW_REMAP_FAILURE` | Memory health: drain on pending remaps, RMA on a remap failure |
 | `DCGM_FI_DEV_CLOCK_THROTTLE_REASONS` (`DCGM_FI_DEV_CLOCKS_EVENT_REASONS` in newer DCGM) | Thermal or power throttling: the most common cause of a "working but slow" GPU |
 | `DCGM_FI_DEV_SM_CLOCK`, `DCGM_FI_DEV_POWER_USAGE`, `DCGM_FI_DEV_GPU_TEMP`, `DCGM_FI_DEV_MEMORY_TEMP` | Context for throttling; the Llama 3 paper reports a 1-2% diurnal throughput swing from temperature affecting DVFS (dynamic voltage and frequency scaling, where the GPU lowers its clock when hot or power-limited) |
@@ -2213,7 +2243,7 @@ mlx5_1/1: tx   0.00 GB/s rx   0.00 GB/s ERRORS {'symbol_error': 7}
 
 One caveat for real hardware: on some NICs the classic 32-bit counters saturate, and the 64-bit values live in `hw_counters` or need `perfquery -x`; check which your driver exposes.
 
-Export these with node-exporter's infiniband collector (node-exporter is Prometheus's standard per-host metrics agent) or a vendor tool (UFM, or the Network Operator's exporters), and correlate with the switch side: a port's error counters at the switch point to the cable, not the host. The [network debug chapter](../network/debug/README.md) has the debugging workflow. NCCL itself can emit per-collective timings through its profiler plugin interface and through the PyTorch flight recorder. The flight recorder is cheap enough to leave on for large runs.
+Export these with node-exporter's infiniband collector (node-exporter is Prometheus's standard per-host metrics agent) or a vendor tool (UFM, or the Network Operator's exporters), and correlate with the switch side: a port's error counters at the switch point to the cable, not the host. The [network debug chapter](../network/measuring-and-debugging.md) has the debugging workflow. NCCL itself can emit per-collective timings through its profiler plugin interface and through the PyTorch flight recorder. The flight recorder is cheap enough to leave on for large runs.
 
 ### Job-level signals
 
@@ -2222,7 +2252,7 @@ Per rank, from the training loop (not only on rank 0):
 - step time, split into data wait, forward/backward compute, and time blocked in collectives (CUDA events, which are GPU-side timestamps, placed around the comms, or the profiler for sampled steps)
 - tokens/s and MFU, computed rather than estimated
 - checkpoint save duration (the blocking part and the total), and time from job start to first step, which is your restart cost `R`
-- heartbeat: a per-rank "last step completed" timestamp written to the metrics system. Alert on "no progress for k × median step time", which catches hangs that never produce an error (see the [is-job-hanging watchdog](../training/fault-tolerance/README.md#is-job-hanging-watchdog))
+- heartbeat: a per-rank "last step completed" timestamp written to the metrics system. Alert on "no progress for k × median step time", which catches hangs that never produce an error (see the [is-job-hanging watchdog](../training/fault-tolerance-and-reproducibility.md#is-job-hanging-watchdog))
 
 Per job, from the scheduler: queue wait, number of requeues, the nodes used in each attempt (so failures can be attributed), and preemptions.
 
@@ -2330,9 +2360,9 @@ When a straggler is confirmed, it's a drain-and-requeue event just like a crash:
 
 ## You can now read
 
-- [Fault Tolerance](../training/fault-tolerance/README.md): the recipes (signal handling, job arrays, watchdogs) that sit on top of the mechanisms here.
-- [SLURM for users](slurm/users.md) and [SLURM administration](slurm/admin.md): the day-to-day commands, now with the scheduler internals behind them.
-- [Kubernetes gotchas](kubernetes/README.md): the practical case against k8s for interactive training.
+- [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md): the recipes (signal handling, job arrays, watchdogs) that sit on top of the mechanisms here.
+- [SLURM for users](slurm/from-zero.md#day-to-day-user-recipes) and [SLURM administration](slurm/from-zero.md#a-small-cluster-admin-intro): the day-to-day commands, now with the scheduler internals behind them.
+- [Kubernetes gotchas](kubernetes-from-zero.md#training-on-kubernetes-gotchas): the practical case against k8s for interactive training.
 - [Decentralized training](../training/decentralized-training.md): what changes when nodes are not in one cluster, the failure rate is far higher, and there is no shared scheduler.
 - [RL infrastructure](../platform/rl-infrastructure.md) and [services and control planes](../platform/control-planes.md): RL systems mix a training gang with an autoscaled fleet of inference replicas, so both halves of this chapter apply at once.
 - [Serving hands-on](../inference/serving-hands-on.md): running one of the replicas that the inference section scales.
@@ -2351,4 +2381,4 @@ When a straggler is confirmed, it's a drain-and-requeue event just like a crash:
 - PyTorch: [torchrun / elastic](https://pytorch.org/docs/stable/elastic/run.html), [rendezvous](https://pytorch.org/docs/stable/elastic/rendezvous.html), [Distributed Checkpoint async_save](https://pytorch.org/docs/stable/distributed.checkpoint.html), [flight recorder](https://pytorch.org/tutorials/prototype/flight_recorder_tutorial.html)
 - Inference: [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension), [llm-d](https://github.com/llm-d/llm-d), [KEDA](https://keda.sh/)
 - Gemini: "Fast Failure Recovery in Distributed Training with In-Memory Checkpoints", SOSP 2023
-- In this book: [SLURM for users](slurm/users.md), [SLURM administration](slurm/admin.md), [launchers](slurm/launchers/), [Kubernetes gotchas](kubernetes/README.md), [Slurm from zero](slurm/from-zero.md), [Kubernetes from zero](kubernetes-from-zero.md), [Fault Tolerance](../training/fault-tolerance/README.md), [NVIDIA GPU troubleshooting](../compute/accelerator/nvidia/debug.md), [hanging and deadlocks](../debug/torch-distributed-hanging-solutions.md), [Inference](../inference/README.md), [Networking](../network/README.md), [Distributed systems](../foundations/distributed-systems.md)
+- In this book: [SLURM for users](slurm/from-zero.md#day-to-day-user-recipes), [SLURM administration](slurm/from-zero.md#a-small-cluster-admin-intro), [launchers](slurm/from-zero.md#ready-made-launcher-scripts), [Kubernetes gotchas](kubernetes-from-zero.md#training-on-kubernetes-gotchas), [Slurm from zero](slurm/from-zero.md), [Kubernetes from zero](kubernetes-from-zero.md), [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md), [NVIDIA GPU troubleshooting](../compute/gpu-software-stack.md#11-troubleshooting-gpus-errors-diagnostics-and-health-checks), [hanging and deadlocks](../development/debugging-distributed.md), [Inference](../inference/arithmetic.md), [Networking](../network/interconnects.md), [Distributed systems](../foundations/distributed-systems.md)

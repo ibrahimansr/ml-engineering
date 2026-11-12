@@ -12,7 +12,7 @@ Forward links (taught later, defined briefly here where first used): [Slurm](../
 
 This chapter is for readers who know the ML math and use PyTorch every day, but who have never had to think about programs that run on many machines at once. You can get a long way on one GPU without that knowledge. You cannot train a frontier model without it. The first time a 512-GPU job hangs with no error message, or one slow node drags the whole cluster down, or two ranks quietly end up with different weights, you are debugging a distributed system, whether you meant to build one or not.
 
-The chapter starts from zero and works up to what you need to read the [model parallelism](../training/model-parallelism/README.md), [fault tolerance](../training/fault-tolerance/README.md) and [orchestration](../orchestration/README.md) chapters, and after that the more advanced [parallelism derivations](../training/model-parallelism/derivations.md) and [orchestration internals](../orchestration/internals.md). The emphasis is on *why* things are built the way they are. Every odd-looking design in a distributed training stack (rendezvous, barriers, watchdog timeouts, the restart-the-whole-job reflex) exists because of one or two facts about distributed systems. Once you know those facts, the designs stop looking odd.
+The chapter starts from zero and works up to what you need to read the [model parallelism](../training/model-parallelism/derivations.md), [fault tolerance](../training/fault-tolerance-and-reproducibility.md) and [orchestration](../orchestration/slurm/from-zero.md#slurm-vs-kubernetes) chapters, and after that the more advanced [parallelism derivations](../training/model-parallelism/derivations.md) and [orchestration internals](../orchestration/internals.md). The emphasis is on *why* things are built the way they are. Every odd-looking design in a distributed training stack (rendezvous, barriers, watchdog timeouts, the restart-the-whole-job reflex) exists because of one or two facts about distributed systems. Once you know those facts, the designs stop looking odd.
 
 All arithmetic in this chapter was checked with `python3`. The runnable example at the end was run with PyTorch 2.15 on macOS with 2 and 4 CPU processes. Where a number depends on hardware, software version or an assumption, the text says so.
 
@@ -48,7 +48,7 @@ Take a 70-billion-parameter dense transformer trained with the standard mixed-pr
 | Adam second moment (v) | fp32 | 4 |
 | **total** | | **16** |
 
-(This is the accounting from the ZeRO paper. Some setups keep fp32 gradients and pay 18 bytes, others shard or quantize optimizer state and pay less. 16 is the usual starting point. See [the dtype chapter](../training/dtype.md) for the variations.)
+(This is the accounting from the ZeRO paper. Some setups keep fp32 gradients and pay 18 bytes, others shard or quantize optimizer state and pay less. 16 is the usual starting point. See [the dtype chapter](../training/arithmetic.md#the-dtype-zoo-and-how-to-read-its-names) for the variations.)
 
 $$
 \begin{aligned}
@@ -120,7 +120,7 @@ training state 128 GB -> at least 1.6 GPUs just to hold it
 6ND = 9.60e+22 FLOPs -> 11.0 days on 256 GPUs at 40% MFU
 ```
 
-1. An 8B model does not fit its training state on one 80 GB GPU either. How many bytes per parameter would you need to get it onto one card? Which items in the 16-byte table could you drop or shrink (see [the dtype chapter](../training/dtype.md))?
+1. An 8B model does not fit its training state on one 80 GB GPU either. How many bytes per parameter would you need to get it onto one card? Which items in the 16-byte table could you drop or shrink (see [the dtype chapter](../training/arithmetic.md#the-dtype-zoo-and-how-to-read-its-names))?
 2. Set `mfu=0.25` (the Llama 3.1 cross-check above). How many days does the 70B, 15T-token run take on 16,384 GPUs?
 3. Hold the GPU count fixed and double `D`. Then hold `D` fixed and double `N`. Which one also changes the number of GPUs you need just to hold the state? That asymmetry is why memory and time are separate reasons to distribute.
 
@@ -195,7 +195,7 @@ RANK=3 LOCAL_RANK=1 WORLD_SIZE=4 LOCAL_WORLD_SIZE=2 GROUP_RANK=1 MASTER_ADDR=127
 
 1. Check `rank = node_rank x nproc_per_node + local_rank` against every line.
 2. Start only the `node_rank=0` agent and leave out the other. What does it do while it waits, and for how long before it gives up? (That waiting is rendezvous, covered under Coordination below.)
-3. Under Slurm the same information arrives as `SLURM_PROCID`, `SLURM_LOCALID` and `SLURM_NTASKS`. Write the three-line mapping from those to `RANK`, `LOCAL_RANK` and `WORLD_SIZE` (see [Slurm](../orchestration/slurm/README.md)).
+3. Under Slurm the same information arrives as `SLURM_PROCID`, `SLURM_LOCALID` and `SLURM_NTASKS`. Write the three-line mapping from those to `RANK`, `LOCAL_RANK` and `WORLD_SIZE` (see [Slurm](../orchestration/slurm/from-zero.md)).
 
 
 ## The defining problem: partial failure
@@ -425,7 +425,7 @@ $$
 \end{aligned}
 $$
 
-Each GPU fails about once every 6 years. At scale you still lose a GPU every few hours. This is why the [fault tolerance chapter](../training/fault-tolerance/README.md) opens with "always plan to have more nodes than needed". At scale, failure is a steady background rate that you plan for, not a rare event.
+Each GPU fails about once every 6 years. At scale you still lose a GPU every few hours. This is why the [fault tolerance chapter](../training/fault-tolerance-and-reproducibility.md) opens with "always plan to have more nodes than needed". At scale, failure is a steady background rate that you plan for, not a rare event.
 
 ### Availability, SLOs and nines
 
@@ -482,7 +482,7 @@ $$
 \end{aligned}
 $$
 
-That is before restart time (scheduling, loading the checkpoint, warming up), which in practice is often the bigger term. Two levers come out of the formula. Make $C$ smaller with asynchronous or sharded checkpoints, so $T$ can shrink with it. Make MTBF larger by removing bad nodes before they join the job. See the [checkpoints chapter](../training/checkpoints/README.md).
+That is before restart time (scheduling, loading the checkpoint, warming up), which in practice is often the bigger term. Two levers come out of the formula. Make $C$ smaller with asynchronous or sharded checkpoints, so $T$ can shrink with it. Make MTBF larger by removing bad nodes before they join the job. See the [checkpoints chapter](../training/fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools).
 
 ### Try this
 
@@ -723,7 +723,7 @@ $$
 
 A 1-in-1000 event on one rank becomes the normal case for the job. This is "tail at scale" (Dean and Barroso's 2013 paper of that name is the classic reference). At scale your step time is set by your p99.9 worker, not your median one.
 
-The worst case is a *persistent* straggler: one GPU that always runs 10% slow because of bad cooling, a degraded PCIe link or a misconfigured clock. It makes the whole job 10% slower, and the job's average throughput metrics will not say which GPU is to blame. You find it by measuring per-rank timings, or by running per-node benchmarks and removing the slow node. The [debug](../debug/README.md) and [fault tolerance](../training/fault-tolerance/README.md) chapters have tools for this.
+The worst case is a *persistent* straggler: one GPU that always runs 10% slow because of bad cooling, a degraded PCIe link or a misconfigured clock. It makes the whole job 10% slower, and the job's average throughput metrics will not say which GPU is to blame. You find it by measuring per-rank timings, or by running per-node benchmarks and removing the slow node. The [debug](../development/debugging-pytorch.md) and [fault tolerance](../training/fault-tolerance-and-reproducibility.md) chapters have tools for this.
 
 ### Barriers
 
@@ -872,7 +872,7 @@ Three milliseconds of skew, which is well within what NTP gives you, reversed ca
 
 Practical rules for debugging:
 
-1. **Order by logical progress, not wall-clock time.** Log the training step, the micro-batch index and a per-rank collective sequence number. "Rank 12 is at step 4,001, every other rank is at step 4,002" tells you far more than any timestamp. PyTorch's NCCL flight recorder records exactly this kind of per-collective sequence number. See [the flight recorder section](../debug/pytorch.md#the-flight-recorder-trace).
+1. **Order by logical progress, not wall-clock time.** Log the training step, the micro-batch index and a per-rank collective sequence number. "Rank 12 is at step 4,001, every other rank is at step 4,002" tells you far more than any timestamp. PyTorch's NCCL flight recorder records exactly this kind of per-collective sequence number. See [the flight recorder section](../development/debugging-distributed.md#the-flight-recorder-trace).
 2. **Compare timestamps only within one node,** or across nodes only when the gaps are much larger than plausible clock skew (seconds, not milliseconds).
 3. **Use durations, not absolute times,** to find stragglers. "Rank 40's forward took 900 ms, everyone else took 600 ms" is robust to clock skew.
 
@@ -1207,7 +1207,7 @@ Many coordination tasks reduce to "a group of machines must agree on one value e
 
 Where consensus shows up in ML stacks:
 
-- **Kubernetes:** etcd (Raft) holds all cluster state. Every pod, job and node object lives there. See [orchestration](../orchestration/README.md) and [orchestration internals](../orchestration/internals.md).
+- **Kubernetes:** etcd (Raft) holds all cluster state. Every pod, job and node object lives there. See [orchestration](../orchestration/slurm/from-zero.md#slurm-vs-kubernetes) and [orchestration internals](../orchestration/internals.md).
 - **torchrun with the etcd backend:** rendezvous membership is agreed through etcd, so the rendezvous survives the loss of any single host.
 - **torchrun with the c10d backend:** there is no consensus. A single TCPStore acts as a de facto leader. That is simpler, but if the host running the store dies, the rendezvous dies too.
 - **Slurm:** the controller (`slurmctld`, the central daemon that holds the queue and decides which job gets which nodes) can have a backup controller that takes over. That is primary/backup failover, not majority consensus.
@@ -1934,7 +1934,7 @@ Modulo hashing moved 91% of the keys, which for a cache means a near-total miss 
 
 ## Collectives: the workhorse of distributed training
 
-Point-to-point messages ("rank 3 sends this tensor to rank 7") are the primitive, but training code mostly uses **collective operations**: a pattern of communication that every rank in a process group takes part in together. The [networking chapter's introduction](./networking.md#collective-communication-an-intuitive-introduction) and the [communication patterns chapter](../network/comms.md) have diagrams for each. Here is the short list and what each is used for:
+Point-to-point messages ("rank 3 sends this tensor to rank 7") are the primitive, but training code mostly uses **collective operations**: a pattern of communication that every rank in a process group takes part in together. The [networking chapter's introduction](./networking.md#collective-communication-an-intuitive-introduction) and the [communication patterns chapter](../network/collectives-internals.md) have diagrams for each. Here is the short list and what each is used for:
 
 | Collective | What happens | Where you meet it |
 |---|---|---|
@@ -1945,7 +1945,7 @@ Point-to-point messages ("rank 3 sends this tensor to rank 7") are the primitive
 | all-to-all | every rank sends a distinct chunk to every other rank | Mixture-of-Experts token routing, sequence parallelism |
 | barrier | nobody proceeds until all arrive | coordination |
 
-(TP, ZeRO and FSDP are defined in [Data parallel vs model parallel](#data-parallel-vs-model-parallel) below. Mixture-of-Experts models route each token to a few of many expert sub-networks, which may live on different GPUs; sequence parallelism splits one long sequence across GPUs. Both are covered in [architectures](../models/architectures.md#mixture-of-experts) and [model parallelism](../training/model-parallelism/README.md).)
+(TP, ZeRO and FSDP are defined in [Data parallel vs model parallel](#data-parallel-vs-model-parallel) below. Mixture-of-Experts models route each token to a few of many expert sub-networks, which may live on different GPUs; sequence parallelism splits one long sequence across GPUs. Both are covered in [architectures](../models/architectures.md#mixture-of-experts) and [model parallelism](../training/model-parallelism/derivations.md).)
 
 All-reduce - every rank ends with the sum of all ranks' inputs:
 
@@ -2123,7 +2123,7 @@ Every parallelism strategy trades among three resources:
 | PP | about 1/N of the layers | small activations, point-to-point | pipeline bubble |
 | activation recomputation (drop activations in forward, recompute them in backward) | lower activations | none | about 30% more compute |
 
-You can almost always trade one resource for another. You cannot get all three for free. The job of a distributed training configuration is to pick the cheapest trade for your hardware: how much memory per GPU, how fast the links inside and between nodes, how many GPUs. The [model parallelism chapter](../training/model-parallelism/README.md) covers each strategy in detail, and [Parallelism From First Principles](../training/model-parallelism/derivations.md) derives the memory and communication cost of each so you can do this arithmetic yourself.
+You can almost always trade one resource for another. You cannot get all three for free. The job of a distributed training configuration is to pick the cheapest trade for your hardware: how much memory per GPU, how fast the links inside and between nodes, how many GPUs. The [model parallelism chapter](../training/model-parallelism/derivations.md) covers each strategy in detail, and [Parallelism From First Principles](../training/model-parallelism/derivations.md) derives the memory and communication cost of each so you can do this arithmetic yourself.
 
 ### Try this
 
@@ -2225,7 +2225,7 @@ bit-identical: True
 
 Delete `"rng": rng.getstate()` from the checkpoint (and reseed on resume) and the `assert` fails: the resumed run draws different "batches" for steps 11-20. That is the toy version of a resumed job that silently sees different data. Steps 11-13 were computed twice, and that is fine because they are a deterministic function of the checkpoint. The same test works on a real training loop: run N steps, then run N/2, kill, resume, and compare the final losses or a weight checksum.
 
-See the [checkpoints chapter](../training/checkpoints/README.md).
+See the [checkpoints chapter](../training/fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools).
 
 ### Idempotency
 
@@ -2444,7 +2444,7 @@ This is not magic. Your script still restarts from scratch and must load its las
 
 ### Hot spares
 
-Keep a few extra healthy nodes allocated and idle. When a node fails, swap a spare in, restart from checkpoint, and send the bad node off for repair. This turns "wait hours for the scheduler and a replacement" into "restart in minutes". From the failure arithmetic above, a job that loses a node every few hours needs a pool of spares, not just one. The [fault tolerance chapter](../training/fault-tolerance/README.md) suggests 5-10% headroom and describes how to automate the swap with Slurm.
+Keep a few extra healthy nodes allocated and idle. When a node fails, swap a spare in, restart from checkpoint, and send the bad node off for repair. This turns "wait hours for the scheduler and a replacement" into "restart in minutes". From the failure arithmetic above, a job that loses a node every few hours needs a pool of spares, not just one. The [fault tolerance chapter](../training/fault-tolerance-and-reproducibility.md) suggests 5-10% headroom and describes how to automate the swap with Slurm.
 
 How many spares is "a pool"? Treat failures as random arrivals (a Poisson process) and ask how many nodes are typically out for repair at once:
 
@@ -2545,7 +2545,7 @@ augmentation differs across ranks: True
 rank 1 reproducible on restart: True
 ```
 
-Bitwise reproducibility at scale is expensive and often not achievable. A realistic target is: reproducible data order, reproducible RNG streams, and loss curves that match closely when resumed on the same world size. See [reproducibility](../training/reproducibility/README.md).
+Bitwise reproducibility at scale is expensive and often not achievable. A realistic target is: reproducible data order, reproducible RNG streams, and loss curves that match closely when resumed on the same world size. See [reproducibility](../training/fault-tolerance-and-reproducibility.md#reproducibility).
 
 ### When peers are untrusted
 
@@ -2713,14 +2713,14 @@ For hangs, the most useful tool is a stack dump of every rank. [`py-spy`](https:
 pgrep -f train.py | xargs -I {} py-spy dump --pid {}
 ```
 
-`pgrep -f train.py` prints the PID of every process whose command line contains `train.py`, and `xargs -I {}` runs the `py-spy` command once per PID, substituting it for `{}`. Run it on all nodes (through `srun`, `pdsh`, a tool that runs one command on many hosts over ssh, or similar), then look for the odd one out: 63 stacks in `all_reduce` and one in `torch.load` tells you where to look. The [PyTorch debugging chapter](../debug/pytorch.md#py-spy) shows how to run py-spy [across processes](../debug/pytorch.md#multi-process-py-spy) and across nodes, and covers [NCCL hang diagnosis](../debug/pytorch.md#diagnosing-nccl-collective-hangs) with the flight recorder.
+`pgrep -f train.py` prints the PID of every process whose command line contains `train.py`, and `xargs -I {}` runs the `py-spy` command once per PID, substituting it for `{}`. Run it on all nodes (through `srun`, `pdsh`, a tool that runs one command on many hosts over ssh, or similar), then look for the odd one out: 63 stacks in `all_reduce` and one in `torch.load` tells you where to look. The [PyTorch debugging chapter](../development/debugging-distributed.md#one-process) shows how to run py-spy [across processes](../development/debugging-distributed.md#every-process-on-one-node) and across nodes, and covers [NCCL hang diagnosis](../development/debugging-distributed.md#diagnosing-nccl-collective-hangs) with the flight recorder.
 
 Other debugging habits that pay off:
 
-- **Reproduce small.** A bug that needs 512 GPUs is often reproducible with 2 processes on one machine, or with gloo on CPU. Try that first. See [emulating multi-node setups](../training/emulate-multi-node.md).
+- **Reproduce small.** A bug that needs 512 GPUs is often reproducible with 2 processes on one machine, or with gloo on CPU. Try that first. See [emulating multi-node setups](../training/fault-tolerance-and-reproducibility.md#emulating-a-multi-node-setup-on-one-node).
 - **Test the plumbing separately from the model.** [`torch-distributed-gpu-test.py`](../debug/torch-distributed-gpu-test.py) checks that every rank can do collectives with every other rank, before you blame your code.
 - **Bisect the cluster.** If a job fails on 64 nodes but not on 32, split the nodes in half and test each half. Bad hardware tends to show up as a specific node, not as a scale threshold.
-- **Turn on verbose diagnostics when needed.** `NCCL_DEBUG=INFO` and `TORCH_DISTRIBUTED_DEBUG=DETAIL` are noisy but show which interface, transport and collective each rank is using. See [network debug](../network/debug/README.md).
+- **Turn on verbose diagnostics when needed.** `NCCL_DEBUG=INFO` and `TORCH_DISTRIBUTED_DEBUG=DETAIL` are noisy but show which interface, transport and collective each rank is using. See [network debug](../network/measuring-and-debugging.md).
 
 ### Try this
 
@@ -2849,15 +2849,15 @@ Each of these teaches one of this chapter's lessons:
 
 ## You can now read
 
-- [Model parallelism](../training/model-parallelism/README.md). DP, ZeRO/FSDP, TP, PP, sequence and expert parallelism, and how they combine. You know why each exists (the memory/compute/communication trade) and which collectives each uses.
+- [Model parallelism](../training/model-parallelism/derivations.md). DP, ZeRO/FSDP, TP, PP, sequence and expert parallelism, and how they combine. You know why each exists (the memory/compute/communication trade) and which collectives each uses.
 - [Parallelism From First Principles](../training/model-parallelism/derivations.md). The memory and communication cost derivations. The "bytes per parameter" and "2(N-1)/N x S" arithmetic above is where they start.
-- [Fault tolerance](../training/fault-tolerance/README.md). Spare nodes, watchdogs and the automation around them. You can now compute why they are necessary from a per-node failure rate.
-- [Orchestration](../orchestration/README.md), [Slurm](../orchestration/slurm/README.md) and [Kubernetes](../orchestration/kubernetes/README.md). How launchers allocate nodes and start one process per GPU, then rendezvous.
+- [Fault tolerance](../training/fault-tolerance-and-reproducibility.md). Spare nodes, watchdogs and the automation around them. You can now compute why they are necessary from a per-node failure rate.
+- [Orchestration](../orchestration/slurm/from-zero.md#slurm-vs-kubernetes), [Slurm](../orchestration/slurm/from-zero.md) and [Kubernetes](../orchestration/kubernetes-from-zero.md#training-on-kubernetes-gotchas). How launchers allocate nodes and start one process per GPU, then rendezvous.
 - [Orchestration internals](../orchestration/internals.md). Schedulers, controllers and their state stores. You know what etcd and Raft are doing underneath.
 - [Services and control planes](../platform/control-planes.md) and [RL infrastructure](../platform/rl-infrastructure.md). RPC timeouts, idempotency keys, reconciliation and the outbox instead of two-phase commit, and linearizable leases.
-- [Checkpoints](../training/checkpoints/README.md) and [reproducibility](../training/reproducibility/README.md). Checkpoint/restart, atomic saves and the limits of determinism across ranks.
-- [Debugging PyTorch programs](../debug/pytorch.md). py-spy across nodes, NCCL flight recorder, hang diagnosis.
-- [Communication patterns](../network/comms.md) and [collective internals](../network/collectives-internals.md). The collective algorithms and their cost models.
+- [Checkpoints](../training/fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools) and [reproducibility](../training/fault-tolerance-and-reproducibility.md#reproducibility). Checkpoint/restart, atomic saves and the limits of determinism across ranks.
+- [Debugging PyTorch programs](../development/debugging-pytorch.md). py-spy across nodes, NCCL flight recorder, hang diagnosis.
+- [Communication patterns](../network/collectives-internals.md) and [collective internals](../network/collectives-internals.md). The collective algorithms and their cost models.
 
 
 ## Further reading

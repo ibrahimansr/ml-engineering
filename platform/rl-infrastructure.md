@@ -1294,7 +1294,7 @@ RL adds failure modes that pretraining doesn't have, and several of them look li
 | KL to reference or policy entropy blows up | can be algorithmic, but rule out stale or mixed-version rollouts and mis-masked env tokens first | mismatch KL by staleness bin, trained-token fraction |
 | Response length collapses or explodes | max-tokens or truncation change, stop-token or template mismatch (model never emits EOS as the engine expects) | finish-reason histogram (`stop` vs `length`) |
 | Trainer idle, queues empty | generator-bound: engines down, KV oversubscribed, sandbox fleet saturated | queue depths per stage |
-| Run hangs completely | NCCL weight-sync collective with a dead member, a deadlocked orchestrator | stack dumps ([`py-spy dump`](../foundations/linux-and-os.md#py-spy-what-is-python-doing-right-now)), [hanging guide](../debug/torch-distributed-hanging-solutions.md) |
+| Run hangs completely | NCCL weight-sync collective with a dead member, a deadlocked orchestrator | stack dumps ([`py-spy dump`](../foundations/linux-and-os.md#py-spy-what-is-python-doing-right-now)), [hanging guide](../development/debugging-distributed.md) |
 
 ### Stuck rollouts and timeouts
 
@@ -1385,14 +1385,14 @@ Resuming RL means restoring more than model weights:
 
 | State | Why it matters |
 |---|---|
-| model + optimizer (sharded) | as in any [training checkpoint](../training/checkpoints/README.md) |
+| model + optimizer (sharded) | as in any [training checkpoint](../training/fault-tolerance-and-reproducibility.md#checkpoint-conversion-and-repair-tools) |
 | policy version counter | staleness accounting and logged step numbers continue correctly |
 | prompt/data sampler position + RNG | so the resumed run doesn't repeat or skip prompts |
 | reference model / reward model identity | KL target and rewards must be the same models as before |
 | carry-over pool (partial rollouts), replay buffers | or decide to drop them on resume, and record that you did |
 | engine weights | engines restart from the checkpoint, *then* sync. Never assume the engines kept their weights |
 
-In-flight rollouts at the time of a crash are usually cheaper to drop than to persist. Test resumption once, early: kill the run at step $N$, resume, and check that step $N+1$ metrics are continuous. See [fault tolerance](../training/fault-tolerance/README.md) for the general machinery.
+In-flight rollouts at the time of a crash are usually cheaper to drop than to persist. Test resumption once, early: kill the run at step $N$, resume, and check that step $N+1$ metrics are continuous. See [fault tolerance](../training/fault-tolerance-and-reproducibility.md) for the general machinery.
 
 ## Open frameworks survey
 
@@ -1459,7 +1459,7 @@ wait
 
 ## You can now read
 
-This is the last chapter in the reading order, so the chapters below come earlier; revisit them with the RL pipeline in mind.
+The chapters below come earlier in the book; revisit them with the RL pipeline in mind. Next comes [Getting Compute](getting-compute.md), on renting, buying and upgrading the hardware all of this runs on.
 
 - [Decentralized Training](../training/decentralized-training.md): RL over the WAN, where weight sync and verification of untrusted rollouts dominate.
 - [Services and Control Planes](control-planes.md): how to run the orchestrator, reward services and sandbox fleets as production services.

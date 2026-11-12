@@ -16,9 +16,36 @@ This chapter assumes you know the transformer math. It does not assume you know 
 
 You don't need the Linux/OS chapter, the beyond-transformers chapter, or the cluster chapters (Slurm, Kubernetes) here. Everything runs as local processes on one machine.
 
-This chapter is the quantitative companion to the [Model Parallelism survey](README.md). The survey explains what each technique is and links to the implementations. This chapter builds each technique from scratch in a few dozen lines of `torch.distributed` code that you can run on a laptop, checks that it computes exactly what the unsharded model computes, and then derives what it costs in memory and in bytes moved. The last part uses those formulas to choose a layout for two concrete models. The collective algorithms themselves (ring, tree, NVLS, how NCCL chooses between them) are covered in [collectives internals](../../network/collectives-internals.md). FLOPs-per-token and memory arithmetic for a single model are in [training arithmetic](../arithmetic.md).
+This chapter explains what each parallelism technique is, where to get an implementation of it, and what it costs. It builds each technique from scratch in a few dozen lines of `torch.distributed` code that you can run on a laptop, checks that it computes exactly what the unsharded model computes, and then derives what it costs in memory and in bytes moved. The last part uses those formulas to choose a layout for two concrete models. The collective algorithms themselves (ring, tree, NVLS, how NCCL chooses between them) are covered in [collectives internals](../../network/collectives-internals.md). FLOPs-per-token and memory arithmetic for a single model are in [training arithmetic](../arithmetic.md).
 
 Two kinds of numbers appear below. **Measured**: outputs of the scripts in this chapter, run on a MacBook CPU with several processes talking over the loopback network; these check correctness and count bytes, but their timings say nothing about GPUs. **Estimated**: step times and bandwidth costs for H100 clusters, computed from the stated assumptions with the cost-model scripts. None of the H100 numbers is a measured benchmark, and I note where real systems are known to differ.
+
+## Why parallelize, and the map of techniques
+
+Parallelism across accelerators is used for two reasons:
+
+1. **To fit.** A model or a sequence can be bigger than one accelerator's memory. t5-11b is 45 GB in parameters alone (11B × 4 bytes in fp32), before gradients, optimizer state or activations. Llama 3.1 models are trained to a 128K-token context, whose activations alone overflow one GPU.
+2. **To go faster.** A run that would take a year on one GPU can finish in hours on thousands.
+
+There are two broad families for training and running models bigger than one accelerator's memory:
+
+- **3D parallelism**: data, tensor and pipeline parallelism combined (the terms were introduced in [Data parallel vs model parallel](../../foundations/distributed-systems.md#data-parallel-vs-model-parallel)). Very network-efficient, but invasive: the modeling code has to be rewritten around it, and it takes a lot more work to get right.
+- **ZeRO / FSDP**: shard the training state across data-parallel ranks and reassemble each layer just in time. Much less network-efficient, but needs close to zero changes to the modeling code and is easy to get working.
+
+The techniques, each built and costed later in this chapter:
+
+| Technique | What is split | Where it is covered |
+| :-- | :-- | :-- |
+| Data parallelism (DP, DDP) | the batch; the model is replicated, gradients are averaged at the end of each step | [Data parallelism (DDP)](#data-parallelism-ddp) |
+| ZeRO / FSDP (also called *sharded* or *partitioned* DP) | the batch, plus parameters, gradients and optimizer states sharded across DP ranks and gathered just in time; supports offload to CPU memory or NVMe | [ZeRO and FSDP](#zero-and-fsdp) |
+| Tensor parallelism (TP, "horizontal") | every weight matrix; ranks exchange partial activations and gradients inside every layer with all-reduce, all-gather or reduce-scatter (see the [PyTorch TP tutorial](https://docs.pytorch.org/tutorials/intermediate/TP_tutorial.html)) | [Tensor parallelism (Megatron)](#tensor-parallelism-megatron) |
+| Pipeline parallelism (PP, "vertical") | the layers; each rank holds a contiguous group of layers and works on a different micro-batch | [Pipeline parallelism](#pipeline-parallelism) |
+| Sequence / context parallelism (SP, CP) | the sequence dimension of one sample | [Sequence parallelism and context parallelism](#sequence-parallelism-and-context-parallelism) |
+| Expert parallelism (EP) | the experts of a Mixture-of-Experts layer | [Expert parallelism](#expert-parallelism) |
+
+The ZeRO family also reconstructs whole tensors before use, so unlike TP it needs no change to the model. "Sharded DDP" is another name for the core ZeRO idea, used by several implementations.
+
+Most of what follows is PyTorch-specific, but the concepts carry over to other frameworks. The introduction of [Breadth-First Pipeline Parallelism](https://arxiv.org/abs/2211.05953) (Lamy-Poirier, arXiv 2211.05953) is one of the clearest short explanations of the common techniques, and is worth reading alongside this chapter.
 
 ## Running the code: many processes on one machine
 
@@ -57,7 +84,7 @@ On this Mac, leaving out `--master-addr 127.0.0.1` and `GLOO_SOCKET_IFNAME=lo0` 
 Hardware used in the worked examples. These match H100 SXM specs:
 
 - **HBM** (High Bandwidth Memory, the GPU's on-package DRAM, the memory "GPU memory" usually refers to): 80 GB per H100.
-- **NVLink** (NVIDIA's GPU-to-GPU link inside a node, routed through NVSwitch chips so that any GPU can reach any other at full speed): 900 GB/s per GPU *bidirectional*, so $\beta_{\text{nvl}} = 450\ \text{GB/s}$ per direction. Achieved NCCL bus bandwidth is lower. Measure yours with the [network benchmarks](../../network/benchmarks/).
+- **NVLink** (NVIDIA's GPU-to-GPU link inside a node, routed through NVSwitch chips so that any GPU can reach any other at full speed): 900 GB/s per GPU *bidirectional*, so $\beta_{\text{nvl}} = 450\ \text{GB/s}$ per direction. Achieved NCCL bus bandwidth is lower. Measure yours with the [network benchmarks](../../network/measuring-and-debugging.md).
 - **InfiniBand (IB)** (the inter-node network; each GPU has its own NIC, a network interface card, and talks to it via **RDMA**, remote direct memory access, which means one machine writes directly into another machine's memory without going through either CPU): 400 Gb/s per GPU, so $\beta_{\text{ib}} = 400/8 = 50\ \text{GB/s}$ per direction.
 - Dense BF16 peak is 989 TFLOP/s. I assume 40% MFU (model FLOPs utilization: useful model FLOP/s divided by peak, defined in [training arithmetic](../arithmetic.md#mfu-and-hfu-properly)), so $F = 0.4 \cdot 989 \times 10^{12} = 395.6 \times 10^{12}\ \text{FLOP/s}$. This is an assumption, not a measurement.
 
@@ -173,7 +200,11 @@ broadcast       rank 3: [0.0, 1.0, 2.0, 3.0]
 - **all-to-all**: rank $i$ sends its $j$-th slice to rank $j$. It is a distributed transpose. Used for MoE token dispatch and Ulysses attention.
 - **broadcast**: rank 0's tensor is copied to everyone. Used at initialization.
 
-The `assert` in the script checks the identity the rest of this chapter leans on: an all-reduce is exactly a reduce-scatter followed by an all-gather.
+The `assert` in the script checks the identity the rest of this chapter leans on: an all-reduce is exactly a reduce-scatter followed by an all-gather. Drawn out:
+
+![all-reduce = reduce-scatter and all-gather](images/all-reduce-reduce-scatter-all-gather.png)
+
+([source](https://engineering.fb.com/2021/07/15/open-source/fsdp/attachment/fsdp-graph-2a/))
 
 ### The ring algorithm, built by hand
 
@@ -322,6 +353,8 @@ The shape is what matters, not the loopback numbers. Small messages cost a few h
 
 **DDP** (DistributedDataParallel) keeps a full replica of the model on each of the $d$ ranks, gives each a different slice of the batch, and averages gradients with an all-reduce before the optimizer step. Because the loss is a mean over examples, the average of per-slice gradients equals the full-batch gradient, so every replica takes exactly the step that a single huge GPU would.
 
+PyTorch has two built-in versions. `torch.nn.DataParallel` is the older single-process one: one Python process drives all GPUs from threads, scatters the batch and gathers outputs on GPU 0 every step. [`DistributedDataParallel`](https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) runs one process per GPU and all-reduces the gradients during `backward`. Use DDP; it is what everything below means by DP, and it is almost trivial to adopt even on 2 GPUs.
+
 ### Bucketing and overlap
 
 Gradients become available in roughly reverse layer order during backward. PyTorch DDP:
@@ -452,6 +485,39 @@ NVLink grad bytes 4: hide under backward if T_g >= b_g*F/(2*beta) = 1,758 tokens
 For bf16 gradients ($b_g = 2$), $F = 395.6\ \text{TFLOP/s}$ and $\beta= 50\ \text{GB/s}$, the all-reduce hides under backward only above about 7,912 tokens per GPU per step, and breaks even against the whole step (no overlap) at about 5,275. With fp32 gradient reduction, double these. If the gradient all-reduce stays on NVLink (single node, 450 GB/s), the threshold drops to about 880 tokens. These thresholds assume perfect overlap and full achieved bandwidth. In practice, give yourself 2x headroom.
 
 ## ZeRO and FSDP
+
+### The idea on a 3-GPU toy
+
+ZeRO-powered data parallelism (ZeRO-DP) is ordinary DDP, except that instead of every GPU holding the full parameters, gradients and optimizer states, each GPU stores only a slice. When a layer's full parameters are needed, the GPUs send each other the parts they are missing, compute, and throw the borrowed parts away.
+
+Take a model of 3 layers with 3 parameters each. Layer `La` has weights `a0`, `a1`, `a2`:
+
+```
+La | Lb | Lc
+---|----|---
+a0 | b0 | c0
+a1 | b1 | c1
+a2 | b2 | c2
+```
+
+With 3 GPUs, ZeRO (sharded DDP) gives each GPU one row:
+
+```
+GPU0:          GPU1:          GPU2:
+La | Lb | Lc   La | Lb | Lc   La | Lb | Lc
+---|----|---   ---|----|---   ---|----|---
+a0 | b0 | c0   a1 | b1 | c1   a2 | b2 | c2
+```
+
+Each GPU still gets its own slice of the batch, exactly as in DDP (`x0 => GPU0`, `x1 => GPU1`, `x2 => GPU2`), and the inputs are unmodified: the model code thinks it is running the normal model.
+
+When the inputs reach `La`, GPU0 needs `a0`, `a1` and `a2` but only has `a0`. It receives `a1` from GPU1 and `a2` from GPU2. At the same time GPU1 receives `a0` and `a2`, and GPU2 receives `a0` and `a1`: that exchange is one all-gather. All three now hold the full `La` and run its forward on their own data. As soon as the computation is done the borrowed pieces are dropped. Then the same happens for `Lb` and `Lc` in forward, and for `Lc`, `Lb`, `La` in backward. Implementations prefetch the next layer's pieces while the current layer computes, so the gather overlaps with compute.
+
+An analogy: three hikers share one set of gear. Person A carries the tent, B the stove, C the axe. Each night they share what they have and in the morning each packs up only their own item again. That is ZeRO. DDP is every hiker carrying their own tent, stove and axe.
+
+Note that ZeRO cuts each layer's weights across GPUs, which looks like tensor parallelism's split. The difference is that ZeRO reassembles the whole weight before the matmul, so each GPU runs the full, unmodified matmul on its own data; TP never reassembles, and each GPU runs a slice of the matmul on the same data. Pipeline parallelism instead puts whole layers on different GPUs.
+
+ZeRO comes in three stages, each sharding more of the training state: stage 1 shards the optimizer states, stage 2 also the gradients, stage 3 also the parameters. The walk-through above is stage 3, which is what PyTorch FSDP (Fully Sharded Data Parallel) does in its default `FULL_SHARD` mode. The per-stage memory is next; the stage-level per-GPU code in [The three resources](../../foundations/distributed-systems.md#the-three-resources) computes the same thing.
 
 ### Memory per GPU
 
@@ -588,13 +654,91 @@ Count bf16 bytes per rank per step, with $b = 2$:
   - no final all-gather, because each rank updates only its own shard and the next forward will gather
   - total $3b\Psi = 1.5 \times V_{\text{DDP}}$
 
-Gradient accumulation changes this. ZeRO-3 with `reshard_after_forward=True` repeats the two all-gathers for each micro-batch. If it also reduce-scatters every micro-batch, as it does by default, the cost becomes $3b\Psi\cdot k$ for $k$ micro-batches. With FSDP2 you can trade memory for volume: `reshard_after_forward=False` keeps unsharded params from forward to backward (which is ZeRO-2 behaviour, $2b\Psi$), and `model.set_requires_gradient_sync(False)` on all but the last micro-batch accumulates unsharded gradients locally. The [survey's discussion of gradient accumulation steps (GAS)](README.md#inter-node-speed-requirements-to-use-zero) covers the DeepSpeed side.
+Gradient accumulation changes this. ZeRO-3 with `reshard_after_forward=True` repeats the two all-gathers for each micro-batch. If it also reduce-scatters every micro-batch, as it does by default, the cost becomes $3b\Psi\cdot k$ for $k$ micro-batches. With FSDP2 you can trade memory for volume: `reshard_after_forward=False` keeps unsharded params from forward to backward (which is ZeRO-2 behaviour, $2b\Psi$), and `model.set_requires_gradient_sync(False)` on all but the last micro-batch accumulates unsharded gradients locally. The DeepSpeed side of gradient accumulation is in [Inter-node bandwidth for ZeRO: the IDEFICS-80B check](#inter-node-bandwidth-for-zero-the-idefics-80b-check) below.
 
 The comm-bound condition is the same derivation as for DDP, with $3b\Psi$ in place of $2b\Psi$. Forward all-gathers can overlap with forward compute, so the window is the whole step:
 
 $$
 \frac{3 b \Psi}{\beta} \le \frac{6\Psi T_g}{F} \quad\Longrightarrow\quad T_g \ge \frac{b F}{2\beta} = \frac{F}{\beta} \approx 7{,}912\ \text{tokens/GPU} \quad (\text{bf16, IB})
 $$
+
+### Inter-node bandwidth for ZeRO: the IDEFICS-80B check
+
+ZeRO, whether DeepSpeed ZeRO or PyTorch FSDP, moves much more data across nodes than a TP+PP+DP layout does, and in its plain form it cannot keep that traffic on the faster intra-node links. On a slow inter-node network the expensive GPUs spend much of the step waiting. ZeRO overlaps communication with compute only partly, so the goal is $t_{\text{comm}} \le t_{\text{compute}}$, and in practice $t_{\text{comm}}$ not much larger than $t_{\text{compute}}$.
+
+The byte counts from the previous section, in DeepSpeed terms: ZeRO-3 does an `all_gather` of the weights in `forward`, another in `backward`, and a `reduce_scatter` of the gradients, three collectives each moving the whole model. A 10B model in bf16 under ZeRO-3 therefore sends $10 \times 2 \times 3 = 60$ GB per step. DDP's single `all_reduce` moves 2× the model, $10 \times 2 \times 2 = 40$ GB, and ZeRO-1 (one `reduce_scatter`, one `all_gather`) also sends 40 GB.
+
+A first-order estimate of the two times, in seconds:
+
+$$
+t_{\text{comm}} = \frac{\text{comms\_multiplier} \cdot \text{n\_bytes} \cdot \text{model\_size\_in\_B}}{\text{inter\_node\_throughput\_in\_GBps}}
+$$
+
+$$
+t_{\text{compute}} = \frac{\text{n\_passes} \cdot 2 \cdot \text{model\_size\_in\_B} \cdot \text{seqlen} \cdot \text{global\_batch\_size}}{\text{total\_gpus} \cdot 10^3 \cdot \text{tflops\_wo\_comms}}
+$$
+
+- `comms_multiplier` is the sum of the [busbw correction factors](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth) of the collectives in one step: $2(n-1)/n$ for `all_reduce` and $(n-1)/n$ each for `all_gather` and `reduce_scatter`, with $n$ ranks. Dropping the $(n-1)/n$ gives DDP's 2 and ZeRO-3's 3. That is a good approximation for many ranks (0.998 at 512) but optimistic for few (0.875 at 8).
+- The throughput must be measured **busbw**, not algbw (both defined in [algbw vs busbw](../../network/collectives-internals.md#algbw-vs-busbw)), since algbw shrinks as ranks are added. Even busbw varies between collectives at the same payload, because NCCL may choose a different algorithm or protocol for each.
+- In the compute formula, the 2 is the multiply and the add per parameter per token in a matmul, and `n_passes` is 3 without activation recomputation (1 for forward, 2 for backward, which computes gradients with respect to both inputs and weights) and 4 with it (one extra forward). $3 \times 2 = 6$ is the familiar $6\Psi$ FLOPs per token from [training arithmetic](../arithmetic.md#where-6n-comes-from). It counts only the big matmuls and ignores attention scores, which is fine for a rough check.
+- `tflops_wo_comms` is the achievable TFLOPS without communication, not the theoretical peak. For A100 bf16, about 80% of 312, rounded up to 250.
+
+The numbers come from the IDEFICS-80B training run (a [multimodal 80B model](https://huggingface.co/HuggingFaceM4/idefics-80b/) built from a frozen language model and a frozen vision model). With a 340 Gbps AWS EFA v1 network it reached only 90 TFLOPS per A100 with DeepSpeed ZeRO-3, against the 150+ TFLOPS that Megatron-style TP+PP+DP typically reached on the same GPUs. The inputs:
+
+- `model_size_in_B` = 80, `n_bytes` = 2 (bf16)
+- `comms_multiplier` = 3 for ZeRO-3/FSDP (2 all-gathers + 1 reduce-scatter), 2 for ZeRO-1. For this run, two effects roughly cancelled. Activation recomputation adds one more all-gather of all weights, and gradients were [reduced in fp32](../arithmetic.md#fp32-accumulation-in-tensor-cores) to avoid NCCL's half-precision accumulation loss, so the reduce-scatter moved 4 bytes, giving a nominal $3 \cdot 2 + 2 = 4 \cdot 2$, about 4.5 counting the extra gather. But more than half the model was frozen, so only about half the gradients were reduced. Net: about 3.
+- `n_passes` = 4 (activation recomputation was on), `total_gpus` = 512, `global_batch_size` = 3584, `seqlen` = 1024
+- throughput = 42.5 GB/s (340 Gbps), measured with an all-reduce benchmark at a 4 GiB payload (today's version is [torch-dist-bench.py](../../network/benchmarks/torch-dist-bench.py)). The model has 80 layers of about 1B parameters, so each per-layer collective moved about 2 GB in bf16 and 4 GB in fp32, which matches the benchmark payload. **Benchmark at your own layer size.** A 100M-parameter layer moves 0.2 GB in bf16, an order of magnitude smaller, and will likely see lower bandwidth.
+
+```python
+# zero_internode.py: first-order ZeRO comms vs compute per step, with the IDEFICS-80B numbers
+def comms_s(mult, n_bytes, model_B, GBps):       # mult = sum of collective multipliers per step (DDP 2, ZeRO-3 3)
+    return mult * n_bytes * model_B / GBps
+def compute_s(n_passes, model_B, seqlen, gbs, gpus, tflops):
+    # 2 FLOPs (multiply + add) per parameter per token per matmul pass; passes: fwd 1 + bwd 2 (+1 recompute)
+    return n_passes * 2 * model_B * seqlen * gbs / (gpus * 1e3 * tflops)
+
+M, gpus, gbs, seqlen = 80, 512, 3584, 1024
+print(f"comms   ZeRO-3, bf16, 42.5 GB/s : {comms_s(3, 2, M, 42.5):5.1f} s")
+print(f"compute 4 passes @ 250 TFLOPS   : {compute_s(4, M, seqlen, gbs, gpus, 250):5.1f} s")
+print(f"compute 4 passes @  90 TFLOPS   : {compute_s(4, M, seqlen, gbs, gpus, 90):5.1f} s  (logged; measured step ~49 s)")
+for name, GBps in [("5x slower", 8.5), ("5x faster", 212)]:
+    print(f"comms   ZeRO-3, {name:9s} {GBps:5.1f} GB/s: {comms_s(3, 2, M, GBps):5.1f} s")
+print(f"ZeRO-3 GAS=4 comms at 42.5 GB/s : {4 * comms_s(3, 2, M, 42.5):5.1f} s (ZeRO-2/3 repeat per micro-batch; ZeRO-1 does not)")
+for n in (8, 512):
+    print(f"(n-1)/n dropped by the formula, n={n:3d}: {(n - 1) / n:.3f}")
+```
+
+```
+$ python zero_internode.py
+comms   ZeRO-3, bf16, 42.5 GB/s :  11.3 s
+compute 4 passes @ 250 TFLOPS   :  18.4 s
+compute 4 passes @  90 TFLOPS   :  51.0 s  (logged; measured step ~49 s)
+comms   ZeRO-3, 5x slower   8.5 GB/s:  56.5 s
+comms   ZeRO-3, 5x faster 212.0 GB/s:   2.3 s
+ZeRO-3 GAS=4 comms at 42.5 GB/s :  45.2 s (ZeRO-2/3 repeat per micro-batch; ZeRO-1 does not)
+(n-1)/n dropped by the formula, n=  8: 0.875
+(n-1)/n dropped by the formula, n=512: 0.998
+```
+
+How to read it:
+
+- **11 s of comms and 18 s of compute** at a realistic 250 TFLOPS add up to 29 s, while the logged step took about 49 s. The estimate is in the right ballpark but leaves about 20 s unexplained, so something else was also a bottleneck. The run is no longer available to investigate. The `DataLoader` was checked and took under 1 s, and hardware latencies are negligible at these payload sizes.
+- **51 s at 90 TFLOPS** matches the 49 s measured step, but that is circular: the logged TFLOPS were computed from this very formula. The useful check is the other direction: plug in close-to-peak TFLOPS, and compare the estimate with the measured `forward` + `backward` wall time (which includes whatever comms were not overlapped).
+- **The network moves the answer a lot.** At 5× slower (8.5 GB/s, 68 Gbps), comms take 56 s and dominate everything. At 5× faster (212 GB/s, 1700 Gbps), 2 s is negligible, especially once overlapped.
+- **Gradient accumulation (GAS)** does not change compute, but under ZeRO-2 and ZeRO-3 the comms repeat per micro-batch: the weights are all-gathered for forward and backward each time, and since there is nowhere to keep partial gradients of the gathered weights, the reduce-scatter runs every micro-batch too. That multiplies $t_{\text{comm}}$ by GAS (45 s at GAS = 4). ZeRO-1 needs no extra comms for GAS > 1. IDEFICS-80B did not use GAS.
+
+The DeepSpeed team [benchmarked a 176B model](https://github.com/deepspeedai/DeepSpeed/issues/2928#issuecomment-1463041491) on 384 V100 GPUs (24 DGX-2 nodes) under ZeRO and found:
+
+| Inter-node InfiniBand | TFLOPS per GPU | Verdict |
+| :-- | :-- | :-- |
+| 100 Gbps | < 20 | bad |
+| 200-400 Gbps | 30-40 | ok |
+| 800 Gbps | 40+ | excellent |
+
+V100 peaks at [125 TFLOPS](https://www.nvidia.com/en-gb/data-center/tesla-v100/) in fp16. These are V100 numbers: A100 is about 2-3× faster and H100 about 4-8× faster in half precision (spec sheets claim 3× per generation; users measure at most about 2.5×), so an H100 cluster needs a 4-8× faster network to reach the same verdicts. Newer benchmarks are needed. The same team noticed that the communication overhead is worst with a small micro-batch per GPU, which often cannot be raised because the global batch is fixed for convergence. [ZeRO++](#zero-and-the-global-batch-size-hierarchical-partitioning-zero) addresses that.
+
+Finally, the bandwidth you plug in depends on payload size: larger payloads get better bandwidth. In DeepSpeed the payloads are set by `reduce_bucket_size` (reductions) and `prefetch_bucket_size` (prefetch gathers) in the config. The default of 0.5B parameters is 1 GB in half precision ($0.5 \times 10^9 \times 2$ bytes) and 2 GB in fp32. Run the all-reduce benchmark at that payload and feed the reported busbw into the formula.
 
 ### FSDP2 in practice
 
@@ -803,13 +947,64 @@ grad shard identical across replicas (rank 0 vs 2, 1 vs 3): True True
 
 The placement `(Replicate(), Shard(dim=0))` says it all: replicated across the outer mesh dimension, sharded across the inner one. Ranks 0 and 2 hold the same shard and, after the cross-replica all-reduce, the same gradient for it, even though they saw different data.
 
+### ZeRO and the global batch size: hierarchical partitioning (ZeRO++)
+
+By default ZeRO spreads one model replica over *all* GPUs. That has two consequences:
+
+1. **The global batch size is inflexible.** It is always $\text{total\_gpus} \times \text{micro\_batch\_size}$. On 1024 GPUs the shards are tiny, so there is plenty of free memory and you might fit a micro-batch of 32, but that gives a global batch of $32 \times 1024 = 32\text{k}$ samples per optimizer step, most likely too large for good convergence. Shrinking the micro-batch keeps the global batch in check, but gives smaller matrices per GPU and less efficient compute.
+2. **The fast intra-node links go unused.** Every collective spans all nodes, so the slow inter-node network sets the speed.
+
+[ZeRO++](https://arxiv.org/abs/2306.10209) fixes the second with *hierarchical partitioning* (hpZ): each model replica is restricted to one node, so the two weight `all_gather`s per step run over the intra-node fabric and only the gradient `reduce_scatter` crosses nodes. Memory per GPU grows (the model is sharded over 8 GPUs instead of all of them). The first problem is not directly fixed, since the global batch is unchanged, but each replica runs more efficiently and the extra memory pressure tends to cap the micro-batch size, so throughput should improve overall. This is the same layout as [HSDP](#hsdp-hybrid-sharding) above; in FSDP1 it is [`ShardingStrategy.HYBRID_SHARD`](https://docs.pytorch.org/docs/stable/fsdp.html). The papers: [ZeRO++](https://arxiv.org/abs/2306.10209) and [PyTorch FSDP](https://arxiv.org/abs/2304.11277).
+
+To shrink the global batch on a large cluster, you need another dimension that makes several GPUs cooperate on one sample. [Tensor parallelism](#tensor-parallelism-megatron) is non-trivial to adopt; [sequence parallelism](#sequence-parallelism-and-context-parallelism) is often simpler. The options that pair with ZeRO-style sharding:
+
+- with DeepSpeed ZeRO: [DeepSpeed-Ulysses](#long-sequence-variants-and-implementations)
+- [Arctic Long Sequence Training](#long-sequence-variants-and-implementations) (Ulysses for HuggingFace Transformers)
+- with FSDP: [Paged Ring Attention](https://github.com/lucidrains/ring-attention-pytorch) ([paper](https://arxiv.org/abs/2402.08268))
+
+These are probably less efficient than TP; how much overhead they add is not something I have measured.
+
+### ZeRO implementations, integrations and papers
+
+Implementations of ZeRO stages 1, 2 and 3:
+
+- [DeepSpeed](https://www.deepspeed.ai/tutorials/zero/)
+- [PyTorch FSDP](https://docs.pytorch.org/docs/stable/fsdp.html), originally implemented in [FairScale](https://github.com/facebookresearch/fairscale/) and later upstreamed into PyTorch core
+- [torchtitan](https://github.com/pytorch/torchtitan)
+
+DeepSpeed ZeRO is integrated into [HF Trainer](https://huggingface.co/docs/transformers/main_classes/deepspeed), [Accelerate](https://huggingface.co/docs/accelerate/usage_guides/deepspeed), [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable/advanced/model_parallel/deepspeed.html) and [Determined.AI](https://github.com/determined-ai/determined/tree/main/docs/model-dev-guide/api-guides/apis-howto/deepspeed). FSDP is integrated into [HF Trainer](https://huggingface.co/docs/transformers/main/en/fsdp), [Accelerate](https://huggingface.co/docs/accelerate/main/en/usage_guides/fsdp), [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable/advanced/model_parallel/fsdp.html) and [torchtitan](https://github.com/pytorch/torchtitan).
+
+DeepSpeed resources: [GitHub](https://github.com/deepspeedai/DeepSpeed), [usage docs](https://www.deepspeed.ai/getting-started/), [API docs](https://deepspeed.readthedocs.io/en/latest/index.html), [blog posts](https://www.microsoft.com/en-us/research/search/?q=deepspeed).
+
+Papers on DeepSpeed and ZeRO:
+
+- [ZeRO: Memory Optimizations Toward Training Trillion Parameter Models](https://arxiv.org/abs/1910.02054)
+- [ZeRO-Offload: Democratizing Billion-Scale Model Training](https://arxiv.org/abs/2101.06840) - optimizer state and update on the CPU
+- [ZeRO-Infinity: Breaking the GPU Memory Wall for Extreme Scale Deep Learning](https://arxiv.org/abs/2104.07857) - offload to CPU memory and NVMe
+- [ZeRO++: Extremely Efficient Collective Communication for Giant Model Training](https://arxiv.org/abs/2306.10209) - hierarchical partitioning (above), plus quantized communication
+- [DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/abs/2309.14509)
+- [PyTorch FSDP: Experiences on Scaling Fully Sharded Data Parallel](https://arxiv.org/abs/2304.11277)
+
+Published modifications of the ZeRO protocol:
+
+- [MiCS: Near-linear Scaling for Training Gigantic Model on Public Cloud](https://arxiv.org/abs/2205.00119) (2022) - shard within a subgroup and replicate across subgroups, the idea behind HSDP
+- [AMSP: Super-Scaling LLM Training via Advanced Model States Partitioning](https://arxiv.org/abs/2311.00257) (2023; an earlier version was titled *AMSP: Reducing Communication Overhead of ZeRO for Efficient LLM Training*) - chooses the sharding degree separately for parameters, gradients and optimizer states
+
 ## Tensor parallelism (Megatron)
 
-Reference: [Megatron-LM](https://arxiv.org/abs/1909.08053) (Shoeybi et al., arXiv 1909.08053). Background is in the [survey](README.md#tensor-parallelism).
+Reference: [Megatron-LM](https://arxiv.org/abs/1909.08053) (Shoeybi et al., arXiv 1909.08053). The figures in this section are from the follow-up paper, [Efficient Large-Scale Language Model Training on GPU Clusters](https://arxiv.org/abs/2104.04473). DeepSpeed calls the same technique [tensor slicing](https://www.deepspeed.ai/tutorials/large-models-w-deepspeed/).
 
 Data parallelism and ZeRO split the *batch*; every rank still runs every matmul in full. Tensor parallelism (TP) splits the *matmuls themselves*: each rank holds a slice of every weight matrix and computes a slice of every layer's output. That is the only way to make one layer's compute and memory smaller, and the price is communication in the middle of every layer.
 
 ### Column and row splits
+
+The basic building block is a linear layer followed by a nonlinearity, $Y = \operatorname{GeLU}(XA)$, with input $X$, output $Y$ and weight $A$. A matrix product splits naturally across GPUs:
+
+![Parallel GEMM](images/parallelism-tp-parallel_gemm.png)
+
+Split $A$ by columns across $N$ GPUs and each computes $XA_i$, giving outputs $Y_1, \ldots, Y_N$ that go through `GeLU` independently:
+
+![independent GeLU](images/parallelism-tp-independent-gelu.png)
 
 For a 2-layer MLP $Z = \operatorname{act}(XA)\,B$ with $X: (BT, h)$, $A: (h, 4h)$, $B: (4h, h)$:
 
@@ -835,9 +1030,13 @@ $ python why_columns.py
 column split error 0.0e+00 | row split error 5.2e+00
 ```
 
-$\operatorname{gelu}(a + b) \ne \operatorname{gelu}(a) + \operatorname{gelu}(b)$, so a row split of $A$ would force an all-reduce before the activation. A column split hands each rank complete pre-activations for its columns, and the elementwise GELU commutes with the split.
+$\operatorname{gelu}(a + b) \ne \operatorname{gelu}(a) + \operatorname{gelu}(b)$, so a row split of $A$ would force an all-reduce before the activation. A column split hands each rank complete pre-activations for its columns, and the elementwise GELU commutes with the split. Following the column split with a row split lets an MLP of any depth run without synchronization until the very end, where the output is reconstructed from the shards:
 
-Attention works the same way: $W_Q, W_K, W_V$ are column-parallel *by heads* (rank $i$ owns $n_{\text{heads}}/t$ query heads and $n_{\text{kv}}/t$ KV heads), attention is computed locally per head, and $W_O$ is row-parallel. This requires $n_{\text{kv}} \bmod t = 0$, or KV-head replication when $t > n_{\text{kv}}$.
+![parallel shard processing](images/parallelism-tp-parallel_shard_processing.png)
+
+Attention works the same way: $W_Q, W_K, W_V$ are column-parallel *by heads* (rank $i$ owns $n_{\text{heads}}/t$ query heads and $n_{\text{kv}}/t$ KV heads), attention is computed locally per head, and $W_O$ is row-parallel. This requires $n_{\text{kv}} \bmod t = 0$, or KV-head replication when $t > n_{\text{kv}}$. Attention is the easiest part to parallelize, because its heads are already independent:
+
+![parallel self-attention](images/parallelism-tp-parallel_self_attention.png)
 
 ### The f / g conjugate operators
 
@@ -1000,7 +1199,7 @@ $$
 
 ### Why TP stays inside NVLink
 
-TP communication is on the critical path. $g$'s output is the next block's input, so unless you use async-TP / collective-matmul decomposition ([survey](README.md#async-tp), [collectives internals](../../network/collectives-internals.md#async-tp--collective-matmul)), the GPU waits for it. Compare comm time to compute time per layer. For a standard layer with $12h^2$ params, the per-rank FLOPs are $6 \cdot 12h^2 \cdot BT/t$ (forward + backward), so:
+TP communication is on the critical path. $g$'s output is the next block's input, so unless you use async-TP / collective-matmul decomposition ([below](#tp-implementations-and-async-tp), [collectives internals](../../network/collectives-internals.md#async-tp--collective-matmul)), the GPU waits for it. Compare comm time to compute time per layer. For a standard layer with $12h^2$ params, the per-rank FLOPs are $6 \cdot 12h^2 \cdot BT/t$ (forward + backward), so:
 
 $$
 \begin{aligned}
@@ -1050,7 +1249,29 @@ exposed fraction: NVLink 15%, IB 131%
 
 So TP=8 costs about 15% exposed time on NVLink and about 130% over IB. That is the whole argument. It holds for any $h$ you are likely to train: you would need $h \gtrsim 74\text{k}$ to bring cross-IB TP down to the NVLink ratio. On NVL72-class systems (GB200 NVL72: a rack of 72 Blackwell GPUs on one NVLink switch fabric), the NVLink domain is 72 GPUs, and the same formula says TP can go wider. You still pay the $(t-1)/t$ factor and shrinking GEMMs ($h/t$ gets small, efficiency drops). That second effect is not in this model, so measure it.
 
+The practical rule that follows: TP degree ≤ GPUs per NVLink domain. On a node with 4 GPUs the highest sensible TP degree is 4; if you need TP = 8, you need nodes with at least 8 GPUs (or a rack-scale NVLink system).
+
+### TP implementations and async TP
+
+TP combines with every other method in this chapter. Implementations:
+
+- [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) - its own implementation, written per model architecture
+- [PyTorch](https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html) `torch.distributed.tensor.parallel`, the DTensor API used in this chapter
+- [torchtitan](https://github.com/pytorch/torchtitan) and [nanotron](https://github.com/huggingface/nanotron) - training stacks built on it
+- [SageMaker](https://arxiv.org/abs/2111.05972) - proprietary, AWS only
+- [OSLO](https://github.com/eleutherAI/Oslo) - TP for HuggingFace Transformers models
+
+**Async TP.** TP's weak point is that its collectives sit between dependent matmuls, so they are hard to overlap with compute. PyTorch's [Async-TP](https://discuss.pytorch.org/t/distributed-w-torchtitan-introducing-async-tensor-parallelism-in-pytorch/209487) decomposes the dependent all-gather + matmul into a series of `cudaMemcpyAsync` peer copies and smaller partial matmuls that overlap, and `torch.compile` applies it automatically. The mechanism is in [Async TP / collective matmul](../../network/collectives-internals.md#async-tp--collective-matmul). Megatron-LM implements the same idea behind `--tp-comm-overlap`.
+
+Further reading: [Tensor Parallelism and Sequence Parallelism: Detailed Analysis](https://insujang.github.io/2024-01-11/tensor-parallelism-and-sequence-parallelism-detailed-analysis/#sequence-parallelism).
+
 ## Sequence parallelism and context parallelism
+
+Some workloads need very long sequences: DNA models train at 256K tokens, and ordinary LLMs are trained on 10K tokens and well beyond. Standard dense self-attention has compute quadratic in sequence length. A kernel that materializes the full sequence-by-sequence score matrix also needs quadratic temporary memory; memory-efficient kernels such as [FlashAttention](https://arxiv.org/abs/2205.14135) (taught in [FlashAttention](../../compute/accelerator/execution-model.md#flashattention)) avoid storing that matrix and keep attention memory linear in sequence length, without removing the quadratic compute.
+
+At long enough sequences even a batch of 1 does not fit on one GPU, so these methods split work along the sequence dimension. That raises the supported length but does not make it unlimited: aggregate memory, compute time, communication and kernel constraints still set a ceiling. Splitting the sequence is orthogonal to the other dimensions, so it combines with all of them (4D layouts, ZeRO-DP + SP, and so on).
+
+Two different things share the name "sequence parallelism". Megatron SP, next, is an add-on to TP that shards only the cheap per-token regions. Context parallelism (CP), after it, shards attention itself and is what DeepSpeed-Ulysses, ring attention and their relatives do; the original papers call several of those "sequence parallelism" too.
 
 ### Megatron sequence parallelism (SP)
 
@@ -1350,9 +1571,77 @@ The two compose (2D, or "USP" style, after Unified Sequence Parallelism, which c
 
 **Causal load balancing.** With a contiguous split, rank $i$ attends to $i+1$ blocks, so work is proportional to $i + 1/2$ and the last rank does $(c-1/2)/(c/2) = 2 - 1/c$ times the mean: 1.5x at $c = 2$, 1.875x at $c = 8$. Fix (zigzag): cut T into $2c$ chunks and give rank $i$ chunks $i$ and $2c-1-i$. Work becomes $(i+\tfrac{1}{2}) + (2c-1-i+\tfrac{1}{2}) = 2c$, the same on every rank. `ring_attention.py` above measures it: contiguous max/mean 1.749 at $c = 4$ (formula 1.750), zigzag exactly 1.000. Megatron-CP and the Llama 3 CP use this layout. Llama 3 ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), arXiv 2407.21783) all-gathers K/V instead of ringing them, which is simpler and, with GQA, cheap.
 
+### Long-sequence variants and implementations
+
+**DeepSpeed-Ulysses** ([paper](https://arxiv.org/abs/2309.14509), [blog](https://github.com/deepspeedai/DeepSpeed/tree/master/blogs/deepspeed-ulysses)). Two things are sharded: the attention heads (each GPU owns a few heads, a split decided when the model is created or loaded, somewhat like TP), and the input sequence (each GPU gets a chunk, like ZeRO-3 shards weights but applied to inputs). The DeepSpeed diagram of one layer:
+
+![DeepSpeed-Ulysses sequence parallelism](images/deepspeed-ulysses.png)
+
+([source](https://github.com/deepspeedai/DeepSpeed/tree/master/blogs/deepspeed-ulysses))
+
+Reading the diagram:
+
+1. The $N$ tokens of the input are partitioned across $P$ devices.
+2. Each device projects its $N/P$ tokens to Q, K and V.
+3. An [all-to-all](../../network/collectives-internals.md#all-to-all) turns sequence-sharded QKV into head-sharded QKV covering all $N$ tokens.
+4. Each device computes ordinary attention for its heads:
+
+![attention per head](images/deepspeed-ulysses-math.png)
+
+5. A second all-to-all turns the head-sharded attention output back into sequence shards ($N/P$ tokens) for the rest of the layer: the MLP matmuls, layer norm, and so on.
+
+Example: 8K tokens, 128 heads, one node of 8 GPUs. Each GPU gets a 1K-token chunk ($8\text{K}/8$) and 16 heads ($128/8$). Before attention, the all-to-all gives each GPU all 8K tokens for its 16 heads, and it computes full 8K attention for those heads. The other 7 GPUs do the same for theirs. The paper's claim is that per-device communication volume stays constant if you add GPUs in proportion to the sequence length ([details](https://github.com/deepspeedai/DeepSpeed/tree/master/blogs/deepspeed-ulysses#significant-communication-volume-reduction)); `cp_cost.py` above shows when that beats ring attention.
+
+**Arctic Long Sequence Training (ALST)** ([paper](https://arxiv.org/abs/2506.13996), [integration guide](https://www.deepspeed.ai/tutorials/ulysses-alst-sequence-parallelism/)) ports Ulysses to HuggingFace Transformers, updates it for modern attention-head layouts (GQA), and pushes sequence length (or batch size) much further by tiling compute and offloading activation checkpoints (the layer inputs kept for recomputing `forward` during `backward`, see [What recomputation adds](../arithmetic.md#what-recomputation-adds)) to CPU memory. Implementations: [ArcticTraining](https://github.com/snowflakedb/ArcticTraining/tree/main/projects/sequence-parallelism) and [Axolotl](https://github.com/axolotl-ai-cloud/axolotl).
+
+**Colossal-AI's sequence parallelism** ([Sequence parallelism: Long sequence training from system perspective](https://arxiv.org/abs/2105.13120)) introduced *Ring Self-Attention* (RSA): queries stay local while keys and values are passed around a ring, so communication is linear in the message size $M$.
+
+**Ring Attention with Blockwise Transformers** ([paper](https://arxiv.org/abs/2310.01889)) is the same ring-passing idea combined with blockwise (FlashAttention-style) computation, the version built in `ring_attention.py` above. "Ring self-attention" and "ring attention" are used interchangeably, so comparisons against RSA (like DistFlashAttn's below) refer to this technique. Step by step: tensors are sharded along the sequence throughout, shape $(\lfloor \text{seq\_len}/N \rfloor, d_{\text{model}})$; each GPU starts on the attention scores it can compute from its own shards; meanwhile keys and values of other chunks travel around the ring; as each new KV block arrives the GPU continues its attention with it, until every block has been seen.
+
+**Megatron-LM's SP** ([paper](https://arxiv.org/abs/2205.05198)) is the TP add-on described [above](#megatron-sequence-parallelism-sp): all-gather and reduce-scatter around the TP region. Its communication volume grows linearly with the message size $M$ regardless of the number of devices. Combining TP and SP in the same process group is what keeps its cost equal to plain TP: TP for the embedding, attention and linear layers, SP for the dropout and layer-norm regions.
+
+**DistFlashAttn** ([DISTFLASHATTN: Distributed Memory-efficient Attention for Long-context LLMs Training](https://arxiv.org/abs/2310.03294)) is reported to be many times faster than ring self-attention, because it balances the per-token Q/K/V work between workers (the causal imbalance computed above) and overlaps communication with compute:
+
+![DistFlashAttn](images/dist-flash-attn.png)
+
+([source](https://arxiv.org/abs/2310.03294))
+
+Implementations of SP/CP: [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), [DeepSpeed](https://github.com/deepspeedai/DeepSpeed), [Colossal-AI](https://colossalai.org/), and [torchtitan](https://github.com/pytorch/torchtitan), which uses PyTorch's own *Context Parallel* (CP) API. [Ring attention and context parallelism](../../models/beyond-transformers.md#ring-attention-and-context-parallelism) places these among the other long-context techniques. Further reading: [Tensor Parallelism and Sequence Parallelism: Detailed Analysis](https://insujang.github.io/2024-01-11/tensor-parallelism-and-sequence-parallelism-detailed-analysis/#sequence-parallelism).
+
 ## Pipeline parallelism
 
-Split $L$ layers into $p$ stages, and split the per-replica batch into $m$ micro-batches. Each stage lives on a different device (or TP group); a micro-batch's activations flow forward through the stages and its gradients flow back. In this section only, $F$, $B$, $W$ (not FLOP/s and batch size) denote per-micro-batch per-stage times for forward, backward-for-inputs and backward-for-weights. Normalize to $F = 1$, $B_{\text{full}} = B + W = 2$. The survey's [PP section](README.md#pipeline-parallelism) has the pictures.
+Split $L$ layers into $p$ stages, and split the per-replica batch into $m$ micro-batches. Each stage lives on a different device (or TP group); a micro-batch's activations flow forward through the stages and its gradients flow back. In this section only, $F$, $B$, $W$ (not FLOP/s and batch size) denote per-micro-batch per-stage times for forward, backward-for-inputs and backward-for-weights. Normalize to $F = 1$, $B_{\text{full}} = B + W = 2$.
+
+### From naive model parallelism to a pipeline
+
+The simplest way to split a model by layers is *naive* (vertical) model parallelism: move groups of layers to different devices with `.to()`, and move the activations to the next device at each boundary. For an 8-layer model on 2 GPUs:
+
+```
+===================  ===================
+|  0 | 1 | 2 | 3  |  |  4 | 5 | 6 | 7  |
+===================  ===================
+        gpu0                 gpu1
+```
+
+Layers 0 to 3 run as normal on GPU0. Between layer 3 and 4 the activations are copied to GPU1, which is fast inside one node and much slower across nodes. After layer 7 the output has to meet the labels (send it back to the device holding the labels, or send the labels to the last device), then the loss and optimizer run.
+
+Its problems:
+
+- **Only one GPU works at a time.** With 4 GPUs it is roughly one GPU with 4× the memory, plus copying overhead. Four 6 GB cards hold about as much layer state as one 24 GB card, and the single card trains faster because it never copies between devices. Naive MP is a capacity technique: it makes a model fit when its layer state exceeds one GPU, provided each partition and its activations fit on its GPU.
+- **Shared (tied) embeddings** may have to be copied back and forth between the first and last device.
+
+Pipeline parallelism fixes the idling by cutting the batch into micro-batches so that different stages work on different micro-batches at the same time. The idle time that remains is the *bubble*. PyTorch calls the number of micro-batches `chunks`; DeepSpeed calls it GAS (gradient accumulation steps), since running $m$ micro-batches through forward and backward and summing their gradients before one optimizer step is exactly gradient accumulation (see the `no_sync()` paragraph in [Bucketing and overlap](#bucketing-and-overlap)).
+
+Batch sizes then nest three deep. DP splits the global batch into one mini-batch per replica, and PP splits each mini-batch into micro-batches. With DP = 4, a global batch of 1024 gives mini-batches of 256; with `chunks` = 32 each micro-batch has 8 samples, and each stage works on one micro-batch at a time. Conversely $\text{global batch} = \text{mbs} \times \text{chunks} \times \text{dp} = 8 \times 32 \times 4 = 1024$. `chunks = 1` is naive MP. A very large `chunks` gives tiny micro-batches whose matmuls run inefficiently, so the right value is found by experiment: the goal is the highest utilization of all GPUs, i.e. the smallest bubble at an acceptable micro-batch size.
+
+Schedules, in order of invention (each is analysed below):
+
+- sequential, [GPipe](https://arxiv.org/abs/1811.06965)
+- 1F1B (one-forward-one-backward: once the pipeline is full, each stage alternates one micro-batch's `forward` with another's `backward`), from [PipeDream](https://arxiv.org/abs/1806.03377)
+- looped, depth-first (interleaved 1F1B), [Megatron-LM 2021](https://arxiv.org/abs/2104.04473)
+- looped, breadth-first, [Breadth-First Pipeline Parallelism](https://arxiv.org/abs/2211.05953)
+- Llama 3 combined depth-first and breadth-first ordering, and could change the global batch size during training, which is normally very hard with PP ([The Llama 3 Herd of Models](https://arxiv.org/abs/2407.21783), section 3.3.2)
+- zero-bubble schedules and DeepSeek-V3's DualPipe
 
 The simulator below makes every claim in this section checkable. It is a unit-time list scheduler: each device has an ordered list of operations; at each time step a device starts its next operation if that operation's input is ready (the forward of the previous stage, or the backward of the next stage), and otherwise idles. For zero-bubble schedules, an idle device may instead run a deferred weight-gradient $W$. It prints one row per device: digits are forward passes of micro-batch `0..7`, lowercase letters are backward passes (`a` = micro-batch 0), uppercase letters are $W$ passes, `.` is idle (the *bubble*).
 
@@ -1499,7 +1788,9 @@ The bubble, from the GPipe paper:
 
 ![naive model parallelism vs GPipe](images/parallelism-gpipe-bubble.png)
 
-([source](https://arxiv.org/abs/1811.06965))
+([source](https://arxiv.org/abs/1811.06965); see also Google's [GPipe announcement](https://research.google/blog/introducing-gpipe-an-open-source-library-for-efficiently-training-large-scale-neural-network-models/))
+
+Both halves show a pipeline of degree 4: forward stages F0 to F3, then backward stages in reverse, B3 to B0. The top half is naive model parallelism ($m = 1$). The bottom half uses `chunks` = 4: $F_{i,j}$ is stage $i$ running micro-batch $j$, so GPU0 runs $F_{0,0}, F_{0,1}, F_{0,2}, F_{0,3}$, waits while the other stages work, and only then runs the backwards in reverse order, $B_{0,3}, B_{0,2}, B_{0,1}, B_{0,0}$. The empty cells are the bubble.
 
 1F1B (PipeDream-Flush, [arXiv 2006.09503](https://arxiv.org/abs/2006.09503)) reorders the same work. After $p - i$ warm-up forwards, stage $i$ alternates one forward and one backward. The bubble is *identical*, $(p-1)/(m+p-1)$, because the critical path still contains $p-1$ fills and drains. What changes is memory:
 
@@ -1509,6 +1800,12 @@ The bubble, from the GPipe paper:
 | 1F1B | $p$ (stage $i$ holds $p - i$) |
 
 The simulator output shows both: GPipe and 1F1B both take 33 units with a 27.3% bubble at $p = 4, m = 8$, matching $3/11$, but GPipe holds 8 micro-batches of activations on every device while 1F1B holds `[4, 3, 2, 1]`. So 1F1B lets you raise $m$ to shrink the bubble without raising memory.
+
+SageMaker's documentation calls this backward-first ordering an "interleaved pipeline" (not to be confused with the interleaved stages of the next section). DeepSpeed and SageMaker both use it:
+
+![interleaved pipeline execution](images/parallelism-sagemaker-interleaved-pipeline.png)
+
+(from the SageMaker model parallelism documentation)
 
 ### Interleaved 1F1B
 
@@ -1655,9 +1952,30 @@ max |grad_pipeline - grad_reference| over both stages: 3.7e-08; messages per mic
 
 This is the GPipe schedule for $p = 2$ with explicit sends: rank 0 runs stage 0 for every micro-batch and ships activations, rank 1 runs stage 1 and the loss and ships activation gradients back. The gradients match the unsplit model. Production pipelines ($torch.distributed.pipelining$, Megatron) add the schedule logic, shape negotiation and overlap, but the communication is exactly these two messages per micro-batch per boundary.
 
+### PP in practice: caveats and implementations
+
+Whatever stack you use, the same structural constraints keep showing up:
+
+- The model has to be cut into stages, and some APIs still want something close to an `nn.Sequential` of stages, which may force design changes.
+- Stage boundaries are restricted in what they pass. Python variables flowing through a single-process forward have to be worked around: typical interfaces accept a Tensor or a tuple of Tensors, with the batch as the first dimension, because the pipeline chunks the mini-batch into micro-batches along it.
+- Conditional control flow at the stage level is not possible. Encoder-decoder models like T5 need special workarounds for a conditional encoder stage.
+- Each layer's output must become the next stage's input.
+- The first stage holds the embedding, which is large with a big vocabulary, so the first stage may need fewer transformer blocks than the others (and the last stage, holding the output projection and loss, the same).
+
+Modern stacks remove some of the boilerplate but not these constraints. Where to get PP:
+
+- [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) - battle-tested PP (interleaved 1F1B and related schedules); model-specific, with no separate public pipe-style API
+- [DeepSpeed](https://www.deepspeed.ai/tutorials/pipeline/) - PP as part of the DeepSpeed stack, often combined with ZeRO
+- [`torch.distributed.pipelining`](https://docs.pytorch.org/docs/stable/distributed.pipelining.html) - PyTorch's PP toolkit (migrated from [PiPPy](https://github.com/pytorch/pippy)), still **alpha** and subject to API change. It splits general models, ships GPipe, 1F1B, interleaved 1F1B, looped BFS and `ScheduleDualPipeV` (DeepSeek-style) schedules, and composes with DP/FSDP/TP; [torchtitan](https://github.com/pytorch/torchtitan) has a 3D-parallel Llama example
+- [torchtitan](https://github.com/pytorch/torchtitan) and [nanotron](https://github.com/huggingface/nanotron) - full training stacks using modern PP
+- [DeepSeek DualPipe](https://github.com/deepseek-ai/DualPipe) - the reference implementation of the [DualPipe](#dualpipe) schedule
+- [SageMaker](https://arxiv.org/abs/2111.05972) - proprietary, AWS only
+
+Further reading: [Pipeline-Parallelism: Distributed Training via Model Partitioning](https://siboehm.com/articles/22/pipeline-parallel-training).
+
 ## Expert parallelism
 
-An MoE layer has $E$ experts and routes each token to $k$ of them. EP places $E/e$ experts per rank in a group of $e$ ranks. Background is in the [survey](README.md#expert-parallelism).
+An MoE layer (Mixture of Experts, see [Mixture of Experts](../../models/architectures.md#mixture-of-experts)) has $E$ experts and routes each token to $k$ of them. Expert parallelism (EP) gives each expert its own accelerator, or a few when one is not enough: it places $E/e$ experts per rank in a group of $e$ ranks. Instead of moving weights, EP moves *tokens* to the experts that hold the weights. It is used in training and especially at inference, where large batches are likely to hit every expert, and each expert's matmul sees all the tokens routed to it, which makes the matmuls bigger and more efficient. Background: [DeepSpeed-MoE](https://arxiv.org/abs/2201.05596) and HuggingFace's [Mixture of Experts Explained](https://huggingface.co/blog/moe#parallelism).
 
 ### Dispatch / combine volume
 
@@ -1874,6 +2192,111 @@ Two non-obvious points:
 
 1. FSDP in TorchTitan shards over `dp_shard × cp` jointly, because CP ranks hold identical params. This flattened sub-mesh gets the FSDP collectives.
 2. The product of the inner dims assigned to NVLink must not exceed 8 here. $\text{TP} = 8$ leaves CP and EP crossing IB.
+
+### 2D and 3D layouts: DP+PP and DP+PP+TP
+
+DP combined with PP, from the DeepSpeed [pipeline tutorial](https://www.deepspeed.ai/tutorials/pipeline/):
+
+![DP + PP on 4 GPUs](images/parallelism-zero-dp-pp.png)
+
+DP rank 0 does not see GPU2 and DP rank 1 does not see GPU3. To DP there are only GPUs 0 and 1, which it feeds as if there were just 2 GPUs. GPU0 "secretly" hands part of its load to GPU2 through PP, and GPU1 enlists GPU3 the same way. Each dimension needs at least 2 GPUs, so this needs at least 4.
+
+Adding TP gives 3D parallelism, from the blog post [3D parallelism: Scaling to trillion-parameter models](https://www.microsoft.com/en-us/research/blog/deepspeed-extreme-scale-model-training-for-everyone/) (worth reading in full):
+
+![DP + PP + TP on 8 GPUs](images/parallelism-deepspeed-3d.png)
+
+At least 2 GPUs per dimension means at least 8 GPUs. Implementations of both DP+PP and DP+PP+TP: [DeepSpeed](https://github.com/deepspeedai/DeepSpeed) (whose DP can be ZeRO-DP), [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), [SageMaker](https://arxiv.org/abs/2111.05972), [OSLO](https://github.com/eleutherAI/Oslo), [nanotron](https://github.com/huggingface/nanotron) and [torchtitan](https://github.com/pytorch/torchtitan).
+
+### ZeRO combined with PP and TP
+
+ZeRO is normally a standalone alternative to PP and TP, but it can be combined with them, and when it is combined with PP (with or without TP) it is usually only ZeRO-1, optimizer-state sharding. Candidate C in the worked example below is exactly this layout.
+
+- **ZeRO-2 with PP** is possible but slow. Gradients would need an extra reduce-scatter per *micro-batch* before sharding, and PP deliberately uses many small micro-batches to shrink the bubble (trading arithmetic intensity, the micro-batch size, against bubble size, the number of micro-batches). Those per-micro-batch collectives hurt. The memory win is also small: PP already cuts each rank's gradients to $1/\text{PP}$ of the model.
+- **ZeRO-3 with PP** is a poor fit for the same reason: even more inter-node communication per micro-batch.
+- **ZeRO-Offload** still applies: with ZeRO-1 the optimizer states can be offloaded to CPU memory.
+
+Implementations: [Megatron-DeepSpeed](https://github.com/deepspeedai/Megatron-DeepSpeed) and its fork [Megatron-DeepSpeed from BigScience](https://github.com/bigscience-workshop/Megatron-DeepSpeed) (used for BLOOM-176B), [OSLO](https://github.com/eleutherAI/Oslo) and [torchtitan](https://github.com/pytorch/torchtitan). The reference paper is [Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B](https://arxiv.org/abs/2201.11990).
+
+### Which collectives each strategy uses
+
+Intra-node and inter-node bandwidth differ by about an order of magnitude, which is why the mesh order above matters. TP is the most synchronization-heavy, so it belongs inside the fastest, lowest-latency domain. Traditionally that is one node, but on rack-scale systems like NVL72 the NVLink domain spans many nodes (a *supernode*). The real rule is to keep TP inside the scale-up fabric (the NVLink-class network joining GPUs inside a node or rack, as opposed to the scale-out InfiniBand/Ethernet between them; see [Intra-node networking](../../network/interconnects.md#intra-node-networking)), and cross into scale-out only when measurement says you can afford it or capacity leaves no choice. Some accelerators, such as AMD's MI300-series, have comparatively slow GPU-to-GPU links, which changes the best layout again.
+
+Per step, with $\Psi$ parameters (volumes in units of the model size, as derived in the sections above):
+
+| Strategy | Collectives | Volume |
+| :-- | :-- | :-- |
+| DDP | 1 all-reduce of gradients, overlapped with backward | 2× model |
+| ZeRO-1 / ZeRO-2 | 1 reduce-scatter of gradients + 1 all-gather of updated params | 2× model |
+| ZeRO-3 / FSDP | 2 all-gathers of weights (before forward and before backward) + 1 reduce-scatter of gradients | 3× model (1.5× DDP) |
+| TP | per layer: 2 all-gathers + 2 reduce-scatters (equivalently, 2 all-reduces in forward and 2 in backward) | activations, every layer |
+| PP | per micro-batch per boundary: 1 send + 1 recv each way, overlapped in the steady phase | activations at boundaries |
+| SP, Megatron | 2 all-gathers + 2 reduce-scatters per layer | $4Nh$ per layer ([paper, §3.2](https://arxiv.org/abs/2309.14509)) |
+| SP, DeepSpeed-Ulysses | 2 all-to-alls per layer | $4Nh/P$ per layer (same source) |
+
+For SP, $h$ is the hidden size, $N$ the sequence length and $P$ the parallel degree. Implementations may use different patterns from these.
+
+### Choosing a strategy: rules of thumb
+
+A rough guide. In each list the first option is usually the fastest. The worked examples below show how to replace these rules with arithmetic.
+
+**Single GPU**
+
+- Model fits: train normally.
+- Model does not fit: ZeRO with offload to CPU and optionally NVMe. Add Memory Centric Tiling (next item) if the largest layer does not fit either.
+- Largest layer does not fit: ZeRO with [Memory Centric Tiling](https://deepspeed.readthedocs.io/en/latest/zero3.html#memory-centric-tiling) (MCT), which splits a huge layer and runs the pieces sequentially. MCT reduces the parameters live on the GPU but not the activation memory. Because this need is rare as of 2026-08, you have to override `torch.nn.Linear` yourself to use it.
+
+**Single node, multiple GPUs**
+
+- Model fits on one GPU: DDP; ZeRO may or may not be faster depending on the situation and configuration.
+- Model does not fit on one GPU: PP, ZeRO or TP. With fast NVLink/NVSwitch the three are mostly on par; without it PP is faster than TP or ZeRO. The TP degree also matters. Experiment on your setup. TP is almost always kept inside one node, $\text{TP} \le$ GPUs per node.
+- Largest layer does not fit on one GPU: without ZeRO you must use TP, since PP alone cannot fit it. With ZeRO, see the single-GPU entry.
+
+**Multiple nodes**
+
+- If the model fits in one node, try [ZeRO with multiple replicas](#zero-and-the-global-batch-size-hierarchical-partitioning-zero) (HSDP) first: ZeRO over the fast intra-node links, DDP over the slow inter-node network.
+- Fast inter-node network: ZeRO, which needs almost no model changes; or PP+TP+DP, which communicates less but needs large model changes.
+- Slow inter-node network and still short of GPU memory: DP+PP+TP+ZeRO-1.
+
+### Automatic layout search: FlexFlow
+
+[FlexFlow](https://github.com/flexflow/flexflow-train) ([Beyond Data and Model Parallelism for Deep Neural Networks](https://arxiv.org/abs/1807.05358), Jia, Zaharia and Aiken) approaches the problem differently: instead of a human picking a layout, it searches for one. It parallelizes over four dimensions, Sample-Operator-Attribute-Parameter (SOAP):
+
+1. **Sample**: data parallelism over samples. 10 sequences of length 512, split over 2 devices, become $5 \times 2 \times 512$: each device gets 5 sequences.
+2. **Operator**: split one operation into sub-operations on different devices. LayerNorm needs the mean and variance, which are not independent; for illustration, copy the input to both devices, let cuda:0 reduce $\sum x$ while cuda:1 reduces $\sum x^2$, then combine $\text{mean} = E[x]$ and $\text{variance} = E[x^2] - E[x]^2$. That moment formula loses precision, so real implementations use a stable reduction (see [`torch.std_mean`](https://docs.pytorch.org/docs/stable/generated/torch.std_mean.html)).
+3. **Attribute**: data parallelism along the length. 10 sequences of length 512 become $10 \times 2 \times 256$: each device gets the first or second half of every sequence.
+4. **Parameter**: model parallelism, whether horizontal (TP-like) or vertical (layer-wise).
+
+```python
+# flexflow_ops.py: FlexFlow's four split dimensions on a (10, 512) batch, and an operator split of LayerNorm statistics
+import torch
+torch.manual_seed(0)
+x = torch.randn(10, 512)                                          # (batch, seq)
+print("sample   :", tuple(x.reshape(2, 5, 512).shape), "-> each device gets (5, 512)")
+print("attribute:", tuple(x.reshape(10, 2, 256).permute(1, 0, 2).shape), "-> each device gets (10, 256)")
+h = torch.randn(4096, dtype=torch.float64) * 0.5 + 3.0           # one row to normalize
+s1 = h.sum()                                                      # "cuda:0" reduces sum x
+s2 = (h * h).sum()                                                # "cuda:1" reduces sum x^2
+mean = s1 / h.numel(); var = s2 / h.numel() - mean ** 2           # E[x^2] - E[x]^2
+std_ref, mean_ref = torch.std_mean(h, unbiased=False)
+print(f"operator : mean {mean:.6f} (ref {mean_ref:.6f}), var {var:.6f} (ref {std_ref**2:.6f})")
+hf = h.float() + 1000
+v32 = (hf * hf).mean() - hf.mean() ** 2
+print(f"same split in fp32 with mean shifted to 1003: var {v32:.4f} vs true {h.var(unbiased=False):.4f}")
+```
+
+```
+$ python flexflow_ops.py
+sample   : (2, 5, 512) -> each device gets (5, 512)
+attribute: (2, 10, 256) -> each device gets (10, 256)
+operator : mean 2.988113 (ref 2.988113), var 0.248285 (ref 0.248285)
+same split in fp32 with mean shifted to 1003: var 0.2500 vs true 0.2483
+```
+
+The first dimension of each printed shape is the device. The two-device moment split is exact in float64, but in fp32 with a large mean the variance is off by 0.7%, the same catastrophic cancellation measured in [What must stay fp32](../arithmetic.md#what-must-stay-fp32-and-why).
+
+![FlexFlow's SOAP search space](images/parallelism-flexflow.jpeg)
+
+The point of FlexFlow is that it takes the resources (GPU/TPU/CPU, RAM/DRAM, fast intra-connect vs slow inter-connect) and decides algorithmically which parallelization to use where. It runs a roughly 30-minute simulation on the target cluster and produces a strategy for that environment; change the hardware and it re-optimizes. It is designed for models with static, fixed workloads, since models with dynamic behaviour may want different strategies on different iterations.
 
 ## Worked example 1: 70B dense on 1024 H100
 
@@ -2231,6 +2654,7 @@ Notes on the recipe:
 - The DeepSeek-V3 constants ($\gamma= 0.001$, sequence-wise $\alpha = 10^{-4}$, $M = 4$ nodes, EP64/PP16 on 2048 H800) are from my reading of arXiv 2412.19437. The DualPipe table is reproduced from it.
 - The activation-memory constant 34 is for a GPT block with a 4h GELU MLP and dropout. For SwiGLU/GQA models without dropout it is approximate.
 - All $\beta$ values are nominal. Achieved all-reduce/all-to-all bus bandwidth is typically noticeably lower and depends on message size. Plug in measured busbw (`alphabeta.py`, or `nccl-tests` on GPUs).
+- The IDEFICS-80B step-time breakdown (11 s comms + 18 s compute vs a 49 s step) was never explained; the gap points at a bottleneck the first-order formulas miss. The 176B V100 InfiniBand table is DeepSpeed's report, not reproduced here.
 - DDP's first-iteration single bucket is observed behaviour in torch 2.15 with default arguments; older versions bucketed from the first iteration.
 
 ## You can now read
@@ -2240,9 +2664,10 @@ Notes on the recipe:
 - [Profiling and optimization](../profiling-and-optimization.md) - checking in a trace whether the overlap these cost models assume actually happens.
 - [RL infrastructure](../../platform/rl-infrastructure.md) - the parallelism layouts used for trainer and inference workers in RL systems.
 
+Parts of this chapter are adapted from Stas Bekman's [Machine Learning Engineering Open Book](https://github.com/stas00/ml-engineering) (CC BY-SA 4.0).
+
 ## Further reading
 
-- [Model Parallelism survey](README.md) - implementations, pictures, and the ZeRO inter-node analysis
 - [Collectives internals](../../network/collectives-internals.md) - ring/tree/NVLS derivations behind the alpha-beta models
 - [Training arithmetic](../arithmetic.md) - FLOPs/token, memory accounting, MFU
 - [torch.distributed docs](https://docs.pytorch.org/docs/stable/distributed.html), [FSDP2 `fully_shard`](https://docs.pytorch.org/docs/stable/distributed.fsdp.fully_shard.html), [tensor parallel](https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html), [DeviceMesh tutorial](https://docs.pytorch.org/tutorials/recipes/distributed_device_mesh.html)
@@ -2263,3 +2688,11 @@ Notes on the recipe:
 - Gale et al., *MegaBlocks*, [arXiv 2211.15841](https://arxiv.org/abs/2211.15841)
 - Llama Team, *The Llama 3 Herd of Models*, [arXiv 2407.21783](https://arxiv.org/abs/2407.21783)
 - Liang et al., *TorchTitan*, [arXiv 2410.06511](https://arxiv.org/abs/2410.06511)
+- Lamy-Poirier, *Breadth-First Pipeline Parallelism*, [arXiv 2211.05953](https://arxiv.org/abs/2211.05953)
+- Harlap et al., *PipeDream*, [arXiv 1806.03377](https://arxiv.org/abs/1806.03377)
+- Wang et al., *ZeRO++*, [arXiv 2306.10209](https://arxiv.org/abs/2306.10209)
+- Li et al., *Sequence Parallelism: Long Sequence Training from System Perspective* (Colossal-AI), [arXiv 2105.13120](https://arxiv.org/abs/2105.13120)
+- Li et al., *DISTFLASHATTN*, [arXiv 2310.03294](https://arxiv.org/abs/2310.03294)
+- Bekman et al., *Arctic Long Sequence Training*, [arXiv 2506.13996](https://arxiv.org/abs/2506.13996)
+- Jia, Zaharia and Aiken, *Beyond Data and Model Parallelism for Deep Neural Networks* (FlexFlow), [arXiv 1807.05358](https://arxiv.org/abs/1807.05358)
+- Smith et al., *Using DeepSpeed and Megatron to Train Megatron-Turing NLG 530B*, [arXiv 2201.11990](https://arxiv.org/abs/2201.11990)

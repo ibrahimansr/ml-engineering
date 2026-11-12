@@ -10,7 +10,7 @@
 
 Forward links (later chapters that go deeper on terms this chapter only touches): [Writing GPU kernels](writing-kernels.md) teaches CUDA C++ and Triton from zero; [Model parallelism derivations](../../training/model-parallelism/derivations.md) covers tensor parallelism; [Serving engine internals](../../inference/serving-engine-internals.md) covers continuous batching and paged KV caches; [Profiling and optimization](../../training/profiling-and-optimization.md) covers `torch.compile` and activation checkpointing as tools.
 
-The [Accelerators](README.md) chapter tells you what a GPU is rated at - [TFLOPS](README.md#tflops), [memory bandwidth](README.md#accelerator-memory-size-and-speed), [caches](README.md#caches), and how much of the peak is [actually achievable](README.md#maximum-achievable-and-sustainable-flops). This chapter is about *why* a given kernel (a function compiled for the GPU and launched from the CPU to run across thousands of GPU threads at once) gets the fraction it gets: how the hardware schedules threads (independent streams of instructions, each with its own registers), where the bytes live, what a tensor core instruction looks like, and how the kernels that dominate an LLM step (GEMM, attention, normalization) are structured to hit or miss the roofline (the performance ceiling set by whichever of compute or memory bandwidth runs out first, [defined below](#roofline-per-op)). It ends with the tools that tell you which case you are in.
+The [Accelerators](../accelerators.md) chapter tells you what a GPU is rated at - [TFLOPS](../accelerators.md#tflops), [memory bandwidth](../accelerators.md#accelerator-memory-size-and-speed), [caches](../accelerators.md#caches), and how much of the peak is [actually achievable](../accelerators.md#maximum-achievable-and-sustainable-flops). This chapter is about *why* a given kernel (a function compiled for the GPU and launched from the CPU to run across thousands of GPU threads at once) gets the fraction it gets: how the hardware schedules threads (independent streams of instructions, each with its own registers), where the bytes live, what a tensor core instruction looks like, and how the kernels that dominate an LLM step (GEMM, attention, normalization) are structured to hit or miss the roofline (the performance ceiling set by whichever of compute or memory bandwidth runs out first, [defined below](#roofline-per-op)). It ends with the tools that tell you which case you are in.
 
 Two terms used throughout: *HBM* (High Bandwidth Memory) is the GPU's main memory, the tens of GB of DRAM stacked next to the chip where tensors live; the *host* is the CPU and its RAM, as opposed to the *device* (the GPU).
 
@@ -53,7 +53,7 @@ Nothing in this chapter is a benchmark result. The one kernel in it comes with a
 - TMEM: Tensor Memory (Blackwell `sm_100`)
 - warpgroup: 4 consecutive warps (128 threads), the issuing unit of Hopper `wgmma`
 
-For the general accelerator glossary see [the main chapter](README.md#glossary).
+For the general accelerator glossary see [the main chapter](../accelerators.md#glossary).
 
 
 ## SMs, warps and schedulers
@@ -140,7 +140,7 @@ On Hopper (per the [H100 architecture white paper](https://resources.nvidia.com/
 - 1 warp scheduler (the hardware that picks which ready warp runs its next instruction) that can issue 1 instruction per clock from one of its resident warps
 - a 16K x 32-bit register file slice (64KB), so 64K registers = 256KB per SM
 - 32 FP32 lanes, 16 INT32, 16 FP64 lanes
-- 1 tensor core (4 per SM, 528 on the 132-SM H100 SXM - the figure the [TFLOPS derivation](README.md#how-to-calculate-theoretical-tflops) uses)
+- 1 tensor core (4 per SM, 528 on the 132-SM H100 SXM - the figure the [TFLOPS derivation](../accelerators.md#how-to-calculate-theoretical-tflops) uses)
 - special function units; the FlashAttention-3 paper states H100 SXM5 has "989 TFLOPS of FP16 matmul but only 3.9 TFLOPS of special functions", which works out to $3.9\times10^{12} / (132\ \text{SMs} \times 1.83\times10^{9}\ \text{Hz}) = 16$ MUFU ops per clock per SM, i.e. 4 per sub-partition (derived; the per-SM count is consistent with the white paper but I did not find it stated as a single number)
 
 Per-SM limits for compute capability 9.0, from the [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications) table:
@@ -157,7 +157,7 @@ Per-SM limits for compute capability 9.0, from the [CUDA C++ Programming Guide](
 | max shared memory per CTA (opt-in)|          227KB |           227KB |
 | SMs (product)                     |            132 |             148 |
 
-The B200 column follows the [Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html), which keeps the Hopper per-SM limits for `sm_100`. The 148 SM count is what the [divisibility section](../../training/performance/README.md#do-more-sms-give-more-tflops) measured on a B200 SKU. If your toolkit's programming guide disagrees with this table, it wins.
+The B200 column follows the [Blackwell Tuning Guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html), which keeps the Hopper per-SM limits for `sm_100`. The 148 SM count is what the [divisibility section](../../training/profiling-and-optimization.md#do-more-sms-give-more-tflops) measured on a B200 SKU. If your toolkit's programming guide disagrees with this table, it wins.
 
 On a machine with an NVIDIA GPU you can read most of these limits from PyTorch instead of trusting a table (untested here; attribute names as of PyTorch 2.x - `regs_per_multiprocessor` and `shared_memory_per_multiprocessor` are recent additions, so use `getattr` defensively):
 
@@ -380,8 +380,8 @@ y = tl.where(x > 0, x, 0.01 * x)          # leaky ReLU, both sides computed, one
 | registers          | 256KB per SM, 33MiB total                    | 256KB per SM                            | per thread (private)    | 64K x 4B; $132 \times 256\ \text{KB} = 33\ \text{MiB}$                                              |
 | tensor memory      | -                                            | 256KB per SM                            | per CTA (allocated)     | `sm_100` only; 128 lanes x 512 columns x 4B, see [tcgen05](#blackwell-tcgen05-and-tmem) |
 | L1 / shared memory | 256KB per SM combined, up to 228KB as smem   | 256KB per SM combined, up to 228KB smem | per CTA (smem) / per SM | Hopper / Blackwell tuning guides                                              |
-| L2                 | 50MB                                         | 126MB (GB200 figure)                    | whole GPU (2 partitions)| [caches table](README.md#caches)                                              |
-| HBM                | 80GB HBM3, 3.35TBps                          | 180GB HBM3e, 8.0TBps                    | whole GPU               | [memory table](README.md#accelerator-memory-size-and-speed)                   |
+| L2                 | 50MB                                         | 126MB (GB200 figure)                    | whole GPU (2 partitions)| [caches table](../accelerators.md#caches)                                              |
+| HBM                | 80GB HBM3, 3.35TBps                          | 180GB HBM3e, 8.0TBps                    | whole GPU               | [memory table](../accelerators.md#accelerator-memory-size-and-speed)                   |
 
 Bandwidths NVIDIA does not publish as a single figure:
 
@@ -821,7 +821,7 @@ There are three distinct mechanisms hiding behind "make it divisible", with diff
 2. **Instruction shape (16 / 64)** - the MMA instruction's M/N/K. A K that is not a multiple of 16 (bf16) means padding the last K-slab with zeros inside the kernel; an N not a multiple of 8 wastes part of every `wgmma`.
 3. **Tile quantization (64 / 128 / 256)** - the CTA tile. The output is covered by `BM x BN` tiles, and partial tiles cost as much as full ones.
 
-On top of tile quantization sits **wave quantization**: tiles are executed in waves of $\#\text{SMs}$ (or $\#\text{SMs} \times \text{CTAs-per-SM}$). Both are covered with plots in the [Tile and wave quantization](../../training/performance/README.md#tile-and-wave-quantization) section and the SKU-dependence in [Do more SMs give more TFLOPS?](../../training/performance/README.md#do-more-sms-give-more-tflops); here is the combined arithmetic for H100 (132 SMs, 1 CTA per SM, `128 x 256` tile - a common Hopper CUTLASS/cuBLAS tile; the real kernel's tile is picked by heuristics and may differ):
+On top of tile quantization sits **wave quantization**: tiles are executed in waves of $\#\text{SMs}$ (or $\#\text{SMs} \times \text{CTAs-per-SM}$). Both are covered with plots in the [Tile and wave quantization](../../training/profiling-and-optimization.md#tile-and-wave-quantization) section and the SKU-dependence in [Do more SMs give more TFLOPS?](../../training/profiling-and-optimization.md#do-more-sms-give-more-tflops); here is the combined arithmetic for H100 (132 SMs, 1 CTA per SM, `128 x 256` tile - a common Hopper CUTLASS/cuBLAS tile; the real kernel's tile is picked by heuristics and may differ):
 
 $$
 \text{efficiency} = \frac{MN}{\text{tiles} \cdot \text{BM} \cdot \text{BN}} \ \text{(tile quantization)} \times \frac{\text{tiles}}{\text{waves} \cdot \text{SMs}} \ \text{(wave quantization)}
@@ -919,7 +919,7 @@ $$
 \text{ridge point:}\quad \text{AI}^* = \text{peak\_flops} / \text{peak\_bw}
 $$
 
-If $\text{AI} < \text{AI}^*$ the kernel is memory-bound and its best possible time is $B / \text{peak\_bw}$, no matter how clever the arithmetic. Ridge points from the vendor peaks in the [TFLOPS table](README.md#tflops-comparison-table) and [memory table](README.md#accelerator-memory-size-and-speed):
+If $\text{AI} < \text{AI}^*$ the kernel is memory-bound and its best possible time is $B / \text{peak\_bw}$, no matter how clever the arithmetic. Ridge points from the vendor peaks in the [TFLOPS table](../accelerators.md#tflops-comparison-table) and [memory table](../accelerators.md#accelerator-memory-size-and-speed):
 
 | accelerator | bf16 dense TFLOPS | HBM TBps | bf16 ridge (FLOP/B) | fp8 ridge |
 | :---------- | ----------------: | -------: | ------------------: | --------: |
@@ -927,7 +927,7 @@ If $\text{AI} < \text{AI}^*$ the kernel is memory-bound and its best possible ti
 | B200        |              2250 |     8.00 |                 281 |       563 |
 | MI300X      |              1307 |     5.30 |                 247 |         - |
 
-Use [achievable](README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) rather than theoretical peaks for planning; the ridge moves left by a similar factor for both, so the classification below does not change.
+Use [achievable](../accelerators.md#mamf-and-msmf-comparison-table) rather than theoretical peaks for planning; the ridge moves left by a similar factor for both, so the classification below does not change.
 
 The calculator used for every roofline number in this section (vendor peaks; swap in measured ones):
 
@@ -1100,7 +1100,7 @@ Per element, bf16 in and out, each element read once and written once (4 bytes t
 | LayerNorm                   |                       ~8  |          ~2 | memory |
 | softmax (max, sub, exp, sum, div) |                  ~5 |        ~1.3 | memory |
 
-All are two orders of magnitude below the ridge. Their cost is bytes, so the only levers are (a) moving fewer bytes - fusion - and (b) moving them at a higher fraction of peak bandwidth. On H100, a LayerNorm on an `(8192, 4096)` bf16 activation moves $2 \times 8192 \times 4096 \times 2 = 134\ \text{MB}$, a floor of 40us, while the following `4096 x 4096` projection does $2 \times 8192 \times 4096 \times 4096 = 275\ \text{GFLOP}$, a floor of 278us. At the roofline the norm is ~14% of the GEMM; in eager PyTorch with an fp32 upcast it is several separate kernels each paying the round trip, which is how normalization and elementwise ops end up a large fraction of a step for smaller models (see [Anatomy of Model's Operations](../../training/performance/README.md#anatomy-of-models-operations)).
+All are two orders of magnitude below the ridge. Their cost is bytes, so the only levers are (a) moving fewer bytes - fusion - and (b) moving them at a higher fraction of peak bandwidth. On H100, a LayerNorm on an `(8192, 4096)` bf16 activation moves $2 \times 8192 \times 4096 \times 2 = 134\ \text{MB}$, a floor of 40us, while the following `4096 x 4096` projection does $2 \times 8192 \times 4096 \times 4096 = 275\ \text{GFLOP}$, a floor of 278us. At the roofline the norm is ~14% of the GEMM; in eager PyTorch with an fp32 upcast it is several separate kernels each paying the round trip, which is how normalization and elementwise ops end up a large fraction of a step for smaller models (see [Anatomy of Model's Operations](../../training/profiling-and-optimization.md#anatomy-of-models-operations)).
 
 A PyTorch-level check of the claim that these ops are bytes, not FLOPs - count both with the FLOP counter and the tensor sizes (runs on CPU; `device="meta"` tensors carry shapes but no data, so nothing is actually computed):
 
@@ -1896,7 +1896,7 @@ print(torch.cuda.max_memory_allocated() / 2**30, "GiB")         # no (N, N) tens
 
 ## torch.compile internals
 
-The [torch.compile section](../../training/performance/README.md#torchcompile) of the performance chapter covers when it pays off, with measurements. This is what happens under the hood, so you can reason about the failure modes.
+The [torch.compile section](../../training/profiling-and-optimization.md#torchcompile) of the performance chapter covers when it pays off, with measurements. This is what happens under the hood, so you can reason about the failure modes.
 
 What it is, in one paragraph: `torch.compile(fn)` (or `@torch.compile` on a function or `nn.Module`) returns a wrapped version of `fn`. On the first call it captures the PyTorch operations `fn` performs into a graph, generates fused kernels for that graph, and caches them; later calls with compatible inputs run the cached kernels. Three stages do the work: **Dynamo** captures the graph from Python, **AOTAutograd** adds the backward pass, **Inductor** generates the kernels (Triton on GPU, C++ on CPU). The tool-level view - when to use it and what it buys - is in [Profiling and optimization](../../training/profiling-and-optimization.md#torchcompile).
 
@@ -2031,7 +2031,7 @@ Inductor lowers the ATen graph to its own loop-level IR, then a scheduler groups
 
 - **pointwise and reduction fusion**: chains of elementwise ops, and elementwise ops feeding/following a reduction, become one Triton kernel. RMSNorm becomes one kernel, the RoPE + reshape becomes one, a residual add + norm becomes one. This is the memory-bound win from the [roofline section](#normalization-softmax-and-elementwise).
 - **matmuls and convolutions** go by default to `extern` calls (cuBLAS / cuDNN), and the surrounding pointwise ops become separate Triton kernels before/after.
-- **`mode="max-autotune"`**: benchmarks Triton GEMM templates (and optionally the CUTLASS backend) against cuBLAS at compile time, per shape, and can fuse pointwise epilogues into the chosen template. It also enables CUDA graphs. Compile time is much longer (see the cold-start numbers in the [performance chapter's torch.compile section](../../training/performance/README.md#torchcompile)). `max-autotune-no-cudagraphs` exists for when graphs are the problem.
+- **`mode="max-autotune"`**: benchmarks Triton GEMM templates (and optionally the CUTLASS backend) against cuBLAS at compile time, per shape, and can fuse pointwise epilogues into the chosen template. It also enables CUDA graphs. Compile time is much longer (see the cold-start numbers in the [performance chapter's torch.compile section](../../training/profiling-and-optimization.md#torchcompile)). `max-autotune-no-cudagraphs` exists for when graphs are the problem.
 - Triton kernels are themselves autotuned over a small set of block sizes / `num_warps` per kernel; `torch._inductor.config.coordinate_descent_tuning = True` searches further.
 
 To see what you got: `TORCH_LOGS="output_code"` prints the generated Python/Triton; `TORCH_COMPILE_DEBUG=1` dumps the IR and code per graph; `TORCH_TRACE=/tmp/trace` plus `tlparse` (a separate `pip install tlparse` tool that turns the trace directory into HTML) gives a browsable report of every graph, guard set, break and recompile. Reading the generated code is the fastest way to answer "did it fuse X into Y?".
@@ -2256,7 +2256,7 @@ N=16384 num_warps=16 ->  32 x-values +  32 w-values =  64 fp32 registers of data
 ### Benchmarking notes
 
 - `triton.testing.do_bench` runs warmup, flushes L2 between repetitions by writing a large buffer, synchronizes with CUDA events, and returns the requested quantiles of the timings. Flushing matters: at `M = 8192, N = 1024` the input is 16MB and fits in H100's 50MB L2, so without a flush you would measure L2 bandwidth.
-- Report GB/s against the theoretical peak from the device properties (computed as in [How to calculate theoretical memory bandwidth](README.md#how-to-calculate-theoretical-memory-bandwidth)). A good memory-bound kernel on H100 lands at a large fraction of it; NVIDIA does not publish an achievable figure, so measure a plain `y.copy_(x)` with the same harness as the practical ceiling.
+- Report GB/s against the theoretical peak from the device properties (computed as in [How to calculate theoretical memory bandwidth](../accelerators.md#how-to-calculate-theoretical-memory-bandwidth)). A good memory-bound kernel on H100 lands at a large fraction of it; NVIDIA does not publish an achievable figure, so measure a plain `y.copy_(x)` with the same harness as the practical ceiling.
 - Expect `torch.compile` to be close to the hand-written kernel here: this is exactly the pattern Inductor fuses well. The reason to write Triton yourself is when the fusion crosses something Inductor will not fuse - a GEMM mainloop, a custom backward that recomputes rather than saves, a non-standard reduction layout, or a cross-entropy over a 128K vocab that should never materialize the logits (Liger-Kernel's fused linear cross-entropy is a good public example).
 
 The practical ceiling measurement suggested above, in the same harness (untested here):
@@ -2480,7 +2480,7 @@ print(f"graph replay {start.elapsed_time(end):.3f} ms")          # vs. the eager
 
 ## Profiling: nsys and ncu
 
-Two different tools, for two different questions. Start with the timeline; only go to the kernel profiler once you know which kernel matters. For `torch.profiler` usage see [Profilers](../../debug/pytorch.md#profilers).
+Two different tools, for two different questions. Start with the timeline; only go to the kernel profiler once you know which kernel matters. For `torch.profiler` usage see [Profilers](../../development/debugging-distributed.md#profilers).
 
 ### Nsight Systems: where does the time go
 
@@ -2569,20 +2569,20 @@ For tensor core kernels look at the tensor pipe utilization in Compute Workload 
 
 ## AMD differences
 
-The same concepts apply to AMD Instinct (CDNA) GPUs with different names and numbers. ROCm is AMD's counterpart of the CUDA software stack, HIP its counterpart of CUDA C++, an XCD (accelerator complex die) is one of the compute chiplets an MI300X is built from, and VGPRs are vector registers (one value per lane). For tuning specifics see [AMD GPUs Performance](amd/performance.md).
+The same concepts apply to AMD Instinct (CDNA) GPUs with different names and numbers. ROCm is AMD's counterpart of the CUDA software stack, HIP its counterpart of CUDA C++, an XCD (accelerator complex die) is one of the compute chiplets an MI300X is built from, and VGPRs are vector registers (one value per lane). For tuning specifics see [AMD GPUs Performance](../accelerators.md).
 
 | concept               | NVIDIA (H100)                         | AMD (MI300X, CDNA3)                                       |
 | :-------------------- | :------------------------------------ | :-------------------------------------------------------- |
 | compute unit          | SM, 132                               | CU, 304 (8 XCDs x 38)                                     |
 | SIMT group            | warp, 32 threads                      | wavefront, 64 threads                                     |
-| matrix unit           | tensor core, 4/SM                     | Matrix Core, 4/CU (1216 total, per the [TFLOPS table](README.md#how-to-calculate-theoretical-tflops)) |
+| matrix unit           | tensor core, 4/SM                     | Matrix Core, 4/CU (1216 total, per the [TFLOPS table](../accelerators.md#how-to-calculate-theoretical-tflops)) |
 | matrix instruction    | `mma.sync` / `wgmma`                  | MFMA (`v_mfma_*`), issued by a wavefront                  |
 | shared memory         | smem, up to 228KB/SM                  | LDS, 64KB/CU                                              |
 | last-level cache      | 50MB L2                               | 4MB L2 per XCD + 256MB Infinity Cache                     |
 | HBM                   | 3.35TBps                              | 5.3TBps                                                   |
 | bulk async copy       | TMA                                   | no direct TMA equivalent on CDNA3 (to my knowledge)       |
 
-Sources: [AMD CDNA3 ISA and MI300 documentation](https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html) and the [MI300X specifications](https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html); cache numbers as in the [caches table](README.md#caches).
+Sources: [AMD CDNA3 ISA and MI300 documentation](https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html) and the [MI300X specifications](https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html); cache numbers as in the [caches table](../accelerators.md#caches).
 
 What changes in practice:
 
