@@ -31,7 +31,7 @@ Corollary: If when you buy or rent hardware you invest in the fastest accelerato
 
 - An accelerator or a processing unit is what does most of the work.
 
-- Since ML does a lot of parallel processing ([SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data)) GPUs were used at the beginning, but now you additionally have TPUs, FPGAs, HPUs, QPUs, RDUs, etc. Recent CPUs are becoming used as accelerators as well, especially for inference.
+- Since ML does a lot of parallel processing ([SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data)) GPUs were used at the beginning, but now you additionally have TPUs, FPGAs, HPUs, QPUs, RDUs, etc. (these acronyms are expanded in the [Accelerators glossary](../compute/accelerator/README.md#glossary)). Recent CPUs are becoming used as accelerators as well, especially for inference.
 
 [More details](../compute/accelerator).
 
@@ -60,17 +60,17 @@ Corollary: If when you buy or rent hardware you invest in the fastest accelerato
 
 - As we are in the wild-wild-west stage of the AI industry it's very difficult to predict the future, and so pretty much anything goes as far as startup ideas go, as long as it sounds reasonable.
 
-- What distinguishes the AI bubble from the Dot-com bubble, is that one didn't actually need much money to operate a Dot-com company - most of the raised money went to marketing and some to staff, barely any to compute. AI companies need millions of dollars because training LLMs requires an insane amount of compute, and that compute is very expensive. e.g. 1x NVIDIA H100 costs ~$30k and a company may need 512 of those, which is $15M (not counting the other hardware components and related costs)!
+- What distinguishes the AI bubble from the Dot-com bubble, is that one didn't actually need much money to operate a Dot-com company - most of the raised money went to marketing and some to staff, barely any to compute. AI companies need millions of dollars because training LLMs requires an insane amount of compute, and that compute is very expensive. e.g. 1x NVIDIA H100 costs ~\$30k and a company may need 512 of those, which is \$15M (not counting the other hardware components and related costs)!
 
 
 
 ## ML Engineer's heaven and hell
 
-This is my personal LLM/VLM trainings-based heaven and hell. YMMV.
+This is my personal LLM/VLM trainings-based heaven and hell. YMMV (your mileage may vary).
 
 ### ML Engineer's heaven
 
-1. A well built HPC, or a full service cloud based cluster, where someone diligently and timely takes care of the hardware and the systems.
+1. A well built HPC (a High Performance Computing center - a supercomputer-style shared cluster, usually run by a government, a national lab or a university), or a full service cloud based cluster, where someone diligently and timely takes care of the hardware and the systems.
 
    I just need to bring my training software and do the training, which is already an insanely complicated job requiring special skills.
 
@@ -162,7 +162,7 @@ Pros:
 Cons:
 
 - You're stuck with the outdated hardware just a few years after it was purchased - might be able to resell
-- Must buy more than needed - Hardware tends to break, especially when it's used 24/7, RMA could take weeks
+- Must buy more than needed - Hardware tends to break, especially when it's used 24/7, RMA (Return Merchandise Authorization - shipping the broken part back to the vendor for a replacement) could take weeks
 - Have to hire talent to manage the in-house solution
 - Have to figure out cooling, electric costs, insurance, etc.
 
@@ -266,8 +266,8 @@ As of 2026-08 here are the most common accelerators that can be used for trainin
 Widely available:
 
   * NVIDIA H200, B200, B300 - B300 systems are shipping
-  * AMD MI325X, MI350X and MI355X - neoclouds primarily, but large CSPs have started offering AMD too
-  * Intel Gaudi3 - on Intel's cloud and via OEM servers
+  * AMD MI325X, MI350X and MI355X - neoclouds primarily, but large CSPs (Cloud Service Providers, e.g. AWS, GCP, Azure) have started offering AMD too
+  * Intel Gaudi3 - on Intel's cloud and via OEM servers (servers built by Original Equipment Manufacturers such as Dell, HPE or Supermicro)
 
 Available, but locks you in:
 
@@ -326,7 +326,7 @@ Also in general most ML code could be compiled into cross-platform formats like 
 
 - You can see that A100 was 2.5 faster than V100, and H100 is ~3x faster than A100. But the intra-node speed of NVLink has only increased by 150GBps each generation. NVLink 5.0 doubled the speed over NVLink 4.0 so it catches up a little bit with the compute speed ups. But the speed up is still insufficient.
 
-- Moreover, each NVLink generation raised both the per-link bandwidth (2.5 → 3.125 → 6.25 → 12.5 GBps for NVLink 1–4, then 25 GBps for NVLink 5) and, in most generations, the number of links, so per-GPU bandwidth climbed from 80 GBps (P100) to 450 GBps (H100) to 900 GBps (B200).
+- Moreover, each NVLink generation raised both the per-lane bandwidth (per direction; each link is made of several lanes - see the [NVLink table](../network/README.md#intra-node-networking)) (2.5 → 3.125 → 6.25 → 12.5 GBps for NVLink 1–4, then 25 GBps for NVLink 5) and, in most generations, the number of links, so per-GPU bandwidth climbed from 80 GBps (P100) to 450 GBps (H100) to 900 GBps (B200).
 
 - The inter-node situation isn't any better with most NICs there doing 100 or 200Gbps, and some 400Gbps are starting to emerge. (correspondingly in GBps: 12.5, 25 and 50). It's the same story here, some solutions provide dozens of NICs to get to higher speeds.
 

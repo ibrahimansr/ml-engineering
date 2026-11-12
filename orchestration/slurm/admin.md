@@ -7,7 +7,7 @@
 ```
 Are you sure you want to continue connecting (yes/no/[fingerprint])?
 ```
-for every new node you haven't logged into yet, you can disable this check with:
+for every new node you haven't logged into yet (ssh asks you to confirm each new host's key, see [ssh: keys, config, tunnels](../../foundations/networking.md#ssh-keys-config-tunnels)), you can disable this check with:
 ```bash
 echo "Host *" >> ~/.ssh/config
 echo "  StrictHostKeyChecking no" >> ~/.ssh/config
@@ -17,7 +17,7 @@ Of course, check if that's secure enough for your needs. I'm making an assumptio
 
 2. Install `pdsh`
 
-You can now run the wanted command on multiple nodes.
+You can now run the wanted command on multiple nodes. `pdsh` runs one command on many hosts in parallel; `PDSH_RCMD_TYPE=ssh` tells it to connect over ssh (rather than its older default, `rsh`), and `-w` takes a Slurm-style host list, where `node-[21,23-26]` means `node-21`, `node-23`, `node-24`, `node-25` and `node-26`. Each output line is prefixed with the host it came from, and they arrive in whatever order the hosts answer.
 
 For example, let's run `date`:
 
@@ -38,7 +38,7 @@ First, this command will give us all process ids that tie up the GPUs:
 nvidia-smi --query-compute-apps=pid --format=csv,noheader | sort | uniq
 ```
 
-So we can now kill all those processes in one swoop:
+(`sort | uniq` removes duplicate PIDs.) So we can now kill all those processes in one swoop - `xargs -n1` runs `sudo kill -9` once per PID, and `-9` is SIGKILL, which the process cannot catch:
 
 ```bash
  PDSH_RCMD_TYPE=ssh pdsh -w node-[21,23-26]  "nvidia-smi --query-compute-apps=pid --format=csv,noheader | sort | uniq | xargs -n1 sudo kill -9"
@@ -94,7 +94,9 @@ The key is to get the list of nodes that are drained due to `"Kill task failed"`
 sinfo -R | grep "Kill task failed"
 ```
 
-now extract and expand the list of nodes, check that the nodes are indeed user-process free (or try to kill them first) and then undrain them.
+(`sinfo -R` lists the nodes that are down or drained, together with the reason recorded for each, and the node list in its last column.)
+
+now extract and expand the list of nodes (`scontrol show hostnames node-[1-3]` turns a compact list into one hostname per line), check that the nodes are indeed user-process free (or try to kill them first) and then undrain them.
 
 Earlier you learned how to [run a command on multiple nodes](#run-a-command-on-multiple-nodes) which we will use in this script.
 
@@ -123,6 +125,8 @@ set in `/etc/slurm/slurm.conf` on the controller node for this to work (and reco
 ## Job management
 
 ### Modify a job's timelimit
+
+`TimeLimit` takes `days-hours:minutes:seconds`. `$SLURM_JOB_ID` is only set inside the job itself; from outside it, put the job ID shown by `squeue` there instead.
 
 To set a new timelimit on a job, e.g., 2 days:
 ```bash

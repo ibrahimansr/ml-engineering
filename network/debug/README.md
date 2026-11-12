@@ -35,7 +35,9 @@ For example if you're using the aforementioned debug script, for a single node w
 NCCL_DEBUG=INFO torchrun --nproc_per_node 8 --nnodes 1 torch-distributed-gpu-test.py
 ```
 
-To launch it on multiple nodes, you'd have to either use some orchestration software like SLURM or Kubernetes, or manually launch it on each node (`pdsh` would be of a huge help) - see the instructions inside [torch-distributed-gpu-test.py](../../debug/torch-distributed-gpu-test.py) for details. But to understand how things work I recommend starting with just 1 node and then progressing to 2, and later to more nodes.
+(This assumes you copied the script into the current directory. `--nproc_per_node 8` starts one process per GPU and `--nnodes 1` says this is the only node.)
+
+To launch it on multiple nodes, you'd have to either use some orchestration software like SLURM or Kubernetes (covered in [Slurm from zero](../../orchestration/slurm/from-zero.md) and [Kubernetes from zero](../../orchestration/kubernetes-from-zero.md)), or manually launch it on each node (`pdsh`, which runs one command over ssh on many hosts at once, would be of a huge help) - see the instructions inside [torch-distributed-gpu-test.py](../../debug/torch-distributed-gpu-test.py) for details. But to understand how things work I recommend starting with just 1 node and then progressing to 2, and later to more nodes.
 
 Now, inspect the output of the program and look for a line that starts with:
 ```
@@ -48,16 +50,18 @@ For example, this output:
 NCCL INFO NET/FastSocket : Using [0]ibs108:10.0.19.12<0> [1]ibs109:10.0.19.13<0> [2]ibs110:10.0.19.14<0> [3]ibs111:10.0.19.15<0> [4]ibs112:10.0.19.16<0> [5]ibs113:10.0.19.17<0> [6]ibs114:10.0.19.18<0> [7]ibs115:10.0.19.19<0>
 ```
 
-tells us that [nccl-fastsocket](https://github.com/google/nccl-fastsocket) transport layer plugin is used and it discovered 8 `ibs*` network interfaces (NIC cards). If you're using Google Cloud this is correct, and your NCCL is likely setup correctly. But if you're using InfiniBand (IB) and you're getting the above output, you're likely to clock a very low internode speed, because this means that you activated the wrong plugin.
+tells us that [nccl-fastsocket](https://github.com/google/nccl-fastsocket) transport layer plugin (a [net plugin](../../compute/gpu-software-stack.md#network-plugins), Google's faster TCP transport for its cloud) is used and it discovered 8 `ibs*` network interfaces (NIC cards). If you're using Google Cloud this is correct, and your NCCL is likely setup correctly. But if you're using InfiniBand (IB) and you're getting the above output, you're likely to clock a very low internode speed, because this means that you activated the wrong plugin.
 
 In the case of IB, what you want to see is `NET/IB` and its IB interfaces:
 ```
 NCCL INFO NET/IB : Using [0]mlx5_0:1/IB [1]mlx5_1:1/IB [2]mlx5_2:1/IB [3]mlx5_3:1/IB [4]mlx5_4:1/IB [5]mlx5_5:1/IB [6]mlx5_6:1/IB [7]mlx5_7:1/IB [RO]; OOB eno1:101.262.0.9<0>
 ```
 
+How to read these lines: each `[N]` entry is one interface NCCL will use. For sockets it is `name:IP-address<port>` (the `<0>` is just a not-yet-bound port number); for IB it is `device:port/link-layer`, so `mlx5_0:1/IB` is port 1 of the adapter `mlx5_0`, running InfiniBand. `[RO]` means PCIe Relaxed Ordering is enabled for the RDMA traffic, a PCIe setting that lets the adapter's writes to memory complete out of order for higher throughput. Everything after `;` is the bootstrap interface.
+
 Here, you can see that IB is used with 8 `mlx5_*` interfaces for collective comms, and one OOB, which stands for Out-Of-Band, and is used for doing bootstrapping the connections and is usually using a slower Ethernet NIC (at times [several NICs bonded into one](https://wiki.linuxfoundation.org/networking/bonding) - in case you're wondering what does `bond` in the interface name stand for).
 
-To know which TCP/IP interfaces your node has you run `ifconfig` on one of the nodes (typically all similar nodes will have the same interface names, but not always).
+To know which TCP/IP interfaces your node has you run `ifconfig` on one of the nodes (the older tool; `ip -br addr` is the modern equivalent, see [Interfaces and the routing table](../../foundations/networking.md#interfaces-and-the-routing-table)) (typically all similar nodes will have the same interface names, but not always).
 
 If your collective comms network is IB, instead of `ifconfig` you'd run `ibstat`. The last example of `NCCL INFO NET` would correspond to the following output:
 
@@ -76,6 +80,8 @@ CA 'mlx5_7'
 Which of these commands answer at all depends on the fabric, so it helps to know what each one asks. `ibstat`, along with `ibnetdiscover`, `iblinkinfo`, `ibhosts`, `ibswitches` and `perfquery`, queries the subnet manager - the fabric-wide service that hands out addresses and answers topology questions on InfiniBand. Those report only on a real InfiniBand fabric, which is what the sample above is. `ibv_devices`, `ibv_devinfo` and `ibstatus` ask the local adapter instead, so they answer on any fabric the RDMA stack enumerates, as does reading the port directly with `cat /sys/class/infiniband/*/ports/1/rate`.
 
 So identify the fabric first, using a command from the second group. On InfiniBand the port's `link_layer` is `InfiniBand` and the subnet-manager tools work. On RoCE, which carries RDMA over Ethernet, `link_layer` is `Ethernet`. On EFA there is no subnet manager: `ibv_devinfo` reports `transport: unspecified` with `link_layer: Unspecified`, `ibstatus` reports each port `ACTIVE` at its rate, and the subnet-manager tools fail - `ibnetdiscover` with `Can't open SMI UMAD port`, while `ibstat -l` prints nothing at all. That silent empty output is the trap, since it reads as "this node has no RDMA devices"; on a 2026-09 AWS node measured for this chapter it printed nothing while the node had 16 adapters, each `ACTIVE` at `200 Gb/sec (4X HDR)`.
+
+How to read the `ifconfig` output below: each block is one interface; `inet` is its IPv4 address, `mtu` its maximum packet size, and the `RX`/`TX` lines count received and transmitted packets and errors.
 
 Since besides the fast inter-node connectivity NICs, you're also likely to have a slow management Ethernet NIC (or even several of those), that is there to be able to configure the node, use a shared file system, access the Internet, it's almost certain that `ifconfig` will also include additional NICs. Also you are likely to have a docker network interface, `lo` loopback and some others. For example on my desktop I may get the following output:
 
@@ -167,20 +173,22 @@ Additionally, depending on which cloud is used, it's very likely that the provid
 
 Another typical problem users run into is when they try to reuse their NCCL setup they had working on cloud A on a cloud B. Often things don't translate and one has to carefully remove any previously set environment variables and set them correctly anew for the new cloud. This issue is likely to occur even if you're using the same cloud, but different types of instances, as some network setups are very specific for a given instance and won't work elsewhere.
 
-Once you think you have set up the NCCL correctly, the next thing is to benchmark your connectivity and ensure that it matches the advertised speed (well, ~80% of it). Proceed to the [benchmark chapter](../benchmarks).
+Once you think you have set up the NCCL correctly, the next thing is to benchmark your connectivity and ensure that it matches the advertised speed (well, ~80% of it). Proceed to the [benchmark chapter](../benchmarks/README.md).
 
 
 ## NCCL with docker containers
 
-* Give enough resources by adding to the docker `run` these additional args: `--shm-size=1g --ulimit memlock=-1` ([more details](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#sharing-data))
+* Give enough resources by adding to the docker `run` these additional args: `--shm-size=1g --ulimit memlock=-1` (a bigger `/dev/shm` for NCCL's shared-memory transport, and unlimited pinned memory for RDMA registration; see [The run flags that matter for ML](../../foundations/containers-and-virtualization.md#the-run-flags-that-matter-for-ml)) ([more details](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#sharing-data))
 * Privileged access: sometimes you need to add `--privileged` to  the docker `run` args.
-* Having the docker image include the right packages, e.g. if using IB you'd want at least to install `libibverbs1 librdmacm1`
+* Having the docker image include the right packages, e.g. if using IB you'd want at least to install `libibverbs1 librdmacm1` (the user-space IB verbs library and the RDMA connection manager library that sets up RDMA connections)
 
 
 
 ## How to check if P2P is supported
 
 Sometimes you need to know if the GPUs on your compute node support P2P access (Peer2Peer). Disabling P2P will typically lead to a slow intra-node connectivity.
+
+`nvidia-smi topo -p2p r` prints a GPU-by-GPU matrix of whether each pair supports P2P reads (`r`; other letters query writes, NVLink, atomics and so on - see `nvidia-smi topo -h`).
 
 You can see that on this particular 8x NVIDIA H100 node the P2P is supported:
 
@@ -219,7 +227,7 @@ As you can see from the Legend,`CNS` signifies that "Chipset is not supported".
 
 If you're using a high-end datacenter GPUs this is very unlikely to happen. Though some low-end datacenter GPUs may not support P2P like the example of L4 above.
 
-For consumer-level GPUs there could be a variety of reasons for your GPU not being supported, often it's the IOMMU and/or ACS features being enabled. At other times it's just the driver version. And if you spend some time searching you might find someone hacking drivers to enable P2P in GPUs that shouldn't support P2P, like this [4090 P2P support repo](https://github.com/tinygrad/open-gpu-kernel-modules).
+For consumer-level GPUs there could be a variety of reasons for your GPU not being supported, often it's the IOMMU and/or ACS features being enabled (both introduced in [IOMMU, VFIO and PCIe passthrough](../../foundations/containers-and-virtualization.md#iommu-vfio-and-pcie-passthrough)): either can force peer-to-peer PCIe traffic through the CPU's root complex instead of directly between devices. At other times it's just the driver version. And if you spend some time searching you might find someone hacking drivers to enable P2P in GPUs that shouldn't support P2P, like this [4090 P2P support repo](https://github.com/tinygrad/open-gpu-kernel-modules).
 
 To check if PCI Access Control Services (ACS) are enabled and to disable those follow [this guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#pci-access-control-services-acs).
 
@@ -242,7 +250,7 @@ export NCCL_DEBUG=INFO
 export NCCL_DEBUG_SUBSYS=COLL
 ```
 
-if you're working in a slurm environment with many nodes you probably want to perform this only on rank 0, like so:
+if you're working in a slurm environment with many nodes you probably want to perform this only on rank 0 (`SLURM_PROCID` is the global rank Slurm assigns each process, see [What Slurm sets](../../orchestration/slurm/from-zero.md#what-slurm-sets)), like so:
 ```bash
 if [[ $SLURM_PROCID == "0" ]]; then
   export NCCL_DEBUG=INFO
@@ -250,7 +258,7 @@ if [[ $SLURM_PROCID == "0" ]]; then
 fi
 ```
 
-Assuming your logs were all sent to `main_log.txt`, you can then count how many of each collective call were performed with:
+Assuming your logs were all sent to `main_log.txt`, you can then count how many of each collective call were performed with (`grep -a` treats the file as text even if it contains stray binary bytes, and `wc -l` counts the matching lines):
 ```bash
 grep -a "NCCL INFO Broadcast" main_log.txt     | wc -l
 2590
@@ -268,7 +276,7 @@ So I typically first slice out one iteration. e.g. if each iteration log starts 
 ```
 csplit main_log.txt '/iteration: /' "{*}"
 ```
-and then analyze one of the resulting files that correspond to the iterations. By default it will be named something like `xx02`.
+and then analyze one of the resulting files that correspond to the iterations. By default it will be named something like `xx02`. (`csplit` splits a file into pieces at every line matching the regex, and `"{*}"` repeats the split as many times as possible, so each piece holds one iteration; the pieces are named `xx00`, `xx01`, and so on.)
 
 
 ## Useful NCCL Debug Environment Variables
@@ -319,7 +327,7 @@ If you then need to analyze hundreds of these at once, here are some useful shor
 grep -n "Init COMPLETE" nccl-log*
 ```
 
-- show `tail -1` of all nccl log files followed by the name of each file
+- show `tail -1` of all nccl log files followed by the name of each file (`find -exec ... {} \;` runs the quoted shell snippet once per file, passing the filename as `$1`; the `_` fills `$0`). The last line of each log shows where each rank stopped, which is what you want when hunting the one rank that hung:
 
 ```bash
 find . -name "nccl*" -exec sh -c 'echo "$(tail -1 "$1") ($1)"' _ {} \;
@@ -334,6 +342,8 @@ find . -name "nccl*" -exec sh -c 'echo "$(tail -1 "$1") ($1)"' _ {} \;
 ```bash
 NCCL_DEBUG_SUBSYS=INIT,GRAPH,ENV,TUNING
 ```
+
+Here `INIT` is communicator setup, `GRAPH` is the topology search, `ENV` is the environment variables NCCL picked up, `TUNING` is the algorithm/protocol choice, and `COLL` (used above) is the individual collective calls.
 
 
 

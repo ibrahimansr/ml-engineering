@@ -8,15 +8,15 @@ Training jargon uses a multitude of abbreviations and terms, so here are some im
 
 - BS: Batch Size - here we mean batch size per gpu, often it is also referred to as MBS (micro-batch-size)
 - GAS: Gradient Accumulation Steps - how many forward/backward cycles to perform before one full iteration is complete
-- GBS: Global Batch Size - total batch size per iteration - may include gradient accumulation
-- PP: Pipeline Parallelism
-- TFLOPS: Trillion FLOPs per second - [FLOPS](https://en.wikipedia.org/wiki/FLOPS)
+- GBS: Global Batch Size - total batch size per iteration - may include gradient accumulation, i.e. $\text{GBS} = \text{MBS} \times \text{GAS} \times \text{DP}$, where DP is the number of data-parallel replicas
+- PP: Pipeline Parallelism - splitting the model's layers into stages on different GPUs, see [Pipeline Parallelism](model-parallelism/README.md#pipeline-parallelism)
+- TFLOPS: Trillion FLOPs per second - [FLOPS](https://en.wikipedia.org/wiki/FLOPS). In the numbers below this is the achieved throughput per GPU, not the hardware peak - see [MFU and HFU, properly](arithmetic.md#mfu-and-hfu-properly)
 
 ## Global Batch Size Ramp Up
 
 If you intend to train with a very large GBS, with say 1024, or 2048 samples and even higher, when you just start training, it's very wasteful to feed such large batch sizes to the model. At this point it's totally random and can't benefit from having too refined data. Therefore to save data and resources, one often ramps up the global batch size over some period of time.
 
-It's also important to not start with GBS that is too small, since otherwise the progress won't be efficient. When there is too little data the compute (TFLOPS) is inefficient and will slow everything down. This is especially so when Pipeline Parallelism (PP) is used, since the most important thing about PP tuneup is a small GPU idleness bubble, and the smaller the GBS the larger the bubble is.
+It's also important to not start with GBS that is too small, since otherwise the progress won't be efficient. When there is too little data the compute (TFLOPS) is inefficient and will slow everything down. This is especially so when Pipeline Parallelism (PP) is used, since the most important thing about PP tuneup is a small GPU idleness bubble, and the smaller the GBS the larger the bubble is (the bubble is the time pipeline stages sit idle waiting for micro-batches to fill and drain the pipeline - fewer micro-batches per iteration means a bigger idle fraction, see [Pipeline Parallelism](model-parallelism/README.md#pipeline-parallelism)).
 
 For example, for BLOOM-176B, where we did use PP, after doing throughput benchmarking we found that starting with GBS=16 was incredibly slow (8TFLOPS), so we eventually started with GBS=192 (73TFLOPS) and then we ramped up to GBS=2048 (150TFLOPS) - we increased GBS by 16 every 9_765_625 samples.
 

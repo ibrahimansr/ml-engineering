@@ -18,7 +18,7 @@ Prior to starting BLOOM-176B training we did multiple experiments with the [104B
 
 ![](images/pre-bloom-104B-en-fail.png)
 
-As you can see many attempts were made, many techniques were applied (see [chronicles](https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md). We think the 2 main obstacles were using fp16 and data that had a lot of garbage in it. For BLOOM-176B we switched to bf16, used much cleaner data and also added an embedding layer-norm and that made all the difference.
+As you can see many attempts were made, many techniques were applied (see [chronicles](https://github.com/bigscience-workshop/bigscience/blob/master/train/tr8-104B-wide/chronicles.md). We think the 2 main obstacles were using fp16 and data that had a lot of garbage in it. For BLOOM-176B we switched to bf16 (same exponent range as fp32, so far fewer overflows than fp16 - see [Tensor precision / Data types](../dtype.md)), used much cleaner data and also added an embedding layer-norm (a LayerNorm applied right after the token-embedding lookup, before the first transformer block) and that made all the difference.
 
 
 ### An almost perfect training
@@ -27,18 +27,18 @@ As you can see many attempts were made, many techniques were applied (see [chron
 
 The [BLOOM-176B](https://github.com/bigscience-workshop/bigscience/tree/master/train/tr11-176B-ml) training had a close to perfect training loss trajectory, with a single spike that has recovered in 200 steps.
 
-You can inspect the [TB](https://huggingface.co/bigscience/tr11-176B-logs/tensorboard) to zoom in and check other plots.
+You can inspect the [TB](https://huggingface.co/bigscience/tr11-176B-logs/tensorboard) (TensorBoard, the web dashboard of training curves) to zoom in and check other plots.
 
 This was the almost perfect training indeed. Lots of hard work was put into achieving this.
 
 
 ### The grokking moment
 
-Some time back I was doing performance testing and run a tiny global batch size of 8 on an 8×A100 node, training llama-2-7b from scratch. (w/ DeepSpeed ZeRO-3 DP using HF Transformers [Llama](https://github.com/huggingface/transformers/tree/main/src/transformers/models/llama) implementation)
+Some time back I was doing performance testing and run a tiny global batch size of 8 on an 8×A100 node, training llama-2-7b from scratch. (w/ DeepSpeed [ZeRO-3](../model-parallelism/README.md#zero-data-parallelism) DP using HF Transformers [Llama](https://github.com/huggingface/transformers/tree/main/src/transformers/models/llama) implementation)
 
 ![](images/llama-7b-grokking-no-zoom.png)
 
-Here one can observe a rapid loss improvement from 4 to 2.5 in just 480 samples after a very steady much slower improvements. My colleague [Gautam Mittal](https://github.com/gmittal) called it the [grokking](https://en.wikipedia.org/wiki/Grok) moment. In just a handful of steps the model suddenly generalized to much better predict the next tokens.
+Here one can observe a rapid loss improvement from 4 to 2.5 in just 480 samples after a very steady much slower improvements. My colleague [Gautam Mittal](https://github.com/gmittal) called it the [grokking](https://en.wikipedia.org/wiki/Grok) moment. (This is the colloquial sense of "suddenly getting it" - not the specific [grokking phenomenon](https://arxiv.org/abs/2201.02177) from the literature, where validation accuracy jumps long after training loss has already converged.) In just a handful of steps the model suddenly generalized to much better predict the next tokens.
 
 Normally one doesn't see such a dramatic improvement when using a much larger batch size.
 
@@ -116,6 +116,8 @@ During the [IDEFICS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-1
 
 Legend: cm4 (high), average (mid) and pmd (low)
 
+Here cm4 is a web-scraped dataset of documents with interleaved images and text, and pmd is a dataset of image-caption pairs - IDEFICS is a vision-language model, so it was trained on both.
+
 You can see that the loss spikes were sometimes happening simultaneously on both datasets and at other times only one of the datasets loss would spike.
 
 Here the model was learning two different data distributions and as you can see it was not reporting the same loss and the spike behaviors on both data distributions. The pmd datasets loss was much easier for the model than the cm4 one.
@@ -129,6 +131,8 @@ The most complicated challenge of resume is restoring various RNGs, getting to t
 
 
 ### DataSampler related issues
+
+The DataSampler (in PyTorch, the `Sampler` passed to the `DataLoader`) is what decides which sample indices go into which batch and in what order. For it to resume correctly its position and shuffling seed must be saved in the checkpoint and restored - see [Deterministic, resumable data loading](../../foundations/storage-and-data.md#deterministic-resumable-data-loading).
 
 During [IDEFICS-80B](https://github.com/huggingface/m4-logs/blob/master/tr-190-80b/chronicles.md) training we had a very complicated DataLoader which was suffering from image to text ratio fluctuations when the DataLoader was getting restored on resume, so we ended up having a small spike on each resume which would then recover:
 
@@ -152,7 +156,7 @@ I rolled back to just before the weird behavior occurred and restarted. The loss
 
 I have never seen this type of divergence before. I was scratching my head for a while and then decided to look at the bigger picture.
 
-[wandb](https://wandb.ai/) didn't handle resume data plotting correctly if a rollback was performed, that is it ignored all new data after the rollback until the steps of the old data have been overcome. This forced us to start a new wandb plot for every resume with a rollback so that new data is shown. And if you need to see the whole plot you have to stitch them together, which includes dead data points that are no longer true. So I did the stitching and saw this puzzle:
+[wandb](https://wandb.ai/) (Weights & Biases, a hosted experiment-tracking service that plots metrics logged from training) didn't handle resume data plotting correctly if a rollback was performed, that is it ignored all new data after the rollback until the steps of the old data have been overcome. This forced us to start a new wandb plot for every resume with a rollback so that new data is shown. And if you need to see the whole plot you have to stitch them together, which includes dead data points that are no longer true. So I did the stitching and saw this puzzle:
 
 ![](images/ptl-repeat-data-p3.png)
 

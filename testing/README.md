@@ -4,6 +4,8 @@ Note: a part of this document refers to functionality provided by the included [
 
 This document covers both `pytest` and `unittest` functionalities and shows how both can be used together.
 
+If you haven't used them: `unittest` is the test framework in Python's standard library, where tests are methods named `test_*` on a subclass of `unittest.TestCase`. `pytest` is a third-party test runner (`pip install pytest`) that finds files named `test_*.py` (or `*_test.py`), runs every function or method in them whose name starts with `test`, and treats a failing plain `assert` as a test failure. It runs `unittest.TestCase` tests too, which is why the two can be mixed. A **plugin** is an extra package (`pytest-xdist`, `pytest-instafail`, ...) that adds command line options to `pytest` once it's installed.
+
 
 ## Running tests
 
@@ -12,7 +14,9 @@ This document covers both `pytest` and `unittest` functionalities and shows how 
 ```bash
 pytest
 ```
-I use the following alias:
+Run with no arguments, `pytest` collects tests starting from the current directory (or from the paths set in its config file, see below).
+
+I use the following alias (a short name for a longer command, set in `~/.bashrc`, see [Environment variables and PATH](../foundations/linux-and-os.md#environment-variables-and-path)):
 ```bash
 alias pyt="pytest --disable-warnings --instafail -rA"
 ```
@@ -23,6 +27,8 @@ which tells pytest to:
 - `--instafail` shows failures as they happen, and not at the end
 - `-rA` generates a short test summary info
 
+(`-r` picks which outcomes get a line in the end-of-run summary, `A` meaning all of them: passed, failed, skipped, errors.)
+
 it requires you to install:
 ```bash
 pip install pytest-instafail
@@ -31,7 +37,7 @@ pip install pytest-instafail
 
 ### Getting the list of all tests
 
-Show all tests in the test suite:
+Show all tests in the test suite (`--collect-only` lists the tests without running them, `-q` prints one test id per line):
 
 ```bash
 pytest --collect-only -q
@@ -76,7 +82,7 @@ If the file contains multiple classes, you can choose to run only tests of a giv
 pytest tests/test_optimization.py::OptimizationTest
 ```
 
-will run all the tests inside that class.
+will run all the tests inside that class. The `file::Class::function` form is called a test's **node id**, and it's what `--collect-only -q` prints.
 
 As mentioned earlier you can see what tests are contained inside the `OptimizationTest` class by running:
 
@@ -84,7 +90,7 @@ As mentioned earlier you can see what tests are contained inside the `Optimizati
 pytest tests/test_optimization.py::OptimizationTest --collect-only -q
 ```
 
-You can run tests by keyword expressions.
+You can run tests by keyword expressions. `-k EXPR` keeps only the tests whose name (including the class and file name) matches `EXPR` as a case-insensitive substring.
 
 To run only tests whose name contains `adam`:
 
@@ -144,7 +150,7 @@ pip install pytest-xdist
 
 To enter the mode: `pytest -f` or `pytest --looponfail`
 
-File changes are detected by looking at `looponfailroots` root directories and all of their contents (recursively). If the default for this value does not work for you, you can change it in your project by setting a configuration option in `setup.cfg`:
+File changes are detected by looking at `looponfailroots` root directories and all of their contents (recursively). If the default for this value does not work for you, you can change it in your project by setting a configuration option in `setup.cfg`. (`setup.cfg`, `pytest.ini`, `tox.ini` and `pyproject.toml`'s `[tool.pytest.ini_options]` table are the files `pytest` reads its settings from; it uses the first one it finds walking up from the test paths.)
 
 ```ini
 [tool:pytest]
@@ -171,9 +177,11 @@ If you want to run all test modules, except a few you can exclude them by giving
 pytest $(ls -1 tests/*py | grep -v test_modeling)
 ```
 
+`$(...)` is [command substitution](../foundations/linux-and-os.md#scripting-essentials): the shell runs the inner pipeline (list the test files one per line, drop those matching `test_modeling`) and pastes its output in as `pytest`'s arguments.
+
 ### Clearing state
 
-CI builds and when isolation is important (against speed), cache should be cleared:
+CI builds and when isolation is important (against speed), cache should be cleared. `pytest` keeps a cache in `.pytest_cache/` between runs (for example the list of tests that failed last time, used by `--lf`/`--last-failed`), and `--cache-clear` wipes it at the start of the run:
 
 ```bash
 pytest --cache-clear tests
@@ -189,7 +197,7 @@ Since the order of executed tests is different and unpredictable, if running the
 
 ### Test order and repetition
 
-It's good to repeat the tests several times, in sequence, randomly, or in sets, to detect any potential inter-dependency and state-related bugs (tear down). And the straightforward multiple repetition is just good to detect some problems that get uncovered by randomness of DL.
+It's good to repeat the tests several times, in sequence, randomly, or in sets, to detect any potential inter-dependency and state-related bugs (tear down). Tear down is the cleanup that runs after a test (`tearDown()` in `unittest`); when it misses something, leftover state leaks into the next test. And the straightforward multiple repetition is just good to detect some problems that get uncovered by randomness of DL.
 
 
 #### Repeat tests
@@ -309,7 +317,7 @@ CUDA_VISIBLE_DEVICES="1" pytest tests/utils/test_logging.py
 
 This is handy when you want to run different tasks on different GPUs.
 
-Some tests must be run on CPU-only, others on either CPU or GPU or TPU, yet others on multiple-GPUs. The following skip decorators are used to set the requirements of tests CPU/GPU/TPU-wise:
+Some tests must be run on CPU-only, others on either CPU or GPU or TPU, yet others on multiple-GPUs. The following skip decorators (from [testing_utils.py](testing_utils.py): each one marks the test as skipped, rather than failed, when the machine doesn't meet the requirement) are used to set the requirements of tests CPU/GPU/TPU-wise:
 
 - `require_torch` - this test will run only under torch
 - `require_torch_gpu` - as `require_torch` plus requires at least 1 GPU
@@ -349,7 +357,7 @@ from testing_utils import require_torch_gpu
 def test_example_slow_on_gpu():
 ```
 
-Some decorators like `@parametrized` rewrite test names, therefore `@require_*` skip decorators have to be listed last for them to work correctly. Here is an example of the correct usage:
+Some decorators like `@parametrized` (from the `parameterized` package, covered in [Parametrization](#parametrization) below) rewrite test names, therefore `@require_*` skip decorators have to be listed last for them to work correctly. Here is an example of the correct usage:
 
 ```python no-style
 from testing_utils import require_torch_multi_gpu
@@ -392,6 +400,8 @@ CUDA_VISIBLE_DEVICES=0,1 RUN_SLOW=1 pytest -sv tests/test_trainer_distributed.py
 
 (`RUN_SLOW` is a special decorator used by HF Transformers to normally skip heavy tests)
 
+To be precise, `RUN_SLOW` is an environment variable: tests marked with Transformers' `@slow` decorator are skipped unless `RUN_SLOW=1` is set. `-s` turns off output capture (see [Output capture](#output-capture) below) and `-v` prints one line per test with its result.
+
 ### Output capture
 
 During test execution any output sent to `stdout` and `stderr` is captured. If a test or a setup method fails, its according captured output will usually be shown along with the failure traceback.
@@ -402,7 +412,7 @@ To disable output capturing and to get the `stdout` and `stderr` normally, use `
 pytest -s tests/utils/test_logging.py
 ```
 
-To send test results to JUnit format output:
+To send test results to JUnit format output (an XML report format that CI systems parse to display per-test results):
 
 ```bash
 py.test tests --junitxml=result.xml
@@ -426,7 +436,7 @@ Creating a URL for each test failure:
 pytest --pastebin=failed tests/utils/test_logging.py
 ```
 
-This will submit test run information to a remote Paste service and provide a URL for each failure. You may select tests as usual or add for example -x if you only want to send one particular failure.
+This will submit test run information to a remote Paste service and provide a URL for each failure. You may select tests as usual or add for example -x if you only want to send one particular failure. (`-x` stops the run at the first failure.)
 
 Creating a URL for a whole test session log:
 
@@ -443,7 +453,7 @@ pytest --pastebin=all tests/utils/test_logging.py
 
 ## Writing tests
 
-Most of the time if combining `pytest` and `unittest` in the same test suite works just fine. You can read [here](https://docs.pytest.org/en/stable/how-to/unittest.html) which features are supported when doing that , but the important thing to remember is that most `pytest` fixtures don't work. Neither parametrization, but we use the module `parameterized` that works in a similar way.
+Most of the time if combining `pytest` and `unittest` in the same test suite works just fine. You can read [here](https://docs.pytest.org/en/stable/how-to/unittest.html) which features are supported when doing that , but the important thing to remember is that most `pytest` fixtures don't work. (A **fixture** is a function that `pytest` runs to supply a test with a resource, injected by naming it as a test function argument: e.g. `def test_x(tmp_path):` receives a fresh temporary directory. `unittest.TestCase` methods can't take such arguments.) Neither parametrization, but we use the module `parameterized` that works in a similar way.
 
 
 ### Parametrization
@@ -452,6 +462,7 @@ Often, there is a need to run the same test multiple times, but with different a
 
 ```python
 # test_this1.py
+import math
 import unittest
 from parameterized import parameterized
 
@@ -468,12 +479,14 @@ class TestMathUnitTest(unittest.TestCase):
         assert_equal(math.floor(input), expected)
 ```
 
+(`assert_equal` stands for whatever equality assertion your suite uses - `self.assertEqual(...)` in a `unittest` class, or a plain `assert a == b`.)
+
 Now, by default this test will be run 3 times, each time with the last 3 arguments of `test_floor` being assigned the corresponding arguments in the parameter list.
 
 And you could run just the `negative` and `integer` sets of params with:
 
 ```bash
-pytest -k "negative and integer" tests/test_mytest.py
+pytest -k "negative or integer" tests/test_mytest.py
 ```
 
 or all but `negative` sub-tests, with:
@@ -510,6 +523,7 @@ Here is the same example, this time using `pytest`'s `parametrize` marker:
 
 ```python
 # test_this2.py
+import math
 import pytest
 
 
@@ -544,6 +558,8 @@ So now you can run just the specific test:
 ```bash
 pytest test_this2.py::test_floor[negative--1.5--2.0] test_this2.py::test_floor[integer-1-1.0]
 ```
+
+If your shell is zsh (the macOS default), quote these ids (`'test_this2.py::test_floor[integer-1-1.0]'`), otherwise it treats `[...]` as a filename pattern and fails with "no matches found".
 
 as in the previous example.
 
@@ -647,7 +663,7 @@ footnote: Each test can register multiple temporary directories and they all wil
 
 #### Temporary sys.path override
 
-If you need to temporary override `sys.path` to import from another test for example, you can use the `ExtendSysPath` context manager. Example:
+If you need to temporary override `sys.path` (the list of directories Python searches on `import`) to import from another test for example, you can use the `ExtendSysPath` context manager. Example:
 
 
 ```python
@@ -701,7 +717,7 @@ def test_feature_x():
         pytest.skip("unsupported configuration")
 ```
 
-or the whole module (via an autouse fixture — `pytest.config` was removed in pytest 4.0):
+or the whole module (via an autouse fixture — `pytest.config` was removed in pytest 4.0). `scope="module"` runs the fixture once per test file and `autouse=True` applies it to every test without them asking for it; `pytestconfig` is a built-in fixture giving access to the command line options (`--custom-flag` here would be a custom option registered by `pytest_addoption`, shown in [the last section](#a-massive-hack-to-create-multiple-pytest-reports)):
 
 ```python
 import pytest
@@ -739,6 +755,8 @@ or:
 def test_feature_x():
 ```
 
+(`torch_device` here is a module-level string, `"cuda"` or `"cpu"`, that the included [testing_utils.py](testing_utils.py) sets depending on what's available.)
+
 or skip the whole module:
 
 ```python no-style
@@ -746,6 +764,8 @@ or skip the whole module:
 class TestClass():
     def test_feature_x(self):
 ```
+
+(Strictly, this decorator skips every test in the class. To skip every test in the file, assign the marker to a module-level variable: `pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason="does not run on windows")`.)
 
 More details, example and ways are [here](https://docs.pytest.org/en/stable/how-to/skipping.html).
 
@@ -755,7 +775,7 @@ More details, example and ways are [here](https://docs.pytest.org/en/stable/how-
 
 #### Capturing the stdout/stderr output
 
-In order to test functions that write to `stdout` and/or `stderr`, the test can access those streams using the `pytest`'s [capsys system](https://docs.pytest.org/en/stable/how-to/capture-stdout-stderr.html). Here is how this is accomplished:
+In order to test functions that write to `stdout` and/or `stderr`, the test can access those streams using the `pytest`'s [capsys system](https://docs.pytest.org/en/stable/how-to/capture-stdout-stderr.html). Here is how this is accomplished (`capsys` is a fixture, requested just by naming it as an argument):
 
 ```python
 import sys
@@ -802,6 +822,7 @@ def test_something_exception():
 Another approach to capturing stdout is via `contextlib.redirect_stdout`:
 
 ```python
+import sys
 from io import StringIO
 from contextlib import redirect_stdout
 
@@ -822,7 +843,7 @@ def test_result_and_stdout():
     assert msg in out
 ```
 
-An important potential issue with capturing stdout is that it may contain `\r` characters that in normal `print` reset everything that has been printed so far. There is no problem with `pytest`, but with `pytest -s` these characters get included in the buffer, so to be able to have the test run with and without `-s`, you have to make an extra cleanup to the captured output, using `re.sub(r'~.*\r', '', buf, 0, re.M)`.
+An important potential issue with capturing stdout is that it may contain `\r` characters that in normal `print` reset everything that has been printed so far. There is no problem with `pytest`, but with `pytest -s` these characters get included in the buffer, so to be able to have the test run with and without `-s`, you have to make an extra cleanup to the captured output, using `re.sub(r'^.*\r', '', buf, 0, re.M)`.
 
 But, then we have a helper context manager wrapper to automatically take care of it all, regardless of whether it has some `\r`'s in it or not, so it's a simple:
 
@@ -882,7 +903,7 @@ logging.set_verbosity_info()
 logger = logging.get_logger("transformers.models.bart.tokenization_bart")
 with CaptureLogger(logger) as cl:
     logger.info(msg)
-assert cl.out, msg + "\n"
+assert cl.out == msg + "\n"
 ```
 
 ### Testing with environment variables
@@ -928,12 +949,14 @@ To start a debugger at the point of the warning, do this:
 pytest tests/utils/test_logging.py -W error::UserWarning --pdb
 ```
 
+`-W error::UserWarning` turns every `UserWarning` into an exception, so the test fails right where the warning is raised, and `--pdb` drops you into the Python debugger `pdb` at the point of failure (more on `pdb` in [Debugging PyTorch programs](../debug/pytorch.md#invoke-pdb-on-a-specific-rank-in-multi-node-training)).
+
 
 ## A massive hack to create multiple pytest reports
 
 Here is a massive `pytest` patching that I have done many years ago to aid with understanding CI reports better.
 
-To activate it add to `tests/conftest.py` (or create it if you haven't already):
+To activate it add to `tests/conftest.py` (or create it if you haven't already). `conftest.py` is a file `pytest` imports automatically before collecting the tests in its directory; fixtures and **hooks** defined there apply to all those tests. Hooks are functions with reserved names, such as `pytest_addoption` (register extra command line options) and `pytest_terminal_summary` (runs when the final summary is printed), which `pytest` calls at fixed points of a run:
 
 ```python
 import pytest
@@ -977,4 +1000,4 @@ This feature is most useful on CI, which makes it much easier to both introspect
 
 Using a different value to `--make-reports=` for different groups of tests can have each group saved separately rather than clobbering each other.
 
-All this functionality was already inside `pytest` but there was no way to extract it easily so I added the monkey-patching overrides [testing_utils.py](testing_utils.py). Well, I did ask if I can contribute this as a feature to `pytest` but my proposal wasn't welcome.
+All this functionality was already inside `pytest` but there was no way to extract it easily so I added the monkey-patching (replacing a library's functions at runtime from the outside) overrides [testing_utils.py](testing_utils.py). Well, I did ask if I can contribute this as a feature to `pytest` but my proposal wasn't welcome.

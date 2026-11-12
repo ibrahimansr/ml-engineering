@@ -2,7 +2,7 @@
 
 Having used multiple compute clouds over long and short terms, and participating in many "discovery" calls, I've learned that it's absolutely crucial to approach the cloud choosing process with an utmost care and dedication. Especially for the long term contracts - you may end up in a 3-year lock-in where you pay millions of dollars and end up having a terrible experience and no way to get out of the contract.
 
-To give you a perspective - a 64-node cluster may easily cost USD$20-50M over a 3 year period. This is often more than what startups pay for the salaries.
+To give you a perspective - a 64-node cluster may easily cost USD\$20-50M over a 3 year period. This is often more than what startups pay for the salaries.
 
 I can't stress this enough that choosing a bad 3-year contract may prevent your startup from succeeding.
 
@@ -15,7 +15,7 @@ These notes assume you already know what compute you want for your specific work
 ## Glossary
 
 - CSP: Cloud Service Provider
-- SLA: Service-level_agreement
+- SLA: Service Level Agreement
 - SLO: Service Level Objective
 - TCO: Total Cost of Ownership
 
@@ -26,7 +26,7 @@ In my limited experience there are 3 questions you absolutely need to know the a
 
 1. **Your GPUs will fail - guaranteed.** The critical question is how quickly they will be replaced and what's the procedure - if you need to get a hold of a human for each replacement this will be painful and slow, the best CSPs give you an API for you to do it yourself. Also beware of Humpty Dumpty GPUs, that will get returned to you w/o actually being replaced because when the technician checks them they appear to work just fine - but they will fail again when you try to use them - here is how to [detect if you get the same broken GPUs back](../compute/accelerator/nvidia/debug.md#how-to-detect-if-you-get-the-same-broken-node-again-and-again).
 
-2. **You will run into multiple problems, mainly with the hardware.** You need to know how quickly you can reach an engineer that can address the issue. Normally your reports will go to a PM, who will triage and try to get you to the right person, but very often this can take hours/days and sometimes requires escalation, especially if the PM isn't the most experienced person in the world.
+2. **You will run into multiple problems, mainly with the hardware.** You need to know how quickly you can reach an engineer that can address the issue. Normally your reports will go to a PM (the product/project manager the CSP assigns to your account), who will triage and try to get you to the right person, but very often this can take hours/days and sometimes requires escalation, especially if the PM isn't the most experienced person in the world.
 
 3. **You need to know if you can break the contract - how quickly and at what cost.** Things may get really bad for your team, but if you can't walk away, that would guarantee burnout for one or more persons on your team and a potential negative impact on your ability to make progress and lead your team to success.
 
@@ -65,7 +65,7 @@ Yet:
 1. The customer is not allowed to "do their best" to pay, they are legally obliged to pay the amount they agreed to pay and on time.
 2. The customer is not allowed to break a contract before its term runs its course.
 
-In my experience "we will do our best" is demonstrated by Tier-1 clouds by sending 10+ people to the meetings with the customers. Some of them will be clueless and will be just sitting there making the company look resourceful: *"look, we are allocating 10+ people to the problem you're experiencing. You have nothing to worry about"*. Except, most of the time those people can't solve your problem.
+In my experience "we will do our best" is demonstrated by Tier-1 clouds (the hyperscalers - AWS, GCP, Azure, OCI; see [Tier 1 vs Tier 2 clouds](#tier-1-vs-tier-2-clouds)) by sending 10+ people to the meetings with the customers. Some of them will be clueless and will be just sitting there making the company look resourceful: *"look, we are allocating 10+ people to the problem you're experiencing. You have nothing to worry about"*. Except, most of the time those people can't solve your problem.
 
 What you need is just 2 cloud support people on the call - one product manager and one engineer directly responsible for solving the problem at hand. And in my experience this sort of meeting could take weeks to months to manifest or not at all. Usually one needs to have good connections to be able to escalate the issue to "top brass".
 
@@ -81,7 +81,7 @@ I must also say that it's almost never the problem of the engineers, very often 
 
 As a continuation of a previous section, a [Service Level Agreement](https://en.wikipedia.org/wiki/Service-level_agreement) (SLA) is an agreement between a service providers and a customer that define various guarantees and expectations with regards to service quality and availability, and various responsibilities.
 
-The other term is Service Level Objective (SLO) where SLA is quantified. For example, an SLO may define a Monthly Uptime Percentage to 99.5%, if the uptime is less than 99.5% the provider credits the customer to a certain percentage of the $$ spent. For example, 10% if the uptime is 99-99.5%, 25% for 95-99%, etc. Here is an example [GCP SLA](https://cloud.google.com/ai-platform/training-and-prediction/sla?hl=en).
+The other term is Service Level Objective (SLO) where SLA is quantified. For example, an SLO may define a Monthly Uptime Percentage to 99.5%, if the uptime is less than 99.5% the provider credits the customer to a certain percentage of the \$\$ spent. For example, 10% if the uptime is 99-99.5%, 25% for 95-99%, etc. Here is an example [GCP SLA](https://cloud.google.com/ai-platform/training-and-prediction/sla?hl=en).
 
 The main category one should care for when renting ML clusters is failing accelerators and/whole nodes. If you paid for 64 nodes but were able to use only 60 you should be reimbursed/credited for those nodes you couldn't use. Your SLA should define the duration of downtime after which the provider starts paying you back and how much.
 
@@ -131,7 +131,7 @@ You need to negotiate the ability to move to the new generation before the end o
 
 ### Ensure all accelerators are at the same region/locale
 
-As new accelerators emerge it's very often the case that if you want them early they won't be available in the same region as your current accelerators are. Unless you drop the previous allocation completely and move to a new one at a different region you will have a nightmare of maintaining multiple storage copies, because for performance reasons you need the storage to be where the accelerators are. If you don't you will have issues with syncing multiple copies of the same storage and paying potentially huge ongoing egress/ingress costs. So plan for that and discuss that the CSP moves your older generation accelerator allocation to the same region where the new generation is. That's, of course, not always possible and you may have to wait till more accelerators become available. But it's an important clause to discuss.
+As new accelerators emerge it's very often the case that if you want them early they won't be available in the same region as your current accelerators are. Unless you drop the previous allocation completely and move to a new one at a different region you will have a nightmare of maintaining multiple storage copies, because for performance reasons you need the storage to be where the accelerators are. If you don't you will have issues with syncing multiple copies of the same storage and paying potentially huge ongoing egress/ingress costs (the per-GB fees clouds charge for data leaving or entering a region). So plan for that and discuss that the CSP moves your older generation accelerator allocation to the same region where the new generation is. That's, of course, not always possible and you may have to wait till more accelerators become available. But it's an important clause to discuss.
 
 ## Accelerators
 
@@ -149,7 +149,7 @@ Otherwise, a new batch of accelerators often has a 3-10% failure rate, which is 
 
 So ask your provider how long did they burn in your accelerators/systems for, if at all.
 
-I'm yet to find a golden reference point, but, for example,  [SemiAnalysis](https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy#%C2%A7cluster-deployment-and-acceptance-test) suggests that OEM provider performs a 3-4 weeks burn-in, and then the CSP conducts another 2-3 day long burn-in/acceptance test. So if that's the case you want to ensure that the systems were stress-tested for at least 2-3 days. And, BTW, nothing stops you from doing some massive training as a test if you're not worries about stop-n-go for failures, if it works you made some progress. Of course, you want to make sure that your training stresses out all parts of the system in a sustainable fashion.
+I'm yet to find a golden reference point, but, for example,  [SemiAnalysis](https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy#%C2%A7cluster-deployment-and-acceptance-test) suggests that OEM provider (the Original Equipment Manufacturer that builds the servers, e.g. Dell or Supermicro) performs a 3-4 weeks burn-in, and then the CSP conducts another 2-3 day long burn-in/acceptance test. So if that's the case you want to ensure that the systems were stress-tested for at least 2-3 days. And, BTW, nothing stops you from doing some massive training as a test if you're not worries about stop-n-go for failures, if it works you made some progress. Of course, you want to make sure that your training stresses out all parts of the system in a sustainable fashion.
 
 
 ### Dealing with accelerator failures
@@ -167,7 +167,7 @@ That said, if time is of the essence to your workflows, you should always pay fo
 
 ### Ensure all your nodes are on the same network spine
 
-Unless you're renting 10k gpus, most smaller clusters can easily be co-located on the same network spine - so that it takes the same time to perform inter-node network traffic from any node to any other node.
+Unless you're renting 10k gpus, most smaller clusters can easily be co-located on the same network spine (the top tier of switches in a leaf-spine fabric, see [Top-of-rack, leaf-spine, fat-tree](../foundations/networking.md#top-of-rack-leaf-spine-fat-tree)) - so that it takes the same time to perform inter-node network traffic from any node to any other node.
 
 Ensure that any back up nodes that you're not paying for, but are there to deal with failing accelerators, reside on the same network spine as the nodes you're paying for. If they don't, you are going to have a big problem if you do multi-node training - since that one replacement node will be further away from all other nodes and will slow the ensemble down (the weakest link in the chain).
 
@@ -257,7 +257,7 @@ Having the flexibility to expand your total storage capacity, and keep the "hot"
 
 This segment is mostly relevant to those planning to do training and finetuning. If you need to rent accelerators either for inference via large deployments of microservices or for small, on-demand, interactive work (i.e. notebooks) you can safely ignore this information. The only exception is when you plan on inferencing very big models that require more than one node for a single replica.
 
-In general you want to ensure that the offered [intra-node](../network/README.md#intra-node-networking) and [inter-node](../network/README.md#inter-node-networking) network speeds match the promise and your expectations. When you measure, ask which NCCL env vars the platform needs; a safe default is `NCCL_NVLS_ENABLE=2` (use NVLink SHARP when available).
+In general you want to ensure that the offered [intra-node](../network/README.md#intra-node-networking) and [inter-node](../network/README.md#inter-node-networking) network speeds match the promise and your expectations. When you measure, ask which NCCL env vars the platform needs; a safe default is `NCCL_NVLS_ENABLE=2` (use NVLink SHARP when available; NVLS/SHARP is explained in [SHARP](../network/README.md#sharp)).
 
 ### Ask for the actual performance numbers
 
@@ -284,9 +284,9 @@ As accelerators become much bigger this will probably become unimportant, but wh
 
 ### InfiniBand or Ethernet?
 
-In general, CSPs follow NVIDIA's [DGX SuperPOD Reference Architecture](https://docs.nvidia.com/dgx-superpod/reference-architecture-scalable-infrastructure-h100/latest/abstract.html) which provides a lot of detail on how to build a rail-optimized InfiniBand network. Rail-optimized basically means that each GPU in an 8-way system connects to it's own leaf switch. Everything else is a standard fat-tree.
+In general, CSPs follow NVIDIA's [DGX SuperPOD Reference Architecture](https://docs.nvidia.com/dgx-superpod/reference-architecture-scalable-infrastructure-h100/latest/abstract.html) which provides a lot of detail on how to build a rail-optimized InfiniBand network. Rail-optimized basically means that each GPU in an 8-way system connects to it's own leaf switch. Everything else is a standard fat-tree. (Both are explained in [Top-of-rack, leaf-spine, fat-tree](../foundations/networking.md#top-of-rack-leaf-spine-fat-tree).)
 
-However, many of the largest GPU clusters in the world now run RoCEv2 instead of InfiniBand. Meta has [proven](https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/) that you can train frontier-class Llama models on a RoCEv2 network. Semianalysis/Fabricated Knowledge show a [significant drop-off](https://www.fabricatedknowledge.com/p/nvidia-waiting-on-blackwell-and-whats?utm_source=post-banner&utm_medium=web&utm_campaign=posts-open-in-app&triedRedirect=true) in NVIDIA's networking attach rate for their GPUs.
+However, many of the largest GPU clusters in the world now run RoCEv2 instead of InfiniBand. Meta has [proven](https://engineering.fb.com/2024/08/05/data-center-engineering/roce-network-distributed-ai-training-at-scale/) that you can train frontier-class Llama models on a RoCEv2 network. Semianalysis/Fabricated Knowledge show a [significant drop-off](https://www.fabricatedknowledge.com/p/nvidia-waiting-on-blackwell-and-whats?utm_source=post-banner&utm_medium=web&utm_campaign=posts-open-in-app&triedRedirect=true) in NVIDIA's networking attach rate for their GPUs (the share of NVIDIA GPU purchases that also buy NVIDIA's own InfiniBand networking).
 
 Since multi-node training depends on network collectives (i.e. NCCL or RCCL), the type of network can significantly impact performance and user experience.
 
@@ -309,7 +309,7 @@ The number to report is **`busbw`** (unidirectional). Intra-node: compare to adv
 
 **MAMF sequential, siblings idle.** [`mamf-finder.py`](../compute/accelerator/benchmarks/mamf-finder.py) `--search auto` on **each GPU** of the node, one at a time (`CUDA_VISIBLE_DEVICES=i`). That is the lemon-detection pass: one slow GPU ruins the node. Compare MAMF/MSMF to official TFLOPS in the [accelerator tables](../compute/accelerator/README.md#tflops-comparison-table). Details: [benchmarks README](../compute/accelerator/benchmarks/README.md).
 
-**DCGM (`dcgmi diag -r 2`).** Hardware health (memory, PCIe/NVLink), not a FLOPS number (≲10.5 min on 8 GPUs). `-r 1` is software-only and not enough; `-r 3` is an optional longer stress test. Needs `nv-hostengine` (NVIDIA CUDA repo package `datacenter-gpu-manager-4-cudaN`). If the container cannot run it, write that down and keep MAMF.
+**DCGM (`dcgmi diag -r 2`).** (DCGM is NVIDIA's GPU health daemon, see [DCGM: the health daemon and diagnostics](../compute/gpu-software-stack.md#dcgm-the-health-daemon-and-diagnostics); `-r` picks the diagnostic level.) Hardware health (memory, PCIe/NVLink), not a FLOPS number (≲10.5 min on 8 GPUs). `-r 1` is software-only and not enough; `-r 3` is an optional longer stress test. Needs `nv-hostengine` (NVIDIA CUDA repo package `datacenter-gpu-manager-4-cudaN`). If the container cannot run it, write that down and keep MAMF.
 
 A second *concurrent* all-8 run is a different question (shared power/cooling pulls the saturated clock down). Useful, but it is not the headline for "are these GPUs healthy."
 
@@ -317,12 +317,12 @@ A second *concurrent* all-8 run is a different question (shared power/cooling pu
 
 [`fio-scan`](../storage/fio-scan) on the **local NVMe** path *and* the **shared filesystem** path, as documented under [fio](../storage/README.md#fio). You need both: NVMe is the ceiling; shared FS is what dataloaders and checkpoints actually hit. Default is 6 benches × 3 minutes per mount (~18 min each). Tiny-file (16 KiB) latency is the developer-experience proxy; 1 GiB sequential is the checkpoint proxy.
 
-Write a **Conclusion** at the end of the dated report: one verdict per of compute / network / storage, then a **Flags** list (Gaps and anything that is merely “usable, not great”). Do not make the reader hunt through tables for the call.
+Write a **Conclusion** at the end of the dated report: one verdict for each of compute / network / storage, then a **Flags** list (Gaps and anything that is merely “usable, not great”). Do not make the reader hunt through tables for the call.
 
 
 ## Security
 
-Though it can sometimes be an afterthought, CSP's approach to security can vary widely. Just achieving a SOC 2 Type 2 compliance certification may not be enough. It is a good idea to check if the machines you'll be using are virtualized. If you're not in a VM, and the cloud provider serves other tenants, you may not trust what they are doing on the machines that you aren't on. It's a good idea to check that your cloud provider is verifying known-good versions of BMC firmware, system and BIOS firmware before provisioning (or re-provisioning) a server for you to use.
+Though it can sometimes be an afterthought, CSP's approach to security can vary widely. Just achieving a SOC 2 Type 2 compliance certification (an independent audit report attesting that a provider's security controls actually operated over a period of several months) may not be enough. It is a good idea to check if the machines you'll be using are virtualized. If you're not in a VM, and the cloud provider serves other tenants, you may not trust what they are doing on the machines that you aren't on. It's a good idea to check that your cloud provider is verifying known-good versions of BMC firmware, system and BIOS firmware before provisioning (or re-provisioning) a server for you to use.
 
 
 

@@ -91,6 +91,8 @@ That ~80% expectation holds on newer hardware too. On a node of 8x H200 (NVLink 
 
 footnote: the bidirectional testcase prints `Write1`, `Write2` and a combined `total` matrix - read the total rather than doubling one direction.
 
+How to read the commands: `nvbandwidth` is NVIDIA's copy-bandwidth benchmark, `-t` picks the testcase and `-i` the number of timed iterations. The `_ce` suffix means the copy is done by the GPU's copy engines - the [DMA engines](../foundations/concurrency.md#overlapping-copy-and-compute-pinned-memory-and-non_blocking) that move data without using the SMs - while the `_sm` testcases do the same copy with a kernel instead.
+
 A pairwise copy is the right instrument for this comparison because it moves bytes and nothing else. A *collective* on the same hardware can report more than the unidirectional spec, which is a different effect entirely - see [SHARP](#sharp).
 
 
@@ -314,7 +316,7 @@ There is a good overview of evolution of NVLink (1 to 4) [here](https://www.nadd
 
 The largest PCIe 16x slot has 16 lanes. Smaller slots have less lanes, 1x == 1 lane.
 
-NVIDIA Rubin nodes come equipped with PCIe 6 and NVLink 6. So there NVLink is ~15x faster than PCIe.
+NVIDIA Rubin nodes come equipped with PCIe 6 and NVLink 6. So there NVLink is ~12x faster than PCIe.
 
 NVIDIA Blackwell nodes come equipped with PCIe 6 and NVLink 5. So there NVLink is ~7x faster than PCIe.
 
@@ -460,7 +462,7 @@ Here is the math (I averaged two direct bandwidth reports as the reports aren't 
 (359+377)/2 / 450 = 0.82
 (175+171)/2*2 / 900 = 0.38
 ```
-Essentially, the end-to-end doesn't support the duplex C2C spec, but delivers half the unidirectional speed when communicated in both directions. The wire is duplex, but LPDDR5X memory bandwidth on Grace prevents it from running at full speed in both directions, as the bidirectional test makes both directions share that same memory bandwidth. It's probably not a problem in most current ML applications that normally would send data in one direction H2D / D2H at the same time, but if real duplex is needed beware of this issue.
+Essentially, the end-to-end doesn't support the duplex C2C spec, but delivers half the unidirectional speed when communicated in both directions. The wire is duplex, but LPDDR5X (the low-power DRAM that serves as Grace's CPU memory) memory bandwidth on Grace prevents it from running at full speed in both directions, as the bidirectional test makes both directions share that same memory bandwidth. It's probably not a problem in most current ML applications that normally would send data in one direction H2D / D2H at the same time, but if real duplex is needed beware of this issue.
 
 
 ### NVSwitch
@@ -568,7 +570,7 @@ As inter-node hardware used to be about of an order of magnitude slower than int
 
 When it comes to inter-node networking hardware, there are the well established [InfiniBand](#infiniband) from NVIDIA and a few other players, various NVLink-based NVIDIA products and there are many new comers that mainly are coming from compute cloud providers who can't compete on the slim margin renting out someone else's hardware so they build their own (AWS EFA, GCP GPUDirect-TCPX), and there are also HPE and Cornelis Networks with recently updated products.
 
-As of 2026-07-28, here is an inter-node unidirectional theoretical peak bandwidth cross-comparison for current platform configurations and interconnect generations. An interface here is a fabric-facing NIC or adapter port, not a SerDes lane or a switch port. Total bandwidth is `interfaces * rate / 8`. The `Shipped` column says whether you can actually get the hardware today (V) or whether it's still a roadmap or pre-GA target (X).
+As of 2026-07-28, here is an inter-node unidirectional theoretical peak bandwidth cross-comparison for current platform configurations and interconnect generations. An interface here is a fabric-facing NIC or adapter port, not a SerDes lane (a single serializer/deserializer electrical lane, several of which make up one port) or a switch port. Total bandwidth is `interfaces * rate / 8`. The `Shipped` column says whether you can actually get the hardware today (V) or whether it's still a roadmap or pre-GA target (X).
 
 Sorted by Total unidirectional bandwidth descending, then Rate/interface descending, then Platform/example node ascending:
 
@@ -773,7 +775,7 @@ As of 2026-07-28, Quantum-X800 is used by Blackwell Ultra systems such as DGX B3
 
 [Spectrum-X](https://www.nvidia.com/en-us/networking/spectrumx/) is NVIDIA's Ethernet answer to its own InfiniBand line, for shops that want RoCE rather than IB. NVIDIA describes it as "the tight coupling of the NVIDIA Spectrum-X Ethernet switch and the NVIDIA Spectrum-X Ethernet SuperNIC" and claims "1.6x over off-the-shelf (OTS) Ethernet".
 
-Switch throughput is fabric capacity - it is not per-node injection bandwidth, and the two should never be added together or compared. Sorted by total throughput descending, then by height ascending:
+Switch throughput is fabric capacity - it is not per-node injection bandwidth, and the two should never be added together or compared. Height is in rack units (`U`, 1.75 inches of rack height each). Sorted by total throughput descending, then by height ascending:
 
 **Generally available:**
 
@@ -838,7 +840,7 @@ To count the EFA devices on a node:
 fi_info -p efa -t FI_EP_RDM | grep -c provider
 ```
 
-Divide the result by two. `libfabric` reports two providers per EFA device - one with fabric `efa-direct`, matching the NIC's raw capabilities (8KiB max send, no ordering, no matching), and one with fabric `efa`, offering the fuller interface that MPI or NIXL would use. So `16` means 8 NICs.
+Divide the result by two. `libfabric` reports two providers per EFA device - one with fabric `efa-direct`, matching the NIC's raw capabilities (8KiB max send, no ordering, no matching - i.e. no tag matching, the MPI-style pairing of each receive with its send), and one with fabric `efa`, offering the fuller interface that MPI or NIXL (NVIDIA's Inference Xfer Library, used to move KV-cache between inference servers) would use. So `16` means 8 NICs.
 
 Do not count `/sys/class/infiniband/*` instead, because it also lists non-EFA adapters - a P6-B200 node shows 10 entries: the 8 EFA devices (`rdmap*`, each reporting `rate=400 Gb/sec`) plus 2 unrelated 100Gbps adapters. It is however the place to read the per-NIC rate: `cat /sys/class/infiniband/rdmap*/ports/1/rate`. `nvidia-smi topo -m` is the wrong tool for this - it is an intra-node tool and knows nothing about the inter-node fabric.
 
@@ -898,7 +900,7 @@ Huawei's English pages quote it only at rack level, but the Chinese ones publish
 
 Three published figures corroborate each other, which is why the number is trustworthy despite the sourcing difficulty: the SuperPoD holds up to 1024 Ascend 950DT accelerators across 16 compute cabinets, which is 64 per cabinet exactly as the bandwidth line states; and 1024 x 1.68TBps is 1.72PBps, exactly the "total bandwidth up to 1.72PBps" the same page claims.
 
-Architecturally it is a switched fabric, not point-to-point: the rack is listed as 16 compute cabinets plus 4 LingQu interconnect cabinets, all 44OU - so **four cabinets are dedicated purely to interconnect**. LingQu is Huawei's name for the UnifiedBus fabric, and those four cabinets are what make a 1024-accelerator scale-up domain possible. Huawei also claims link-level resilience - LingQu link flash-break self-recovery with transport-layer retransmission - and 2+2 optical path protection across cabinets.
+Architecturally it is a switched fabric, not point-to-point: the rack is listed as 16 compute cabinets plus 4 LingQu interconnect cabinets, all 44OU (OU is the Open Rack unit of 48mm, the Open Compute Project's slightly taller counterpart of `U`) - so **four cabinets are dedicated purely to interconnect**. LingQu is Huawei's name for the UnifiedBus fabric, and those four cabinets are what make a 1024-accelerator scale-up domain possible. Huawei also claims link-level resilience - LingQu link flash-break self-recovery with transport-layer retransmission - and 2+2 optical path protection across cabinets.
 
 caveat on sourcing: use Huawei's Chinese pages, not the English ones. Both are JavaScript applications, but the Chinese product pages inline the full specification table while the English equivalents inline almost nothing - the English Atlas 950 page never states a per-NPU UB Link figure at all. Everything quoted above is from [the Chinese Ascend site](https://www.hiascend.com/hardware/cluster?tag=950), translated here. Treat any second-hand UB Link number with suspicion until you can trace it to Huawei.
 
@@ -943,7 +945,7 @@ The same sweep on an 8x B200 `p6-b200.48xlarge` node (`nccl=2.27.7`, 8GiB, measu
 |    7 | NVLS            | 811.2GBps |       680.5GBps |           1.19x |
 |    8 | NVLS            | 838.0GBps |       682.2GBps |           1.23x |
 
-At full node the gain is still real - 1.23x here against H200's 1.29x - but a 5-GPU job on this B200 node gets none of it. The chooser on this box is AWS's `NCCL_TUNER_PLUGIN=ofi`, whose log line reads `base Tuner is chosen for platform: p6-b200.48xlarge`, so do not read the H200 threshold across to a different instance type.
+At full node the gain is still real - 1.23x here against H200's 1.29x - but a 5-GPU job on this B200 node gets none of it. The chooser on this box is AWS's `NCCL_TUNER_PLUGIN=ofi` (a tuner plugin is a library NCCL loads to make the algorithm and protocol choice in place of its built-in tuner), whose log line reads `base Tuner is chosen for platform: p6-b200.48xlarge`, so do not read the H200 threshold across to a different instance type.
 
 NVIDIA's own documentation draws a 4-GPU line, though it takes one step to see why: NVLink SHARP is implemented with multicast - the switch reduces and then fans the result back out to every participant - which is why NCCL's setup log for `NVLS` literally reads `Created Multicast group`. So a statement about multicast is a statement about SHARP, and the [GB200 NVL Partition User Guide](https://docs.nvidia.com/multi-node-nvlink-systems/partition-guide-v1-0.pdf) says that "partitions that have less than or equal to four GPUs will not benefit from multicast and can accomplish all traffic through unicast" - matching the H200 boundary above, and sitting one GPU below the B200 one.
 
@@ -972,7 +974,7 @@ torchrun --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d t
 NCCL_NVLS_ENABLE=0 torchrun --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d torch-dist-bench.py
 ```
 
-On 8x H200 with `nccl=2.27.7` that gives 482.26GBps against 367.61GBps at a 16GiB payload - a 1.31x gain, matching the 480/370 on the slide above. Add `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,GRAPH,TUNING` to confirm which path was taken and to find where the switch happens: it reports `Algo RING proto LL` up to a 1MiB payload and `Algo NVLS proto SIMPLE` from 2MiB up, and `Algo RING proto SIMPLE` throughout when NVLS is disabled. `NCCL_DEBUG_FILE=/tmp/nccl.%h.%p.log` keeps that output out of the benchmark's own.
+On 8x H200 with `nccl=2.27.7` that gives 482.26GBps against 367.61GBps at a 16GiB payload - a 1.31x gain, matching the 480/370 on the slide above. Add `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,GRAPH,TUNING` to confirm which path was taken and to find where the switch happens: it reports `Algo RING proto LL` up to a 1MiB payload and `Algo NVLS proto SIMPLE` from 2MiB up, and `Algo RING proto SIMPLE` throughout when NVLS is disabled. `NCCL_DEBUG_FILE=/tmp/nccl.%h.%p.log` keeps that output out of the benchmark's own. The `proto` part of those lines is NCCL's protocol - `LL`, `LL128` or `Simple`, which trade latency against bandwidth - explained in [Protocols](comms.md#protocols).
 
 The GPU count is only one of the two conditions. The other is the collective itself - `NVLS` implements `all-reduce` and nothing else. Measured on the same node at a 16GiB payload, all with 8 GPUs engaged:
 
@@ -985,7 +987,7 @@ The GPU count is only one of the two conditions. The other is the collective its
 
 The second row is the same collective at the same width with SHARP switched off, and it is the one that makes the other two readable: `all-gather` and `reduce-scatter` are not slow collectives, they are simply running the ring path that `all-reduce` also falls back to. All three land at 80-82% of the unidirectional spec - the ordinary NVLink efficiency you would expect from [Unidirectional vs Bidirectional (Duplex)](#unidirectional-vs-bidirectional-duplex). Which means `~80%` is the normal case and the 107% is the exception, reachable only by an `all-reduce` wide enough that NCCL selects `NVLS`.
 
-If you want to reproduce these numbers use [nccl-tests](benchmarks/README.md#nccl-tests):
+If you want to reproduce these numbers use [nccl-tests](benchmarks/README.md#nccl-tests). `-b`/`-e` are the smallest and largest payload (equal here, so a single size) and `-g` the GPUs per process, as in [nccl-tests: single node, then two, then all](../compute/gpu-software-stack.md#nccl-tests-single-node-then-two-then-all); `-z 1` makes each collective call blocking:
 
 ```bash
 NCCL_NVLS_ENABLE=1 ./build/all_reduce_perf     -b 16G -e 16G -g 8 -z 1  # 480.0 - NVLS
@@ -1216,7 +1218,7 @@ The network throughput in the advertised spec and the actual throughput will nev
 
 Then the network throughput will depend on the size of payload being sent during each communication. The higher the payload the higher the throughput will be.
 
-Let's demonstrate this using [nccl-tests](benchmarks/README.md#nccl-tests) on a single A100 node:
+Let's demonstrate this using [nccl-tests](benchmarks/README.md#nccl-tests) on a single A100 node (`-f 2` doubles the payload at each step from `-b` to `-e`, and `-n 50` times 50 iterations per size):
 
 ```bash
 $ ./build/all_reduce_perf -b 32k -e 16G -f 2 -g 8 -n 50
@@ -1251,7 +1253,7 @@ This benchmark run an `all_reduce` collective for various payload sizes from 32K
 
 As you can see for payloads smaller than 8MiB the throughput is very low - and it starts saturating around payload size of 512MiB. It's mostly because of latency. Reducing a single 4GB payload is much faster than 1000x 4MB payloads.
 
-Here is the same sweep on an 8x H200 node (`torch=2.14.1+cu130`, `nccl=2.30.7`), using this repo's [torch-dist-bench.py](benchmarks/torch-dist-bench.py). `busbw` and `algbw` are the same two columns as above, and the table also reports the per-call latency:
+Here is the same sweep on an 8x H200 node (`torch=2.14.1+cu130`, `nccl=2.30.7`), using this repo's [torch-dist-bench.py](benchmarks/torch-dist-bench.py). `busbw` and `algbw` are the same two columns as above, and the table also reports the per-call latency. `python -m torch.distributed.run` is the module behind the `torchrun` command, and `-u` unbuffers Python's output:
 
 ```bash
 $ python -u -m torch.distributed.run --nproc_per_node=8 torch-dist-bench.py
@@ -1327,7 +1329,7 @@ Figuring out the payload can be tricky since it'd depend on the implementation o
 
 But let's go back to the benchmark results table. This test was done on an A100 node that runs NVLink advertised as uni-directional 300GBps so we get about 78% of the theoretical speed with 16GiB payload and more than that the benchmark crashes. It can be seen from the last few rows of the table that not much more can be squeezed.
 
-We can also run [p2pBandwidthLatencyTest](benchmarks/README.md#p2pbandwidthlatencytest) which performs a low-level p2p benchmark.
+We can also run [p2pBandwidthLatencyTest](benchmarks/README.md#p2pbandwidthlatencytest), a CUDA sample program which performs a low-level p2p benchmark between every pair of GPUs. In its matrix each row is the writing GPU and each column the GPU written to; the diagonal is a GPU copying within its own memory, which measures HBM rather than NVLink, so ignore it.
 
 Now let's run it on A100:
 ```bash
@@ -1412,9 +1414,9 @@ Another tool for bandwidth measurements on NVIDIA GPUs is [NVIDIA/nvbandwidth](h
 
 #### Symmetric memory
 
-Normally NCCL passes each payload through its own internal staging buffers, since it knows nothing about where the peers keep their data. If instead every rank's buffer sits at the same offset of a registered NCCL symmetric memory window, each GPU knows where its peers' buffers are, so NCCL (2.27+) can switch to its symmetric kernels: each GPU loads the data it needs straight from the other GPUs' buffers over NVLink and stores its results straight into them. This needs every rank to be reachable over direct NVLink. In PyTorch you allocate the buffers from a `torch.cuda.MemPool` created with the backend's `mem_allocator` and register the pool with `ProcessGroupNCCL.register_mem_pool(pool, symm=True)` - see [NCCL Symmetric Kernels](https://docs.pytorch.org/docs/stable/symmetric_memory.html#nccl-symmetric-kernels) in the PyTorch documentation. This needs `torch>=2.9`, the first release whose `register_mem_pool` takes `symm` - `torch==2.7` and `2.8` can register a pool too, but only as a local, non-symmetric buffer. torch 2.9.1 (NCCL 2.27.7), 2.10.0 and 2.11.0 (both NCCL 2.28.9) hang in `broadcast` on that path. torch 2.12.0 with NCCL 2.29.7 is the oldest cu130 release that finishes it, and the benchmark refuses `--sym-mem` below torch 2.12 and NCCL 2.29.
+Normally NCCL passes each payload through its own internal staging buffers, since it knows nothing about where the peers keep their data. If instead every rank's buffer sits at the same offset of a registered NCCL symmetric memory window, each GPU knows where its peers' buffers are, so NCCL (2.27+) can switch to its symmetric kernels: each GPU loads the data it needs straight from the other GPUs' buffers over NVLink and stores its results straight into them. This needs every rank to be reachable over direct NVLink. In PyTorch you allocate the buffers from a `torch.cuda.MemPool` created with the backend's `mem_allocator` and register the pool with `ProcessGroupNCCL.register_mem_pool(pool, symm=True)` - see [NCCL Symmetric Kernels](https://docs.pytorch.org/docs/stable/symmetric_memory.html#nccl-symmetric-kernels) in the PyTorch documentation. This needs `torch>=2.9`, the first release whose `register_mem_pool` takes `symm` - `torch==2.7` and `2.8` can register a pool too, but only as a local, non-symmetric buffer. torch 2.9.1 (NCCL 2.27.7), 2.10.0 and 2.11.0 (both NCCL 2.28.9) hang in `broadcast` on that path. torch 2.12.0 with NCCL 2.29.7 is the oldest cu130 (built for CUDA 13.0) release that finishes it, and the benchmark refuses `--sym-mem` below torch 2.12 and NCCL 2.29.
 
-To measure it, add `--sym-mem` to [torch-dist-bench.py](benchmarks/torch-dist-bench.py), or `-R 2` to [nccl-tests](benchmarks/README.md#nccl-tests) if you call NCCL directly. Use it only if the workload you're benchmarking for all-reduces symmetric memory buffers too - registering them itself as above, or through a framework that does - otherwise that workload gets the regular bandwidth, and the symmetric memory numbers won't reflect what it actually gets.
+To measure it, add `--sym-mem` to [torch-dist-bench.py](benchmarks/torch-dist-bench.py), or `-R 2` (register the buffers as symmetric) to [nccl-tests](benchmarks/README.md#nccl-tests) if you call NCCL directly. Use it only if the workload you're benchmarking for all-reduces symmetric memory buffers too - registering them itself as above, or through a framework that does - otherwise that workload gets the regular bandwidth, and the symmetric memory numbers won't reflect what it actually gets.
 
 To check that the symmetric kernels are used, add `NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=TUNING`: each call that took one is logged as `AllReduce [Symmetric]: ... -> Kernel ...`.
 
@@ -1580,7 +1582,7 @@ Despite the name it is not InfiniBand-only - it is written over `uverbs`, the us
 
 Fabrics with their own userspace stack rather than verbs - [Slingshot](#hpe-slingshot-interconnect), [Omni-Path](#omni-path) via OPX, [GPUDirect-TCPX](#gpudirect-tcpx) - need their own tools. The nearest equivalent there is `fi_rma_bw` from [libfabric](https://ofiwg.github.io/libfabric/)'s fabtests, an [RMA](#glossary-and-concepts) read and write bandwidth test which is the same shape of measurement as `ib_write_bw`. Note that libfabric's own documentation warns that its tests are "designed to test functionality and not performance", with the benchmarks as the stated exception, and that even those are "not guaranteed to provide the best latency or bandwidth performance numbers a given provider or system may achieve" - so treat the figure as a floor rather than the fabric's capability.
 
-footnote: RDMA-write-over-[SRD](#glossary-and-concepts) support was contributed to `perftest` by AWS ([PR 206](https://github.com/linux-rdma/perftest/pull/206)). Confirmed on a live instance on 2026-08-07: on an 8x H200 `p5en.48xlarge` node, `ib_write_bw -d rdmap110s0 -c SRD -x 0 --report_gbits -D 10` between two nodes sustained **193.72Gbps on one adapter, or 96.9% of that adapter's 200Gbps line rate**.
+footnote: RDMA-write-over-[SRD](#glossary-and-concepts) support was contributed to `perftest` by AWS ([PR 206](https://github.com/linux-rdma/perftest/pull/206)). Confirmed on a live instance on 2026-08-07: on an 8x H200 `p5en.48xlarge` node, `ib_write_bw -d rdmap110s0 -c SRD -x 0 --report_gbits -D 10` (GID index 0, report in Gbps, run for 10 seconds) between two nodes sustained **193.72Gbps on one adapter, or 96.9% of that adapter's 200Gbps line rate**.
 
 footnote: it is tempting to instead keep all the accelerators and take the intra-node fabric away with [`NCCL_P2P_DISABLE=1`](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html), but that only pushes intra-node traffic down to host memory - the documented fallback order is P2P, then SHM, then network, so `NCCL_SHM_DISABLE=1` is needed as well before NCCL puts same-node ranks on a NIC. On EFA even that isn't enough, because [the libfabric provider uses the instance's shared memory for intra-node communication](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html): NCCL asks for the network and libfabric serves the transfer from host memory instead. [`FI_EFA_ENABLE_SHM_TRANSFER=0`](https://ofiwg.github.io/libfabric/main/man/fi_efa.7.html) overrides that.
 
@@ -1600,7 +1602,7 @@ Typically the more "hops" the message has to travel, the bigger the latency. 2 a
 The latency of a small all-reduce is the most flattering of all collectives, so on its own it says little about the latency of other traffic:
 
 - **It gets the only tree.** NCCL implements its tree algorithm for all-reduce only; the other collectives use rings. A NCCL maintainer models the tree's latency as $2(G-1)\,l + 2\log_2(N)\,L$, which grows with the log of the node count, and the ring's as $N(G-1)\,l + N L$, which grows linearly ([NCCL #1049](https://github.com/NVIDIA/nccl/issues/1049); $N$ nodes, $G$ accelerators per node, $L$ network latency, $l$ NVLink latency).
-- **The other collectives lack an equivalent.** NCCL 2.23 added the PAT algorithm for all-gather and reduce-scatter, but only for one GPU per node, and a maintainer says it's "not yet as low-latency as the Tree allreduce" ([NCCL #1473](https://github.com/NVIDIA/nccl/issues/1473), [NVIDIA blog](https://developer.nvidia.com/blog/new-scaling-algorithm-and-initialization-with-nvidia-collective-communications-library-2-23/)).
+- **The other collectives lack an equivalent.** NCCL 2.23 added the PAT (Parallel Aggregated Trees) algorithm for all-gather and reduce-scatter, but only for one GPU per node, and a maintainer says it's "not yet as low-latency as the Tree allreduce" ([NCCL #1473](https://github.com/NVIDIA/nccl/issues/1473), [NVIDIA blog](https://developer.nvidia.com/blog/new-scaling-algorithm-and-initialization-with-nvidia-collective-communications-library-2-23/)).
 - **The switch may do the work.** With [NVLS](#sharp) (NVLink SHARP) or InfiniBand [SHARP](#sharp), a small all-reduce is reduced inside the switch, so its latency describes the switch's reduction rather than the path ordinary traffic takes.
 
 No single collective stands for latency - what each one's small-payload latency tells you, and the workload where it is on the critical path:

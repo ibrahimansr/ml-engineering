@@ -20,6 +20,8 @@
 
 ## Publicly available training LLM/VLM logbooks
 
+(A VLM is a vision-language model: an LLM that also takes images as input, see [Multimodal LLMs](../models/beyond-transformers.md#multimodal-llms).)
+
 Logbooks, chronicles, and technical reports of training LLMs/VLMs are among the best sources to learn from about dealing with training instabilities, infrastructure and scaling challenges, and choosing good hyper parameters. The earlier entries here are logbooks/chronicles kept during a training run; increasingly the same hard-won lessons appear as dedicated sections of technical reports - typically titled something like *Infrastructure, Scaling, and Efficiency* or *Engineering Challenges and Solutions*, and often covering reliability and operational challenges that rarely make it into a model card.
 
 If you know of a public LLM/VLM training logbook, or a technical report with such a section, that is not on this list please kindly let me know via [an Issue](https://github.com/stas00/ml-engineering/issues) or add it via a PR. Thank you!
@@ -77,11 +79,11 @@ The listing is in no particular order other than being grouped by the year.
 ### 2026
 
 - [Supercharging Olmo-core for Efficient and Scalable MoE Training](https://allenai.org/papers/olmocore3) - practical recommendations for training large scale MoE models in 2026!
-- [Marin 535B-A23B MoE live](https://mtracker.oa.dev/hero-run-535b) - each short entry goes to a details GitHub Issue where you can read the details. Finished trainings retrospectives: [8B](https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/), [32B](https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/)
+- [Marin 535B-A23B MoE live](https://mtracker.oa.dev/hero-run-535b) - each short entry goes to a details GitHub Issue where you can read the details. Finished trainings retrospectives: [8B](https://marin.readthedocs.io/en/latest/reports/marin-8b-retro/), [32B](https://marin.readthedocs.io/en/latest/reports/marin-32b-retro/) ("535B-A23B" reads as 535B total parameters of which 23B are active per token, the usual way of naming a [Mixture of Experts](../models/architectures.md#mixture-of-experts) model)
 - Project Apertus - [Apertus v1.5 Technical Report: From Open Text Models to Open Multimodal Reasoners](https://arxiv.org/abs/2610.15542) - continued multimodal pretraining of the Apertus 8B/70B models; like v1 it includes *Infrastructure, Scaling, and Efficiency* and *Engineering Challenges and Solutions* sections (~5 pages).
 
 ## Hardware setup logbooks
 
-- Imbue published a detailed log of how they have set up a 512-node IB-fat-tree cluster and made it to work: [From bare metal to a 70B model: infrastructure set-up and scripts](https://imbue.com/blog/70b-infrastructure), they also open-sourced the [cluster tooling](https://github.com/imbue-ai/cluster-health) they created in the process.
+- Imbue published a detailed log of how they have set up a 512-node IB-fat-tree cluster (an [InfiniBand](../network/README.md#infiniband) network wired as a [fat tree](../foundations/networking.md#top-of-rack-leaf-spine-fat-tree)) and made it to work: [From bare metal to a 70B model: infrastructure set-up and scripts](https://imbue.com/blog/70b-infrastructure), they also open-sourced the [cluster tooling](https://github.com/imbue-ai/cluster-health) they created in the process.
 
-- SemiAnalysis published a great detailed writeup about [what it takes to set up a Neocloud cluster](https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy).
+- SemiAnalysis published a great detailed writeup about [what it takes to set up a Neocloud cluster](https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy) (a neocloud is a GPU-focused cloud provider such as CoreWeave or Lambda, as opposed to the big general-purpose clouds).

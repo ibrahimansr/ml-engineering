@@ -4,15 +4,15 @@ There are many container/accelerator orchestration solutions - many of which are
 
 So far I have been working with SLURM and Kubernetes.
 
-For scheduler, launcher and fault-tolerance internals see [Orchestration Internals for ML Workloads](internals.md). New to Kubernetes? Start with [Kubernetes From Zero](kubernetes-from-zero.md).
+For scheduler, launcher and fault-tolerance internals see [Orchestration Internals for ML Workloads](internals.md). New to SLURM? Start with [Slurm From Zero](slurm/from-zero.md). New to Kubernetes? Start with [Kubernetes From Zero](kubernetes-from-zero.md).
 
 ## SLURM
 
-- [SLURM](slurm/) - Simple Linux Utility for Resource Management, which you're guaranteed to find on most HPC environments and typically it's supported by most cloud providers.  It has been around for more than 2 decades
+- [SLURM](slurm/) - Simple Linux Utility for Resource Management, a batch job scheduler (you ask for nodes and GPUs, and it runs your script when they are free), which you're guaranteed to find on most HPC environments and typically it's supported by most cloud providers.  It has been around for more than 2 decades
 
 ### SLURM on Kubernetes:
 
-These are frameworks allowing you to run SLURM on top of Kubernetes:
+These are frameworks allowing you to run SLURM on top of Kubernetes (the Slurm daemons run as Kubernetes pods, so one cluster can serve both SLURM users and Kubernetes workloads):
 
 - [Slinky](https://github.com/slinkyproject) - a framework from the creators of SLURM.
 - [Soperator](https://github.com/nebius/soperator) - from Nebius

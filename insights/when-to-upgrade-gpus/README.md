@@ -72,7 +72,7 @@ The rest of this doc walks through these steps end-to-end on the H200→B200 exa
 
 ## Worked example: meta-llama/Llama-3.1-8B training step, FA3 vs FA4
 
-Setup: meta-llama/Llama-3.1-8B, real weights, bf16, 8 GPUs, DeepSpeed, mbs=1, fwd+bwd+step. Attention is HF-native `attn_implementation`, auto-selected per GPU: **H200 → FA3, B200 → FA4**.
+Setup: meta-llama/Llama-3.1-8B, real weights, bf16, 8 GPUs, DeepSpeed, mbs=1 (micro-batch size per GPU), fwd+bwd+step. Attention is HF-native `attn_implementation` (the Hugging Face Transformers argument that selects the attention kernel), auto-selected per GPU: **H200 → FA3, B200 → FA4**.
 
 ### Results: speedup grows with sequence length
 
@@ -89,7 +89,7 @@ Same config on both GPUs (ZeRO-3 + activation checkpointing + CPU-offload + Lige
 
 ![performance, speedup, and attention share vs sequence length](results_plot.png)
 
-**Why speedup scales with seqlen (the attention-vs-dense split, in action):** causal attention costs $6 \cdot s^2 \cdot d \cdot h \cdot L$ per step ($O(s^2)$); the dense path costs $6 \cdot N \cdot \text{tok}$ ($O(s)$). Longer sequences push attention's share of the step up, and attention is exactly where FA4/Blackwell's advantage concentrates — while the dense path (bandwidth-bound at this size + "young" sm_100 cuBLAS) that scales only ~1.7× shrinks to a rounding error. The identity $\text{speedup} \approx 2.28 \times \text{MFU\_ratio}$ holds throughout — the residual gap to 2.28× is FA4-beta overhead not yet reaching the full hardware ratio even on pure attention.
+**Why speedup scales with seqlen (the attention-vs-dense split, in action):** causal attention costs $6 \cdot s^2 \cdot d \cdot h \cdot L$ per step ($O(s^2)$); the dense path costs $6 \cdot N \cdot \text{tok}$ ($O(s)$). Here $s$ is the sequence length, $d$ the per-head dimension, $h$ the number of attention heads (so $d \cdot h$ is the hidden size), $L$ the number of layers, $N$ the parameter count and $\text{tok}$ the number of tokens in the step. Longer sequences push attention's share of the step up, and attention is exactly where FA4/Blackwell's advantage concentrates — while the dense path (bandwidth-bound at this size + "young" sm_100 cuBLAS) that scales only ~1.7× shrinks to a rounding error. The identity $\text{speedup} \approx 2.28 \times \text{MFU\_ratio}$ (where `MFU_ratio` is B200 MFU divided by H200 MFU, from the table above) holds throughout — the residual gap to 2.28× is FA4-beta overhead not yet reaching the full hardware ratio even on pure attention.
 
 **FLOP-counting convention:** the TFLOPS/MFU figures are *model* FLOPs ([MFU](../../training/performance/README.md#mfu-vs-hfu)) with attention counted **causally** ($6 \cdot s^2 \cdots$, the lower triangle FlashAttention actually computes — the non-causal $12 \cdot s^2$ would double-count attention and inflate MFU at long context). Activation-checkpoint recompute is *excluded* — counting it would be HFU (~1.3× higher). Both conventions cancel in the B200/H200 speedup ratio, so only the absolute MFU/TFLOPS depend on this choice, not the headline speedups.
 
@@ -253,7 +253,7 @@ Run the same installer on the H200 box and the B200 box. It pins identical torch
 ./install.sh  # H200 -> FA3, B200 -> FA4 (auto-detected); --force fa3|fa4 to override
 ```
 
-`HF_HOME` defaults to `~/.cache/huggingface`; the model (`meta-llama/Llama-3.1-8B`) must be present there first (e.g., run `hf download meta-llama/Llama-3.1-8B`). The installer's final step verifies the stack and does a tiny FA call to catch ABI mismatches.
+`HF_HOME` defaults to `~/.cache/huggingface`; the model (`meta-llama/Llama-3.1-8B`) must be present there first (e.g., run `hf download meta-llama/Llama-3.1-8B` - `hf` is the Hugging Face Hub command-line tool; Llama is a gated model, so you first need to accept its license on the Hub and log in with `hf auth login`). The installer's final step verifies the stack and does a tiny FA call to catch ABI mismatches.
 
 ### Step 2 — run the sequence-length sweep on each GPU (speedup + memory tables)
 
@@ -277,7 +277,7 @@ Run on both boxes; the FA4/FA3 ratio of `fwd_bwd_tflops` per seqlen is the "isol
 for L in 0 1; do USE_LIGER=$L deepspeed --num_gpus=8 bench_decompose.py; done  # L=0 base, L=1 Liger
 ```
 
-Run on both boxes. It measures the wall-clock step time (profiler off), then profiles one window and splits that measured time into an attention bucket (FlashAttention kernels) and an everything-else bucket by their share of compute-stream kernel time (NCCL comm overlaps backward and is excluded as hidden). Because both buckets are carved out of the *same* measured step, they reconcile with the total by construction — that's the **step-decomposition** table. The B200/H200 ratio per bucket is the per-bucket speedup (attention ~1.87×, dense path ~1.67×).
+Here `deepspeed` is DeepSpeed's launcher (it plays the role `torchrun` does), and `--num_gpus=8` starts one process per GPU. Run on both boxes. It measures the wall-clock step time (profiler off), then profiles one window and splits that measured time into an attention bucket (FlashAttention kernels) and an everything-else bucket by their share of compute-stream kernel time (NCCL comm overlaps backward and is excluded as hidden). Because both buckets are carved out of the *same* measured step, they reconcile with the total by construction — that's the **step-decomposition** table. The B200/H200 ratio per bucket is the per-bucket speedup (attention ~1.87×, dense path ~1.67×).
 
 ### Step 5 — the memory usage investigation (optional)
 

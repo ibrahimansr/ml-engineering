@@ -9,6 +9,7 @@ Show a diff of all files modified in the current branch against the remote defau
 ```bash
 alias brdiff="def_branch=\$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'); git diff origin/\$def_branch..."
 ```
+How to read it: `git symbolic-ref refs/remotes/origin/HEAD` prints which branch the remote's `HEAD` points to (e.g. `refs/remotes/origin/main`), the `sed` strips the prefix to leave just `main`, and the three-dot `git diff origin/main...` compares your current branch against the commit where it forked off `origin/main`, so you see only your branch's changes and not what landed on `main` since. The `\$` escapes keep the variables from being expanded when the alias is defined. Put these aliases in your `~/.bashrc` (or `~/.zshrc`).
 
 Same, but ignore white-space differences, adding `--ignore-space-at-eol` or `-w`:
 ```bash

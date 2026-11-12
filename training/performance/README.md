@@ -12,6 +12,8 @@ In certain situations your modeling team may ask you to choose some hyper parame
 - HFU: Hardware FLOPS Utilization
 - MFU: Model FLOPS Utilization
 
+Both are defined [below](#mfu-vs-hfu), and derived more carefully in [MFU and HFU, properly](../arithmetic.md#mfu-and-hfu-properly).
+
 ### MACs vs FLOP vs FLOPS vs FLOP/s
 
 This section is here to try to disambiguate the common performance metric definitions and their relationship to each other.
@@ -87,6 +89,8 @@ $$
 
 The factor of 4 is used with activation/gradient checkpointing, otherwise it will be 3. For 100B+ models, activation checkpointing will almost always be on.
 
+To read the numerator: each parameter costs 2 FLOPs per token in `forward` (one multiply and one add), `backward` costs twice the `forward`, so a training step costs $3 \cdot 2 = 6$ FLOPs per parameter per token, and the recomputed `forward` of checkpointing adds one more pass for $4 \cdot 2$. This is the `6N` rule derived in [Where `6N` comes from](../arithmetic.md#where-6n-comes-from).
+
 So the $3 \cdot 2$ is often called "model FLOPs" and $4 \cdot 2$ - "hardware FLOPs", correlating to MFU and HFU (model and hardware FLOPS per second divided by the accelerator's theoretical peak FLOPS)
 
 ```bash
@@ -94,15 +98,17 @@ perl -le '$ng=64; $ms=52; $gbs=1024; $sp=127; $seqlen=2048; print $ms*4*2*$seqle
 ```
 (ng = total gpus, ms = model size in B, gbs = global batch size, sp = seconds per iteration)
 
+`perl -le` runs the quoted one-line program and prints its result followed by a newline; with these values it prints about `107`, i.e. ~107 TFLOPS achieved per GPU.
+
 Here is the same formula using `bash` env vars and which breaks down GBS into $\text{MBS} \cdot \text{DP} \cdot \text{GAS}$ (GAS in this case corresponded to `pp_chunks` which was the number of chunks in the pipeline, but normally GAS just stands for Gradient Accumulation Steps):
 ```bash
-echo "($MSIZE*4*2*SEQLEN*$MICRO_BATCH_SIZE*$DP_SIZE*$GAS)/($THROUGHPUT*$NNODES*$GPUS_PER_NODE*1000)" | bc -l
+echo "($MSIZE*4*2*$SEQLEN*$MICRO_BATCH_SIZE*$DP_SIZE*$GAS)/($THROUGHPUT*$NNODES*$GPUS_PER_NODE*1000)" | bc -l
 ```
-(`$GPUS_PER_NODE` = accelerators per node, so `$NNODES*$GPUS_PER_NODE` is total GPUs - the same role as `$ng` in the Perl one-liner above)
+(`$GPUS_PER_NODE` = accelerators per node, so `$NNODES*$GPUS_PER_NODE` is total GPUs - the same role as `$ng` in the Perl one-liner above. Despite its name, `$THROUGHPUT` here holds the seconds per iteration, the role of `$sp` above. `bc -l` is the command-line calculator; `-l` enables floating-point division.)
 
 The exact formula is in Equation 3 of Section 5.1 of the [Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM](https://arxiv.org/abs/2104.04473) paper. You can see the code [here](https://github.com/bigscience-workshop/Megatron-DeepSpeed/pull/251).
 
-footnote: For Inference only it'd be: $24Bsh^2 + 4Bs^2h$ floating point operations per layer.
+footnote: For Inference only it'd be: $24Bsh^2 + 4Bs^2h$ floating point operations per layer, where $B$ is the batch size, $s$ the sequence length and $h$ the hidden size.
 
 
 #### Automating FLOP calculation
@@ -117,7 +123,7 @@ with flop_counter:
     model(**input).sum().backward()
 total_flops =  flop_counter.get_total_flops()
 ```
-Voila, you have the FLOPs counted for you! In theory, at least. In practice `FlopCounterMode` has proved to have multiple problems impacting performance and memory usage that as of 2026-08 it can't be relied on to replace the manual calculation - so expect to still need the formulas from the previous section, and to treat the counter as a cross-check rather than as the answer.
+Voila, you have the FLOPs counted for you! (A worked comparison of this counter against the formula is in [Checking the formula against PyTorch's FLOP counter](../arithmetic.md#checking-the-formula-against-pytorchs-flop-counter).) In theory, at least. In practice `FlopCounterMode` has proved to have multiple problems impacting performance and memory usage that as of 2026-08 it can't be relied on to replace the manual calculation - so expect to still need the formulas from the previous section, and to treat the counter as a cross-check rather than as the answer.
 
 In my code I run it only on a 2nd iteration (as the first iteration is likely to have some additional compute that is run once). You don't need to repeat it again, you can just cache its value (well, unless you have a situation where iterations aren't the same for some reason).
 
@@ -203,6 +209,8 @@ Here is an overview of what features can help to either improve speed or save me
 | DataLoader               | Yes    | No     |
 | DeepSpeed ZeRO           | No     | Yes    |
 | Flash Attention          | Yes    | Yes    |
+
+Flash Attention is the fused attention kernel taught in [FlashAttention](../../compute/accelerator/execution-model.md#flashattention); the other rows are covered in the sections below and in [Model Parallelism](../model-parallelism/README.md).
 
 \* Gradient checkpointing slows things down for the given batch size, but since it frees up a lot of memory, enabling a much larger BS, it actually improves the overall speed.
 
@@ -395,6 +403,8 @@ used=total-free; print(f'pt={torch.__version__}: {used=:0.2f}GiB, {free=:0.2f}Gi
 pt=1.10.2: used=1.78GiB, free=77.43GiB, total=79.21GiB
 ```
 
+`torch.cuda.mem_get_info()` returns the device's free and total memory in bytes, as the driver sees it, so `used` includes the CUDA context and loaded kernels, not just the 4-byte tensor.
+
 With `pytorch==1.13.1`:
 ```bash
 $ CUDA_MODULE_LOADING=EAGER python -c "import torch; x=torch.ones(1).cuda(); free, total = map(lambda x: x/2**30, torch.cuda.mem_get_info()); \
@@ -429,6 +439,8 @@ When using `torch.distributed` expect ~1-2GiB of GPU memory taken away just to i
 
 Here is [torch-dist-mem-usage.py](distributed/torch-dist-mem-usage.py) that demonstrates the actual memory usage:
 
+`python -m torch.distributed.run` is `torchrun` (see [How torchrun spawns workers](../../foundations/linux-and-os.md#how-torchrun-spawns-workers)); `--nproc_per_node=2` starts 2 processes, and `--rdzv_backend c10d --rdzv_endpoint localhost:6000` makes them [rendezvous](../../foundations/distributed-systems.md#rendezvous) through a TCP store on port 6000.
+
 ```bash
 $ python -u -m torch.distributed.run --nproc_per_node=2 --rdzv_endpoint localhost:6000  --rdzv_backend c10d \
 torch-dist-mem-usage.py
@@ -445,13 +457,15 @@ torch-dist-mem-usage.py
 [0] mp: MA 0.00 GiB | Max_MA 0.00 GiB | CA 0.00 GiB | Max_CA 0.00 GiB | NV 1.28 GiB | CPU Virtual Memory:  used = 69.25 GiB, percent = 3.5%
 ```
 
+How to read each line: `MA` and `Max_MA` are `torch.cuda.memory_allocated()` and its peak (memory held by live tensors), `CA` and `Max_CA` are `torch.cuda.memory_reserved()` and its peak (memory the caching allocator has reserved), and `NV` is the total used on the device, the number `nvidia-smi` would show. Memory that PyTorch's allocator doesn't manage shows up only in `NV`.
+
 So you can see that the [CUDA kernels](#preloaded-cuda-kernels-memory-usage) took 0.55GiB (first line `NV 0.55 GiB`), but when `dist.barrier` was run an additional 1.5GiB were consumed. If you run `init_process_group` with `device_id` arg then the additional memory allocation will move to that call instead and less will be used by `dist.barrier`.
 
 #### Choosing between `nccl`, `nccl2` and `nccl-lazy`
 
 Starting from PyTorch 2.14, PyTorch's distributed package includes a second implementation over the same NCCL library. Despite its name, `nccl2` is not NCCL version 2 and does not replace NCCL's collective algorithms. What it changes is how PyTorch creates, splits, waits for and aborts the communicators those collectives run on. In PyTorch 2.14, `init_process_group("nccl")` still selects the established `ProcessGroupNCCL`; select the new implementation explicitly with `backend="nccl2"`, or set `TORCH_DIST_USE_NCCL2=1` to make `"nccl"` resolve to it. The explicit `nccl-legacy` name always selects the established implementation, and `nccl-lazy` is a variant of `nccl2` that creates a communicator per peer on first use rather than up front.
 
-Measured on an idle 8x H200 node with PyTorch 2.14.0, CUDA 13.0 and NCCL 2.30.7, a 1GiB `all_reduce` landed between 458 and 466GBps `busbw` under both, and repeats of a single implementation varied by as much as the gap between the two - so these runs show no throughput difference. Both issue the same NCCL collectives.
+Measured on an idle 8x H200 node with PyTorch 2.14.0, CUDA 13.0 and NCCL 2.30.7, a 1GiB `all_reduce` landed between 458 and 466GBps `busbw` ([algbw vs busbw](../../network/collectives-internals.md#algbw-vs-busbw)) under both, and repeats of a single implementation varied by as much as the gap between the two - so these runs show no throughput difference. Both issue the same NCCL collectives.
 
 The measurable difference was memory. After `init_process_group` and the first `dist.barrier`, rank 0's accelerator held 1.56GiB under `nccl` and 5.16GiB under `nccl2` - reproduced across runs, and unchanged by whether `device_id` was passed. So don't switch expecting faster collectives, and measure the memory cost on your own topology before adopting it. What `nccl2` offers instead is control over the communicator's lifetime: subgroups built at `new_group` time rather than at their first collective, and - through APIs the release marks as unstable as of 2.14 - a group that can be rebuilt in place after a rank dies instead of requiring a restart.
 
@@ -464,7 +478,7 @@ Reference: [PyTorch 2.14 release blog](https://pytorch.org/blog/pytorch-2-14-rel
 
 As the model allocates and frees tensors, the GPU memory could fragment. That is there could be enough free memory to allocate, say, 1GiB of contiguous memory, but it could be available in 100s of small segments spread out through the memory and thus even though the memory is available it can't be used unless very small allocations are made.
 
-Environment variable `PYTORCH_ALLOC_CONF` comes to help and allows you to replace the default memory allocation mechanisms with more efficient ones. For more information see [Memory management](https://docs.pytorch.org/docs/stable/notes/cuda.html#memory-management). I found `PYTORCH_ALLOC_CONF=expandable_segments:True` to be extremely helpful when the code performs a lot of tensor reshaping, which would normally massively fragment the GPU memory.
+Environment variable `PYTORCH_ALLOC_CONF` (configuration for PyTorch's caching allocator, whose internals are in [PyTorch caching allocator internals](../arithmetic.md#pytorch-caching-allocator-internals)) comes to help and allows you to replace the default memory allocation mechanisms with more efficient ones. For more information see [Memory management](https://docs.pytorch.org/docs/stable/notes/cuda.html#memory-management). I found `PYTORCH_ALLOC_CONF=expandable_segments:True` to be extremely helpful when the code performs a lot of tensor reshaping, which would normally massively fragment the GPU memory.
 
 
 
@@ -540,7 +554,7 @@ The idea behind gradient accumulation is to instead of calculating the gradients
 
 Gradient Accumulation Steps (GAS) is the definition of how many steps are done w/o updating the model weights.
 
-When using Pipeline parallelism a very large Gradient Accumulation is a must to keep the [pipeline's bubble to the minimum](../../training/model-parallelism/README.md#naive-model-parallelism-vertical).
+When using Pipeline parallelism a very large Gradient Accumulation is a must to keep the [pipeline's bubble to the minimum](../../training/model-parallelism/README.md#pipeline-parallelism).
 
 Since the optimizer step isn't performed as often with gradient accumulation there is an additional speed up here as well.
 
@@ -549,7 +563,7 @@ The following benchmarks demonstrate how increasing the gradient accumulation st
 - [RTX-3090](https://github.com/huggingface/transformers/issues/14608#issuecomment-1004392537)
 - [A100](https://github.com/huggingface/transformers/issues/15026#issuecomment-1005033957)
 
-When [data parallelism](../../training/model-parallelism/README.md#data-parallelism) is used gradient accumulation further improves the training throughput because it reduces the number of gradient reduction calls, which is typically done via the `all_reduce` collective which costs a 2x size of gradients to be reduced. So for example, if one goes from GAS=1 to GAS=8 in `DistributedDataParallelism` (DDP) the network overhead is reduced by 8x times, which on a slow inter-node network can lead to a noticeable improvement in the training throughput.
+When [data parallelism](../../training/model-parallelism/README.md#data-parallelism) is used gradient accumulation further improves the training throughput because it reduces the number of gradient reduction calls, which is typically done via the `all_reduce` collective which costs a 2x size of gradients to be reduced. So for example, if one goes from GAS=1 to GAS=8 in `DistributedDataParallel` (DDP) the network overhead is reduced by 8x times, which on a slow inter-node network can lead to a noticeable improvement in the training throughput.
 
 
 ### Gradient Checkpointing
@@ -595,13 +609,13 @@ The most common optimizer is Adam. It and its derivatives all use 8 bytes per pa
 
 - There are optimizers like Adafactor that need only 4 bytes. Same goes for the [LION optimizer](https://arxiv.org/abs/2302.06675).
 
-- `AnyPrecisionAdamW`. Some courageous souls try to do the whole training in BF16 (not mixed precision!), including the optimizer and thus need only 4 bytes per parameter for optim states. See [this work](https://github.com/huggingface/transformers/pull/21312). Hint: this optimizer requires Kahan summation and/or stochastic rounding, see [Revisiting BFloat16 Training (2020)](https://arxiv.org/abs/2010.06192). You need only 8 bytes per parameter for weights, optim states and gradients here! Instead of 18!
+- `AnyPrecisionAdamW`. Some courageous souls try to do the whole training in BF16 (not mixed precision!), including the optimizer and thus need only 4 bytes per parameter for optim states. See [this work](https://github.com/huggingface/transformers/pull/21312). Hint: this optimizer requires Kahan summation and/or stochastic rounding (see [When to use fp32 accumulators](../dtype.md#when-to-use-fp32-accumulators) and [Stochastic rounding](../arithmetic.md#stochastic-rounding)), see [Revisiting BFloat16 Training (2020)](https://arxiv.org/abs/2010.06192). You need only 8 bytes per parameter for weights, optim states and gradients here! Instead of 18!
 
 2-byte optimizers:
 
 - There are quantized solutions like `bnb.optim.Adam8bit` which uses only 2 bytes instead of 8 (1 byte per momentum).  You can get it from [here](https://github.com/bitsandbytes-foundation/bitsandbytes). Once installed, if you're using HF Trainer, you can enable it on with just passing `--optim adamw_bnb_8bit`!
 
-For speed comparisons see [this benchmark](https://github.com/huggingface/transformers/issues/22101) Speed-wise:`apex`'s `apex.optimizers.FusedAdam` optimizer is so far the fastest implementation of Adam. Since pytorch-2.0 [torch.optim.AdamW](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html) added support for `fused=True` option, which brings it almost on par with `apex.optimizers.FusedAdam`.
+For speed comparisons see [this benchmark](https://github.com/huggingface/transformers/issues/22101) Speed-wise:`apex`'s (NVIDIA's add-on library of fused PyTorch kernels) `apex.optimizers.FusedAdam` optimizer is so far the fastest implementation of Adam. Since pytorch-2.0 [torch.optim.AdamW](https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html) added support for `fused=True` option, which brings it almost on par with `apex.optimizers.FusedAdam`.
 
 
 
@@ -642,7 +656,7 @@ Notation:
 
 First, some background.
 
-NVIDIA GPUs divide the output matrix into regions or tiles as shown in the below figure and schedule them to one of the available streaming multiprocessors (SM) on the GPU (e.g., A100 GPUs have 108 SMs). Each tile or thread block is processed in a Tensor Core, which NVIDIA introduced for fast tensor operations. NVIDIA Tensor Cores are only available for GEMMs with appropriate dimensions. Tensor Cores can be fully utilized when GEMM dimensions `m`, `k`, and `n` are multiples of 16 bytes and 128 bytes for V100 and A100 GPUs, respectively. Since a FP16 element is 2 bytes, this corresponds to dimension sizes that are multiples of 8 and 64 elements, respectively. If these dimension sizes are not possible, Tensor Cores perform better with larger multiples of 2 bytes.
+NVIDIA GPUs divide the output matrix into regions or tiles as shown in the below figure (the full tiling hierarchy is in [GEMM tiling hierarchy](../../compute/accelerator/execution-model.md#gemm-tiling-hierarchy)) and schedule them to one of the available streaming multiprocessors (SM) on the GPU (e.g., A100 GPUs have 108 SMs). Each tile or thread block is processed in a Tensor Core, which NVIDIA introduced for fast tensor operations. NVIDIA Tensor Cores are only available for GEMMs with appropriate dimensions. Tensor Cores can be fully utilized when GEMM dimensions `m`, `k`, and `n` are multiples of 16 bytes and 128 bytes for V100 and A100 GPUs, respectively. Since a FP16 element is 2 bytes, this corresponds to dimension sizes that are multiples of 8 and 64 elements, respectively. If these dimension sizes are not possible, Tensor Cores perform better with larger multiples of 2 bytes.
 
 ![tiling](images/tiling.png)
 
@@ -726,7 +740,7 @@ The trap is the gap between silicon and kernels. A fully usable FA4 took many mo
 
 ### SwiGLU-based MLP
 
-Models such as PaLM, LLaMA, Mistral and others use the SwiGLU activation function in place of the more common GLU activation function.
+Models such as PaLM, LLaMA, Mistral and others use the SwiGLU activation function in place of the more common GELU activation function (SwiGLU is taught in [Gated linear units: SwiGLU](../../models/architectures.md#gated-linear-units-swiglu)).
 
 The SwiGLU-based MLP contains an additional learned matrix in its activation function. There the MLP block contains 3 matrices instead of the original 2. To preserve the total number of parameters in the MLP block the paper that introduces [SwiGLU](https://arxiv.org/abs/2002.05202) proposes to use $\text{dim\_mlp} = 8/3 \cdot \text{dim\_attn}$ instead of the typical $\text{dim\_mlp} = 4 \cdot \text{dim\_attn}$. The [The Case for Co-Designing Model Architectures with Hardware](https://arxiv.org/abs/2401.14489) paper provides recommendations for finding the value of hidden dimension ($h$) that would lead to the best `matmul` performance, and if you used $8/3 \cdot h$ is likely to result in a much slower MLP block, because $8/3$ will break all the alignments.
 
@@ -778,7 +792,7 @@ The full recommendations are:
 
 ## NUMA affinity
 
-[Non-uniform memory access (NUMA)](https://en.wikipedia.org/wiki/Non-uniform_memory_access) is a computer memory design used in multiprocessing, where the memory access time depends on the memory location relative to the processor. As modern servers have more than one CPU to get the best performance accelerators residing in the same NUMA node as the corresponding CPU should have the processes bound to that same NUMA node.
+[Non-uniform memory access (NUMA)](https://en.wikipedia.org/wiki/Non-uniform_memory_access) (taught in [NUMA](../../foundations/computer-architecture.md#numa)) is a computer memory design used in multiprocessing, where the memory access time depends on the memory location relative to the processor. As modern servers have more than one CPU to get the best performance accelerators residing in the same NUMA node as the corresponding CPU should have the processes bound to that same NUMA node.
 
 First, let's understand what do NUMA nodes signify.
 
@@ -811,7 +825,7 @@ GPU5    NV18    NV18    NV18    NV18    NV18     X      NV18    NV18    52-103,1
 GPU6    NV18    NV18    NV18    NV18    NV18    NV18     X      NV18    52-103,156-207  1
 GPU7    NV18    NV18    NV18    NV18    NV18    NV18    NV18     X      52-103,156-207  1
 ```
-On this 8-gpu node you can see the `CPU Affinity` column which tells you which cores reside together with the first and the second group of GPUs, and the `NUMA Affinity` column.
+Each `NV18` cell means the two GPUs are connected by 18 NVLinks (see [NVLink](../../network/README.md#nvlink)); `X` is the GPU itself. On this 8-gpu node you can see the `CPU Affinity` column which tells you which cores reside together with the first and the second group of GPUs, and the `NUMA Affinity` column.
 
 Now that it's clear that the various compute components are placed in 2 or more groups, to achieve the best performance we need to ensure that the components communicate within the group they belong to, and avoid any cross-talk. For example, if gpu0 belong to NUMA node 0, then the process that drives this GPU should only use cpu-cores from NUMA node 0.
 
@@ -834,6 +848,8 @@ This launcher currently needs a helper util [numa-set.sh](benchmarks/numa/numa-s
 ```bash
 torchrun --nproc_per_node=8 --role : --tee 3 --no-python ./numa-set.sh your-program.py
 ```
+
+`--no-python` tells `torchrun` to execute `./numa-set.sh` directly instead of running it with `python`, and the script then launches `your-program.py` under `numactl --cpunodebind --membind` pinned to the NUMA node of that rank's GPU. `--tee 3` copies both stdout and stderr of every worker to the console, and `--role :` sets the prefix of those lines, which is why the output below starts with `[:0]:`, `[:1]:` and so on (role, then local rank).
 
 Note: you'd need `numactl` installed on your system for this util to work.
 
@@ -912,7 +928,7 @@ The other gotcha can be `CUDA_DEVICE_ORDER` which typically defaults to `PCI_BUS
 
 If using SLURM and you're OK with using `srun` as the launcher, rather than `torchrun`, `accelerate`, etc., it'll do all the binding work for you automatically. See the full launcher [here](../../orchestration/slurm/launchers/srun-launcher.slurm).
 
-To make it NUMA affinity-ready all you need to add is these 2 headers:
+To make it NUMA affinity-ready all you need to add is these 2 headers (`--gres-flags=enforce-binding` makes it a hard requirement that a task's CPUs are the ones closest to its GPUs, see [Node selection: `select/cons_tres`](../../orchestration/internals.md#node-selection-selectcons_tres)):
 ```
 #SBATCH --gres-flags=enforce-binding
 #SBATCH --ntasks-per-socket=4
@@ -961,7 +977,7 @@ By measuring the performance of your workload you can finetune this number by tr
 
 Also note that because any data transforms are applied asynchronously and ahead of time, the CPU and memory speed don't matter much in this case. e.g. with 2 workers as long as the next iteration data preparation takes less than 2 compute iterations the `DataLoader` shouldn't be a bottleneck.
 
-Beware that sometimes you may encounter problems using `num_workers > 0` - the pytorch Issues has a few related Issues that haven't been resolved in several years, where a worker would hang. In particular when having 2 `Dataloader`s. In fact we had this problem during BLOOM-176B training, where the training `Dataloader` worked fine with 2 workers, but once eval `Dataloader` was added it'd randomly hang - so we after failing to figure it out we resorted to a workaround of `num_workers=0` just for the eval and switch to doing it very rarely. Eventually, we stopped doing eval altogether and started doing lm-harness style async eval done to the saved intermediary checkpoints instead, which also sped up the training process.
+Beware that sometimes you may encounter problems using `num_workers > 0` - the pytorch Issues has a few related Issues that haven't been resolved in several years, where a worker would hang. In particular when having 2 `Dataloader`s. In fact we had this problem during BLOOM-176B training, where the training `Dataloader` worked fine with 2 workers, but once eval `Dataloader` was added it'd randomly hang - so we after failing to figure it out we resorted to a workaround of `num_workers=0` just for the eval and switch to doing it very rarely. Eventually, we stopped doing eval altogether and started doing lm-harness style (EleutherAI's [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)) async eval done to the saved intermediary checkpoints instead, which also sped up the training process.
 
 case study: during IDEFICS-80B training we were using a streaming `Dataloader` which worked really bad and it was consuming huge amounts of memory per worker, and it'd spike often, and we had about 1TiB of CPU memory and we couldn't spawn enough workers - so the `Dataloader` was a bottleneck. We didn't have time to find a better solution at that time so we finished training with it.
 
@@ -998,7 +1014,7 @@ Notes:
 
 ## torch.compile
 
-`torch.compile` speeds up both training and inference by tracing your model into a graph and generating fused kernels for it. It shipped in PyTorch 2.0 and as of 2026-08 much of the ecosystem runs it by default, but getting a good speedup on an arbitrary model is still not automatic - the tracer has to be able to see your code, and that is where the work is.
+`torch.compile` speeds up both training and inference by tracing your model into a graph and generating fused kernels for it (how Dynamo, AOTAutograd and Inductor do that is in [torch.compile internals](../../compute/accelerator/execution-model.md#torchcompile-internals)). It shipped in PyTorch 2.0 and as of 2026-08 much of the ecosystem runs it by default, but getting a good speedup on an arbitrary model is still not automatic - the tracer has to be able to see your code, and that is where the work is.
 
 ### Where it pays off
 
@@ -1010,9 +1026,9 @@ Look back at the three groups in [Anatomy of Model's Operations](#anatomy-of-mod
 
 So the speedup to expect is a function of how much of your step time sits in group 2 and 3 work. Profile first with the [PyTorch performance profilers](../../debug/pytorch.md#profilers), then compile.
 
-A separate win applies when you are launch-bound rather than bandwidth-bound: `mode="reduce-overhead"` captures the step into CUDA graphs and replays one launch sequence instead of issuing thousands of individual kernel launches. This matters most at small batch sizes and in low-latency inference decode, where the accelerator sits idle waiting for the CPU to feed it. It costs memory, since the captured graph pins its buffers, and it needs static shapes.
+A separate win applies when you are launch-bound rather than bandwidth-bound: `mode="reduce-overhead"` captures the step into [CUDA graphs](../../compute/accelerator/execution-model.md#cuda-graphs) and replays one launch sequence instead of issuing thousands of individual kernel launches. This matters most at small batch sizes and in low-latency inference decode, where the accelerator sits idle waiting for the CPU to feed it. It costs memory, since the captured graph pins its buffers, and it needs static shapes.
 
-Two measurements on a single NVIDIA B200 with `torch=2.13.0+cu130`, taken 2026-08-09, bracket the range; in both, the `forward` row is inference under `no_grad` while the two backward rows enable gradient checkpointing, which is standard practice at this size and is what keeps the 8B step within one GPU's memory. The first is a small model at a short sequence - Llama 3.2 1B (`NousResearch/Llama-3.2-1B`), bf16, SDPA, batch 1 x sequence 512 - where each step is a handful of milliseconds and is therefore dominated by kernel-launch overhead and the memory-bandwidth-bound work of groups 2 and 3. This is `torch.compile` at its most flattering. Steady-state step time after warmup, ratio against eager in parentheses:
+Two measurements on a single NVIDIA B200 with `torch=2.13.0+cu130`, taken 2026-08-09, bracket the range; in both, the `forward` row is inference under `no_grad` while the two backward rows enable gradient checkpointing, which is standard practice at this size and is what keeps the 8B step within one GPU's memory. The first is a small model at a short sequence - Llama 3.2 1B (`NousResearch/Llama-3.2-1B`), bf16, SDPA (PyTorch's built-in `scaled_dot_product_attention`), batch 1 x sequence 512 - where each step is a handful of milliseconds and is therefore dominated by kernel-launch overhead and the memory-bandwidth-bound work of groups 2 and 3. This is `torch.compile` at its most flattering. Steady-state step time after warmup, ratio against eager in parentheses:
 
 | workload         | eager  | `torch.compile()` | `mode="reduce-overhead"` | `mode="max-autotune"` |
 | :--------------- | -----: | ----------------: | -----------------------: | --------------------: |
@@ -1060,7 +1076,7 @@ Use a recent PyTorch release - the compiler improves substantially between versi
 
 ## Automatic garbage collection
 
-Python periodically performs an automatic garbage collection based on internal heuristics. In an LLM-training scenario with hundreds to thousands of accelerators used in synchronization - if different ranks follow even slightly different code paths the automatic garbage collection process could be triggered at different times for different ranks. Which means that one or more ranks could be slower than other ranks while performing this operation, and thus becoming stragglers, slowing down the whole ensemble.
+Python periodically performs an automatic garbage collection based on internal heuristics. In an LLM-training scenario with hundreds to thousands of accelerators used in synchronization - if different ranks follow even slightly different code paths the automatic garbage collection process could be triggered at different times for different ranks. Which means that one or more ranks could be slower than other ranks while performing this operation, and thus becoming [stragglers](../../foundations/distributed-systems.md#stragglers-and-tail-latency), slowing down the whole ensemble.
 
 Usually one can see this by studying [the MFU plot](#mfu-vs-hfu) where downward spikes can be observed.
 

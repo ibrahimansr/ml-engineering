@@ -4,7 +4,7 @@ Regardless of whether you own the ML training hardware or renting it by the hour
 
 Due the prohibitively high cost of ML hardware, it'd be very difficult to provide redundancy fail-over solutions as it's done in Web-services. Nevertheless making your training fault-tolerant is achievable with just a few simple recipes.
 
-As most serious training jobs are performed in a SLURM environment, it'll be mentioned a lot, but most of this chapter's insights are applicable to any other training environments.
+As most serious training jobs are performed in a SLURM environment (see [Slurm from zero](../../orchestration/slurm/from-zero.md) if you skipped it), it'll be mentioned a lot, but most of this chapter's insights are applicable to any other training environments.
 
 ## Always plan to have more nodes than needed
 
@@ -24,7 +24,7 @@ You also need at least one additional node for running various preventative watc
 
 ## Rebuilding the process group in place
 
-The rest of this chapter recovers from a dead rank by exiting and letting the next queued job start on a fresh allocation. Starting from PyTorch 2.14 the communicator itself can be rebuilt in place, so surviving ranks keep their warm process state. That path is experimental as of 2.14: you opt in at `init_process_group(..., enable_reconfigure=True)`, and the calls (`dist._get_reconfigure_handle`, `dist._reconfigure`) are underscored and documented as subject to change. Until they stabilize, keep using spare nodes and a job array as the recovery path.
+The rest of this chapter recovers from a dead rank by exiting and letting the next queued job start on a fresh allocation. Starting from PyTorch 2.14 the communicator (the NCCL process group that all ranks use for collectives, created by `torch.distributed.init_process_group`) itself can be rebuilt in place, so surviving ranks keep their warm process state. That path is experimental as of 2.14: you opt in at `init_process_group(..., enable_reconfigure=True)`, and the calls (`dist._get_reconfigure_handle`, `dist._reconfigure`) are underscored and documented as subject to change. Until they stabilize, keep using spare nodes and a job array as the recovery path.
 
 
 ## Queue up multiple training jobs
@@ -42,7 +42,7 @@ You'd want to replace that with:
 sbatch --array=1-10%1 train.slurm
 ```
 
-This tells SLURM to book a job array of 10 jobs, and if one of the job completes normally or it crashes, it'll immediately schedule the next one.
+This tells SLURM to book a [job array](../../orchestration/slurm/from-zero.md#job-arrays-many-similar-jobs) of 10 jobs, and if one of the job completes normally or it crashes, it'll immediately schedule the next one.
 
 footnote: `%1` in `--array=1-10%1` tells SLURM to launch the job array serially - one job at a time.
 
@@ -50,7 +50,7 @@ If you have already started a training without this provision, it's easy to fix 
 ```bash
 sbatch --array=1-10%1 --dependency=CURRENTLY_RUNNING_JOB_ID train.slurm
 ```
-So if your launched job looked like this:
+So if your launched job looked like this (the `-o` format string picks the columns: `%i` job id, `%P` partition, `%j` job name, `%T` state, `%M` time used so far, `%l` time limit, `%D` number of nodes, `%S` start time, `%R` node list or the reason the job is pending - the numbers set column widths, see [squeue](../../orchestration/slurm/from-zero.md#squeue-what-is-queued-and-running)):
 
 ```bash
 $ squeue -u `whoami` -o "%.10i %9P %20j %.8T %.10M %.8l %.6D %.20S %R"
@@ -74,7 +74,7 @@ Granted that if the condition that lead to the crash is still there the subseque
 
 But since the main reason for training crashes is failing GPUs, ensuring that faulty nodes are automatically removed and the new job starts with a new set of nodes makes for a smooth recovery from the crash.
 
-In the SLURM lingo, the removed nodes are given a new status called `drained`. Here is an example of a hypothetical SLURM cluster:
+In the SLURM lingo, the removed nodes are given a new status called `drained` (see [drained nodes](../../orchestration/slurm/users.md#drained-nodes)). Here is an example of a hypothetical SLURM cluster:
 
 ```bash
 $ sinfo
@@ -135,13 +135,13 @@ For example, say you have a training setup that uses a 3D parallelism of TP=4, P
 
 Additionally you have a standby back up node `node2` with 8 GPUs idling but ready to be used at a moment's notice.
 
-Now, say, during training `node0.gpu0` fails. Since you have a 2nd replica with intact data, you switch over to the standby 8GPU node, RDMA copy the data from the gpus of the 2nd replica and you can continue training where you left off. This is a very simplistic explanation since there are multiple nuances to figuring out such recovery depending at which stage of the iteration loop the failure occurred. It other words there is a complex algorithm to implement.
+Now, say, during training `node0.gpu0` fails. Since you have a 2nd replica with intact data, you switch over to the standby 8GPU node, RDMA copy (a direct GPU-to-GPU transfer over the network that bypasses the CPUs, see [GPUDirect](../../foundations/computer-architecture.md#gpudirect-cutting-the-cpu-and-its-memory-out-of-the-path)) the data from the gpus of the 2nd replica and you can continue training where you left off. This is a very simplistic explanation since there are multiple nuances to figuring out such recovery depending at which stage of the iteration loop the failure occurred. It other words there is a complex algorithm to implement.
 
 Of course, on a large scale training you're likely to have a hundred active nodes and a small handful of back up node.
 
 This approach is superior to file system checkpointing saving because, you only ever lose one iteration, whereas with file system checkpointing you may lose hundreds of iterations.
 
-The open-source library that lands closest to this idea is [`torchft`](https://github.com/meta-pytorch/torchft) (Meta / PyTorch). It treats each training step as a fault boundary across replica groups, coordinates health with a lighthouse/quorum service, and can heal a failed group by live state transfer from a healthy peer instead of rolling back to a filesystem checkpoint. Out of the box it covers fault-tolerant DDP and HSDP, and [`torchtitan`](https://github.com/pytorch/torchtitan) wires it into an end-to-end HSDP training loop - see its [`torchft` experiment docs](https://github.com/pytorch/torchtitan/tree/main/torchtitan/experiments/torchft) and the [PyTorch blog write-up of a checkpoint-free run under synthetic failures](https://pytorch.org/blog/fault-tolerant-llama-training-with-2000-synthetic-failures-every-15-seconds-and-no-checkpoints-on-crusoe-l40s/). The failure domain is a whole replica group rather than a single GPU, and the healing path is peer recovery through torchft's checkpoint transports rather than the RDMA-copy-onto-a-dedicated-standby sketch above - same goal (lose at most a step, keep training), different machinery.
+The open-source library that lands closest to this idea is [`torchft`](https://github.com/meta-pytorch/torchft) (Meta / PyTorch). It treats each training step as a fault boundary across replica groups, coordinates health with a lighthouse/quorum service, and can heal a failed group by live state transfer from a healthy peer instead of rolling back to a filesystem checkpoint. Out of the box it covers fault-tolerant DDP and HSDP (Hybrid Sharded Data Parallel: FSDP/ZeRO sharding within a group of GPUs, plain data-parallel replication across groups - the "Hybrid ZeRO-DP" mentioned above), and [`torchtitan`](https://github.com/pytorch/torchtitan) wires it into an end-to-end HSDP training loop - see its [`torchft` experiment docs](https://github.com/pytorch/torchtitan/tree/main/torchtitan/experiments/torchft) and the [PyTorch blog write-up of a checkpoint-free run under synthetic failures](https://pytorch.org/blog/fault-tolerant-llama-training-with-2000-synthetic-failures-every-15-seconds-and-no-checkpoints-on-crusoe-l40s/). The failure domain is a whole replica group rather than a single GPU, and the healing path is peer recovery through torchft's checkpoint transports rather than the RDMA-copy-onto-a-dedicated-standby sketch above - same goal (lose at most a step, keep training), different machinery.
 
 Related research systems attack the same problem from other angles. [`Oobleck`](https://github.com/SymbioticLab/Oobleck) (SOSP'23) keeps logically equivalent pipeline replicas and recovers by re-instantiating precomputed pipeline templates after failures, again without a full checkpoint restart. Earlier spot-instance work such as [Bamboo](https://www.usenix.org/system/files/nsdi23-thorpe.pdf) (redundant computation scheduled into pipeline bubbles; NSDI'23) and [Varuna](https://github.com/microsoft/varuna) (elastic PP+DP reconfiguration) is in the same family; those codebases are largely dormant now and are useful mainly as design references. Commercial infrastructure layers also exist that migrate a failed GPU onto a spare without changing the training script - a different trade-off (per-GPU failure domain, outside the framework) rather than another torchft clone.
 
@@ -173,9 +173,9 @@ The easiest way to avoid losing training time is to prevent certain types of pro
 
 ### Scheduled Watchdogs
 
-Before we discuss the various watchdogs it's critical that you have a mechanism that allows you to run scheduled jobs. In the Unix world this is implemented by the [`crontab` facility](https://en.wikipedia.org/wiki/Cron).
+Before we discuss the various watchdogs it's critical that you have a mechanism that allows you to run scheduled jobs. In the Unix world this is implemented by the [`crontab` facility](https://en.wikipedia.org/wiki/Cron) (see [cron](../../foundations/linux-and-os.md#cron)).
 
-Here is an example of how `~/bin/watch-fs.sh` can be launched every hour:
+Here is an example of how `~/bin/watch-fs.sh` can be launched every hour (the five fields are minute, hour, day of month, month and day of week, so `0 * * * *` means "at minute 0 of every hour"):
 ```
 0 * * * * ~/bin/watch-fs.sh
 ```
@@ -247,7 +247,7 @@ Moreover, often there will be multiple partitions - faster IO partitions dedicat
 
 Here is another caveat - when it comes to distributed file systems not all filesystems can reliably give you a 100% of disk space you acquired. In fact with some of those types you can only reliably use at most ~80% of the allocated storage space. The problem is that these systems use physical discs that they re-balance at the scheduled periods or triggered events, and thus any of these individual discs can reach 100% of their capacity and lead to a failed write, which would crash a training process, even though `df` would report only 80% space usage on the partition. We didn't have this problem while training BLOOM-176B, but we had it when we trained IDEFICS-80B - 80% there was the new 100%. How do you know if you have this issue - well, usually you discover it while you prepare for the training.
 
-And this is not all. There is another issue of inodes availability and some storage partitions don't have very large inode quotas. Python packages are notorious for having hundreds to thousands of small files, which combined take very little total space, but which add up to tens of thousands of files in one's virtual environment and suddenly while one has TBs of free disk space available, but runs out of free inodes and discovering their training crashing.
+And this is not all. There is another issue of inodes availability and some storage partitions don't have very large inode quotas. (An inode is the filesystem's per-file metadata record, so the inode quota is effectively a cap on the number of files, see [Inodes, names and links](../../foundations/linux-and-os.md#inodes-names-and-links).) Python packages are notorious for having hundreds to thousands of small files, which combined take very little total space, but which add up to tens of thousands of files in one's virtual environment and suddenly while one has TBs of free disk space available, but runs out of free inodes and discovering their training crashing.
 
 Finally, many distributed partitions don't show you the disk usage stats in real time and could take up to 30min to update.
 
@@ -262,29 +262,30 @@ If you study the watchdog code you can see that for each partition we were monit
 
 ### Dealing with slow memory leaks
 
-Some programs develop tiny memory leaks which can be very difficult to debug. Do not confuse those with the usage of MMAP where the program uses the CPU memory to read quickly read data from and where the memory usage could appear to grow over time, but this is not real as this memory gets freed when needed. You can read [A Deep Investigation into MMAP Not Leaking Memory](https://stasosphere.com/entrepreneur-being/301-mmap-memory-leak-investigation/) to understand why.
+Some programs develop tiny memory leaks which can be very difficult to debug. Do not confuse those with the usage of MMAP (memory-mapping a file so that its pages are read into RAM on first touch, see [safetensors: a header plus raw bytes](../../foundations/storage-and-data.md#safetensors-a-header-plus-raw-bytes)) where the program uses the CPU memory to read quickly read data from and where the memory usage could appear to grow over time, but this is not real as this memory gets freed when needed. You can read [A Deep Investigation into MMAP Not Leaking Memory](https://stasosphere.com/entrepreneur-being/301-mmap-memory-leak-investigation/) to understand why.
 
 Of course, ideally one would analyze their software and fix the leak, but at times the leak could be coming from a 3rd party package or can be very difficult to diagnose and there isn't often the time to do that.
 
-When it comes to GPU memory, there is the possible issue of memory fragmentation, where over time more and more tiny unused memory segments add up and make the GPU appear to have a good amount of free memory, but when the program tries to allocate a large tensor from this memory it fails with the OOM error like:
+When it comes to GPU memory, there is the possible issue of memory fragmentation (see [PyTorch caching allocator internals](../arithmetic.md#pytorch-caching-allocator-internals)), where over time more and more tiny unused memory segments add up and make the GPU appear to have a good amount of free memory, but when the program tries to allocate a large tensor from this memory it fails with the OOM error like:
 
 ```
 RuntimeError: CUDA out of memory. Tried to allocate 304.00 MiB (GPU 0; 8.00 GiB total capacity;
 142.76 MiB already allocated; 6.32 GiB free; 158.00 MiB reserved in total by PyTorch)
 ```
-In this example if there are 6.32GiB free, how comes that 304MiB couldn't be allocated.
+In this example if there are 6.32GiB free, how comes that 304MiB couldn't be allocated. The answer is that the free memory is scattered across many small non-contiguous blocks, none of which is 304MiB large.
 
 One of the approaches my team developed during IDEFICS-80B training where there was some tiny CPU memory leak that would often take multiple days to lead to running out of CPU memory was to install a watchdog inside the training loop that would check the memory usage and if a threshold was reached it'd voluntarily exit the training loop. The next training job would then resume with all the CPU memory reclaimed.
 
-footnote: The reality of Machine Learning trainings is that not all problems can be fixed with limited resources and often times a solid workaround provides for a quicker finish line, as compared to "stopping the presses" and potentially delaying the training for weeks, while trying to figure out where the problem is. For example we trained BLOOM-176B with `CUDA_LAUNCH_BLOCKING=1` because the training would hang without it and after multiple failed attempts to diagnose that we couldn't afford any more waiting and had to proceed as is. Luckily this environment variable that normally is used for debug purposes and which in theory should make some CUDA operations slower didn't actually make any difference to our throughput. But we have never figured out what the problem was and today it doesn't matter at all that we haven't, as we moved on with other projects which aren't impacted by that issue.
+footnote: The reality of Machine Learning trainings is that not all problems can be fixed with limited resources and often times a solid workaround provides for a quicker finish line, as compared to "stopping the presses" and potentially delaying the training for weeks, while trying to figure out where the problem is. For example we trained BLOOM-176B with `CUDA_LAUNCH_BLOCKING=1` (which makes every CUDA kernel launch synchronous, so the CPU waits for each kernel to finish before continuing) because the training would hang without it and after multiple failed attempts to diagnose that we couldn't afford any more waiting and had to proceed as is. Luckily this environment variable that normally is used for debug purposes and which in theory should make some CUDA operations slower didn't actually make any difference to our throughput. But we have never figured out what the problem was and today it doesn't matter at all that we haven't, as we moved on with other projects which aren't impacted by that issue.
 
 The idea is similar to the kill and save switches discussed earlier, but here instead of polling for a specific file appearance we simply watch how much resident memory is used. For example here is how you'd auto-exit if the OS shows only 5% of the virtual cpu memory remain:
 
 ```python
+import sys
 import psutil
 for batch in iterator:
-    total_used_percent = psutil.virtual_memory().percent
-    if total_used_percent > 0.95:
+    total_used_percent = psutil.virtual_memory().percent # 0-100
+    if total_used_percent > 95:
         print(f"Exiting early since the cpu memory is almost full: ({total_used_percent}%)")
         save_checkpoint()
         sys.exit()
@@ -292,7 +293,7 @@ for batch in iterator:
     train_step(batch)
 ```
 
-Similar heuristics could be used for setting a threshold for GPU memory usage, except one needs to be aware of cuda tensor caching and python garbage collection scheduling, so to get the actual memory usage you'd need to do first run the garbage collector then empty the cuda cache and only then you will get real memory usage stats and then gracefully exit the training if the GPU is too close to being full.
+Similar heuristics could be used for setting a threshold for GPU memory usage, except one needs to be aware of cuda tensor caching and python garbage collection scheduling, so to get the actual memory usage you'd need to do first run the garbage collector then empty the cuda cache (`torch.cuda.empty_cache()` returns the blocks PyTorch's caching allocator holds but isn't using back to the driver, and `torch.cuda.mem_get_info()` returns the device's `(free, total)` bytes as the driver sees them) and only then you will get real memory usage stats and then gracefully exit the training if the GPU is too close to being full.
 
 ```python
 import gc
@@ -327,7 +328,7 @@ footnote: this also means that you can't plan how long the training will take un
 
 One could, of course, let the job killed and hope that not many cycles were spent since [the last checkpoint was saved](#frequent-checkpoint-saving) and then let the job resume from this checkpoint, but that's quite wasteful and best avoided.
 
-The efficient solution is to gracefully exit before the hard tile limit is hit and the job is killed by SLURM.
+The efficient solution is to gracefully exit before the hard time limit is hit and the job is killed by SLURM.
 
 First, you need to figure out how much time your program needs to gracefully finish. This typically requires 2 durations:
 
@@ -368,7 +369,7 @@ case study: you can see how this was set [in the BLOOM training job](https://git
                 sys.exit()
 ```
 
-As you can see since the training is distributed we have to synchronize the exiting event across all ranks
+As you can see since the training is distributed we have to synchronize the exiting event across all ranks - the `all_reduce` with `ReduceOp.MAX` makes every rank see `done=1` if any single rank has passed the time limit, so they all save and exit at the same iteration instead of some ranks hanging in the next collective
 
 You could also automate the derivation, by retrieving the `EndTime` for the running job:
 ```bash
@@ -389,7 +390,7 @@ In your sbatch script you could set:
 ```
 and then SLURM will send a `SIGUSR1` signal to your program 10min before job's end time.
 
-footnote: normally SLURM schedulers send a `SIGCONT`+`SIGTERM` signal about 30-60 seconds before the job's time is up, and just as the time is up it will send a `SIGCONT`+`SIGTERM`+`SIGKILL` signal if the job is still running. `SIGTERM` can be caught and acted upon but 30 seconds is not enough time to gracefully exit a large model training program.
+footnote: see [How jobs get stopped](../../orchestration/slurm/from-zero.md#how-jobs-get-stopped) and [Signals](../../foundations/linux-and-os.md#signals) for the signal basics. Normally SLURM schedulers send a `SIGCONT`+`SIGTERM` signal about 30-60 seconds before the job's time is up, and just as the time is up it will send a `SIGCONT`+`SIGTERM`+`SIGKILL` signal if the job is still running. `SIGTERM` can be caught and acted upon but 30 seconds is not enough time to gracefully exit a large model training program.
 
 Let's demonstrate how the signal sending and trapping works. In terminal A, run:
 ```bash
@@ -499,7 +500,7 @@ wait
 
 Since `--signal=B:USR1@600` earlier will now send the signal to the `sbatch` shell we can trap it and do something about it, and that's what the `trap` line does.
 
-The magical code inside the signal handler passed to `trap` finds all processes that are immediate children of any of the launchers like `accelerate`, `deepspeed`, `torchrun` or `torch.distributed.run` and sends the `SIGUSR1` signal to them.
+The magical code inside the signal handler passed to `trap` (a bash builtin that runs the given command string when the shell receives the named signal) finds all processes that are immediate children of any of the launchers like `accelerate`, `deepspeed`, `torchrun` or `torch.distributed.run` and sends the `SIGUSR1` signal to them. Step by step: `pgrep -f` matches the regex against each process's full command line and returns the launcher's pid, `pgrep -P $pid` lists that pid's children (the actual training processes), and `xargs -r kill -USR1` sends each of them `SIGUSR1` (`-r` skips running `kill` if the list is empty).
 
 Finally the last change is that in order for `trap` to work we need to run `srun` in the background - so we added `&`  at the end of the `srun` command and we needed to add `wait` so that the `sbatch` shell won't exit until `srun` finishes.
 
@@ -572,7 +573,7 @@ Here we tell SLURM to run the job for 5 minutes only (`--time=0:05:00`) and we a
 
 ### QoS-based SLURM preemption
 
-We haven't discussed so far what happens when Quality of Service (QoS) is used, which may also forcefully preempt an existing job. The functionality is the same as job's-allocated-time-is-about-to-end sort of pre-emption, except it can happen any time and not X seconds before the end of the job.
+We haven't discussed so far what happens when Quality of Service (QoS) is used (see [Accounts, associations, QoS and fair share](../../orchestration/slurm/from-zero.md#accounts-associations-qos-and-fair-share)), which may also forcefully preempt an existing job. The functionality is the same as job's-allocated-time-is-about-to-end sort of pre-emption, except it can happen any time and not X seconds before the end of the job.
 
 Consider a SLURM setup where you have `--qos=high` which can preempt `--qos=low` jobs and the low priority job has grace time of 10 minutes to shut down:
 

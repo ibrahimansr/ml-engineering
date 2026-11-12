@@ -2,13 +2,13 @@
 
 Compute accelerators are the workhorses of the ML training. At the beginning there were just GPUs. But now there are also TPUs, FPGAs, HPUs, QPUs, RDUs and more are being invented.
 
-There exist two main ML workloads - training and inference. There is also the finetuning workload which is usually the same as training, unless a much lighter [LORA-style](https://arxiv.org/abs/2106.09685) finetuning is performed. The latter requires significantly fewer resources and time than normal finetuning.
+There exist two main ML workloads - training and inference. There is also the finetuning workload which is usually the same as training, unless a much lighter [LORA-style](https://arxiv.org/abs/2106.09685) finetuning is performed (LoRA freezes the base weights and trains only small low-rank matrices added alongside them). The latter requires significantly fewer resources and time than normal finetuning.
 
 In language models during inference the generation is performed in a sequence - one token at a time. So it has to repeat the same `forward` call thousands of times one smallish `matmul` (matrix multiplication or GEMM) at a time. And this can be done on either an accelerator, like GPU, or some of the most recent CPUs, that can handle inference quite efficiently.
 
 During training the whole sequence length is processed in one huge `matmul` operation. So if the sequence length is 4k long, the training of the same model will require a compute unit that can handle 4k times more operations than inference and do it fast. Accelerators excel at this task. In fact the larger the matrices they have to multiply, the more efficient the compute.
 
-The other computational difference is that while both training and inference have to perform the same total amount of `matmul`s in the `forward` pass, in the `backward` pass, which is only done for training, an additional 2x times of `matmul`s is done to calculate the gradients with regards to inputs and weights. And an additional `forward` is performed if activations recomputation is used. Therefore the training process requires at 3-4x more `matmul`s than inference.
+The other computational difference is that while both training and inference have to perform the same total amount of `matmul`s in the `forward` pass, in the `backward` pass, which is only done for training, an additional 2x times of `matmul`s is done to calculate the gradients with regards to inputs and weights. And an additional `forward` is performed if activations recomputation is used (discarding the activations saved during `forward` to save memory and recomputing them during `backward`, covered in [Gradient Checkpointing](../../training/performance/README.md#gradient-checkpointing)). Therefore the training process requires at 3-4x more `matmul`s than inference.
 
 ## Subsections
 
@@ -30,7 +30,7 @@ While this might be changing in the future, unlike the consumer GPU market, as o
 
 GPUs:
 - As of today, ML clouds/HPCs already have B200s/B300s, and GB200/GB300 NVL72 racks are shipping. Rubin is expected to emerge in H2-2026.
-- AMD's MI325X is now widely available on Tier 2 cloud providers. MI355X is starting to emerge. MI455X hopefully in 2026. New: large CSPs started to offer AMD GPUs
+- AMD's MI325X is now widely available on Tier 2 cloud providers (Tier 1 are the hyperscalers - AWS, OCI, Azure and GCP; Tier 2 are the smaller GPU-focused clouds). MI355X is starting to emerge. MI455X hopefully in 2026. New: large CSPs (cloud service providers) started to offer AMD GPUs
 - Intel's GPU D-series (D270, code-named Crescent Island) is an inference-oriented Xe3P data-center GPU, launched at OCP 2026 with customer sampling in H2-2026. Intel has published only its FP8 peak (1.3 PFLOPS). See [Intel GPU D-series](#intel-gpu-d-series-crescent-island)
 
 HPU:
@@ -58,6 +58,7 @@ As most of us rent the compute, and we never see what it looks like, here is how
 ## Glossary
 
 - BLAS: Basic Linear Algebra Subprograms
+- CDNA: AMD's data-center GPU architecture family (CDNA2 = MI250X, CDNA3 = MI300X/MI325X, CDNA4 = MI350X/MI355X)
 - CPU: Central Processing Unit
 - CTS: Custom Thermal Solution - a vendor-supported cooling option that allows a higher power limit than the default
 - CU: Compute Unit - AMD's counterpart to NVIDIA's SM
@@ -69,6 +70,7 @@ As most of us rent the compute, and we never see what it looks like, here is how
 - FPGA: Field Programmable Gate Arrays
 - GA: Generally Available - the product can actually be bought or rented, as opposed to announced, sampling, or spec'd only
 - GCD: Graphics Compute Die
+- GDDR: Graphics DDR - the cheaper, lower-bandwidth memory used on consumer and some inference cards instead of HBM
 - GEMM: General Matrix Multiply
 - GPU: Graphics Processing Unit
 - HBM: High Bandwidth Memory
@@ -77,10 +79,12 @@ As most of us rent the compute, and we never see what it looks like, here is how
 - HPC: High-performance Computing
 - HPU: Habana Gaudi AI Processor Unit
 - LLC: Last Level Cache
+- LPDDR: Low-Power DDR - the memory type used in laptops and phones, cheaper and denser per dollar than HBM but much slower
 - MAMF: Maximum Achievable Matmul FLOPS
 - MFU: Model FLOPS Utilization
 - MIG: Multi-Instance GPU - NVIDIA's partitioning of one GPU into isolated instances
 - MME: Matrix Multiplication Engine
+- Matrix Core: AMD's counterpart to NVIDIA's Tensor Core
 - MSMF: Maximum Sustainable Matmul FLOPS
 - NVL72: an NVLink domain of 72 accelerators; likewise NVL8 and NVL36
 - OAM: OCP Accelerator Module - the Open Compute Project's accelerator form factor
@@ -88,6 +92,7 @@ As most of us rent the compute, and we never see what it looks like, here is how
 - PTX: Parallel Thread Execution - NVIDIA's intermediate GPU instruction set
 - QPU: Quantum Processing Unit
 - RDU: Reconfigurable Dataflow Unit
+- ROCm: AMD's GPU software platform - its counterpart to the CUDA stack (driver, compiler, BLAS and collective-communication libraries)
 - SM: Streaming Multiprocessor - NVIDIA's counterpart to AMD's CU
 - SRAM: Static Random Access Memory
 - TBP: Typical Board Power or Total Board Power, depending on vendor
@@ -123,7 +128,7 @@ We will discuss both the hardware and the software aspects in various chapters o
 
 ## What Accelerator characteristics do we care for
 
-Let's use the NVIDIA A100 spec as a reference point in the following sections.
+Let's use the NVIDIA A100 spec as a reference point in the following sections. The SMs, tensor cores and HBM these specs refer to were introduced in [The pieces](../../foundations/computer-architecture.md#the-pieces), and the GPU's internals are taken apart properly in the next chapter, [GPU Execution Model and Kernels](execution-model.md).
 
 ![nvidia-a100-spec](images/nvidia-a100-spec.png)
 
@@ -158,7 +163,7 @@ Moreover, the TFLOPS depend on the matrices size as can be seen from this table:
 
 [source](https://developer.nvidia.com/blog/cuda-11-features-revealed/)
 
-As you can see the difference in performance is non-linear due to [the tile and wave quantization effects](../../training/performance/README.md#tile-and-wave-quantization). Note the blue line in the graph corresponds to FP32 Tensor Core.
+As you can see the difference in performance is non-linear due to [the tile and wave quantization effects](../../training/performance/README.md#tile-and-wave-quantization): a matmul is cut into fixed-size tiles that are run in waves across the SMs, so a dimension that leaves the last tile, or the last wave, partly empty pays for work it doesn't do. Note the blue line in the graph corresponds to FP32 Tensor Core.
 
 #### How To Calculate Theoretical TFLOPS
 
@@ -255,7 +260,9 @@ To check the actual clock speed when your accelerator is under load see the [clo
 
 #### TFLOPS comparison table
 
-Let's look at the supported [dtypes](../../training/dtype.md) and the corresponding theoretical peak TFLOPS specs across the high end accelerators (w/o sparsity). Both tables are sorted by the bf16 column, and they share one set of notes, listed after them. The two FP4 columns are the two block-scaled FP4 formats: `mxfp4` is the OCP microscaling one, one power-of-two E8M0 scale per 32 elements, and `nvfp4` is NVIDIA's, one E4M3 scale per 16 elements plus a per-tensor FP32 scale - see [fp4 formats](../../training/dtype.md#fp4-formats) for which to use.
+Let's look at the supported [dtypes](../../training/dtype.md) (the formats themselves were introduced in [Floating point: IEEE 754](../../foundations/computer-architecture.md#floating-point-ieee-754)) and the corresponding theoretical peak TFLOPS specs across the high end accelerators (w/o sparsity). Both tables are sorted by the bf16 column, and they share one set of notes, listed after them. The two FP4 columns are the two block-scaled FP4 formats: `mxfp4` is the OCP microscaling one, one power-of-two E8M0 scale per 32 elements, and `nvfp4` is NVIDIA's, one E4M3 scale per 16 elements plus a per-tensor FP32 scale - see [fp4 formats](../../training/dtype.md#fp4-formats) for which to use.
+
+How to read the cells: a number is the vendor's dense (no sparsity) peak; `X` means the format isn't supported or, for a few rows called out in the notes, that no rate is published; `V` means the format is supported but no rate is published; `?` means the vendor hasn't stated the number. The `Notes` column points to the numbered notes after both tables.
 
 **Generally available:**
 
@@ -333,11 +340,11 @@ General notes:
 
 * int8 is measured in TeraOperations as it's not a floating operation.
 
-* if you find numbers that are double of the above - it usually means with sparsity (which at the moment almost nobody can benefit from as our matrices are dense).
+* if you find numbers that are double of the above - it usually means with sparsity (2:4 structured sparsity, see [Dense vs sparse FLOPS](../../foundations/computer-architecture.md#units-and-the-classic-mistakes)) (which at the moment almost nobody can benefit from as our matrices are dense).
 
 * when looking at specs be very careful at which numbers you're reading - many vendors often publish TFLOPS with sparsity, as they are ~2x bigger, but if they even indicate this they often do it in small print. I had to ask NVIDIA to add a note to their H100 spec that those numbers were w/ sparsity as they originally didn't mention this important technical fact. And 99% of the time as of 2026-08 you will be not using sparsity and thus the actual theoretical TFLOPS that you care for most of the time are w/o sparsity (i.e. the table above).
 
-* also beware that if accelerator A publishes a higher TFLOPS than accelerator B, it doesn't mean A is faster. These are theoretical numbers which not only can never be achieved in practice - the actual TFLOPS efficiency [Hardware FLOPS Utilization](../../training/performance/README.md#mfu-vs-hfu) (HFU) can vary a lot from vendor to vendor or even for the same vendor's different accelerator architectures.
+* also beware that if accelerator A publishes a higher TFLOPS than accelerator B, it doesn't mean A is faster. These are theoretical numbers which not only can never be achieved in practice - the actual TFLOPS efficiency [Hardware FLOPS Utilization](../../training/performance/README.md#mfu-vs-hfu) (HFU - the achieved fraction of peak counting every FLOP the hardware executes, including recomputation, whereas MFU counts only the model's own FLOPs) can vary a lot from vendor to vendor or even for the same vendor's different accelerator architectures.
 
 
 
@@ -349,7 +356,7 @@ The problem with the advertised theoretical peak FLOPS is that they are **very**
 
 If you find solid reports (papers?) showing the actual TFLOPS one can expect from one or more of the high end accelerators discussed in this chapter please kindly submit a PR with this information. The key is to have a reference to a source that the reader can validate the proposed information with.
 
-To provide a numerical sense to what I'm talking about let's take an A100 with its 312TFLOPS bf16 peak performance in the specs of this card. Until the invention of FlashAttention it was known that 150TFLOPS was close to the highest one could get for fp16/bf16 mixed precision training regime. And with FlashAttention it's around 180+TFLOPS. This is, of course, measured for training LLMs where the network and IO are involved which create additional overheads. So here the maximum achievable peak performance probably lays somewhere between 200 and 300TFLOPS.
+To provide a numerical sense to what I'm talking about let's take an A100 with its 312TFLOPS bf16 peak performance in the specs of this card. Until the invention of FlashAttention (the fused attention kernel that never writes the full attention matrix to HBM, taken apart in [FlashAttention](execution-model.md#flashattention)) it was known that 150TFLOPS was close to the highest one could get for fp16/bf16 mixed precision training regime (matmuls run in 16-bit while a master copy of the weights and the optimizer state stay in fp32). And with FlashAttention it's around 180+TFLOPS. This is, of course, measured for training LLMs where the network and IO are involved which create additional overheads. So here the maximum achievable peak performance probably lays somewhere between 200 and 300TFLOPS.
 
 You could measure the actual achievable peak TFLOPS by doing a perfectly aligned max-size matrices `matmul` measured on a single accelerator. You can use [Maximum Achievable and Sustainable Matmul FLOPS finder](benchmarks/README.md#maximum-achievable-and-sustainable-matmul-flops-finder) to reproduce the results. But, of course, this will only tell you how well your given accelerator and its software stack do `matmul` - depending on the workload this might be all you need to know, or not.
 
@@ -359,7 +366,7 @@ MAMF stands for [Maximum Achievable Matmul FLOPS](#maximum-achievable-and-sustai
 
 #### Maximum Achievable and Sustainable Matmul FLOPS comparison table
 
-The following measurements are for `matmul` with BF16, FP8 and FP4 inputs (no sparsity) TFLOPS (see [Maximum Achievable and Sustainable FLOPS](#maximum-achievable-and-sustainable-flops) for what MAMF and MSMF stand for). **MAMF** is the short boost-clock burst; **MSMF** is what it holds once the chip is saturated at its power limit — use MSMF for training throughput. `—` means MSMF is not measured yet. Sorted by MAMF %. Reproduce with the [MAMF finder](benchmarks/README.md#maximum-achievable-and-sustainable-matmul-flops-finder).
+The following measurements are for `matmul` with BF16, FP8 and FP4 inputs (no sparsity) TFLOPS (see [Maximum Achievable and Sustainable FLOPS](#maximum-achievable-and-sustainable-flops) for what MAMF and MSMF stand for). **MAMF** is the short boost-clock burst; **MSMF** is what it holds once the chip is saturated at its power limit — use MSMF for training throughput. `—` means MSMF is not measured yet. Sorted by MAMF %. How to read the columns: `Theory` is the dense peak from the [TFLOPS comparison table](#tflops-comparison-table); `MAMF %` and `MSMF %` are the measured values as a fraction of it; `Shape MxNxK` is the matmul that gave the best MAMF, an `(M, K)` by `(K, N)` multiplication; the `torch version` suffix says which build was used (`+cu130` = built against CUDA 13.0, `+rocm…` = an AMD ROCm build, `+hpu…` = Intel Gaudi). Reproduce with the [MAMF finder](benchmarks/README.md#maximum-achievable-and-sustainable-matmul-flops-finder).
 
 **BF16**:
 
@@ -413,7 +420,7 @@ Caveat emptor: these numbers come from `mamf-finder.py --search auto` (or a grid
 
 **How precise these numbers are:** the measurements vary, so don't read any row as an exact value - and most of the variation is between chips, not between runs. Two examples, not an account of every row: on an 8x H200 node every GPU ran the same MSMF shape at the same 685–688 W, yet they sustained 745–765 TFLOPS, and the faster GPUs ran at higher clocks - 1860 MHz on the slowest against 1913 MHz on the fastest; on an 8x B200 node the same test gave 1421–1460 TFLOPS at 978–987 W, with clocks of 1399 against 1438 MHz. At the same power a better chip holds a higher clock - the [silicon lottery](#silicon-lottery) - and on these nodes cooling added little: every GPU was held back by its power cap, not its temperature, and the 8–11°C between the hottest and coolest GPUs accounted for under a tenth of their clock gap (see [Cooling](#cooling)). Rerunning the same GPU typically moved its numbers by under 1%, and by 2.2% at most. So a `Siblings` = `yes` row describes the median GPU of one node and a `Siblings` = `no` row one GPU, measured with the software of its day, and another node, driver or `torch` version will move it; other GPUs may vary by different amounts, so treat a gap of a few percent between two rows, or between a row and your own measurement, as noise rather than a real difference.
 
-Notes — the `Notes` column of all three tables points here:
+Notes — the `Notes` column of all three tables points here. The environment settings in them are explained in the benchmark chapter's [Architecture specific notes](benchmarks/README.md#architecture-specific-notes): `PYTORCH_TUNABLEOP_ENABLED=1` makes PyTorch time several GEMM implementations for each new shape and keep the fastest, `numa_balancing=0` turns off the Linux kernel's automatic migration of memory pages between NUMA nodes, and `PT_HPU_LAZY_MODE=1` runs Gaudi in its lazy mode, where ops are collected into a graph and compiled before running. In the dtype names, `fn` means finite-only (no infinities), `uz` means no negative zero - the `float8_e4m3fnuz` variant is the one MI300-series hardware implements - and `float8_e8m0fnu` is the exponent-only type used for mxfp4 block scales. `sm100` and `sm103` name the compute capability a kernel was compiled for (B200 is 10.0, B300 is 10.3; `sm_103a` is the B300-specific instruction set), and `_scaled_mm` is PyTorch's matmul op for low-precision inputs that carry scale factors.
 
 1. Intel Gaudi 2 and Intel Gaudi 3 (both tables): `PT_HPU_LAZY_MODE=1`
 2. NVIDIA A100 PCIe, BF16: 80GB, 300 W; the median of 3 runs; MAMF @ 1395 MHz; MSMF 258 @ 2304x1536x6144, ~299 W @ 1326 MHz
@@ -445,7 +452,7 @@ General notes:
 - The `Shape` column is the MAMF shape; the MSMF shape, its power, its clock and the GPU temperature are in the numbered notes. There are usually many shapes with near-identical performance — these are listed for reproducibility.
 - `Siblings` = `yes`: every GPU of the node was measured while all the others ran a continuous matmul, and MAMF and MSMF are the median GPU. `Siblings` = `no`: one GPU measured alone, with its siblings idle. How `mamf-finder.py` measures either is explained [here](benchmarks/README.md#maximum-achievable-and-sustainable-matmul-flops-finder).
 - If you get a much lower performance than the numbers in this table, check that the target hardware has an adequate cooling, if the accelerator is overheated it'd usually throttle its performance down. And, of course, the assumption here is that the power supply matches the spec. The latter is rarely a problem in data centers, but bad cooling is not unheard of.
-- Which software you use can make a huge difference - e.g., with MI300X I clocked 450TFLOPS using ROCm-6.1, but as you can see there was a dramatic improvement in ROCm-6.2 where it jumped a whooping additional 300TFLOPS up. BLAS library type/version may have a big impact as well.
+- Which software you use can make a huge difference - e.g., with MI300X I clocked 450TFLOPS using ROCm-6.1 (ROCm is AMD's counterpart to the CUDA software stack), but as you can see there was a dramatic improvement in ROCm-6.2 where it jumped a whooping additional 300TFLOPS up. BLAS library type/version may have a big impact as well.
 - Then there are various system optimizations - e.g. in the case of MI300X disabling numa_balancing in the kernel settings is a must.
 - Rows are not always exactly comparable with each other. Each is the best shape found for *that* accelerator, and often on a different `torch`/CUDA or ROCm version, so any gap between two rows mixes hardware, shape and software. But it's a good enough of indication to compare with the theoretical spec. As software evolves remeasuring is needed and likely to give better results, but yours truly doesn't have access to all the gpus, especially the older ones, thus contributions are very welcome. See [How to report MAMF/MSMF entries](benchmarks/README.md#how-to-report-mamfmsmf-entries) for how to measure and submit a row.
 - Of the rows with an MSMF, H200, B200 and A100 PCIe were measured with benchmark version 4 of `mamf-finder.py` (the report header prints it), and B300 and MI300X with an earlier version that defined both headlines differently, so compare those two with the rest only roughly.
@@ -479,9 +486,9 @@ Even two chips coming off the same wafer are not identical. Tiny variations duri
 
 The way this is characterized is the per-chip **V-F-T curve** (Voltage-Frequency-Temperature). Every die has its own surface describing the minimum voltage required to run stably at a given frequency and temperature. A "good" die can hit higher frequencies at lower voltage (less heat, less power, more headroom before throttling); a "weaker" die needs more voltage for the same clock, which produces more heat, which then forces the clock down sooner under load. So the curves are not parallel. Two dies that are equal at idle can diverge significantly once they're hot and under sustained compute.
 
-In data-center accelerators the boost-clock and TDP spec is set conservatively so that every binned chip can meet it, but the *actual sustained performance* still falls anywhere on a distribution. Combined with uneven cooling (see above), this explains why on the same 8-GPU node you can see 5%+ MAMF spread between GPUs even when all of them pass the same factory binning.
+In data-center accelerators the boost-clock and TDP spec is set conservatively so that every binned chip (chips are tested at the factory and sorted, or "binned", into product grades by how well they perform) can meet it, but the *actual sustained performance* still falls anywhere on a distribution. Combined with uneven cooling (see above), this explains why on the same 8-GPU node you can see 5%+ MAMF spread between GPUs even when all of them pass the same factory binning.
 
-Therefore, you want to measure the performance of all accelerators on the node and do it at the same time. For example, on NVIDIA nodes, if each benchmark measures a single accelerator, you could do:
+Therefore, you want to measure the performance of all accelerators on the node and do it at the same time. For example, on NVIDIA nodes, if each benchmark measures a single accelerator, you could do the following, where [`CUDA_VISIBLE_DEVICES`](../../foundations/linux-and-os.md#environment-variables-and-path) restricts each background process (`&`) to one GPU and `wait` blocks until all of them finish:
 ```bash
 CUDA_VISIBLE_DEVICES=0 ./some-benchmark &
 CUDA_VISIBLE_DEVICES=1 ./some-benchmark &
@@ -509,7 +516,7 @@ So know your slowest GPU, and replace one that stays well below its node's media
 
 ### Accelerator memory size and speed
 
-The accelerators use [High Bandwidth Memory](https://en.wikipedia.org/wiki/High_Bandwidth_Memory) (HBM) which is a 3D version of SDRAM memory. For example, the 80GiB A100-SXM comes with HBM2e at 2.0TBps, and the 80GiB H100-SXM comes with HBM3 at 3.35TBps (see the full table per accelerator below).
+The accelerators use [High Bandwidth Memory](https://en.wikipedia.org/wiki/High_Bandwidth_Memory) (HBM) which is a 3D version of SDRAM memory. The "3D" means several DRAM dies are stacked on top of each other and placed in the same package as the accelerator chip, which gives a very wide, short connection. For example, the 80GiB A100-SXM comes with HBM2e at 2.0TBps, and the 80GiB H100-SXM comes with HBM3 at 3.35TBps (see the full table per accelerator below).
 
 Here are the specs:
 
@@ -526,6 +533,7 @@ Notes:
 
 - While I was researching this table I found a wide variation of the above numbers. I think it's because either there were different implementations or the specs changed several times and different publications caught different specs. The table above comes from [wikipedia](https://en.wikipedia.org/wiki/High_Bandwidth_Memory).
 - Since HBM is a stack of multiple DRAM chips, the *Stack Height* specifies how many chips are per device.
+- How to read the columns: an accelerator carries several stacks, so its total bandwidth is roughly the last column times the number of stacks - e.g. H100's 3.35TBps comes from 5 active HBM3 stacks, each running below the HBM3 maximum.
 
 Beware that sometimes memory specs may not be very clear about what GB means. Sometimes it's GiB ($2^{30}$ bytes), but written as GB. At other times it's actually GB ($10^9$ bytes). Bandwidth (`GBps`, `TBps`) almost always means decimal units ($1\ \text{GBps} = 10^9$ bytes per second). To convert GiB to GB: $x \cdot 2^{30} / 10^9$. To convert from GB to GiB: $x \cdot 10^9 / 2^{30}$. Most often, memory size will be in GiB (with the `i` omitted), while bandwidth will use decimal GBps or TBps.
 
@@ -582,7 +590,7 @@ Notes:
 
 * The `NVIDIA Rubin SXM` row is the standard Rubin GPU (the `288`GB HBM4 part, sometimes called `R200`). `19.20 TBps` is NVIDIA's current per-GPU figure on the [Vera Rubin NVL72](https://www.nvidia.com/en-us/data-center/vera-rubin-nvl72/) spec page - `288 GB HBM4 | 19.2 TB/s` in the single-GPU column - cut from an earlier `22` target. Rubin CPX (a separate monolithic prefill GPU; NVIDIA officially lists only `128GB GDDR7` and `30` PFLOPS NVFP4, no per-GPU bandwidth) and the later Rubin Ultra (HBM4e) are distinct parts with their own memory, not covered by this row.
 
-* I didn't include `NVIDIA H100 dual NVL` as it's 2x H100 GPUs with 14GiB memory extra per chip and slightly faster memory (3.9TBps vs 3.35TBps) - but it would have an unfair advantage in the above table as everything else is per-chip. (I guess AMD250 is also 2 GCDs, but they aren't very competitive anyway and will soon be displaced from this table by newer offerings)
+* I didn't include `NVIDIA H100 dual NVL` as it's 2x H100 GPUs with 14GiB memory extra per chip and slightly faster memory (3.9TBps vs 3.35TBps) - but it would have an unfair advantage in the above table as everything else is per-chip. (I guess MI250 is also 2 GCDs, but they aren't very competitive anyway and will soon be displaced from this table by newer offerings)
 
 #### How to calculate theoretical memory bandwidth
 
@@ -783,7 +791,7 @@ Notes:
 Here is how to get the actual clock speed (in particular when your accelerator is under load):
 
 - NVIDIA: `nvidia-settings -q GPUCurrentClockFreqs` with X-server, or `nvidia-smi -q -d CLOCK -i 0 | grep -B2 " SM " | head -3` for headless (adapt `-i 0` if not measuring gpu0, or remove it to show all available GPUs). Remove the `grep` to get the full output - `Max Clocks` shows the theoretical clock. Here is a continuous log of the same with timestamps: `nvidia-smi --query-gpu=index,timestamp,power.draw,clocks.sm,clocks.mem,clocks.gr --format=csv -l 1 -i 0`
-- AMD: `rocm-smi -g` for actual and `amd-smi metric --clock` for theoretical
+- AMD: `rocm-smi -g` for actual and `amd-smi metric --clock` for theoretical (`rocm-smi`/`amd-smi` and Intel's `hl-smi` below are those vendors' counterparts of [`nvidia-smi`](../../foundations/linux-and-os.md#nvidia-smi))
 - Intel: `hl-smi -Q clocks.current.soc --format=csv` for actual and `hl-smi -Q clocks.max.soc --format=csv` or `hl-smi -Q clocks.limit.soc --format=csv` for theoretical
 
 
@@ -891,7 +899,7 @@ It's hard to tell the exact best temperature to strive for when a GPU is heavily
 
 It's important to understand that on modern GPUs throttling is not just a hard cliff at the thermal limit, the boost clock itself is a continuous function of temperature (and power and current). NVIDIA's GPU Boost (and AMD's equivalent on Instinct) continuously samples die temperature, board power, and per-rail current, and picks the highest stable point on the chip's [V-F-T curve](#silicon-lottery) that fits inside all of those budgets. Cross any one of them and the clock steps down; come back under and it steps back up. Which budget binds first depends on the workload: a heavy matmul usually hits the power cap first, and then a cooler GPU gains little until it gets close to its slowdown temperature (see the measured example below). A GPU that does run hot - one with a poorly seated heatsink or blocked airflow - hits its temperature budget first and becomes an obvious straggler.
 
-**What temperature does below the throttle point - a measured example.** On an 8x H200 node and an 8x B200 node we ran the same matmul on all 8 GPUs at once for 10 minutes, starting from a cool idle, and logged each GPU's temperature, power, clock and the driver's clock-limit reasons every second. Throughout the run every GPU was held back by its power cap (700 W on H200, 1000 W on B200), never by its temperature: the thermal slowdown flags never fired, and the GPUs peaked at 65–75°C, 11–26°C below their slowdown point (the hottest H200 GPU came within 6°C). While each GPU warmed up by 10–13°C its clock barely moved - by a median of 0.3 MHz per °C on H200 and 1 MHz per °C on B200 - which cost a median of under 1% of its throughput over the whole warm-up, and about 2% on the most affected B200 GPU. The GPUs in the hot slots ran 8–11°C hotter than those in the cool ones, yet that difference accounts for only 2 of the 40 MHz between the H200 GPUs' clocks and 11 of the 142 MHz between the B200 ones; the rest is the chip (see [Silicon lottery](#silicon-lottery)). These are the numbers of these two nodes, and they might be different for a different set of GPUs, but the pattern should hold: on a power-capped workload like a large matmul, a GPU comfortably below its slowdown temperature gains almost nothing from running cooler, and cooling pays off by keeping a GPU away from its slowdown point, where temperature does take over the clock. To see which limit is holding your GPU back, run `nvidia-smi --query-gpu=temperature.gpu,temperature.gpu.tlimit,clocks_event_reasons.sw_power_cap,clocks_event_reasons.sw_thermal_slowdown,clocks_event_reasons.hw_thermal_slowdown --format=csv -l 1` under load: `temperature.gpu.tlimit` is how many °C the GPU is below its maximum operating temperature.
+**What temperature does below the throttle point - a measured example.** On an 8x H200 node and an 8x B200 node we ran the same matmul on all 8 GPUs at once for 10 minutes, starting from a cool idle, and logged each GPU's temperature, power, clock and the driver's clock-limit reasons every second. Throughout the run every GPU was held back by its power cap (700 W on H200, 1000 W on B200), never by its temperature: the thermal slowdown flags never fired, and the GPUs peaked at 65–75°C, 11–26°C below their slowdown point (the hottest H200 GPU came within 6°C). While each GPU warmed up by 10–13°C its clock barely moved - by a median of 0.3 MHz per °C on H200 and 1 MHz per °C on B200 - which cost a median of under 1% of its throughput over the whole warm-up, and about 2% on the most affected B200 GPU. The GPUs in the hot slots ran 8–11°C hotter than those in the cool ones, yet that difference accounts for only 2 of the 40 MHz between the H200 GPUs' clocks and 11 of the 142 MHz between the B200 ones; the rest is the chip (see [Silicon lottery](#silicon-lottery)). These are the numbers of these two nodes, and they might be different for a different set of GPUs, but the pattern should hold: on a power-capped workload like a large matmul, a GPU comfortably below its slowdown temperature gains almost nothing from running cooler, and cooling pays off by keeping a GPU away from its slowdown point, where temperature does take over the clock. To see which limit is holding your GPU back, run `nvidia-smi --query-gpu=temperature.gpu,temperature.gpu.tlimit,clocks_event_reasons.sw_power_cap,clocks_event_reasons.sw_thermal_slowdown,clocks_event_reasons.hw_thermal_slowdown --format=csv -l 1` under load: `-l 1` prints a new CSV row every second, each `clocks_event_reasons.*` column reads `Active` while that limit is currently holding the clock down, and `temperature.gpu.tlimit` is how many °C the GPU is below its maximum operating temperature.
 
 For NVIDIA GPUs to check if your GPU gets throttled down, run `nvidia-smi -q -d PERFORMANCE` - if `SW Thermal Slowdown` or some other entries are `Active` - then your are not getting the full performance of your GPU and you need to investigate better cooling.
 
@@ -905,7 +913,7 @@ Most common accelerators that can be either rented on compute clouds or purchase
 
 NVIDIA:
 - [Vera Rubin NVL72](https://www.nvidia.com/en-us/data-center/vera-rubin-nvl72/) -- the 72 GPUs supernode at NVLink speed with Grace Rubin - 36x blocks of 2x Rubin GPU + Vera CPU
-- [GB300 NVL72](https://www.nvidia.com/en-us/data-center/gb300-nvl72/) - the 72 GPUs supernode at NVLink speed with B300s (Grace Blackwell - 36x blocks of 2x B300 + Grace CPU)
+- [GB300 NVL72](https://www.nvidia.com/en-us/data-center/gb300-nvl72/) - the 72 GPUs supernode at NVLink speed with B300s (Grace Blackwell - 36x blocks of 2x B300 + Grace CPU, NVIDIA's own Arm server CPU)
 - [GB200 NVL72](https://www.nvidia.com/en-us/data-center/gb200-nvl72/) - the 72 GPUs supernode at NVLink speed with B200s. (Grace Blackwell - 36x blocks of 2x B200 + Grace CPU)
 - [B300](https://www.nvidia.com/en-us/data-center/hgx/) - NVIDIA now publishes official HGX B300 platform specs and lists it as shipping, as of 2026-07-31. Note that those are 8-GPU board figures (144PFLOPS FP4 sparse, 2.1TB total memory, 14.4TBps total NVLink) so per-GPU values have to be divided out, and HBM bandwidth still isn't published there - for that the [DGX B300 datasheet](https://resources.nvidia.com/en-us-dgx-systems/dgx-b300-datasheet) remains the practical source
 - [B200](https://www.nvidia.com/en-us/data-center/hgx/) - same story: official HGX B200 platform specs published and shipping (144PFLOPS FP4 sparse, 1.4TB total memory, 14.4TBps total NVLink), with the [DGX B200 datasheet](https://resources.nvidia.com/en-us-dgx-systems/dgx-b200-datasheet) filling in what the platform page omits. Worth knowing that B300 cut FP64 hard - 10TFLOPS against B200's 296TFLOPS per the same table - so it is not a strict upgrade for double-precision work
@@ -1076,7 +1084,7 @@ Specs: [Trainium2](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about
 
 TPU-specific vocabulary:
 - TensorCore and SparseCore - the compute units. A TPU7x chip has "2 TensorCores and 4 SparseCores", split across two chiplets joined by a die-to-die interface
-- ICI (inter-chip interconnect) - the scale-up fabric, a 3D torus where each chip has "a direct connection to the nearest neighboring chips in 3 dimensions"
+- ICI (inter-chip interconnect) - the scale-up fabric, a 3D torus (chips laid out on a 3D grid, each wired to its neighbors along every axis, with the edges wrapping around to the opposite side) where each chip has "a direct connection to the nearest neighboring chips in 3 dimensions"
 - slice, cube, pod - the units of allocation; a slice is "a collection of chips all located inside the same TPU Pod connected by high-speed inter-chip interconnects (ICI)"
 
 TPU7x (Ironwood) per chip: 192GB HBM at "approximately 7.37 TB/s", 2307TFLOPS bf16 and 4614TFLOPS fp8, and a "Bidirectional inter-chip interconnect (ICI) bandwidth per chip (GBps)" of 1200. The torus carries "bi-directional bandwidth of 200 GBps per axis", which is consistent with 1200 total across six neighbors. A VM is always 4 chips, and a pod reaches "a 9,216-chip footprint".

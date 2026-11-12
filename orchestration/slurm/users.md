@@ -189,6 +189,7 @@ Since each SLURM run has a limited time span, it can be configured to send a sig
 ```
 --signal=[[R][B]:]<sig_num>[@<sig_time>]
 ```
+`<sig_num>` is the signal (a number or a name like `USR1`), `@<sig_time>` is how many seconds before the time limit to send it (60 by default), and the `B:` prefix sends it only to the batch shell rather than to all the job's steps (see `man sbatch` for `R:`).
 For the worked pattern - trap `SIGUSR1` (or similar) a few minutes before the wall-clock limit, finish the step, save a checkpoint, and exit without starting another cycle - see [Sending a custom signal X minutes before the end](../../training/fault-tolerance/README.md#approach-b1-sending-a-custom-signal-x-minutes-before-the-end) in the fault-tolerance chapter.
 
 
@@ -222,7 +223,9 @@ sacct -u `whoami` --partition=dev  --format=jobid,start,end,state,exitcode,nodel
 sacct -u `whoami` --partition=prod --format=jobid,start,end,state,exitcode,nodelist%300
 ```
 
-To see how a particular job was launched and all of its `srun` sub-step command lines:
+(`nodelist%300` widens that column to 300 characters so long node lists aren't truncated, as explained in [Detailed Access to SLURM Accounting](#detailed-access-to-slurm-accounting).)
+
+To see how a particular job was launched and all of its `srun` sub-step command lines (`-o` picks the output fields, and `-P` prints them `|`-separated without padding):
 ```bash
 sacct -j JOBID -o submitline -P
 ```
@@ -306,9 +309,11 @@ case study: this is for example useful if you want get a list of nodes that were
 sinfo -R | grep "Kill task failed" | perl -lne '/(node-.*[\d\]]+)/ && print $1' | xargs -n1 scontrol show hostnames
 ```
 
+The `perl -lne` one-liner runs its code on every input line and prints the part that matched the regex in parentheses, here the compact node list, and `xargs -n1` then runs `scontrol show hostnames` on each list.
+
 ## Convert SLURM_JOB_NODELIST into a hostfile
 
-Some multi-node launchers require a `hostfile` - here is how to generate one. Expansion uses `scontrol show hostnames`, the same tool as [Convert compact node list to expanded node list](#convert-compact-node-list-to-expanded-node-list) above, so mixed forms like `node-[42,49-51]` work:
+Some multi-node launchers require a `hostfile` (a text file listing one host per line, followed by `slots=N`, the number of processes - usually GPUs - to start on it, as used by the DeepSpeed and MPI launchers) - here is how to generate one. Expansion uses `scontrol show hostnames`, the same tool as [Convert compact node list to expanded node list](#convert-compact-node-list-to-expanded-node-list) above, so mixed forms like `node-[42,49-51]` work:
 
 ```bash
 # usage:
@@ -321,9 +326,11 @@ function makehostfile() {
 }
 ```
 
+How it works: `SLURM_STEP_GPUS` holds the GPU indices given to this step, e.g. `0,1,2,3`; the first `perl` splits it on commas (`-F,`, fed through the `<<<` here-string, which passes a string as stdin) and prints the number of fields, i.e. the GPU count. The second `perl` appends ` slots=<count>` to every expanded hostname, with `-s` turning `-s="$slots"` into the Perl variable `$s`.
+
 ## Aliases
 
-Handy aliases
+Handy aliases. In the `squeue -o` format, each `%` code is one column - `%i` job id, `%u` user, `%P` partition, `%j` job name, `%T` state, `%M` time used, `%l` time limit, `%D` node count, `%S` start time, `%R` reason or node list - the number is the column width and a leading `.` right-aligns it. `sinfo -o '%A'` prints the allocated/idle node counts.
 
 ```bash
 alias myjobs='squeue -u `whoami` -o "%.16i %9P %26j %.8T %.10M %.8l %.6D %.20S %R"'
@@ -337,7 +344,7 @@ alias idle-nodes="sinfo -p prod -o '%A'"
 
 ## Zombies
 
-If there are any zombies left behind across nodes, send one command to kill them all.
+If there are any zombies left behind across nodes, send one command to kill them all. (Here "zombies" means leftover processes that are still running, not the exited-but-unreaped [zombie processes](../../foundations/linux-and-os.md#parents-children-exit-status-zombies-and-orphans) of the Linux sense. `pkill python` kills every process of yours whose name matches `python`, and `srun` runs it on every node of the allocation.)
 
 ```bash
 srun pkill python
@@ -394,7 +401,9 @@ If we need to separate logs to different log files per node add `%N` (for short 
 #SBATCH --output=%x-%j-%N.out
 ```
 
-That way we can tell if a specific node misbehaves - e.g. has a corrupt GPU. `torchrun` can attribute the first failure to a host/rank when the entry point is wrapped with `@record`, but undecorated scripts still get a bare traceback, and a single summary does not replace having one log file per node.
+(Note that in `#SBATCH --output`, `%N` expands to the first node of the job only, since the batch script itself runs there; to get one file per node pass the pattern to `srun --output`, as the [py-spy example](#run-py-spy-or-any-other-monitor-program-across-all-nodes) below does with `--output=trace-%N.out`.)
+
+That way we can tell if a specific node misbehaves - e.g. has a corrupt GPU. `torchrun` can attribute the first failure to a host/rank when the entry point is wrapped with `@record` (the `torch.distributed.elastic.multiprocessing.errors.record` decorator, which writes the exception to an error file torchrun then reports), but undecorated scripts still get a bare traceback, and a single summary does not replace having one log file per node.
 
 
 ## Show the state of nodes
@@ -468,7 +477,7 @@ The node state could be followed by a single character which has a special meani
 
 ### drained nodes
 
-To see all drained nodes and the reason for drainage (edit `%50E` to make the reason field longer/shorter)
+To see all drained nodes and the reason for drainage (edit `%50E` to make the reason field longer/shorter; the columns are `%E` reason, `%U` user who set it, `%H` when, `%t` node state and `%N` node list)
 ```
 % sinfo -R -o "%50E %12U %19H %6t %N"
 ```
@@ -518,7 +527,7 @@ sleep 10
 date
 ```
 
-Note `$SLURM_ARRAY_JOB_ID` is the same as `$SLURM_JOB_ID`, and `$SLURM_ARRAY_TASK_ID` is the index of the job.
+Note `$SLURM_ARRAY_JOB_ID` is the same as `$SLURM_JOB_ID`, and `$SLURM_ARRAY_TASK_ID` is the index of the job. (Per the [Slurm job array docs](https://slurm.schedmd.com/job_array.html), that holds for the first task of the array; each later task gets its own `SLURM_JOB_ID`, while `SLURM_ARRAY_JOB_ID` stays the array's id for all of them.)
 
 To see the jobs running:
 ```bash
@@ -526,6 +535,7 @@ $ squeue -u `whoami` -o "%.10i %9P %26j %.8T %.10M %.6D %.20S %R"
      JOBID PARTITION                       NAME    STATE       TIME  NODES           START_TIME NODELIST(REASON)
 591970_[2-   dev             array-test  PENDING       0:00      1  2021-07-28T20:01:06 (JobArrayTaskLimit)
 ```
+How to read it: `591970_[2-` is the truncated `591970_[2-10%1]`, the not-yet-started tasks 2 to 10 of array `591970`, held back by `(JobArrayTaskLimit)`, i.e. the `%1`; the running task would appear on its own line as `591970_1`.
 now job 2 is running.
 
 To cancel the whole array, cancel the job id as normal (the number before `_`):
@@ -538,7 +548,7 @@ To cancel a specific job:
 scancel 591970_2
 ```
 
-If it's important to have the log-file contain the array id, add `%A_%a`:
+If it's important to have the log-file contain the array id, add `%A_%a` (`%A` is the array's job id and `%a` the task index):
 
 ```
 #SBATCH --output=%x-%j.%A_%a.log
@@ -562,7 +572,7 @@ So here is how one can keep the "age" and not lose it when needing to fix someth
 
 The idea is this:
 
-1. `sbatch` a long job array, e.g., `-array=1-50%1`
+1. `sbatch` a long job array, e.g., `--array=1-50%1`
 2. inside the slurm script don't have any code other than `source another-script.slurm` - so now you can modify the target script or symlink to another script before the next job starts
 3. if you need to stop the job array train - don't cancel it, but put it on hold without losing your place in a queue
 4. when ready to continue - release the job array - only the time while it was on hold is not counted towards its age, but all the previous age is retained.
@@ -591,7 +601,7 @@ source tr8-104B-64.slurm
 ```
 Start it as:
 ```bash
-sbatch --array=1-50%1 train-64.slurm
+sbatch --array=1-50%1 train-64n.slurm
 ```
 
 Now you can easily edit `tr8-104B-64.slurm` before the next job run and either let the current job finish if it's desired or if you need to abort it, just kill the currently running job, e.g. `1557903_5` (not job array `1557903`) and have the train pick up where it left, but with the edited script.
@@ -699,7 +709,7 @@ When using SLURM with multi-node setup it's crucial that this is set correctly:
 ```
 "--machine_rank \$SLURM_PROCID"
 ```
-it must not be interpolated before time, since if this is set as `"--machine_rank $SLURM_PROCID"` the launcher will hang.
+it must not be interpolated before time, since if this is set as `"--machine_rank $SLURM_PROCID"` the launcher will hang. The reason: the `LAUNCHER` string below is built once, by the batch script on the first node, where `$SLURM_PROCID` is `0`, so every node would claim to be rank 0. With `\$` the variable stays unexpanded in the string and is only expanded by `bash -c` inside each `srun` task, where it holds that task's own rank.
 
 It's best to isolate the launcher from the program like so:
 
@@ -728,6 +738,8 @@ SRUN_ARGS=" \
 
 srun $SRUN_ARGS bash -c "$CMD" 2>&1 | tee -a main_log.txt
 ```
+
+In the `srun` arguments, `--wait=60` kills the remaining tasks 60 seconds after the first one exits, `--kill-on-bad-exit=1` kills the whole step as soon as any task exits with an error, and `--unbuffered` passes output through immediately. `tr -dc '0-9'` deletes everything but the digits from the hostname, so `--role` prefixes each log line with a short node number. `2>&1 | tee -a main_log.txt` merges stderr into stdout and appends it all to a log file while still printing it.
 
 Now the launcher will always work and the users will only need to tweak the `PROGRAM` variable.
 
@@ -935,13 +947,13 @@ echo $LAUNCHER --node_rank $SLURM_PROCID $SCRIPT
 
 srun --jobid $SLURM_JOBID bash -c '$LAUNCHER --node_rank $SLURM_PROCID $SCRIPT'
 ```
-The script uses `printflock` to solve the interleaved print outputs issue.
+The script uses `printflock` to solve the interleaved print outputs issue: `fcntl.flock` takes an exclusive lock on a file (here the script itself), so only one process at a time can be inside the `print`.
 
 
 ### GPU Memory Check
 
 
-This tests if each GPU on the allocated nodes can successfully allocate 77GiB (e.g. to test 80GB A100s) (have to subtract a few GiBs for cuda kernels).
+This tests if each GPU on the allocated nodes can successfully allocate 77GiB (`gbs*2**28` float32 elements of 4 bytes each is `gbs` GiB; the script reads `LOCAL_RANK`, so launch it with `torchrun` through `srun` like the NCCL test above) (e.g. to test 80GB A100s) (have to subtract a few GiBs for cuda kernels).
 
 
 ```python
@@ -988,7 +1000,7 @@ before the `srun` command and re-run your slurm script.
 ```
 r11i6n2:486514:486651 [1] include/socket.h:403 NCCL WARN Connect to 10.148.3.247<56821> failed : Connection refused
 ```
-Let's see which node refuses to accept connections. We get the IP address from the error above and reverse resolve it to its name:
+(The log line starts with `host:pid:tid [local GPU index]`, and `10.148.3.247<56821>` is the IP address and port NCCL tried to reach.) Let's see which node refuses to accept connections. We get the IP address from the error above and reverse resolve it to its name:
 ```
 nslookup 10.148.3.247
 247.3.148.10.in-addr.arpa       name = r10i6n5.ib0.xa.idris.fr.
@@ -1022,6 +1034,8 @@ adjust jobid per above and the nodes count:
 srun --jobid=2180718 --gres=gpu:0 --nodes=40 --tasks-per-node=1 --output=trace-%N.out sh -c 'ps aux | grep python | egrep -v "grep|srun" | grep `whoami` | awk "{print \$2}" | xargs -I {} py-spy dump --native --pid {}' || echo "failed"
 ```
 though most likely `--nodes=40` is redundant since `salloc` already knows the number of nodes.
+
+How the pipeline works: `ps aux` lists all processes, the `grep`s keep your own `python` processes (dropping the `grep` and `srun` lines themselves), `awk` prints the second column (the PID), and `xargs -I {}` runs `py-spy dump --native` (which also shows C/C++ frames) on each PID.
 
 Now all `py-spy` traces go into the `trace-$nodename.out` files under `cwd`.
 
@@ -1088,7 +1102,7 @@ echo "updating file index db"
 /usr/bin/updatedb -o $WORK/lib/mlocate/work.db -U $WORK --require-visibility 0
 ```
 
-This builds an index of the files under `$WORK` which you can then quickly query with:
+(`updatedb` scans the directory tree given by `-U` and writes a filename database to `-o`; `--require-visibility 0` skips the per-user permission filtering.) This builds an index of the files under `$WORK` which you can then quickly query with:
 ```
 /usr/bin/locate -d $WORK/lib/mlocate/work.db pattern
 ```
@@ -1111,7 +1125,7 @@ You could use something like this in a daily job.
 ```bash
 find $WORK/cron -name "*.out" -mtime +7 -exec rm -f {} +
 ```
-Please note that it's set to only delete files that are older than 7 days, in case you need the latest logs for diagnostics.
+(`-mtime +7` matches files last modified more than 7 days ago, and `-exec rm -f {} +` passes many of them to each `rm` call.) Please note that it's set to only delete files that are older than 7 days, in case you need the latest logs for diagnostics.
 
 
 ### Nuances
@@ -1224,6 +1238,8 @@ root                                          0.000000   711506073      1.000000
   all                      stas          1    0.022727    14106989      0.019827   0.288889
 ```
 
+How to read it: the rows form a tree of accounts and users; `RawShares`/`NormShares` are the share you were allotted (absolute and as a fraction), `RawUsage`/`EffectvUsage` the decayed usage you have consumed, and `FairShare` the resulting factor between 0 and 1 that feeds your jobs' priority. (The 0.5 reading below comes from the classic formula $F = 2^{-U/S}$; Slurm's default Fair Tree algorithm ranks users differently but moves in the same direction - see [GPU-hours and fair-share calculator](from-zero.md#gpu-hours-and-fair-share-calculator).)
+
 If your FairShare score is more than 0.5 that means you have been using the cluster less than what you  have been allocated, if it's less than 0.5 it means you have been using more than what was allocated.
 
 As the time passes this score gets decayed so if you were having a very low score and have you have been using the cluster much less then your score will raise over time.
@@ -1237,6 +1253,7 @@ To see everybody's scores, sorted by FairShare:
 ```bash
 sshare --all | sort -nk7 -r
 ```
+(`sort -nk7 -r` sorts numerically on the 7th column, `FairShare`, highest first.)
 
 This is the most important output, since it doesn't really matter what your score is alone. What matters is your score relative to all other users. Everybody who has a higher score than you will have a higher chance at getting they job yielded first and a lower chance of getting their job preempted.
 

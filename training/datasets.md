@@ -2,7 +2,7 @@
 
 ## Preprocessing and caching datasets on the main process
 
-HF Accelerate has a very neat container [`main_process_first`](https://huggingface.co/docs/accelerate/v0.4.0/accelerator.html#accelerate.Accelerator.main_process_first) which allows to write code like:
+HF Accelerate (Hugging Face's thin wrapper library for running the same PyTorch training loop on one or many GPUs) has a very neat container (Stas means a context manager - a `with` block) [`main_process_first`](https://huggingface.co/docs/accelerate/v0.4.0/accelerator.html#accelerate.Accelerator.main_process_first) which allows to write code like:
 
 ```python
 with accelerator.main_process_first():
@@ -10,7 +10,7 @@ with accelerator.main_process_first():
     dataset = datasets.load_dataset(...)
     # optionally cache it and have the rest of the processes load the cache
 ```
-instead of the less intuitive and requiring code repetition:
+instead of the less intuitive and requiring code repetition (here `rank` is this process's global rank and `dist.barrier()` blocks until every rank reaches it, see [Barriers](../foundations/distributed-systems.md#barriers)):
 ```python
 if rank == 0:
     dataset = datasets.load_dataset(...)
@@ -21,7 +21,7 @@ if not rank == 0:
 
 You want to download and process data on the main process and not all processes, because they will be all repeating the same thing in parallel and more over are likely to write to the same location which will result in interleaved broken result. It's also much faster IO-wise to serialize such work.
 
-Now there is `main_process_first` and `local_main_process_first` - the first one is for when your data resides on a shared filesystem and all compute nodes can see it. The second one is for when the data is local to each node.
+Now there is `main_process_first` and `local_main_process_first` - the first one is for when your data resides on a shared filesystem and all compute nodes can see it. The second one is for when the data is local to each node. That is, the first lets only global rank 0 do the work while every other process waits, the second lets local rank 0 (the first process on each node) do the work on each node in parallel - see [Local vs network filesystems](../foundations/linux-and-os.md#local-vs-network-filesystems).
 
 If you aren't using HF Accelerate, I have recreated similar containers, except called them:
 
@@ -50,7 +50,7 @@ Of course, besides containers you will also want utils to check the type of main
 
 They are all found in [here](tools/main_process_first.py).
 
-You can see them in action by running:
+You can see them in action by running the following, which uses `torch.distributed.run` (the module behind `torchrun`) to start 2 processes on this machine (`--nproc_per_node=2`), with `--rdzv_endpoint`/`--rdzv_backend` telling them where and how to meet up (see [Rendezvous](../foundations/distributed-systems.md#rendezvous)), and `python -u` disabling output buffering so the prints of both processes show up right away:
 
 ```bash
 python -u -m torch.distributed.run --nproc_per_node=2 --rdzv_endpoint localhost:6000  --rdzv_backend c10d tools/main_process_first.py

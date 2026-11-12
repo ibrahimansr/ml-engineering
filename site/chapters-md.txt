@@ -12,10 +12,6 @@ foundations/storage-and-data.md
 models/architectures.md
 models/beyond-transformers.md
 
-insights/ai-battlefield.md
-insights/how-to-choose-cloud-provider.md
-insights/when-to-upgrade-gpus/README.md
-
 compute/README.md
 compute/accelerator/README.md
 compute/accelerator/execution-model.md
@@ -27,9 +23,7 @@ compute/accelerator/amd/debug.md
 compute/accelerator/amd/performance.md
 compute/cpu/README.md
 compute/cpu-memory/README.md
-
 storage/README.md
-
 network/README.md
 network/comms.md
 network/collectives-internals.md
@@ -39,8 +33,8 @@ network/benchmarks/README.md
 orchestration/README.md
 orchestration/slurm/from-zero.md
 orchestration/slurm/README.md
-orchestration/slurm/admin.md
 orchestration/slurm/users.md
+orchestration/slurm/admin.md
 orchestration/slurm/performance.md
 orchestration/slurm/launchers/README.md
 orchestration/kubernetes-from-zero.md
@@ -48,21 +42,21 @@ orchestration/kubernetes/README.md
 orchestration/internals.md
 
 training/README.md
+training/dtype.md
+training/arithmetic.md
 training/model-parallelism/README.md
 training/model-parallelism/derivations.md
 training/performance/README.md
-training/arithmetic.md
 training/profiling-and-optimization.md
-training/fault-tolerance/README.md
-training/reproducibility/README.md
+training/hparams.md
 training/instabilities/README.md
 training/instabilities/training-loss-patterns.md
 training/checkpoints/README.md
-training/hparams.md
-training/dtype.md
+training/fault-tolerance/README.md
+training/reproducibility/README.md
+training/datasets.md
 training/emulate-multi-node.md
 training/re-train-hub-models.md
-training/datasets.md
 training/decentralized-training.md
 
 inference/README.md
@@ -73,17 +67,17 @@ inference/serving-hands-on.md
 platform/control-planes.md
 platform/rl-infrastructure.md
 
+insights/ai-battlefield.md
+insights/how-to-choose-cloud-provider.md
+insights/when-to-upgrade-gpus/README.md
+
 debug/README.md
 debug/pytorch.md
 debug/tools.md
 debug/tiny-scripts/README.md
-
 testing/README.md
 
 resources/README.md
-
-contributors.md
-
 courses/lesson-learned/README.md
-
+contributors.md
 build/README.md

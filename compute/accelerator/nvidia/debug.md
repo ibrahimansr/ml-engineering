@@ -5,9 +5,13 @@
 - DBE: Double Bit ECC Error
 - DCGM: (NVIDIA) Data Center GPU Manager
 - ECC: Error-Correcting Code
-- FB: Frame Buffer
+- FB: Frame Buffer (the GPU's own memory, i.e. its HBM)
+- HBM: High Bandwidth Memory, the GPU's main DRAM
+- RMA: Return Merchandise Authorization - sending a faulty part back to the vendor for a replacement
 - SBE: Single Bit ECC Error
 - SDC: Silent Data Corruption
+- VBIOS: the GPU's firmware, stored on the card itself
+- Xid: a numbered error report that the NVIDIA kernel driver writes to the kernel log
 
 ## Errors and diagnostics
 
@@ -25,7 +29,9 @@ In your system logs you are likely to see occasionally Xid Errors like:
 NVRM: Xid (PCI:0000:10:1c): 63, pid=1896, Row Remapper: New row marked for remapping, reset gpu to activate.
 ```
 
-To get those logs one of the following ways should work:
+Reading it left to right: `NVRM` is the NVIDIA kernel driver, `PCI:0000:10:1c` is the PCI bus id of the GPU that reported it (the same id `nvidia-smi` shows in its `Bus-Id` column), `63` is the Xid number you look up, `pid` is the process that was using the GPU, and the rest is the driver's description.
+
+To get those logs one of the following ways should work (the kernel log and `dmesg` are covered in [Logs: journalctl and dmesg](../../../foundations/linux-and-os.md#logs-journalctl-and-dmesg)):
 ```bash
 sudo grep Xid /var/log/syslog
 sudo dmesg -T | grep Xid
@@ -35,11 +41,11 @@ Typically, as long as the training doesn't crash, these errors often indicate is
 
 The full list of Xid Errors and their interpretation can be found [here](https://docs.nvidia.com/deploy/xid-errors/latest/index.html).
 
-Many Xid log lines carry far more fields than the one above, and they are cryptic. [Xid 31 MMU Faults: What Causes Them and How to Fix Production GPU Crashes](https://www.abhik.ai/articles/gpu-xid31-mmu-faults) is a good example of how to decipher one: it decodes every field of an Xid 31 line from `dmesg` - the faulting engine and hardware unit, the virtual address, `FAULT_PDE` vs `FAULT_PTE` and the access type - and follows them to the cause, a use-after-free between the PyTorch, CuPy and NVDEC memory allocators. It also shows that not every Xid is a hardware problem - this one was caused by software.
+Many Xid log lines carry far more fields than the one above, and they are cryptic. [Xid 31 MMU Faults: What Causes Them and How to Fix Production GPU Crashes](https://www.abhik.ai/articles/gpu-xid31-mmu-faults) is a good example of how to decipher one: it decodes every field of an Xid 31 line from `dmesg` - the faulting engine and hardware unit, the virtual address, `FAULT_PDE` vs `FAULT_PTE` (whether the GPU's page-table walk failed at a page directory entry or at a page table entry) and the access type - and follows them to the cause, a use-after-free between the PyTorch, CuPy (a NumPy-like GPU array library) and NVDEC (the GPU's hardware video decoder) memory allocators. It also shows that not every Xid is a hardware problem - this one was caused by software.
 
 NVIDIA's [Xid Catalog](https://docs.nvidia.com/deploy/xid-errors/analyzing-xid-catalog.html) goes further for Ampere and newer GPUs: for each Xid it lists which GPUs can log it, what triggers it, and what to do about it - an immediate action, such as `RESTART_APP` or `CONTACT_SUPPORT`, and a follow-up one, such as `CHECK_APP/CUDA`. It can be downloaded as a spreadsheet, which helps when mapping the Xids in your logs to actions automatically. For Xid 13 and 31, which it says are typically bugs in the application, its first recommendation is Compute Sanitizer's `memcheck` - see [Debugging CUDA kernel memory errors with `compute-sanitizer`](../../../debug/pytorch.md#debugging-cuda-kernel-memory-errors-with-compute-sanitizer) for how to run it on a PyTorch program.
 
-You can run `nvidia-smi -q` and see if there are any error counts reported. For example, in this case of Xid 63, you will see something like:
+You can run `nvidia-smi -q` and see if there are any error counts reported (what ECC and row remapping are is covered in [ECC, row remapping, clocks and GPU reset](../../gpu-software-stack.md#ecc-row-remapping-clocks-and-gpu-reset)). In the output, `SRAM` counts errors in the on-chip memories (register files, caches, shared memory) and `DRAM` errors in HBM. For example, in this case of Xid 63, you will see something like:
 
 ```
 Timestamp                                 : Wed Jun  7 19:32:16 2023
@@ -88,6 +94,8 @@ ECC page retirement or row remapping recording event
 which may have 3 causes: HW Error / Driver Error / FrameBuffer (FB) Corruption
 
 This error means that one of the memory rows is malfunctioning and that upon either reboot and/or a gpu reset one of the 640 spare memory rows (in A100) will be used to replace the bad row. Therefore we see in the report above that only 639 banks remain (out of 640).
+
+The `Bank Remap Availability Histogram` sorts the memory banks by how many of their spare rows are still unused: `Max` means none used yet, `High`, `Partial` and `Low` mean progressively more used, and `None` means the bank has no spare rows left.
 
 The Volatile section of the `ECC Errors` report above refers to the errors recorded since last reboot/GPU reset. The Aggregate section records the same error since the GPU was first used.
 
@@ -140,7 +148,7 @@ As mentioned earlier to reset a GPU you can either simply reboot the machine, or
 nvidia-smi -r -i gpu_id
 ```
 
-where `gpu_id` is the sequential number of the gpu you want to reset, e.g. `0` for the first GPU. Without `-i` all GPUs will be reset.
+where `gpu_id` is the sequential number of the gpu you want to reset, e.g. `0` for the first GPU. Without `-i` all GPUs will be reset. A reset needs root and fails while any process still holds the GPU (see [ECC, row remapping, clocks and GPU reset](../../gpu-software-stack.md#ecc-row-remapping-clocks-and-gpu-reset)).
 
 #### uncorrectable ECC error encountered
 
@@ -155,7 +163,7 @@ $ nvidia-smi -q | grep -i correctable | grep -v 0
             SRAM Uncorrectable            : 1
             SRAM Uncorrectable            : 5
 ```
-On a good node, this should return nothing, as all counters should be 0. But in the example above we had one broken GPU - there were two entries because the full record was:
+On a good node, this should return nothing, as all counters should be 0. (`grep -v 0` drops every line that contains the digit 0 anywhere, so a count such as 10 or 105 would be hidden too; `grep -v ': 0$'` drops only the zero counts.) But in the example above we had one broken GPU - there were two entries because the full record was:
 
 ```
     ECC Errors
@@ -188,7 +196,7 @@ Now when it comes to Aggregate SRAM Uncorrectable errors, if you have more than 
 
 If you suspect one or more NVIDIA GPUs are broken on a given node, `dcgmi` is a great tool to quickly find any bad GPUs.
 
-NVIDIA® Data Center GPU Manager (DCGM) is documented [here](https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/index.html) and can be downloaded from [here](https://github.com/NVIDIA/DCGM#quickstart).
+NVIDIA® Data Center GPU Manager (DCGM, introduced in [DCGM: the health daemon and diagnostics](../../gpu-software-stack.md#dcgm-the-health-daemon-and-diagnostics)) is documented [here](https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/index.html) and can be downloaded from [here](https://github.com/NVIDIA/DCGM#quickstart).
 
 Here is an example slurm script that will run very in-depth diagnostics (`-r 3`), which will take about 10 minutes to complete on an 8-GPU node:
 
@@ -208,6 +216,8 @@ echo "START TIME: $(date)"
 srun --cpus-per-task=$SLURM_CPUS_PER_TASK --output=%x-%j-%N.out dcgmi diag -r 3
 echo "END TIME: $(date)"
 ```
+
+How to read it (Slurm basics are in [Putting it together](../../../foundations/linux-and-os.md#10-putting-it-together-one-training-job-end-to-end), and Slurm is taught properly in [Slurm from zero](../../../orchestration/slurm/from-zero.md)): `--gres=gpu:8` asks for all 8 GPUs, `--exclusive` keeps other jobs off the node, `%x`, `%j` and `%N` in the output file names expand to the job name, the job id and the node name, `set -x -e` echoes each command and stops at the first failure, and `srun` launches `dcgmi diag` inside the allocation. `sbatch` submits the script, and `--nodelist` pins it to the named node.
 
 Now to run it on specific nodes of choice:
 ```bash
@@ -254,9 +264,9 @@ But, actually, I found that most of the time `-r 2` already detects faulty GPUs.
 |                           | ts.
 ```
 
-The `dcgmi` tool contains various other levels of diagnostics, some of which complete in a matter of a few minutes and can be run as a quick diagnostic in the epilogue of SLURM jobs to ensure that the node is ready to work for the next SLURM job, rather than discovering that after the user started their job and it crashed.
+The `dcgmi` tool contains various other levels of diagnostics, some of which complete in a matter of a few minutes and can be run as a quick diagnostic in the epilogue of SLURM jobs (the epilog, a script the cluster admins configure to run on each node right after a job ends, covered in [Slurm from zero](../../../orchestration/slurm/from-zero.md)) to ensure that the node is ready to work for the next SLURM job, rather than discovering that after the user started their job and it crashed.
 
-When filing an RMA report you will be asked to run `nvidia-bug-report.sh` script, the output of which you will need to submit with the RMA request.
+When filing an RMA report you will be asked to run `nvidia-bug-report.sh` script (it ships with the driver, needs root, and collects the driver state and logs into `nvidia-bug-report.log.gz` in the current directory), the output of which you will need to submit with the RMA request.
 
 I usually save the log as well for posterity using one of:
 ```bash
@@ -265,11 +275,13 @@ dcgmi diag -r 3 | tee -a dcgmi-r3-`hostname`.txt
 dcgmi diag -r 4 | tee -a dcgmi-r4-`hostname`.txt
 ```
 
+`` `hostname` `` is the older backtick form of `$(hostname)`, so each node's log gets its own name, and `tee -a` shows the output while appending it to the file.
+
 ## Health and inventory checks
 
 ### How to get the VBIOS info
 
-GPU VBIOS version might be important when researching issues. Let's add the name and bus id to the query, we get:
+GPU VBIOS version might be important when researching issues (firmware is introduced in [The layers, bottom to top](../../gpu-software-stack.md#the-layers-bottom-to-top)). Let's add the name and bus id to the query, we get:
 
 ```bash
 $ nvidia-smi --query-gpu=gpu_name,gpu_bus_id,vbios_version --format=csv
@@ -295,15 +307,17 @@ $ sudo dmesg | grep -i 'limited by'
 [   13.301989] pci 0000:8b:00.0: 252.048 Gb/s available PCIe bandwidth, limited by 16.0 GT/s PCIe x16 link at 0000:87:00.0 (capable of 504.112 Gb/s with 32.0 GT/s PCIe x16 link)
 ```
 
+How to read it: each line names a device by its PCI bus id, the bandwidth it actually gets, the link that limits it (`16.0 GT/s PCIe x16` is a gen4 link of 16 lanes, `32.0 GT/s` would be gen5, and `at 0000:01:00.0` is the upstream device that link belongs to) and, in parentheses, what the device itself could do. PCIe generations and lanes are covered in [PCIe](../../../foundations/computer-architecture.md#pcie).
+
 In this example, as PCIe 5 spec is 504Gbps, you can see that on this node only half of the possible bandwidth is usable, because the PCIe switch is gen4. For PCIe specs see [this](../../../network/README.md#pcie).
 
-Since most likely you have [NVLink](../../../network/README.md#nvlink) connecting the GPUs to each other, this shouldn't matter for GPU to GPU comms, but it'd slow down any data movement between the GPU and the host, as the data speed is limited by the speed of the slowest link.
+Since most likely you have [NVLink](../../../network/README.md#nvlink) (introduced in [NVLink and NVSwitch](../../../foundations/computer-architecture.md#nvlink-and-nvswitch)) connecting the GPUs to each other, this shouldn't matter for GPU to GPU comms, but it'd slow down any data movement between the GPU and the host, as the data speed is limited by the speed of the slowest link.
 
 
 
 ### How to check error counters of NVLink links
 
-If you're concerned your NVLink malfunctions you can check its error counters:
+If you're concerned your NVLink malfunctions you can check its error counters. `CRC Errors` count data that arrived corrupted (its checksum didn't match), `Replay Errors` count retransmissions triggered by such corruption, and `Recovery Errors` count times the link had to be retrained; healthy links read 0 or grow very slowly, and counters that keep rising under load point at a bad link:
 ```bash
 $ nvidia-smi nvlink -e
 GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-abcdefab-cdef-abdc-abcd-abababababab)
@@ -383,6 +397,8 @@ and then:
 bash test-gpu-count.sh
 ```
 
+`cat << 'EOT' >> file` is a heredoc: it appends the lines up to `EOT` to the file (`>>` appends, so running it twice duplicates the script; `>` would overwrite). The script's verdict is the printed message, not its exit code: as written it exits with 1 on a good node too, because the `test` that fails there is the last command.
+
 
 ### How to detect if you get the same broken node again and again
 
@@ -437,6 +453,8 @@ footnote: I have seen GPU util column showing 100% on all gpus when one GPU woul
 
 What you want to measure instead is GPU's utilization of the available capacity, otherwise known as "saturation". Alas, this information isn't provided by `nvidia-smi`. In order to get this information you need to install [dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter) (which in turn currently requires a recent golang and DCGM (`datacenter-gpu-manager`) and a root access).
 
+dcgm-exporter serves DCGM's metrics over HTTP in the text format of [Prometheus](https://prometheus.io/), a time-series database that scrapes such endpoints periodically and stores the values for dashboards and alerts.
+
 Please note that this tool works only high-end data center NVIDIA GPUs, so if you have a consumer level GPU it won't work.
 
 After installing the prerequisites I built the tool:
@@ -465,12 +483,13 @@ INFO[0000] Starting webserver
 INFO[0000] Listening on                                  address="[::]:9400"
 ```
 
-`-c 500` refreshes every 0.5sec
+`-c 500` refreshes every 0.5sec. Each line of the config file is a DCGM field name, its Prometheus metric type (`gauge` is a value that can go up and down) and a description. Warps, SM occupancy and the tensor (HMMA, the matrix-multiply-accumulate instruction) pipe are covered in [SMs, warps and schedulers](../execution-model.md#sms-warps-and-schedulers) and [Tensor cores](../execution-model.md#tensor-cores).
 
 and now I was able poll it via:
 ```bash
 watch -n 0.5 "curl http://localhost:9400/metrics"
 ```
+(`watch -n 0.5` re-runs the command every 0.5 seconds and redraws the screen.)
 by running it in one console, and launching a GPU workload in another console. The last column of the output is the utilization of these metrics (where `1.0 == 100%`).
 
 `etc/dcp-metrics-included.csv` from the repo contains all the available metrics, so you can add more metrics.
@@ -495,6 +514,8 @@ int main() {
 }
 EOT
 ```
+
+`<<<1, 1>>>` launches a single block of a single thread, so the kernel occupies one SM and leaves the rest idle (kernel launches and compiling with `nvcc` are covered in [CUDA C++ from zero](../writing-kernels.md#cuda-c-from-zero)).
 
 Let's compile it:
 ```bash

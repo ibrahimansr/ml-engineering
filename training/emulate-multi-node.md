@@ -2,11 +2,11 @@
 
 The goal is to emulate a 2-node environment using a single node with 2 GPUs (for testing purposes). This, of course, can be further expanded to [larger set ups](#larger-set-ups).
 
-We use the `deepspeed` launcher here. There is no need to actually use any of the deepspeed code, it's just easier to use its more advanced capabilities. You will just need to install `pip install deepspeed`.
+We use the `deepspeed` launcher here (the multi-node launcher that ships with [DeepSpeed](https://github.com/deepspeedai/DeepSpeed): it `ssh`es into every host listed in a hostfile, via `pdsh`, and starts the right number of processes on each with `RANK`, `LOCAL_RANK`, `WORLD_SIZE` etc. set). There is no need to actually use any of the deepspeed code, it's just easier to use its more advanced capabilities. You will just need to install `pip install deepspeed`.
 
 The full setup instructions follow:
 
-1. Create a `hostfile`:
+1. Create a `hostfile` - one line per node: the hostname, and in `slots=` how many processes (normally one per GPU) to start on it. Here both "nodes" get 1 slot each:
 
 ```bash
 $ cat hostfile
@@ -14,7 +14,7 @@ worker-0 slots=1
 worker-1 slots=1
 ```
 
-2. Add a matching config to your ssh client
+2. Add a matching config to your ssh client, so that both fake hostnames resolve to this machine (see [ssh: keys, config, tunnels](../foundations/networking.md#ssh-keys-config-tunnels))
 
 ```bash
 $ cat ~/.ssh/config
@@ -62,7 +62,7 @@ print(x)
 time.sleep(100)
 ```
 
-Run:
+Run (`-H` points the launcher at the hostfile):
 
 ```bash
 $ deepspeed -H hostfile test1.py
@@ -85,9 +85,11 @@ worker-1: tensor([1., 1., 1.,  ..., 1., 1., 1.], device='cuda:0')
 worker-0: tensor([1., 1., 1.,  ..., 1., 1., 1.], device='cuda:0')
 ```
 
+How to read this log: the launcher builds one `pdsh` command that runs `deepspeed.launcher.launch` on both workers, passing the hostfile contents as base64-encoded `--world_info` and each host's index as `--node_rank` (`%n` is filled in by `pdsh`). Lines prefixed `worker-0:`/`worker-1:` come from the process on that "node" - each reports `nnodes=2` and one local process, and the launcher sets `CUDA_VISIBLE_DEVICES=0` on both, because as far as it knows each node has just 1 GPU. That is why the script needs the hack shown above.
+
 If the ssh set up works you can run `nvidia-smi` in parallel and observe that both GPUs allocated ~4GiB of memory from `torch.ones` call.
 
-Note that the script hacks in `CUDA_VISIBLE_DEVICES` to tell the 2nd process to use gpu1, but it'll be seen as `local_rank==0` in both cases.
+Note that the script hacks in `CUDA_VISIBLE_DEVICES` to tell the 2nd process to use gpu1, but it'll be seen as `local_rank==0` in both cases. (`CUDA_VISIBLE_DEVICES` restricts which physical GPUs a process can see and renumbers them from 0, so it has to be set before CUDA is initialized in the process, which is why the hack sits at the very top of the script.)
 
 5. Finally, let's test that NCCL collectives work as well
 
@@ -109,6 +111,7 @@ if os.environ["RANK"] == "1":
 
 def printflock(*msgs):
     """ solves multi-process interleaved print problem """
+    # fcntl.flock takes an exclusive OS-level lock on a file (here the script itself), so only one process prints at a time
     with open(__file__, "r") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         try:
@@ -181,6 +184,8 @@ worker-0: [2022-09-08 12:07:13,642] [INFO] [launch.py:318:main] Process 576484 e
 
 Voila, mission accomplished.
 
+In this output `[hope-0]` is `[hostname-local_rank]` - both processes are on the same real host (`hope`), and both see their GPU as local rank 0. `nccl=(2, 10, 3)` is the NCCL version, and the compute capabilities compare the GPU's own architecture (`(8, 0)`, i.e. A100) with the list of architectures this PyTorch build was compiled for.
+
 We tested that the NCCL collectives work, but they use local NVLink/PCIe and not the IB/ETH connections like in real multi-node, so it may or may not be good enough for testing depending on what needs to be tested.
 
 
@@ -193,7 +198,7 @@ $ cat hostfile
 worker-0 slots=2
 worker-1 slots=2
 ```
-and the `CUDA_VISIBLE_DEVICES` hack to:
+and the `CUDA_VISIBLE_DEVICES` hack to (global ranks 0 and 1 are on `worker-0` and keep the default GPUs 0,1, ranks 2 and 3 are on `worker-1` and get GPUs 2,3, which they'll see as their local GPUs 0 and 1):
 
 ```bash
 if os.environ["RANK"] in ["2", "3"]:
@@ -216,7 +221,7 @@ def set_cuda_visible_devices():
 
     global_rank = int(os.environ["RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
-    emulated_node_size = int(os.environ["LOCAL_SIZE"])
+    emulated_node_size = int(os.environ["LOCAL_SIZE"]) # set by the deepspeed launcher: processes per node
     emulated_node_rank = int(global_rank // emulated_node_size)
     gpus = list(map(str, range(world_size)))
     emulated_node_gpus = ",".join(gpus[emulated_node_rank*emulated_node_size:(emulated_node_rank+1)*emulated_node_size])
@@ -259,16 +264,18 @@ export NCCL_MULTI_RANK_GPU_ENABLE=1
 export NCCL_NVLS_ENABLE=0
 ```
 
-The NCCL docs say `NCCL_MULTI_RANK_GPU_ENABLE` isn't required, since each MIG instance is a distinct CUDA device - but on an H200 with NCCL 2.31.2 the communicator won't come up without it, so set it anyway. NCCL identifies a rank's device by the parent GPU's NVML index and PCI bus id rather than by the MIG instance, so four ranks on four instances of one GPU look to it like four ranks sharing a single device, and without the flag init stops with `Multiple Ranks are using the same GPU/Partition`.
+The NCCL docs say `NCCL_MULTI_RANK_GPU_ENABLE` isn't required, since each MIG instance is a distinct CUDA device - but on an H200 with NCCL 2.31.2 the communicator won't come up without it, so set it anyway. NCCL identifies a rank's device by the parent GPU's NVML (NVIDIA Management Library, the driver API `nvidia-smi` is built on) index and PCI bus id rather than by the MIG instance, so four ranks on four instances of one GPU look to it like four ranks sharing a single device, and without the flag init stops with `Multiple Ranks are using the same GPU/Partition`.
 
-`NCCL_NVLS_ENABLE=0` is a guard rather than a requirement. NCCL's default already leaves NVLink SHARP off in this situation, so if nothing in your environment sets that variable you can leave it alone. But many cluster images and pod specs export `NCCL_NVLS_ENABLE=1`, and when NVLink SHARP is explicitly demanded NCCL refuses to start with `NCCL_NVLS_ENABLE has been set to "1" and communicator has multiple ranks using the same NVML device`. Setting it to 0 costs nothing and makes the recipe work regardless of what the environment already exported. You can also set `NCCL_NVLS_ENABLE=2` which will automatically use NVLS when possible.
+`NCCL_NVLS_ENABLE=0` is a guard rather than a requirement. NCCL's default already leaves NVLink SHARP (NVLS: doing the reduction inside the NVSwitch rather than on the GPUs) off in this situation, so if nothing in your environment sets that variable you can leave it alone. But many cluster images and pod specs export `NCCL_NVLS_ENABLE=1`, and when NVLink SHARP is explicitly demanded NCCL refuses to start with `NCCL_NVLS_ENABLE has been set to "1" and communicator has multiple ranks using the same NVML device`. Setting it to 0 costs nothing and makes the recipe work regardless of what the environment already exported. You can also set `NCCL_NVLS_ENABLE=2` which will automatically use NVLS when possible.
 
 The docs also tell you to set `NCCL_MNNVL_ENABLE=0`. On a node with no NVLink fabric that flag changes nothing - the same benchmark returned 142.28, 142.42 and 142.23 GBps with it unset, set to `0` and set to `1` - so it only matters on fabric-attached systems like GB200 NVL72.
 
 
 ### Carving up a GPU
 
-List the profiles the GPU offers, enable MIG on it, then create the instances. On H200 we can create up to 7 instances. Let's create 4 instances of 35GB each on GPU 4 which will allows us to do for example SP=2, EP=2 model parallelism on a single GPU.
+List the profiles the GPU offers, enable MIG on it, then create the instances. On H200 we can create up to 7 instances. Let's create 4 instances of 35GB each on GPU 4 which will allows us to do for example SP=2, EP=2 model parallelism (see [Sequence Parallelism](model-parallelism/README.md#sequence-parallelism) and [Expert Parallelism](model-parallelism/README.md#expert-parallelism)) on a single GPU.
+
+In the commands below `-i 4` selects GPU 4, `-cgi` creates GPU instances from a comma-separated list of profile names (a profile name like `1g.35gb` means 1 compute slice and 35GB of memory, see the table further down) and `-C` also creates the compute instance inside each, which is what makes it usable by CUDA. On undo, `-dci` and `-dgi` destroy the compute and GPU instances respectively.
 
 ```bash
 nvidia-smi mig -lgip             # show profiles available on this GPU
@@ -298,7 +305,7 @@ GPU 4: NVIDIA H200 (UUID: GPU-31f70a1b-dee6-617e-13c5-5c2a2fbe0013)
   MIG 1g.35gb  Device 3: (UUID: MIG-6b4ff05d-689c-5bf3-8a51-3ff519c617ac)
 ```
 
-Collect every rank-sized device on the node into one comma-separated variable - a GPU that is in MIG mode contributes its instances, a GPU that isn't contributes itself:
+Collect every rank-sized device on the node into one comma-separated variable - a GPU that is in MIG mode contributes its instances, a GPU that isn't contributes itself (the perl one-liner pushes each `GPU-` UUID onto a list, and when a `MIG-` UUID follows it pops its parent GPU's UUID and pushes the MIG UUID instead, then prints the list joined by commas):
 
 ```bash
 export MIG_UUIDS=$(nvidia-smi -L | perl -ne 'if (/\(UUID: (GPU-[^)]+)\)/) { push @u, $1 } elsif (/\(UUID: (MIG-[^)]+)\)/) { my $m = $1; pop @u if $u[-1] =~ /^GPU-/; push @u, $m } END { print join ",", @u }')
@@ -316,7 +323,7 @@ export LOCAL_RANK=0
 exec python train.py'
 ```
 
-Resetting `LOCAL_RANK` to `0` is required, see [Caveats](#caveats).
+Here `--no-python` makes `torchrun` run `bash` instead of `python`, so each worker first runs the small shell script: `cut -d, -f$((LOCAL_RANK+1))` picks the `LOCAL_RANK`-th (1-based for `cut`) UUID from the list into `CUDA_VISIBLE_DEVICES`, and `exec` replaces the shell with the training process so signals reach it directly. Resetting `LOCAL_RANK` to `0` is required, see [Caveats](#caveats).
 
 `all_reduce`, `all_gather`, `reduce_scatter`, `broadcast` and a DDP training step all work across 4 such instances.
 
@@ -334,7 +341,7 @@ The profiles used below, all on one H200 141GB:
 | `2g.35gb`   |         2 of 7 |   35GB |                 3 |
 | `3g.71gb`   |         3 of 7 |   71GB |                 2 |
 
-Every results table below starts with the whole-GPU row it is measured against, then the MIG rows in descending `busbw`.
+Every results table below starts with the whole-GPU row it is measured against, then the MIG rows in descending `busbw` (the all-reduce bus bandwidth, normalized so it can be compared against the link's peak bandwidth, see [How the bandwidth is measured](../network/benchmarks/README.md#how-the-bandwidth-is-measured)).
 
 4 ranks, 512MiB payload:
 
@@ -376,7 +383,7 @@ In the profile table above, the compute-slice count is the digit in the profile 
 
 Setup: H200 141GB SXM, `torch==2.9.1+cu130`, NCCL 2.31.2 preloaded as above, CUDA driver 13.0.
 
-The big surprise here is how much the choice of profile matters. Traffic between MIG instances never leaves the GPU - NCCL logs every channel as `P2P/CUMEM` with no socket or PCIe fallback anywhere in the run - so the limit is the memory bandwidth the instance owns, which is set by its memory slices and barely at all by its SMs. The two 512MiB tables isolate this: in the 4-rank one, going from `1g.18gb` to `1g.35gb` keeps compute identical at one slice and doubles the memory, and bandwidth nearly doubles (142 -> 274GBps), while in the 2-rank one, going from `1g.35gb` to `2g.35gb` doubles the compute at the same memory and buys only 6% (231 -> 245GBps).
+The big surprise here is how much the choice of profile matters. Traffic between MIG instances never leaves the GPU - NCCL logs every channel (with `NCCL_DEBUG=INFO`, NCCL prints which transport each ring hop uses; `P2P/CUMEM` is direct GPU memory-to-memory copy) as `P2P/CUMEM` with no socket or PCIe fallback anywhere in the run - so the limit is the memory bandwidth the instance owns, which is set by its memory slices and barely at all by its SMs. The two 512MiB tables isolate this: in the 4-rank one, going from `1g.18gb` to `1g.35gb` keeps compute identical at one slice and doubles the memory, and bandwidth nearly doubles (142 -> 274GBps), while in the 2-rank one, going from `1g.35gb` to `2g.35gb` doubles the compute at the same memory and buys only 6% (231 -> 245GBps).
 
 So 4x `1g.35gb` instances reproduce about 79% of the interconnect bandwidth of 4 real H200s, while 4x `1g.18gb` instances - same rank count, smaller slices - give only 41%. Pick the profile with the most memory per instance that still gives you the rank count you need.
 

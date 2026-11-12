@@ -4,11 +4,13 @@ XXX: this is very early - collecting various tools/notes
 
 As most of us are well familiar with NVIDIA tools, I will try to provide the mapping where possible to the familiar tools.
 
+The overall NVIDIA-to-AMD mapping of the software stack (ROCm, HIP, `amdgpu`, `rocm-smi`, `rocminfo`) is in [AMD / ROCm equivalents](../../gpu-software-stack.md#8-amd--rocm-equivalents), and the hardware terms (CU, wavefront, XCD, LDS) in [AMD differences](../execution-model.md#amd-differences).
+
 ## Tools
 
 ### HIP_VISIBLE_DEVICES / CUDA_VISIBLE_DEVICES / ROCR_VISIBLE_DEVICES
 
-ROCm has more than one “visible devices” knob because isolation can happen at different layers of the stack. For PyTorch on ROCm the usual CUDA-style choice is HIP-level:
+ROCm has more than one “visible devices” knob because isolation can happen at different layers of the stack. From the top down: PyTorch calls **HIP**, AMD's CUDA-like runtime API, and HIP sits on **ROCr** (the ROCm runtime, AMD's implementation of the HSA, Heterogeneous System Architecture, runtime API), which talks to the kernel driver. For PyTorch on ROCm the usual CUDA-style choice is HIP-level:
 
 ```bash
 HIP_VISIBLE_DEVICES=0,1 python my-program.py
@@ -16,7 +18,7 @@ HIP_VISIBLE_DEVICES=0,1 python my-program.py
 
 `CUDA_VISIBLE_DEVICES` is honored the same way (CUDA-compat alias for HIP on AMD).
 
-That only filters what the **HIP** runtime exposes. ROCr can still initialize every GPU, and non-HIP clients sitting on ROCr (OpenCL, AOMP, UCX, …) are unaffected.
+That only filters what the **HIP** runtime exposes. ROCr can still initialize every GPU, and non-HIP clients sitting on ROCr (OpenCL, a vendor-neutral GPU compute API; AOMP, AMD's OpenMP offloading compiler; UCX, a communication library that MPI and others use; …) are unaffected.
 
 To hide devices from the whole user-mode ROCm stack, filter at **ROCr**:
 
@@ -60,12 +62,16 @@ Device  [Model : Revision]    Temp        Power     Partitions      SCLK    MCLK
 =============================================== End of ROCm SMI Log ================================================
 ```
 
-Oddly it shows no real memory usage - only the percentage, which isn't very practical.
+How to read the columns: `Temp (Junction)` is the hottest on-die sensor, `Power (Socket)` the whole package's draw, `Partitions (Mem, Compute)` the memory and compute partitioning modes (`NPS1` = all HBM as one NUMA node, `SPX` = all XCDs as one GPU; the MI300X can also be split into several smaller GPUs), `SCLK` the compute (shader) clock, `MCLK` the memory clock, `Perf` the performance level policy, `PwrCap` the power limit, `VRAM%` the share of HBM in use and `GPU%` the busy percentage - which, like `nvidia-smi`'s `GPU-Util`, is the share of time something ran, not how much of the GPU it used (see [How to get the real GPU utilization metrics](../nvidia/debug.md#how-to-get-the-real-gpu-utilization-metrics)). The 132 MHz `SCLK` here is an idle GPU's clock.
+
+Oddly it shows no real memory usage - only the percentage, which isn't very practical. (`rocm-smi --showmeminfo vram` prints the used and total bytes per GPU.)
 
 A handy alias to watch updates in real time:
 ```bash
 alias wr='watch -n 1 rocm-smi'
 ```
+
+(`watch -n 1` re-runs the command every second; put the alias in your `~/.bashrc` to keep it.)
 
 ### rocminfo
 
@@ -73,7 +79,7 @@ alias wr='watch -n 1 rocm-smi'
 
 This one shows both the CPU and the GPU information
 
-Here is a snippet for cpu0 and gpu0 (note it starts counting the cpus as nodes 0..1, and then GPUs as nodes 2..9):
+Here is a snippet for cpu0 and gpu0 (note it starts counting the cpus as nodes 0..1, and then GPUs as nodes 2..9). HSA calls every processor that can run work an *agent*, CPU or GPU. The fields that matter most for a GPU are `Name` (`gfx942` is the ISA name of the MI300X), `Compute Unit` (304 CUs), `Wavefront Size` (64), `Max Clock Freq.`, the cache sizes, `BDFID` (the PCI bus:device.function address packed into one number) and the `Pool Info` sizes, which are the HBM (here 192GiB per GPU). *Coarse grained* memory is coherent only at kernel boundaries and is the fast default for device memory; *fine grained* memory can be shared coherently with the host or other GPUs while a kernel runs. In the ISA string, `sramecc+` means ECC on the on-chip SRAM is enabled and `xnack-` that GPU page-fault retry is off:
 ```bash
 $ rocminfo
 ROCk module is loaded
@@ -245,12 +251,12 @@ Agent 1
 
 ## Hangs or slow multi-GPU runs and IOMMU
 
-If a multi-GPU ROCm run hangs or crawls, the host's IOMMU configuration is a common culprit. The correct setting is platform-specific - match your hardware instead of blindly disabling it:
+If a multi-GPU ROCm run hangs or crawls, the host's IOMMU configuration is a common culprit. The IOMMU translates the addresses that devices use for DMA, and pass-through mode (`iommu=pt`) skips that translation for devices the host owns; both are introduced in [IOMMU, VFIO and PCIe passthrough](../../../foundations/containers-and-virtualization.md#iommu-vfio-and-pcie-passthrough). The correct setting is platform-specific - match your hardware instead of blindly disabling it:
 
 - **Modern Instinct (MI300X, MI325X, MI350X, MI355X)**: AMD's system-acceptance guides want the IOMMU **enabled** in BIOS and running in pass-through mode on the kernel command line - `iommu=pt` together with `amd_iommu=on` (or `intel_iommu=on` on Intel hosts). MI350X/MI355X (ROCm 7.0.1+) explicitly list `IOMMU enabled` + `iommu=pt`.
-- **MI100 / MI200 (MI210/MI250/MI250X)**: AMD's qualified BIOS tables typically set the NBIO **IOMMU to Disable**, with `iommu=pt` called out only for hosts with 256+ logical CPUs (so X2APIC can address every core).
+- **MI100 / MI200 (MI210/MI250/MI250X)**: AMD's qualified BIOS tables typically set the NBIO **IOMMU to Disable**, with `iommu=pt` called out only for hosts with 256+ logical CPUs (so X2APIC, the interrupt-controller mode that can address more than 255 CPUs and needs the IOMMU for interrupt remapping, can address every core). NBIO is the CPU's north-bridge I/O block, where the BIOS's IOMMU switch lives.
 - **Legacy last resort**: on older systems where neither pass-through nor the BIOS default helped, fully disabling it via `amd_iommu=off` (or the softer `iommu=soft`) was the historical workaround - see AMD's [IOMMU advisory for multi-GPU environments](https://community.amd.com/t5/knowledge-base/iommu-advisory-for-multi-gpu-environments/ta-p/477468) and this [issue report](https://github.com/stas00/ml-engineering/issues/1#issuecomment-1076830400) (that particular case was actually on NVIDIA A6000s). This is an invasive, system-wide boot change, and current AMD guidance prefers pass-through over a full disable.
 
-These are boot-time kernel parameters set in `/etc/default/grub` (e.g. `GRUB_CMDLINE_LINUX="... iommu=pt"`; the grub config path varies by OS), followed by regenerating grub and rebooting - so they need admin access.
+These are boot-time kernel parameters set in `/etc/default/grub` (e.g. `GRUB_CMDLINE_LINUX="... iommu=pt"`; the grub config path varies by OS), followed by regenerating grub and rebooting - so they need admin access. GRUB is the bootloader that passes these parameters to the kernel; on Ubuntu/Debian regenerate with `sudo update-grub`, on RHEL-family systems with `sudo grub2-mkconfig -o <path of grub.cfg>`, and after the reboot `cat /proc/cmdline` shows the parameters the running kernel actually got.
 
 The per-GPU `IOMMU Support` line in the `rocminfo` output above reflects what the runtime actually sees.

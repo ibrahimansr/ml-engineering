@@ -39,7 +39,7 @@ Here are a few key storage-related concepts that you likely need to be familiar 
 
 **Queue depth** (or **IO depth**) is the number of IO requests that can be queued at one time on a storage device controller. If more IO requests than the controller can queue are being sent the OS will usually put those into its own queue.
 
-On Linux the local block devices' queue depth is usually pre-configured by the kernel. For example, if you want to check the max queue depth set for `/dev/sda` you can `cat /sys/block/sda/queue/nr_requests`. To see the current queue depth of a local device run `iostat -x` and watch for `aqu-sz` column. (`apt install sysstat` to get `iostat`.)
+On Linux the local block devices' queue depth is usually pre-configured by the kernel. For example, if you want to check the max queue depth set for `/dev/sda` you can `cat /sys/block/sda/queue/nr_requests`. To see the current queue depth of a local device run `iostat -x` and watch for `aqu-sz` column, the average number of requests in flight on that device over the sampling interval. (`apt install sysstat` to get `iostat`; `iostat -x 1` prints a new report every second.) Queue depth from the hardware side is introduced in [Queue depth](../foundations/computer-architecture.md#queue-depth).
 
 A storage device serves many requests at once - an NVMe drive reads from many flash chips simultaneously, a network file system (usually) from many storage servers. Think of those as the device's workers. While there are fewer requests in progress than workers, each request goes straight to an idle worker, so latency stays flat while throughput climbs with every request added. Issue them one at a time instead and the device sits idle after each completion, waiting for the application to come back with the next request.
 
@@ -47,7 +47,7 @@ Once there are more requests than workers, throughput is capped and the surplus 
 
 ### Direct vs Buffered IO
 
-**Direct** IO refers to IO that bypasses the operating system's caching buffers. This corresponds to `O_DIRECT` flag in [`open(2)`](https://man7.org/linux/man-pages/man2/open.2.html) system call.
+**Direct** IO refers to IO that bypasses the operating system's caching buffers (the page cache, see [The page cache: why the second read is fast](../foundations/linux-and-os.md#the-page-cache-why-the-second-read-is-fast)). This corresponds to `O_DIRECT` flag in [`open(2)`](https://man7.org/linux/man-pages/man2/open.2.html) system call.
 
 The opposite is the **buffered** IO, which is usually the default way most applications do IO since caching typically makes things faster.
 
@@ -57,7 +57,7 @@ In certain situations opening files with `O_DIRECT` may actually help to overcom
 
 And it's worth knowing what `O_DIRECT` doesn't promise before building a workflow on it:
 
-- it isn't durability. It "makes an effort to transfer data synchronously, but does not give the guarantees of the `O_SYNC` flag that data and necessary metadata are transferred" - if you need the bytes to survive a crash you want `fsync`/`fdatasync`, or `O_SYNC` in addition to `O_DIRECT`.
+- it isn't durability. It "makes an effort to transfer data synchronously, but does not give the guarantees of the `O_SYNC` flag that data and necessary metadata are transferred" - if you need the bytes to survive a crash you want `fsync`/`fdatasync`, or `O_SYNC` in addition to `O_DIRECT` (see [fsync and durability](../foundations/linux-and-os.md#fsync-and-durability-why-checkpoints-get-lost)).
 - it may impose alignment restrictions on the length and the address of your buffer and on the file offset, varying by file system and kernel version. A misaligned IO may fail with `EINVAL` or silently fall back to buffered IO - which is a very quiet way for a benchmark to stop measuring what you think it measures. Since Linux 6.1 `statx(2)` with `STATX_DIOALIGN` will tell you the actual requirements.
 - mixing `O_DIRECT` and normal buffered IO on the same file, especially on overlapping regions, is explicitly discouraged - and an `O_DIRECT` writer with a `tail -f` reader is precisely that pairing.
 
@@ -102,13 +102,13 @@ In asynchronous IO the client may submit multiple IO requests one after another 
 
 ### mmap vs sequential dataset reads
 
-A dataset that looks like one large file may still end up doing random IO. Hugging Face `datasets` keeps its data in [Apache Arrow](https://huggingface.co/docs/datasets/en/about_arrow) files - a binary columnar format whose on-disk bytes are already laid out the way they will be used in memory, so a row can be read where it lies with no parsing step. That is what makes memory-mapping the default (`load_from_disk`, or `load_dataset` without `keep_in_memory`): the file is mapped into the address space and a row access becomes a page fault instead of a `read` call.
+A dataset that looks like one large file may still end up doing random IO. Hugging Face `datasets` keeps its data in [Apache Arrow](https://huggingface.co/docs/datasets/en/about_arrow) files - a binary columnar format whose on-disk bytes are already laid out the way they will be used in memory, so a row can be read where it lies with no parsing step. That is what makes memory-mapping the default (`load_from_disk`, or `load_dataset` without `keep_in_memory`): the file is mapped into the address space and a row access becomes a page fault instead of a `read` call (page faults are covered in [Page faults and lazy allocation](../foundations/linux-and-os.md#page-faults-and-lazy-allocation); a *major* fault is one that has to fetch the page from storage, a *minor* one finds it already in RAM).
 
 footnote: The resident memory this mapping shows in `top` is not a leak - the OS can reclaim unreferenced pages - see [CPU memory](../compute/cpu-memory/README.md#things-to-know).
 
-If you count `read()` syscalls - with `strace -c`, or by grepping a trace - a mapped dataset looks almost idle. Each mapped run below issued 2 `read` calls for the whole 1GiB; the bytes still moved, but they show up as major page faults and in `/proc/self/io` `read_bytes` instead.
+If you count `read()` syscalls - with `strace -c`, or by grepping a trace - a mapped dataset looks almost idle. Each mapped run below issued 2 `read` calls for the whole 1GiB; the bytes still moved, but they show up as major page faults and in `/proc/self/io` `read_bytes` instead (`read_bytes` counts the bytes this process caused to be fetched from storage, however they were requested, whereas `strace` counts only system calls).
 
-Measured on 2026-09 with `datasets` 4.0.0: 1GiB of text as 32768 rows of 32KiB in three Arrow shards, page cache dropped with `posix_fadvise(..., POSIX_FADV_DONTNEED)` before each run. The first row is the floor - the same three files read start to finish with ordinary `read()` calls of 1MiB each. The other two go through the mapped dataset: `for row in ds`, then `ds[i]` in shuffled order.
+Measured on 2026-09 with `datasets` 4.0.0: 1GiB of text as 32768 rows of 32KiB in three Arrow shards, page cache dropped with `posix_fadvise(..., POSIX_FADV_DONTNEED)` before each run (a call that asks the kernel to evict one file's pages from the page cache, a per-file alternative to dropping all caches that needs no root). The first row is the floor - the same three files read start to finish with ordinary `read()` calls of 1MiB each. The other two go through the mapped dataset: `for row in ds`, then `ds[i]` in shuffled order.
 
 | How the 1GiB was read           | Local NVMe | Slowdown | Lustre | Slowdown |
 | :------------------------------ | ---------: | -------: | -----: | -------: |
@@ -125,14 +125,14 @@ The three rows are the three ways a pipeline usually touches Arrow shards: read 
 2. **`for row in ds` over a mapped dataset** - on local NVMe the mapping costs 279% and still finishes a GiB in half a second, so leave it. On Lustre it costs 66% and every page comes over the network, so copy the shards to node-local disk first if this loop feeds training.
 3. **Shuffled `ds[i]` over a mapped dataset** - ordinary shuffled training. On Lustre this took 94s per GiB, 50x the sequential read of the same bytes. Do not point it at a network file system. Stage the split on node-local NVMe and map it there, or pre-shuffle into epoch shards and read those in order, or stream and shuffle within a buffer. `keep_in_memory=True` removes the faults too, but trades them for RAM that every DataLoader worker pays again.
 
-footnote: Reading the shards through sequentially before the loop - `cat shard > /dev/null`, or a `cp` - leaves them in the page cache, and the shuffled case then faults against RAM: on Lustre 98.24s from cold became a 1.86s pre-read plus a 1.03s loop. This holds only while the shards fit in the page cache, so it is a remedy for a split that fits in RAM rather than a replacement for staging on local NVMe. The mapping hints do not help and are not reachable through `datasets` in any case - [`MAP_POPULATE`](https://man7.org/linux/man-pages/man2/mmap.2.html) prefaults the whole mapping, [`MADV_SEQUENTIAL`](https://man7.org/linux/man-pages/man2/madvise.2.html) only widens readahead, and `pyarrow`'s `memory_map` passes neither.
+footnote: Reading the shards through sequentially before the loop - `cat shard > /dev/null`, or a `cp` - leaves them in the page cache, and the shuffled case then faults against RAM: on Lustre 98.24s from cold became a 1.86s pre-read plus a 1.03s loop. This holds only while the shards fit in the page cache, so it is a remedy for a split that fits in RAM rather than a replacement for staging on local NVMe. The mapping hints do not help and are not reachable through `datasets` in any case - [`MAP_POPULATE`](https://man7.org/linux/man-pages/man2/mmap.2.html) prefaults the whole mapping, [`MADV_SEQUENTIAL`](https://man7.org/linux/man-pages/man2/madvise.2.html) only widens readahead (the kernel fetching the next pages of a file before they are asked for), and `pyarrow`'s `memory_map` passes neither.
 
 
 ### Misreported file size
 
-I have noticed some distributed file systems, like Lustre, may report incorrect file sizes if the files got offloaded and haven't been "rehydrated". I haven't seen this problem with Weka or GPFS. A proper distributed file system client should always report the real file size even if the contents of the file have been offloaded, and then automatically re-hydrate the file when it's being read.
+I have noticed some distributed file systems, like Lustre, may report incorrect file sizes if the files got offloaded and haven't been "rehydrated". (Tiered storage moves the contents of files that haven't been used for a while to a cheaper tier, such as object storage, leaving a stub behind; rehydrating is bringing the contents back.) I haven't seen this problem with Weka or GPFS. A proper distributed file system client should always report the real file size even if the contents of the file have been offloaded, and then automatically re-hydrate the file when it's being read.
 
-If you're unlucky to deal with such a broken file system client, you can get a rough idea of the real file sizes using `du --apparent-size`, but beware that it may over-report the size if there is fragmentation, file sparsity and other reasons. `df` will still report incorrect file sizes, since it doesn't have a similar flag to `du`.
+If you're unlucky to deal with such a broken file system client, you can get a rough idea of the real file sizes using `du --apparent-size` (the files' lengths in bytes, rather than the disk blocks allocated to them, which is what `du` reports by default), but beware that it may over-report the size if there is fragmentation, file sparsity and other reasons. `df` will still report incorrect file sizes, since it doesn't have a similar flag to `du`.
 
 If you have to force re-hydration you can run something like:
 
@@ -157,19 +157,19 @@ The 3 excellent performing parallel file systems that I had experience with are:
 - [WekaIO](https://www.weka.io/)
 - [Lustre FS](https://www.lustre.org/) (Open Source) ([Wiki](https://wiki.lustre.org/Main_Page))
 
-These solutions have been around for 2+ decades. They are POSIX-compliant. These are also not trivial to create - you have to setup a whole other cluster with multiple cpu-only VMs dedicated exclusively for those filesystems - only then you can mount those. As compared to weaker cloud-provided "built-in" solutions which take only a few screens of questions to answer in order to activate. And when creating the storage cluster there is a whole science to which VMs to choose for which functionality. For example, here is a [Lustre guide on GCP](https://docs.cloud.google.com/architecture/parallel-file-systems-for-hpc#overview_of_lustre_and_exascaler_cloud).
+These solutions have been around for 2+ decades. They are POSIX-compliant (they offer the same file semantics as a local Linux file system - `open`, `read`, `write`, `rename`, locks - so programs work on them unchanged). How a parallel file system splits data and metadata across servers is covered in [How a parallel filesystem works](../foundations/storage-and-data.md#how-a-parallel-filesystem-works). These are also not trivial to create - you have to setup a whole other cluster with multiple cpu-only VMs dedicated exclusively for those filesystems - only then you can mount those. As compared to weaker cloud-provided "built-in" solutions which take only a few screens of questions to answer in order to activate. And when creating the storage cluster there is a whole science to which VMs to choose for which functionality. For example, here is a [Lustre guide on GCP](https://docs.cloud.google.com/architecture/parallel-file-systems-for-hpc#overview_of_lustre_and_exascaler_cloud).
 
 case study: At JeanZay HPC (France) in 2021 we were saving 2.3TB checkpoint in parallel on 384 processes in 40 secs! This is insanely fast - and it was GPFS over NVME drives.
 
 NASA's cluster has [a long long list of gotchas around using Lustre](https://www.nas.nasa.gov/hecc/support/kb/lustre-best-practices_226.html).
 
 Some very useful pros of GPFS:
-- If you have a lot of small files, you can easily run out of inodes (`df -i` to check). GPFS 5.x never runs out of inodes, it dynamically creates more as needed
-- GPFS doesn't have the issue Lustre has where you can run out of disk space at 80% if one of the sub-disks got full and wasn't re-balanced in time - you can reliably use all 100% of the allocated storage.
+- If you have a lot of small files, you can easily run out of inodes (`df -i` to check; inodes are explained in [Inodes, names and links](../foundations/linux-and-os.md#inodes-names-and-links)). GPFS 5.x never runs out of inodes, it dynamically creates more as needed
+- GPFS doesn't have the issue Lustre has where you can run out of disk space at 80% if one of the sub-disks (Lustre's OSTs, see [Lustre: MDS, OSS and `lfs setstripe`](../foundations/storage-and-data.md#lustre-mds-oss-and-lfs-setstripe)) got full and wasn't re-balanced in time - you can reliably use all 100% of the allocated storage.
 - GPFS doesn't use a central metadata server (or a cluster of those) which often becomes a bottleneck when dealing with small files. Just like data, metadata is handled by each node in the storage cluster.
-- GPFS comes with a native NSD client which is superior to the generic NFS client, but either can be used with it.
+- GPFS comes with a native NSD client (NSD is GPFS's own protocol for serving its disks to client nodes) which is superior to the generic NFS client, but either can be used with it.
 - One can build a multi-tier system. So for example, Tier 1 is usually made from NVME drives and Tier 2 usually uses some cloud storage system. So when the Tier 1 capacity gets low, files that haven't been accessed in some time, get auto-moved to the cloud storage. So for example your Tier 1 could be 100TB, and Tier 2 could be 1PB. This approach saves a lot of money, since 1PB of cloud storage is significantly cheaper than 1PB of NVME drives.
-- Data protection can use various RAID approaches. Typically striping is used to save costs.
+- Data protection can use various RAID approaches (RAID combines several disks into one volume, and its levels trade capacity for redundancy, see [Striping local drives together](../foundations/storage-and-data.md#striping-local-drives-together)). Typically striping is used to save costs.
 
 Weka is quite similar to GPFS in features and performance. The main difference would be the licensing cost you can negotiate with either provider. A big part of your cost will be in the cost of the VMs required to run the system - e.g. if you have a lot of small files you'd want many VMs to quickly deal with meta-data.
 
@@ -234,9 +234,9 @@ Same goes for dynamic offloading of checkpoints to the cloud.
 
 It's so much better to have enough disk space locally for data loading.
 
-For checkpointing there should be enough local disk space for saving a checkpoint in a fast and reliable way and then having a crontab job or a slurm job to offload it to the cloud. Always keep the last few checkpoints locally for a quick resume, should your job crash, as it'd be very expensive to wait to fetch the checkpoint from the cloud for a resume.
+For checkpointing there should be enough local disk space for saving a checkpoint in a fast and reliable way and then having a crontab job (see [cron](../foundations/linux-and-os.md#cron)) or a slurm job to offload it to the cloud. Always keep the last few checkpoints locally for a quick resume, should your job crash, as it'd be very expensive to wait to fetch the checkpoint from the cloud for a resume.
 
-case study: we didn't have a choice and had to use cloud storage for dataloading during IDEFICS-80B training as we had barely any local storage and since it was multimodal data it was many TBs of data. We spent many weeks trying to make this solution robust and it sucked at the end. The biggest issue was that it was very difficult at the time to keep track of RNG state for the DataSampler because the solution we used, well, didn't bother to take care of it. So a lot of data that took a lot of time to create was wasted (not used) and a lot of data was repeated, so we didn't have a single epoch of unique data.
+case study: we didn't have a choice and had to use cloud storage for dataloading during IDEFICS-80B training as we had barely any local storage and since it was multimodal data it was many TBs of data. We spent many weeks trying to make this solution robust and it sucked at the end. The biggest issue was that it was very difficult at the time to keep track of RNG state for the DataSampler (the sampler's random state decides which samples come next, so it has to be saved and restored for a resume to continue where it left off, see [Deterministic, resumable data loading](../foundations/storage-and-data.md#deterministic-resumable-data-loading)) because the solution we used, well, didn't bother to take care of it. So a lot of data that took a lot of time to create was wasted (not used) and a lot of data was repeated, so we didn't have a single epoch of unique data.
 
 In some situations people find good solutions for working with cloud-based datasets, I personally haven't had a smooth experience yet and that's why I advocate local storage. If you found a good streaming solution that can properly resume without losing data and repeating the same data, doesn't require huge local workers then it might work OK.
 
@@ -277,7 +277,7 @@ As I discover specific solution that have this unintuitive behavior I will add p
 
 When you sync data to and from the cloud make sure to research whether the tool you use checks the checksums, otherwise you may end up with corrupt during transmission data. Some tools do it automatically, others you have to enable this feature (since it usually comes at additional compute cost and transmission slowdown). Better slow, but safe.
 
-These are typically MD5 and SHA256 checksums. Usually MD5 is sufficient if your environment is safe, but if you want the additional security do SHA256 checksums.
+These are typically MD5 and SHA256 checksums (see [Checksums](../foundations/storage-and-data.md#checksums) for how to compute and compare them). Usually MD5 is sufficient if your environment is safe, but if you want the additional security do SHA256 checksums.
 
 
 ## Benchmarks
@@ -293,6 +293,8 @@ The three main storage IO metrics one typically cares for are:
 1. [Throughput](https://en.wikipedia.org/wiki/Network_throughput) or Bandwidth (bytes per second - can be MBps, GBps, etc.)
 2. [IOPS](https://en.wikipedia.org/wiki/IOPS) (Input/output operations per second that a system can perform)
 3. [Latency](https://en.wikipedia.org/wiki/Latency_(engineering)) (msecs or usecs)
+
+How the three are tied together by queue depth (Little's law) is worked through in [Bandwidth, IOPS, latency and Little's law](../foundations/storage-and-data.md#bandwidth-iops-latency-and-littles-law).
 
 - *IOPS* measures how many input and/or output operations a given storage device or a cluster can perform per second. Typically read and write IOPS won't be the same. And for many systems it'll also depend on whether the operation is sequential or random. So a storage system will have 4 different IOPS rates:
 
@@ -336,6 +338,8 @@ fio --ioengine=libaio --filesize=16k --ramp_time=2s --time_based --runtime=3m --
 --direct=1 --verify=0 --randrepeat=0 --group_reporting --unlink=1 --directory=$base_path  \
 --name=read-test --blocksize=4k --iodepth=64 --readwrite=read
 ```
+
+The common flags are explained in [fio, flag by flag](../foundations/storage-and-data.md#fio-flag-by-flag); the others here: `--readwrite` and `--blocksize` are the long names of `--rw` and `--bs`, `--filesize` sets the size of each job's file, `--verify=0` skips checking the data read back, `--randrepeat=0` seeds the random offsets differently on each run, and `--unlink=1` deletes the work files when the run ends.
 
 Here 16 concurrent read threads will run for 3 minutes. The benchmark uses a block size of 4KiB (typical for most OSes) with the file size of 16KiB (a common size of most Python files) in a sequential reading style using [non-buffered IO](#direct-vs-buffered-io). So this particular set of flags will create a good proxy benchmark for how fast you can import Python modules on 16 concurrent processes.
 
@@ -438,6 +442,8 @@ Time the creation of a new conda environment:
 time conda create -y -n install-test python=3.12
 ```
 
+`time` prints three numbers: `real` is the wall-clock time, `user` the CPU time spent in the program's own code and `sys` the CPU time spent in the kernel on its behalf (for example in file system calls), both summed over all its threads - which is why `user` can exceed `real` for a multi-threaded program, as in the `import torch` runs below. A `real` much larger than `user + sys` means the program was mostly waiting, here on the network and the file system.
+
 ```
 real    0m22.790s
 user    0m12.911s
@@ -450,6 +456,8 @@ conda deactivate
 conda activate install-test
 time pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 ```
+
+(`--index-url .../whl/cu130` points `pip` at PyTorch's own package index of builds for CUDA 13.0.)
 
 ```
 real    0m50.596s
@@ -508,7 +516,7 @@ echo 3 | sudo tee /proc/sys/vm/drop_caches
 time python -c "import torch"
 ```
 
-As you can see before we do the measurement we have to tell the OS to flush its memory and file system caches.
+As you can see before we do the measurement we have to tell the OS to flush its memory and file system caches. `sync` writes any dirty pages to storage first, and writing `3` to `/proc/sys/vm/drop_caches` drops the page cache plus the cached directory entries and inodes (see [The page cache in your own measurements](../foundations/storage-and-data.md#the-page-cache-in-your-own-measurements)).
 
 If you don't have `sudo` access you can skip the command involving `sudo`, also sometimes the system is setup to work w/o `sudo`. If you can't run the syncing and flushing of the file system caches you will just get incorrect results as the benchmark will be measuring the time to load already cached file system objects. To overcome this either ask your sysadmin to do it for you or simply come back in the morning while hopefully your file system caches other things and evicts the python packages, and then repeat the python one liner then with the hope those files are no longer in the cache.
 
@@ -540,7 +548,7 @@ sys     0m0.368s
 
 You can see that the first time it wasn't cached and took longer, then when I ran it the second time it was faster because everything was cached. And then I told the system to flush memory and file system caches and you can see it was slow again.
 
-It helps to know what those seconds are made of. Two different kinds of IO go on during an import: a handful of large sequential reads for the shared objects in `torch/lib`, and a couple of thousand tiny operations - one open per module, plus the lookups that fail while Python probes candidate paths for each one. [`strace`](../debug/pytorch.md#strace) counts the second kind:
+It helps to know what those seconds are made of. Two different kinds of IO go on during an import: a handful of large sequential reads for the shared objects in `torch/lib`, and a couple of thousand tiny operations - one open per module, plus the lookups that fail while Python probes candidate paths for each one. [`strace`](../debug/pytorch.md#strace) (introduced in [strace: what is the process asking the kernel for?](../foundations/linux-and-os.md#strace-what-is-the-process-asking-the-kernel-for)) counts the second kind - `-c` prints a summary table instead of every call, `-f` follows the threads and child processes too, and `-e trace=openat` limits it to `openat`, the system call behind opening a file:
 
 ```bash
 $ strace -cf -e trace=openat python -c "import torch"
@@ -557,6 +565,8 @@ Those 2339 opens - 922 of which failed, since Python probes several candidate pa
 | :--------------------- | ---------: | -----: |
 | succeeds               |       11us |  2.3ms |
 | fails with `ENOENT`    |      2.4us |  1.1ms |
+
+(`ENOENT` is the "No such file or directory" error.)
 
 Apply those to the mix an `import torch` actually performs - 1417 opens that succeed and 922 that fail - and the opens alone go from about 0.02s on the local drive to about 4.3s on Lustre. A shared file system with per-open latency in that range is how a 1.3s import turns into the 20s reported in the case studies above. Repeating the Lustre measurement with everything already read changes nothing, either: what is being paid for is a metadata round trip, and the page cache has nothing to offer it.
 
@@ -590,8 +600,8 @@ So now you have a plethora of examples to choose from and I trust you will find 
 
 For a more rigorous, reproducible benchmark of a shared/parallel file system than the [ad-hoc timings](#usability-perception-io-benchmarks), two tools are worth knowing:
 
-- [IOR](https://github.com/hpc/ior) - the standard HPC parallel-IO benchmark. It launches many processes via MPI that read/write concurrently, so it measures the *aggregate* sequential and random bandwidth a distributed file system can sustain under realistic parallel load, across multiple backends (POSIX, MPI-IO, HDF5, ...). The same repo also ships `mdtest` (merged into `ior` in 2017), which instead benchmarks *metadata* performance - how many file/directory create/stat/remove operations per second the file system can handle. Metadata is frequently the real bottleneck for workloads with lots of small files, such as many small checkpoints or dataset shards.
-- [DLIO](https://github.com/argonne-lcf/dlio_benchmark) - a Deep-Learning I/O benchmark that emulates the data-loading pattern of ML training without needing any accelerator: it replaces the forward/backward compute with a `sleep` of equivalent duration and drives real data loaders (PyTorch `DataLoader`, `tf.data`) over synthetic datasets described via a YAML workload config. A run has three phases - generate synthetic data, run the benchmark, then post-process into a report. This makes it the closest proxy to "how will my storage behave during actual training", as opposed to the generic bandwidth/IOPS numbers IOR reports.
+- [IOR](https://github.com/hpc/ior) - the standard HPC parallel-IO benchmark. It launches many processes via MPI that read/write concurrently, so it measures the *aggregate* sequential and random bandwidth a distributed file system can sustain under realistic parallel load, across multiple backends (POSIX, MPI-IO, HDF5, ...). MPI-IO is MPI's parallel file API, in which many processes read and write one shared file, and HDF5 is a scientific file format for large arrays built on top of it. The same repo also ships `mdtest` (merged into `ior` in 2017), which instead benchmarks *metadata* performance - how many file/directory create/stat/remove operations per second the file system can handle. Metadata is frequently the real bottleneck for workloads with lots of small files, such as many small checkpoints or dataset shards.
+- [DLIO](https://github.com/argonne-lcf/dlio_benchmark) - a Deep-Learning I/O benchmark that emulates the data-loading pattern of ML training without needing any accelerator: it replaces the forward/backward compute with a `sleep` of equivalent duration and drives real data loaders (PyTorch `DataLoader`, `tf.data`, TensorFlow's input pipeline) over synthetic datasets described via a YAML workload config. A run has three phases - generate synthetic data, run the benchmark, then post-process into a report. This makes it the closest proxy to "how will my storage behave during actual training", as opposed to the generic bandwidth/IOPS numbers IOR reports.
 
 
 
@@ -659,7 +669,7 @@ The absent-source branch creates an empty target before linking it. If the targe
 
 Now that you know where the caches are, you could, of course, nuke the whole cache every so often, but if these are huge models and datasets, and especially if there was some preprocessing done for the latter - you really won't want to repeat those time consuming tasks again and again. So I will teach you how to use special tools provided by HuggingFace to do the cleanup.
 
-The way revisions work on the HF hub is by pointing `main` to the latest revision of the files while keeping the old revisions around should anyone want to use the older revision for some reason. Chance are very high you always want the latest revision, and so here is how to delete all old revisions and only keeping `main`:
+Every Hub repo is a git repository and a revision is one of its commits, identified by its hash. The way revisions work on the HF hub is by pointing `main` to the latest revision of the files while keeping the old revisions around should anyone want to use the older revision for some reason. Chance are very high you always want the latest revision, and so here is how to delete all old revisions and only keeping `main`:
 
 ```bash
 pip install -U "huggingface_hub"
@@ -717,7 +727,7 @@ The first command leaves files that are younger than 3 days in place, in case so
 
 As usual you may need to adjust the paths if you placed your caches elsewhere.
 
-note: if your team uses `HF_HOME` to share the HF hub models/datasets/etc - the `$HF_HOME/token` will get shared as well, which works fine as long as ungated models are used. But if you want to access gated models you might run into problems there. Therefore you most likely want to not share the access token. You can fix that by adding something like:
+note: if your team uses `HF_HOME` to share the HF hub models/datasets/etc - the `$HF_HOME/token` will get shared as well, which works fine as long as ungated models are used. But if you want to access gated models (models whose authors require each user to accept their terms on the Hub before downloading, so access is tied to the user's token) you might run into problems there. Therefore you most likely want to not share the access token. You can fix that by adding something like:
 
 ```bash
 export HF_TOKEN_PATH=~/.cache/hf_hub_token
@@ -776,11 +786,11 @@ So now when `pip` or `conda` will try to reach the user caches they will get red
 
 So the only issue with this approach is file permissions. If user A installs some packages, user B might not be able to read or write them.
 
-If this is an isolated cluster where there are no malicious users you can simply ask everybody to use `umask 000` in their `~/.bashrc` or even configuring this setting system-wide via `/etc/profile` or `/etc/bash.bashrc` and different other shell config files if `bash` isn't your shell of choice.
+If this is an isolated cluster where there are no malicious users you can simply ask everybody to use `umask 000` (see [Permissions, ownership, umask](../foundations/linux-and-os.md#permissions-ownership-umask)) in their `~/.bashrc` or even configuring this setting system-wide via `/etc/profile` or `/etc/bash.bashrc` and different other shell config files if `bash` isn't your shell of choice.
 
 Once `umask 000` is run, most files will be created with read/write perms so that all users can read/write each others files.
 
-Of course, if you are using a sort of HPC, where many unrelated groups use the same cluster this won't work and then you would either use groups instead of making files read/write by all, with possibly `setgid` bit preset or using ACL . In any such environments there are always sysadmins so you can ask them how to setup a shared cache for your team and they will know what to do.
+Of course, if you are using a sort of HPC, where many unrelated groups use the same cluster this won't work and then you would either use groups instead of making files read/write by all, with possibly `setgid` bit preset or using ACL (both explained in [Permissions on shared clusters](../foundations/linux-and-os.md#permissions-on-shared-clusters-groups-setgid-acls-sticky-bit-quotas)). In any such environments there are always sysadmins so you can ask them how to setup a shared cache for your team and they will know what to do.
 
 Additionally, recently some of these applications added tools to do the cleanup, e.g. for `conda` and `pip`:
 ```bash
@@ -844,7 +854,7 @@ The solution is to set in your SLURM launcher script.
 export TMPDIR=/scratch
 ```
 
-Now, the slurm job will use a much larger `/scratch` instead of `/tmp`, so plenty of temp space to write too.
+`TMPDIR` is the standard environment variable for the temporary directory: Python's `tempfile` and most command-line tools use it when it is set and fall back to `/tmp` otherwise. Now, the slurm job will use a much larger `/scratch` instead of `/tmp`, so plenty of temp space to write too.
 
 footnote: while `/scratch` is quite common - the mounted local SSD disk mount point could be named anything, e.g. `/localssd` - it should be easy to see the right path by running `df` on one of the compute nodes.
 
@@ -863,6 +873,8 @@ perl -nle 'chomp; ($uid,$size)=(stat($_))[4,7]; $x{$uid}+=$size;
 END { map { printf qq[%-10s: %7.1fTiB\n], (getpwuid($_))[0], $x{$_}/2**40 }
 sort { $x{$b} <=> $x{$a} } keys %x }'
 ```
+
+How to read it: `find` prints every matching path, and for each one the `perl` program takes fields 4 and 7 of `stat`, the owner's user id and the size in bytes, adds the size to that user's total, and at the end turns each user id into a user name with `getpwuid`, divides by $2^{40}$ to get TiB and prints the users from largest to smallest.
 
 This produces an output like:
 ```
@@ -904,7 +916,9 @@ First try to ensure the candidates are indeed good to delete:
 find /mypath/ -regextype posix-egrep -regex ".*\.(pt|pth|ckpt|safetensors)$" -mtime +30
 ```
 
-and when you feel it's safe to delete, only then add `rm`
+(`-mtime +30` matches files last modified more than 30 days ago.)
+
+and when you feel it's safe to delete, only then add `rm` (`-exec rm {} +` passes many paths to each `rm` call instead of starting one `rm` per file)
 ```bash
 find /mypath/ -regextype posix-egrep -regex ".*\.(pt|pth|ckpt|safetensors)$" -mtime +30 -exec rm {} +
 ```

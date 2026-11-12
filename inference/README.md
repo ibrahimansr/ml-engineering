@@ -10,14 +10,14 @@ XXX: this chapter is under construction - some sections are complete, some are s
 
 ## Glossary
 
-- CLA: Cross-Layer Attention
+- CLA: Cross-Layer Attention - adjacent layers share one set of KV heads, shrinking the KV cache
 - FHE: Fully Homomorphic Encryption
-- GQA: Grouped-Query Attention
-- ITL: Inter-Token Latency
-- KV: Key Value
-- LPU: Language Processing Unit™
+- GQA: Grouped-Query Attention - see [MHA to MQA to GQA](../models/architectures.md#mha-to-mqa-to-gqa-the-kv-cache-arithmetic)
+- ITL: Inter-Token Latency - the time between two consecutive output tokens of one request, essentially the same thing as TPOT
+- KV: Key Value - see [The KV cache](../models/architectures.md#the-kv-cache)
+- LPU: Language Processing Unit™ - Groq's inference-only chip, see [Inference Chips](#inference-chips)
 - MHA: Multi-Head Attention
-- MLA: Multi-Latent Attention
+- MLA: Multi-Latent Attention - see [MLA: Multi-head Latent Attention](../models/architectures.md#mla-multi-head-latent-attention-deepseek-v2v3)
 - MPC: Secure Multi-Party Computation
 - MQA: Multi-Query Attention
 - PPML: Privacy-Preserving Machine Learning
@@ -92,6 +92,8 @@ It'd be very expensive to recalculate all the previous KV (Key Value) values bef
 
 KV cache size is directly proportional to the input sequence length and batch size. Past query values aren't used in the attention mechanism and thus don't need to be cached.
 
+(The attention variants below are covered in [Attention variants](../models/architectures.md#attention-variants), and the KV cache sizing is worked through in depth in the next chapter, [KV cache sizing](arithmetic.md#kv-cache-sizing).)
+
 A KV cache of 1 token requires
 
 $$
@@ -135,14 +137,14 @@ KV cache while saving recomputation has a big negative impact on inference's per
 >
 > Every operation performed with a GPU accelerator, such as General Matrix Multiply (GEMM), is either memory-bound or compute-bound. In the former case, the overall runtime is dominated by high bandwidth memory (HBM) access, while in the latter by the actual computations. Auto-regressive generation with Transformer LLMs, where the sequence length for every forward pass is n = 1, tends to be memory-bound rather than compute-bound. The vast majority of a forward pass is spent either processing linear layers (in MHSA, Feed-Forward, and output vocabulary projection) or calculating attention scores and outputs from Equation (4). For linear layers, the ratio of FLOPS to memory accesses improves as the batch size increases, and more FLOPS are performed with the set of layer weights retrieved from the HBM. Eventually, with a large enough batch size, linear layers become compute-bound. On the other hand, for the calculation of Equation (4) inside MHSA layers during auto-regressive inference, the ratio of FLOPS to input size remains constant, and MHSA layers are memory-bound regardless of the batch size. It follows that for those layers, latency scales linearly with the size of the KV cache.
 
-* Equation (4) is the usual self-attention mechanism equation of `Softmax(Q,K)V`
+* Equation (4) is the usual self-attention mechanism equation of `Softmax(Q,K)V`, i.e. $\operatorname{softmax}(QK^\top/\sqrt{d})V$. MHSA is multi-head self-attention.
 
-A smaller KV cache would lead to faster generation and higher GPU utilization. So various techniques like gisting, context distillation, key-value eviction policies (token dropping), memory compression, multi-query attention, grouped-query attention, cross-layer attention, anchor-based self-attention, quantization and many others are used to accomplish that.
+A smaller KV cache would lead to faster generation and higher GPU utilization. So various techniques like gisting (training the model to compress a prompt into a few special "gist" tokens), context distillation (fine-tuning the model so it behaves as if a long prompt were present without it), key-value eviction policies (token dropping), memory compression, multi-query attention, grouped-query attention, cross-layer attention, anchor-based self-attention, quantization and many others are used to accomplish that.
 
 
 ### Online vs Offline inference
 
-When you have users that send queries in real time - this is Online inference, also known as Deployment or Interactive inference. Examples: chatbot, search engines, general REST APIs. In this case one always runs an inference server and there could be various clients querying it.
+When you have users that send queries in real time - this is Online inference, also known as Deployment or Interactive inference. Examples: chatbot, search engines, general REST APIs. In this case one always runs an inference server (a long-running process that keeps the model loaded on the accelerators and answers requests over HTTP, usually with an OpenAI-compatible API) and there could be various clients querying it.
 
 When you have a file with hundreds or thousands of prompts that you need to run inference on - this is Offline inference, also known as batch inference. Examples: benchmark evaluation and synthetic data generation. In this case the inference server is often not needed and the inference is run directly in the same program that sends the query (client and server in one application).
 
@@ -161,7 +163,7 @@ This is the naive straightforward batching where the first N queries are batched
 
 #### Continuous Batching or In-flight batching
 
-Continuous Batching or In-flight batching is a process where the generation engine removes completed results as soon as they are done and replacing them with new queries, without waiting for the whole batch to complete. So that a sequence in position 0 in the batch could be generating its 10th token, while a sequence in position 1 in the batch could be just starting its first token generation, and position 3 is producing its last token.
+Continuous Batching or In-flight batching is a process where the generation engine removes completed results as soon as they are done and replacing them with new queries, without waiting for the whole batch to complete. This works because every decode step is a separate forward pass that produces one token per sequence, so the batch can be re-formed between any two steps. So that a sequence in position 0 in the batch could be generating its 10th token, while a sequence in position 1 in the batch could be just starting its first token generation, and position 3 is producing its last token.
 
 This improves the response time, since a sequence that already finished can be returned immediately and there is no need for a new prompt to wait for the next batch to become available. Of course, if all of the compute is fully busy, and there are no new openings in the batch, then some requests will have to wait before the compute will start processing those.
 
@@ -171,7 +173,7 @@ This improves the response time, since a sequence that already finished can be r
 
 ### Paged Attention
 
-Paged Attention is very popular with inference servers as it allows for a very efficient accelerator memory utilization, by the virtue of approaching the accelerator memory like the OS memory using paging, which allowed dynamic memory allocation and prevents memory fragmentation.
+Paged Attention is very popular with inference servers as it allows for a very efficient accelerator memory utilization, by the virtue of approaching the accelerator memory like the OS memory using paging, which allowed dynamic memory allocation and prevents memory fragmentation. Concretely, the KV cache is split into fixed-size blocks (e.g. 16 tokens each) and each sequence keeps a block table mapping its logical token positions to physical blocks, so a sequence only holds as many blocks as it has tokens instead of a contiguous region reserved for the maximum length. The mechanics are covered in [PagedAttention](serving-engine-internals.md#pagedattention), and continuous batching in [Continuous batching and the scheduler](serving-engine-internals.md#continuous-batching-and-the-scheduler).
 
 
 
@@ -202,7 +204,7 @@ But, of course, choosing random words will not lead to a good result, so we stil
 
 The most common sampling methods are:
 
-- **Top-K Sampling** method chooses the top k tokens based on their logit probability and then randomly picks one of those tokens.
+- **Top-K Sampling** method chooses the top k tokens based on their logit probability and then randomly picks one of those tokens, with probability proportional to their renormalized softmax probabilities.
 - **Top-p Sampling** (also known as **nucleus sampling**) is like Top-K Sampling, but the K varies for each next token and is calculated by adding up the top token probabilities till the threshold $p$ is reached. So if there are predictions that the model is much more certain about only those will be considered.
 
 #### Temperature
@@ -331,6 +333,8 @@ Also, don't miss the fact that we did the same amount of compute here and then s
 
 When there is a partial mismatch we can go back to the draft model and feed it all the matched tokens before the first mismatched token and the next good token predicted by the big model and get it to make a new fast prediction for the mismatching tail.
 
+The variant described above accepts draft tokens only if they exactly match the big model's choice. Production engines use a rejection-sampling acceptance rule instead, which provably samples from the big model's distribution even at non-zero temperature - see [Speculative decoding](serving-engine-internals.md#speculative-decoding) in a later chapter.
+
 The draft model ideally should be trained on the same data (or least data from a similar distribution) and its tokenizer has to be the same as the large model.
 
 Speculative decoding gives the highest return on [input-grounded tasks](#input-grounded-tasks), such as translation, summarization, document QA, multi-turn chat because in those tasks the range of possible outputs is much smaller and the draft model is much more likely to match the big model.
@@ -390,7 +394,7 @@ And as with training you may find that some mix of TP and PP will lead to the be
 
 It's the process of giving the pre-trained model additional information that wasn't available during its training. For example [input-grounded tasks](#input-grounded-tasks) give the model a lot of additional information in the prompt. Non zero-shot prompts ground the model in examples altering the default model behavior. Prompt-engineering is all about grounding the model to behave in a certain way during inference.
 
-Retrieval Augmented Generation (RAG) is one of the main techniques for grounding models as it supplies the inference process with additional data that is relevant to the prompt. And the intention is that the model will give more significance to that information than the massive compressed information it was trained on.
+Retrieval Augmented Generation (RAG) - looking up documents relevant to the query, typically by embedding similarity search over a document store, and pasting them into the prompt - is one of the main techniques for grounding models as it supplies the inference process with additional data that is relevant to the prompt. And the intention is that the model will give more significance to that information than the massive compressed information it was trained on.
 
 Fine-tuning to a different knowledge domain is another grounding approach, we update the model to be grounded in a new dataset that could be quite distinct from the original domain of data the foundational model has been trained on.
 
@@ -486,7 +490,7 @@ So $\text{TPOT} = 60 / (\text{WPM} \times 1.5)$ in seconds
 | Auditory | 450 |  675 | 11.25 | 0.089 |
 | Visual   | 700 | 1050 | 18.75 | 0.057 |
 
-Remember to change the 1.5 co-efficient to the actual word to tokens average ratio of your tokenizer, which you can measure on your own text:
+Remember to change the 1.5 co-efficient to the actual word to tokens average ratio of your tokenizer, which you can measure on your own text (`tiktoken` is OpenAI's tokenizer library, `pip install tiktoken`; for an open model use its HF tokenizer instead, and `re.findall(r"\S+", text)` counts whitespace-separated words):
 
 ```python
 import re, tiktoken
@@ -541,7 +545,7 @@ The response latency then is the number of tokens in the prompt divided by the p
 
 Accelerator utilization - either percentage or power measurement is a good indicator of whether your setup uses the accelerators efficiently. For example, if you use NVIDIA GPUs and you `watch -n 0.5 nvidia-smi` and you see you're at 10% "gpu util" while massively bombarding the inference server with many requests that usually means that either the inference server is very inefficient (e.g. spends a lot of time copying things back-n-forth) or it could be that the clients are inefficient at how they receive the data (i.e. too much IO blocking).
 
-footnote: when I first wrote a simple benchmark using the openai client it worked fine at a low concurrency, but at a higher concurrency the inference server dropped its gpu util to 6-7%. After I replaced the client with `aiohttp` API it went up to 75%. Therefore beware that it's your benchmark that could be the culprit of bad performance reports and not the server.
+footnote: when I first wrote a simple benchmark using the openai client it worked fine at a low concurrency, but at a higher concurrency the inference server dropped its gpu util to 6-7%. After I replaced the client with `aiohttp` (an asyncio-based HTTP client library) API it went up to 75%. Therefore beware that it's your benchmark that could be the culprit of bad performance reports and not the server.
 
 This is somewhat of an equivalent of using [TFLOPS to measure training efficiency](../training/performance/README.md#tflops-as-a-performance-metric).
 
@@ -551,7 +555,7 @@ In the ideal case you want your accelerator utilization to be as high as possibl
 
 If you read benchmarks and run into p50, p75, p90, p95, and p99, these percentiles are values in an ordered distribution. A p95 value is the threshold at or below which 95% of observations fall; the remaining 5% are above it. The desirable tail depends on the metric. For latency, lower is better, so p95 describes high-tail latency. For throughput, higher is better, so p5 is often the useful lower-tail guarantee: about 95% of observations are at or above p5. See the [Grafana k6 percentile documentation](https://grafana.com/docs/k6/latest/javascript-api/k6-metrics/trend/).
 
-For example, let's look at partial output of a system loading report generated by [k6](https://github.com/grafana/k6) on an inference server:
+For example, let's look at partial output of a system loading report generated by [k6](https://github.com/grafana/k6) (a load-testing tool that fires many concurrent HTTP requests from JavaScript test scripts) on an inference server. Each line is one per-request timing - `http_req_duration` is the whole request, `http_req_sending`/`http_req_receiving` just the upload and download of the bytes - and `med` is the median, i.e. p50:
 
 ```
 http_req_duration..: avg=13.36s   min=12.54s  med=13.31s   max=14.12s   p(90)=13.79s   p(95)=13.83s
@@ -578,8 +582,8 @@ Various approaches are used for that - most involve some sort of pre-sharding an
 
 For example:
 
-- vLLM supports the `--load-format` flag, where one could choose options like `npcache` (numpy format caching) or `tensorizer` using  CoreWeave’s [Tensorizer](https://github.com/coreweave/tensorizer).  ([recipe](https://docs.vllm.ai/en/stable/examples/features/tensorize_vllm_model/) and, of course, if you use TP>1 you want to [pre-shard the weights once](https://docs.vllm.ai/en/stable/examples/features/sharded_state/).
- - TensorRT-LLM requires the user to build a model engine for each specific use-case and loads the pre-made shards at run time (unless you're using the simplified API which will build the model engine on the fly on every server start).
+- [vLLM](#vllm) supports the `--load-format` flag, where one could choose options like `npcache` (numpy format caching) or `tensorizer` using  CoreWeave’s [Tensorizer](https://github.com/coreweave/tensorizer).  ([recipe](https://docs.vllm.ai/en/stable/examples/features/tensorize_vllm_model/) and, of course, if you use TP>1 you want to [pre-shard the weights once](https://docs.vllm.ai/en/stable/examples/features/sharded_state/).
+ - [TensorRT-LLM](#tensorrt-llm) requires the user to build a model engine (an ahead-of-time compiled, hardware- and shape-specific version of the model) for each specific use-case and loads the pre-made shards at run time (unless you're using the simplified API which will build the model engine on the fly on every server start).
 
 
 
@@ -588,7 +592,7 @@ For example:
 
 You can write your own benchmark as explained in [key inference performance metrics](#key-inference-performance-metrics) or use an existing one.
 
-At the moment I mainly use [TTFT](#time-to-first-token) and [decode throughput](#decode-throughput) benchmarks. TTFT measures the client-observed time from sending the request until receiving the first non-empty generated chunk. The inter-token decode rate covers the interval between receiving the first and last generated tokens. Here is the relevant snippet using the [`openai` client completions API](https://github.com/openai/openai-python):
+At the moment I mainly use [TTFT](#time-to-first-token) and [decode throughput](#decode-throughput) benchmarks. TTFT measures the client-observed time from sending the request until receiving the first non-empty generated chunk. The inter-token decode rate covers the interval between receiving the first and last generated tokens. Here is the relevant snippet using the [`openai` client completions API](https://github.com/openai/openai-python) - the official OpenAI Python client, which also works against any server exposing an OpenAI-compatible API, as vLLM and SGLang do (see [The OpenAI-compatible API and streaming](serving-hands-on.md#the-openai-compatible-api-and-streaming)). With `stream=True` the server sends the text back in chunks as it's generated, which is what makes it possible to time the first token. `tokenizer` here is the served model's HF tokenizer, used to count the output tokens:
 
 ```python
 # ... create client, prompt, and model ...

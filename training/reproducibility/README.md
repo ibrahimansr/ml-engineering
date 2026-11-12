@@ -102,7 +102,7 @@ and you will get the same RNGs setup.
 
 As mentioned earlier, there could be many other RNGs involved in a system - for example, if you want the data to be fed in the same order for a `DataLoader`, you need [to have its seed set as well](https://docs.pytorch.org/docs/stable/notes/randomness.html#dataloader).
 
-See also [Floating point math discrepancies on different devices](../../debug/pytorch.md#floating-point-math-discrepancies-on-different-devices) in the debugging chapter.
+See also [Floating point math discrepancies on different devices](../../debug/pytorch.md#floating-point-math-discrepancies-on-different-devices) in the debugging chapter (later in the book), and [Determinism and reproducibility across ranks](../../foundations/distributed-systems.md#determinism-and-reproducibility-across-ranks) for the multi-GPU side of this.
 
 ## Reproduce the software and system environment
 
@@ -128,21 +128,23 @@ pip freeze > $REPRO_DIR/requirements.txt
 perl -nle 'm|"file://(.*?/([^/]+))"| && qx[cd $1; if [ ! -z "\$(git diff)" ]; then git diff > \$REPRO_DIR/$2.diff; fi]' $CONDA_PREFIX/lib/python*/site-packages/*.dist-info/direct_url.json
 ```
 
+How to read step 4: `perl -nle '...' files` runs the quoted code on every line of every `direct_url.json` file (`-n` loops over input lines, `-l` strips newlines, `-e` gives the code inline). The regex captures the local path of a package installed from a `file://` URL (`$1`) and its directory name (`$2`), and `qx[...]` runs the bracketed shell command in that directory, writing `git diff` to `$REPRO_DIR/<dirname>.diff` if the diff is non-empty. `$CONDA_PREFIX` is set by conda to the active environment's root directory - with a `venv` you'd use `$VIRTUAL_ENV` instead.
+
 As you can see this recipe is used in a SLURM environment, so every new training will dump the environment specific to the SLURM job. But you can adapt it to any other environment.
 
 Let's expend on each step in the recipe:
 
-1. We save which `modules` were loaded, e.g. in cloud cluster/HPC setups you're like to be loading the CUDA and cuDNN libraries using this.
+1. We save which `modules` (see [Environment modules (Lmod)](../../foundations/linux-and-os.md#environment-modules-lmod)) were loaded, e.g. in cloud cluster/HPC setups you're like to be loading the CUDA and cuDNN libraries using this.
 
    If you don't use `modules` then remove that entry
 
-2. We dump the shell environment variables. This can be crucial since a single env var like `LD_PRELOAD` or `LD_LIBRARY_PATH` could make a huge impact on performance in some environments
+2. We dump the shell environment variables. This can be crucial since a single env var like `LD_PRELOAD` (a list of shared libraries the dynamic loader loads before all others, overriding symbols from the regular ones) or `LD_LIBRARY_PATH` (see [Shared libraries and LD_LIBRARY_PATH](../../foundations/linux-and-os.md#shared-libraries-and-ld_library_path)) could make a huge impact on performance in some environments
 
 3. We then dump the python environment packages and their versions - this should work with any virtual python environment like `conda`, `venv` or even if you don't use a virtual environment.
 
    If you use `uv` instead of `pip`, switch to `uv pip freeze` as it'd be much faster.
 
-4. If you use a devel install with `pip install -e .` it doesn't know anything about the git clone repository it was installed from other than its git SHA. But the issue is that it's likely that you have modified the files locally and now `pip freeze` will miss those changes. So this part will go through all packages that are not installed into the conda environment (we find them by looking inside `site-packages/*.dist-info/direct_url.json`) and, for each one that has uncommitted changes, save its `git diff` to `$REPRO_DIR/<package>.diff`.
+4. If you use a devel install (an editable install, where site-packages points at your git clone instead of a copy of the code) with `pip install -e .` it doesn't know anything about the git clone repository it was installed from other than its git SHA. But the issue is that it's likely that you have modified the files locally and now `pip freeze` will miss those changes. So this part will go through all packages that are not installed into the conda environment (we find them by looking inside `site-packages/*.dist-info/direct_url.json`) and, for each one that has uncommitted changes, save its `git diff` to `$REPRO_DIR/<package>.diff`.
 
 To save the `apt` packages add:
 ```bash

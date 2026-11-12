@@ -145,6 +145,8 @@ This task varies between a relatively simple procedure and a much more complex w
 
 The following recipes have come from a few awesome tokenizer experts at HuggingFace, which I then adapted to my needs.
 
+Most of them require a "fast" tokenizer - the Rust-backed implementation from HF's `tokenizers` library, whose entire state (vocab, merge rules, special tokens) lives in a single `tokenizer.json` - and they branch on the tokenizer model types from [Embeddings, heads, vocab and tokenizers](../models/architectures.md#embeddings-heads-vocab-and-tokenizers): BPE (a token-to-id vocab plus a list of merge rules), Unigram (a list of pieces with scores) and WordPiece/WordLevel (a plain token-to-id vocab, used by BERT-style models).
+
 You probably don't really need to understand how these work until you actually need them, therefore if you're reading this for the first time you can safely jump over these to [Making a tiny model with a tiny tokenizer](#making-a-tiny-model-with-a-tiny-tokenizer).
 
 ##### Anthony Moi's version
@@ -186,7 +188,7 @@ tokenizer.save_pretrained(".")
 
 I later discovered that gpt2 seems to have a special token `"<|endoftext|>"` stashed at the very end of the vocab, so it gets dropped and code breaks. So I hacked it back in with:
 ```python
-if "gpt2" in mname:
+    if "gpt2" in mname:
         new_vocab = { token: i for token, i in vocab.items() if i < vocab_keep_items-1 }
         new_vocab["<|endoftext|>"] = vocab_keep_items-1
     else:
@@ -236,7 +238,7 @@ which is almost perfect, except it now doesn't have any information about the fr
 ```
 training_corpus = [ (k for i in range(vocab_len-v)) for k,v in vocab.items() ]
 ```
-which will make the script much much longer to complete.
+Here `vocab_len` is `len(vocab)` and `v` is the token's id, so tokens with lower ids are repeated more times. This will make the script much much longer to complete.
 
 But for the needs of a tiny model (testing) the frequency doesn't matter at all.
 
@@ -269,6 +271,8 @@ result = subprocess.run(shlex.split(cmd), capture_output=True, text=True)
 tokenizer_fast_tiny = LlamaTokenizerFast.from_pretrained(tmp_dir)
 tokenizer_fast_tiny.save_pretrained(".")
 ```
+The `perl` one-liner does the truncation as plain text: `-0777` reads the whole file as a single string, `-p` prints the (edited) input back out and `-i` writes that output into the same file, i.e. edits it in place; the `s|...|...|msg` substitution (`s` lets `.*` run across newlines) keeps the first `2999` - the last id to keep - and replaces everything after it with the closing `},"merges": []}}`, so the vocab ends there and the merges list becomes empty.
+
 Please remember that the outcome is only useful for functional testing - not quality work.
 
 Here is the full version of [make_tiny_model.py](https://huggingface.co/stas/tiny-random-llama-2/blob/main/make_tiny_model.py) which includes both the model and the tokenizer shrinking.
@@ -282,6 +286,9 @@ git clone https://github.com/google/sentencepiece
 ```
 Now to the shrinking:
 ```python
+import os
+import sys
+
 # workaround for fast tokenizer protobuf issue, and it's much faster too!
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
@@ -333,7 +340,7 @@ Another hint: if you need a slightly different tiny model, you can also start wi
 
 Similar to models and tokenizers it helps to have a handy tiny version of a dataset you work with a lot. As usual this won't help with quality testing, but it's perfect for launching your program really fast.
 
-footnote: the impact of using a tiny dataset won't be as massive as using a tiny model, if you're using already pre-indexed Arrow file datasets, since those are already extremely fast. But say you want the iterator to finish an epoch in 10 steps. Instead of editing your code to truncate the dataset, you could just use a tiny dataset instead.
+footnote: the impact of using a tiny dataset won't be as massive as using a tiny model, if you're using already pre-indexed Arrow file datasets (HF `datasets` stores each prepared dataset as Apache Arrow files - a columnar on-disk format that is memory-mapped rather than loaded, so even a huge dataset opens instantly), since those are already extremely fast. But say you want the iterator to finish an epoch in 10 steps. Instead of editing your code to truncate the dataset, you could just use a tiny dataset instead.
 
 This process of making a tiny dataset is somewhat more difficult to explain because it'd depend on the builder of the original dataset, which can be quite different from each other, but perhaps you can correlate my recipes to your datasets.
 
@@ -401,6 +408,8 @@ dataset" >> README.md
 cd ..
 python -c 'from datasets import load_dataset; print(load_dataset("general-pmd-synthetic-testing"))'
 ```
+
+`mogrify` is ImageMagick's in-place image converter, and `-resize 32x32\>` shrinks only the images that are larger than 32x32, keeping their aspect ratio. The `.null` files are this dataset's convention for a missing image or text.
 
 I also recommend to always store the building scripts with the dataset, so that you could quickly fix things or make similar versions of the dataset.
 
@@ -504,10 +513,12 @@ This approach is most useful if you need to deal with multiple models of the sam
 
 First we clone HF Transformers and install its editable version:
 ```
-git clone https://github.com/huggingface/transformers/tree/main/src/transformers
+git clone https://github.com/huggingface/transformers
 cd transformers
 pip install -e .[dev]
 ```
+`-e` makes this an editable install, where Python imports the package straight from the clone instead of copying it into `site-packages`, and `[dev]` also installs the project's optional development dependencies (quote it as `".[dev]"` in `zsh`, which otherwise treats the brackets as a glob).
+
 Now we can tweak the code under `src/transformers` and it will be immediately visible to the Python environment that is being used.
 
 Continuing the example of working with `Qwen/Qwen3-30B-A3B-Instruct-2507` model, we find the place where its architecture modeling code lives in the HF Transformers code base. For example, we can look at the `architectures` field in the [model's config](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507/blob/e67ac5d/config.json#L3), which gives us `Qwen3MoeForCausalLM`. We now find the Python module where it lives in the HF Transformers code base:
@@ -548,7 +559,7 @@ and now as long as this version of HF Transformers is devel-installed (`pip inst
 If you need to load the full model, but only run a few layers, then you can hack the loop over the layers in the model's `forward`. If the original code in `Qwen3MoeModel.forward` was:
 
 ```python
-for decoder_layer in self.layers[: self.config.num_hidden_layers]):
+for decoder_layer in self.layers[: self.config.num_hidden_layers]:
     hidden_states = decoder_layer(...)
 ```
 you can change to:
@@ -569,13 +580,13 @@ Also I'm reminding that you will end up with a model which will allow you to per
 
 You can now measure performance with say 2 and 4 layers and tell how much overhead each layer takes from the difference and extrapolate this to what the full model will need.
 
-Memory usage-wise, unless there is a memory leak, after the first layer finished running, subsequent layers shouldn't consume any additional CPU or GPU memory (other than peak memory) if activation checkpointing is not used and `torch.cuda` memory cache isn't flushed. If activation checkpointing is enabled, then expect each layer to consume the same additional amount of memory as the previous one (of the size of the checkpointed tensor).
+Memory usage-wise, unless there is a memory leak, after the first layer finished running, subsequent layers shouldn't consume any additional CPU or GPU memory (other than peak memory) if [activation checkpointing](../training/performance/README.md#gradient-checkpointing) is not used and `torch.cuda` memory cache isn't flushed. If activation checkpointing is enabled, then expect each layer to consume the same additional amount of memory as the previous one (of the size of the checkpointed tensor).
 
 #### Other shrink-the-stack use cases
 
 You can apply a similar hack to other components that also have stacks of identical code-wise blocks. For example, you could reduce the number of attention heads and then the attention mechanism will run much faster (but of course producing garbage, which is fine most of the time when we focus on functional debugging) or skipping most attention blocks completely.
 
-When I was debugging 15M sequence length training using [ALST](https://arxiv.org/abs/2506.13996) - I would only run self-attention in the last layer and then skip it in the previous layers - this reduced my testing time from hours to minutes, since very long sequence length using full self-attention has an O(2) quadratic nature with regards to sequence length it attends to.
+When I was debugging 15M sequence length training using [ALST](https://arxiv.org/abs/2506.13996) (Arctic Long Sequence Training, see [Arctic Long Sequence Training](../training/model-parallelism/README.md#arctic-long-sequence-training)) - I would only run self-attention in the last layer and then skip it in the previous layers - this reduced my testing time from hours to minutes, since very long sequence length using full self-attention has an $O(n^2)$ quadratic nature with regards to sequence length it attends to.
 
 Let's say we run only attention in the last layer:
 
@@ -589,10 +600,10 @@ In attention `__init__` we set a few flags, let's use `Qwen3MoeAttention`:
 
 and then in `Qwen3MoeAttention.forward`, we replace:
 ```python
-attn_output, attn_weights = attention_interface((self, query_states, ...)
+attn_output, attn_weights = attention_interface(self, query_states, ...)
 ```
 
-(note the `...` - most args were trimmed for this exemplification), with:
+(note the `...` - most args were trimmed for this exemplification), with the code below. `attention_interface` is the attention function HF Transformers selects at run time (eager, SDPA, FlashAttention, etc.), and `einops.rearrange` from the `einops` library reorders tensor dimensions according to a pattern string of named axes - here it turns the query of shape `(batch, heads, seqlen, head_dim)` into the `(batch, seqlen, heads, head_dim)` layout the real attention output has:
 ```python
 import einops
 if not self.skip_all_but_last_attention_debug_mode:
@@ -604,7 +615,7 @@ else:
         attn_output, attn_weights = attention_interface(self, query_states, ...)
     else:
         # this feeds bogus data of the right shape connected to a graph - good enough for debug
-        attn_output = einops.rearrange(query_states, "bs hc sl ... -> bs sl hcl ...")
+        attn_output = einops.rearrange(query_states, "bs hc sl ... -> bs sl hc ...")
         attn_weights = None
 ```
 and, of course, install `pip install einops` for the above code to work.
@@ -806,14 +817,14 @@ Important: make sure to disable the anomaly detection mode before you put your w
 
 ### Overcoming CUDA OOM due to memory fragmentation
 
-When developing [Arctic Long Sequence Training](https://arxiv.org/abs/2506.13996) a lot of the work involved hard (`contiguous`) reshaping of tensors for Sequence Parallelism, which lead to a very poor HBM utilization, because the reshapes lead to memory fragmentation.
+When developing [Arctic Long Sequence Training](https://arxiv.org/abs/2506.13996) a lot of the work involved hard (`contiguous`) reshaping of tensors for [Sequence Parallelism](../training/model-parallelism/README.md#sequence-parallelism), which lead to a very poor HBM utilization, because the reshapes lead to memory fragmentation.
 
 The solution was to use:
 
 ```bash
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 ```
-which made a dramatic positive impact to allowing for a much longer sequence length to be used w/o incurring a CUDA OOM event.
+which made a dramatic positive impact to allowing for a much longer sequence length to be used w/o incurring a CUDA OOM event. (With expandable segments the caching allocator grows one large virtual address range by mapping physical pages into it on demand, instead of carving fixed-size blocks that leave unusable holes - see [PyTorch caching allocator internals](../training/arithmetic.md#pytorch-caching-allocator-internals).)
 
 In the particular case of this project I haven't observed any noticeable performance degradation, but if you use it do benchmark the performance w/ and w/o it to ensure it doesn't impact your workload's performance for the worse.
 
@@ -862,7 +873,7 @@ Both of these one-liners will be useful in the investigation process of followin
 
 ### Overcoming the coherent memory uncertain behavior
 
-The introduction of coherent/unified memory in recent NVIDIA products like DGX Station, Spark, GH200, GB300 makes it for a very confusing accounting, hard to understand memory usage patterns and unstable behavior.
+The introduction of coherent/unified memory in recent NVIDIA products like DGX Station, Spark, GH200, GB300 (the Grace CPU and the GPU share one cache-coherent address space over [NVLink-C2C](../network/README.md#nvlink-c2c), so either side can read and allocate the other's memory; the CPU side uses LPDDR5, low-power DRAM soldered next to the CPU) makes it for a very confusing accounting, hard to understand memory usage patterns and unstable behavior.
 
 For example, with DGX Spark, you can't even get a memory reading from the GPU side - `nvidia-smi` will not report memory use and will say `Not Supported` and `pynvml.nvmlDeviceGetMemoryInfo()` will assert. Here you never know if a CPU RAM using program is going to steal memory from a GPU program and OOM it (or vice versa). The same GPU workload may work at one time and OOM at another depending on what's running on the CPU side.
 
@@ -911,11 +922,11 @@ OK, so we can see PyTorch (at least of this writing) won't reach into CPU RAM an
 
 case study: As I was trying to figure out the maximum sequence length I could do post-training with on DGX Station with Qwen3-32B model, I kept getting alternating CPU-OOM and GPU-OOM events. The reason was that I was offloading optimizer states to CPU RAM since there wasn't enough HBM memory to hold the weights and optimizer states on a single GB300 GPU, but since there isn't that much CPU RAM either, Linux was reaching into the GPU "cookie jar" and stealing GPU memory. It was a very unsettling experience since I had to run dozens of experiments, most of them leading to one or the other OOM, why? because depending on what CPU-side processes were running (think various Linux daemons and user programs) there would be a different amount of CPU RAM available at different times and the behavior would become unpredictable.
 
-The solution: to prevent CPU from stealing GPU memory switch to the CDMM mode (from the default NUMA mode), as explained in a paper linked from [this post](https://developer.nvidia.com/blog/understanding-memory-management-on-hardware-coherent-platforms/) by running:
+The solution: to prevent CPU from stealing GPU memory switch to the CDMM mode (Coherent Driver-based Memory Management, where the NVIDIA driver alone manages GPU memory) from the default NUMA mode (where GPU memory is handed to Linux as just another [NUMA](../foundations/linux-and-os.md#numa-and-numactl) node that the kernel may allocate from), as explained in a paper linked from [this post](https://developer.nvidia.com/blog/understanding-memory-management-on-hardware-coherent-platforms/) by running:
 ```bash
 $ echo options nvidia NVreg_CoherentGPUMemoryMode=driver | sudo tee /etc/modprobe.d/nvidia-openrm.conf
 ```
-and rebooting. When the system is back test it's set correctly:
+and rebooting. (Files in `/etc/modprobe.d/` set the options a kernel module receives when it is loaded, which is why the reboot - or a driver reload - is needed.) When the system is back test it's set correctly:
 ```bash
 $ grep Coherent /proc/driver/nvidia/params
 CoherentGPUMemoryMode: "driver"
@@ -939,7 +950,7 @@ In the case of DGX Spark where it's only 120GiB of LPDDR5 memory, shared between
 
 ### PyTorch memory profiler
 
-PyTorch memory profiler is quite easy to use. It requires 2 stages.
+PyTorch memory profiler is quite easy to use. It requires 2 stages. (This is the same snapshot mechanism introduced in [CUDA memory snapshots](../training/profiling-and-optimization.md#cuda-memory-snapshots).)
 
 Stage 1. Instrument and run the code under `torch.cuda.memory` profiler
 
@@ -966,7 +977,7 @@ Stage 2. Render the saved profile information into a visual representation
 
 At this stage you'd typically go to https://docs.pytorch.org/memory_viz and drop the memory profile pickle file you generated in Stage 1 into the browser at that URL. The most useful feature there is the 'Active memory profile` drop-down menu.
 
-To get a feeling for what it looks like, here is an example of a memory profile rendering for a memory leak I discovered while I was working on a tricky implementation of a [`TiledMLP` `torch.autograd.Function`](https://github.com/deepspeedai/DeepSpeed/blob/02da3732934efbf10b72e143758747386d45f724/deepspeed/runtime/sequence_parallel/ulysses_sp.py#L836).
+To get a feeling for what it looks like, here is an example of a memory profile rendering for a memory leak I discovered while I was working on a tricky implementation of a [`TiledMLP` `torch.autograd.Function`](https://github.com/deepspeedai/DeepSpeed/blob/02da3732934efbf10b72e143758747386d45f724/deepspeed/runtime/sequence_parallel/ulysses_sp.py#L836) (an MLP that processes a very long sequence in tiles, recomputing each tile in `backward`, so that the full-length intermediate activations never exist at once).
 
 ![memory leak](images/torch-mem-profile-mem-leak.png)
 
@@ -980,7 +991,7 @@ Besides profiling memory leaks, this functionality is also useful for showing ho
 
 ![Arctic long sequence training](images/mem-profiler-llama-8b-ckpt-offload-cpu.png)
 
-This visualization depicts a PyTorch memory profile over a single `forward`-`backward` iteration. Left: normal setup. Right: with activation checkpoint offloading to CPU enabled.
+This visualization depicts a PyTorch memory profile over a single `forward`-`backward` iteration. Left: normal setup. Right: with [activation checkpoint offloading to CPU](../training/performance/README.md#offloading-the-activation-checkpoints-to-cpu-memory) enabled.
 
 The left side visualization is very telling to how gpu memory is used in the `forward` and `backward` calls, you can see how the left side, which is about 1/3 of the plot, is the layer-by-layer `forward` calls, and the right side, which is the remaining 2/3 of the plot, is layer-by-layer `backward` calls. You can also see that `backward` takes 2x longer than `forward` because it has do to compute gradients wrt weights and inputs. You can also see that typically `forward` allocates a lot of memory, which `backward` then gradually releases, while also doing small allocations of its own.
 
@@ -1046,8 +1057,8 @@ Legend:
 
 - `MA`: `torch.cuda.memory_allocated()` - how much memory has been allocated at this moment
 - `Max_MA`: `torch.cuda.max_memory_allocated()` - what was the peak memory usage so far (we also reset this counter after each run, so it will show the peak memory since the last call to `see_mem_usage`)
-- `CA `: `torch.cuda.memory_reserved()`
-- `Max_CA`: `torch.cuda.max_memory_reserved()`
+- `CA `: `torch.cuda.memory_reserved()` - how much memory PyTorch's [caching allocator](../training/arithmetic.md#pytorch-caching-allocator-internals) holds from CUDA right now: the allocated tensors plus freed blocks it keeps cached for reuse instead of returning them to the driver
+- `Max_CA`: `torch.cuda.max_memory_reserved()` - the peak of `CA` (reset the same way as `Max_MA`)
 - `NV`: current total memory usage like `nvidia-smi` report, which is almost always more than what's reported by torch.cuda (the `MA` column)
 - `CPU mem`: two point-in-time CPU RAM readings from `psutil` - `proc` is *this* process's resident memory (RSS, `psutil.Process().memory_info().rss`), which is what you usually want when debugging your own program, and `node` is host-wide RAM in use (`total - available`) with its `percent` of total. On a shared node the `node` figure includes everyone else's memory, so watch `proc` for your process and use `node` only to see how close the whole box is to full. Both are snapshots, not peaks - for peak CPU usage see [Getting program's CPU peak memory usage](#getting-programs-cpu-peak-memory-usage)
 
@@ -1147,7 +1158,7 @@ Note how the `CA` columns is now 0, `Max_CA` column is still non-zero because it
 
 But the interesting other number here is `NV 1.42 GiB` which tells us that there was 1.42GiB of memory allocated outside of the purview of `torch.cuda` - and it matches the `NV - CA` delta of `8.87-7.45=1.42`GiB we spotted back in the `after alloc` row, now that the cache is emptied and no longer hiding it. When I try to debug memory leaks that are inside PyTorch that when I enable `torch.cuda.empty_cache()` inside `see_memory_usage` because then it reports the delta for me and I don't need to do any math.
 
-You can't imagine how often I use this debug utility in my day-to-day work.  Every so often I sprinkle these calls around the strategic places I suspect and start mapping out block by block and then narrowing down to the suspect areas. Foe example, one useful use case is to run this report before `forward`, `backward` and `step` and observe if each training iteration leaks a bit of memory and where:
+You can't imagine how often I use this debug utility in my day-to-day work.  Every so often I sprinkle these calls around the strategic places I suspect and start mapping out block by block and then narrowing down to the suspect areas. For example, one useful use case is to run this report before `forward`, `backward` and `step` and observe if each training iteration leaks a bit of memory and where:
 
 ```
     see_memory_usage("before fwd", force=True)
@@ -1177,7 +1188,7 @@ which is very difficult to notice. This is typically performed by an `oom-kill` 
 
 note: Moreover in some situations, as in recent kubernetes implementations, the user gets kicked out from the job allocation, which makes it even more difficult to debug. [Kubernetes Silent Pod Killer](https://itnext.io/kubernetes-silent-pod-killer-104e7c8054d9). This k8s "feature" makes no sense to me.
 
-In the world of ML, you're likely to encounter this issue if you're doing massive parallel data preprocessing or you do GPU memory offloading to CPU memory. But more often when you build python wheels for massive packages like Flash Attention 2 w/o defining `MAX_JOBS` to be something quite small.
+In the world of ML, you're likely to encounter this issue if you're doing massive parallel data preprocessing or you do GPU memory offloading to CPU memory. But more often when you build python wheels for massive packages like Flash Attention 2 w/o defining `MAX_JOBS` to be something quite small (`MAX_JOBS` caps how many compiler processes a PyTorch C++/CUDA extension build runs in parallel, and each of them can take several GBs of CPU memory).
 
 #### Getting program's CPU peak memory usage
 
@@ -1248,6 +1259,7 @@ Now you can, for example, feed this number to some other program - say, you want
 $ /usr/bin/time -f '%M' python -c "import torch" |& perl -ne 'chomp; printf "%0.2fGiB\n", $_/2**20'
 0.61GiB
 ```
+`/usr/bin/time` prints its report to stderr, so `|&` (pipe stderr together with stdout) is needed to feed it to the next command, and the `perl -ne` one-liner runs its code on each input line: `chomp` strips the newline and the `printf` divides the KiB figure by `2**20` to get GiB.
 
 You can see that it about matched "Maximum resident set size" from before.
 
@@ -1318,7 +1330,7 @@ child_RSS_high:     389416 KiB
 group_mem_high:     206520 KiB
 ```
 
-As you can see it reports both the time and the peak memory usage.
+As you can see it reports both the time and the peak memory usage. `child_RSS_high` is the largest RSS reached by any single process in the tree (the same kind of number `/usr/bin/time` reports as `%M`), while `group_mem_high` is the peak memory charged to the whole cgroup, i.e. all descendants together. The latter can come out smaller, as here, because memory pages that were already resident before the run, such as shared libraries in the page cache, are counted in RSS but not charged to the new cgroup.
 
 Let's compare with `/usr/bin/time`:
 ```
@@ -1450,9 +1462,9 @@ tensor([[0.01, 0.29,  ..., 0.02, 0.41],
         [0.21, 0.22,  ..., 0.37, 0.43]])
 ```
 
-Visual debuggers like VSCode or PyCharm are excellent at showing tensor's contents and are much easier to navigate and understand than `pdb`, where you have to manually control the visualization. I would often step through to some breakpoint copy-n-paste the contents of a tensor before and after into 2 files and then run a comparison between the 2 to see the differences.
+Visual debuggers like VSCode or PyCharm are excellent at showing tensor's contents and are much easier to navigate and understand than `pdb` (Python's built-in command-line debugger), where you have to manually control the visualization. I would often step through to some breakpoint copy-n-paste the contents of a tensor before and after into 2 files and then run a comparison between the 2 to see the differences.
 
-To dump not just the tensor values and possibly a few default attributes (like `device`, and `dtype`), but all of its attributes you can use `rich.inspect`
+To dump not just the tensor values and possibly a few default attributes (like `device`, and `dtype`), but all of its attributes you can use `rich.inspect` (from the `rich` terminal-formatting library, `pip install rich`)
 
 ```bash
 $ python -c "import torch, rich; t = torch.rand(2,3); rich.inspect(t)"
@@ -1971,7 +1983,7 @@ loss = model.loss_function(
     vocab_size=100,
 )
 ```
-As of `transformers==4.57.1` the above will give you `loss=tensor(nan)`. The issue here is that the special `-100` label masks tokens to be excluded from the loss calculation and in the above example, we have 0 tokens that aren't masked, since all labels are `-100`. And unfortunately the loss function fails and returns a NaN, instead of `0` - this is most likely a bug in the loss function implementation which makes an assumption that a sample has at least one unmasked token. But if you do sequence sharding and you use SFT you may have huge parts of the sample masked out and you can easily end up with a sample shard where all tokens are masked out. I have run into this problem when developing [Arctic Long Sequence Training](https://arxiv.org/abs/2506.13996). The original solution I used was:
+As of `transformers==4.57.1` the above will give you `loss=tensor(nan)`. The issue here is that the special `-100` label masks tokens to be excluded from the loss calculation and in the above example, we have 0 tokens that aren't masked, since all labels are `-100`. And unfortunately the loss function fails and returns a NaN, instead of `0` - this is most likely a bug in the loss function implementation which makes an assumption that a sample has at least one unmasked token. But if you do sequence sharding (splitting each sample's sequence across GPUs, as in [Sequence Parallelism](../training/model-parallelism/README.md#sequence-parallelism)) and you use SFT (supervised fine-tuning, where typically only the response tokens are trained on and the prompt tokens are labeled `-100`) you may have huge parts of the sample masked out and you can easily end up with a sample shard where all tokens are masked out. I have run into this problem when developing [Arctic Long Sequence Training](https://arxiv.org/abs/2506.13996). The original solution I used was:
 ```python
 if all((shift_labels == -100).squeeze()):
     loss = (logits.sum() * 0.0).float()
@@ -2258,7 +2270,7 @@ Now you might say that the `1e-6` discrepancy can be safely ignored. And it's of
 
 For example, see this [discussion](https://github.com/deepspeedai/DeepSpeed/issues/4932) - the users reported that when doing Llama-2-7b inference they were getting quite different logits depending on how the model was initialized. To clarify the initial discussion was about DeepSpeed potentially being the problem, but in later comments you can see that it was reduced to just which device the model's buffers were initialized on. The trained weights aren't an issue they are loaded from the checkpoint, but the buffers are recreated from scratch when the model is loaded, so that's where the problem emerges.
 
-It's uncommon that small variations make much of a difference, but sometimes the difference can be clearly seen, as in this example where the same image is produced on a CPU and an MPS device.
+It's uncommon that small variations make much of a difference, but sometimes the difference can be clearly seen, as in this example where the same image is produced on a CPU and an MPS device (PyTorch's backend for Apple-silicon GPUs).
 
 ![](images/math-fp-discrepancy-outcome-lizard.png)
 
@@ -2577,7 +2589,7 @@ footnote: Yes, python calls it a *traceback* and elsewhere it's called a *backtr
 Actually I had to ask pytorch devs for help and received:
 
 - PyTorch `ProcessGroup` watchdog thread caught an asynchronous error from NCCL
-- This error is an `“unhandled system error”` which in this particular case turned out to be an IB-OPA error
+- This error is an `“unhandled system error”` which in this particular case turned out to be an IB-OPA error (a failure in that cluster's [Omni-Path](../network/README.md#omni-path) (OPA) fabric, which is driven through the InfiniBand verbs API)
 - The `ProcessGroup`’s `WorkCleanUp` thread rethrew the error so that the main process would crash and the user would get notified (otherwise this async error would not surface)
 
 Trust me there are times when even if you're inexperienced the backtrace can give you enough of a hint to where you should look for troubleshooting.
@@ -2866,6 +2878,7 @@ If the launch command was `python`, what you do is:
 ```bash
 pgrep -P $(pgrep -o python) | xargs -I {} py-spy dump --pid {}
 ```
+`pgrep -o python` returns the PID of the oldest process named `python` - the launcher - `pgrep -P PID` lists that process's direct children - the per-GPU worker processes - and `xargs -I {}` runs `py-spy dump` once per child PID, substituting it for `{}`.
 
 if `deepspeed`:
 ```bash
@@ -3021,7 +3034,7 @@ This is yet another way, but please make sure to read the [`pdsh` section](#mult
 
 The following notes require `pip install deepspeed`.
 
-In one SLURM environment I also attempted using `pdsh` via `ds_ssh`, but somehow I wasn't able to run `py-spy` remotely - the main issue was that remote `ssh` command wasn't giving the same env as when I was logged in interactively via `ssh`. But if you have `sudo` access on the compute nodes then you could do:
+In one SLURM environment I also attempted using `pdsh` via `ds_ssh` (DeepSpeed's small wrapper that runs one command on every host listed in a DeepSpeed hostfile - one `hostname slots=N` line per node, `N` being the number of GPUs), but somehow I wasn't able to run `py-spy` remotely - the main issue was that remote `ssh` command wasn't giving the same env as when I was logged in interactively via `ssh`. But if you have `sudo` access on the compute nodes then you could do:
 
 First prepare `hostfile`:
 ```bash
@@ -3265,7 +3278,7 @@ If you don't set `ignoredirs`, this will now dump all python calls. Which means 
 
 Of course, you don't have to start tracing from `main` - if you suspect a specific are you can start tracing there instead and it'll be much faster and less data to save.
 
-I wish I could tell `trace` which packages to follow, but alas it only supports dirs to ignore, which is much more difficult to set, and thus you end up with a lot more data than needrf. But still this is a super useful tool for debugging hanging processes.
+I wish I could tell `trace` which packages to follow, but alas it only supports dirs to ignore, which is much more difficult to set, and thus you end up with a lot more data than needed. But still this is a super useful tool for debugging hanging processes.
 
 Also, your code will now run much much slower and the more packages you trace the slower it will become.
 
@@ -3305,7 +3318,7 @@ This is a very fresh work-in-progress package, so it's evolving as we are trying
 
 ##### Working with generated trace files
 
-When the per-node-rank trace files has been generated the following might be helpful to quickly analyze the situation:
+When the per-node-rank trace files has been generated the following might be helpful to quickly analyze the situation. In the `find ... -exec sh -c '...' _ {} \;` commands below, `find` runs the quoted shell snippet once per matching file; the `_` fills the snippet's `$0` (its name, unused) so that the file name `{}` arrives as `$1`, and `\;` ends the `-exec` clause.
 
 
 - grep for a specific match and also print the file and line number where it was found:
@@ -3314,7 +3327,7 @@ When the per-node-rank trace files has been generated the following might be hel
 grep -n "backward" trace*
 ```
 
-- show `tail -1` of all trace files followed by the name of each file:
+- show `tail -3` of all trace files followed by the name of each file:
 
 ```bash
 find . -name "trace*" -exec sh -c 'echo "$1: $(tail -3 "$1")"' _ {} \;
@@ -3326,7 +3339,7 @@ find . -name "trace*" -exec sh -c 'echo "$1: $(tail -3 "$1")"' _ {} \;
 find . -name "trace*" -exec sh -c 'echo; echo $1; echo "$(tail -5 "$1")"' _ {} \;
 ```
 
-- count how many times grep matched a given pattern in each ifle and print the matched file (in this example matching the pattern `backward`):
+- count how many times grep matched a given pattern in each file and print the matched file (in this example matching the pattern `backward`):
 
 ```bash
 find . -name "trace*" -exec sh -c 'echo "$1: $(grep "backward" $1 | wc -l)"' _ {} \;
@@ -3346,7 +3359,7 @@ import torch.distributed as dist
 print(f"{dist.get_rank()}: passed stage 0")
 ```
 
-What you will quickly discover is that if you have multiple GPUs these prints will be badly interleaved and you will have a hard time making sense of the debug data. So let's fix this. We are going to override `print` with a custom version of the same, but which uses `flock` to ensure that only one process can write to stdout at the same time.
+What you will quickly discover is that if you have multiple GPUs these prints will be badly interleaved and you will have a hard time making sense of the debug data. So let's fix this. We are going to override `print` with a custom version of the same, but which uses `flock` (an advisory file lock that only one process can hold at a time) to ensure that only one process can write to stdout at the same time.
 
 The helper module `printflock.py` is included [here](../training/tools/printflock.py). To activate it just run this at the top of the module you're debugging:
 
@@ -3354,7 +3367,7 @@ The helper module `printflock.py` is included [here](../training/tools/printfloc
 from printflock import printflock as print
 ```
 
-and now all your `print` calls in that module will magically be non-iterleaved. You can of course, just use `printflock` directly:
+and now all your `print` calls in that module will magically be non-interleaved. You can of course, just use `printflock` directly:
 
 ```python
 from printflock import printflock
@@ -3370,6 +3383,7 @@ If the hanging happens inside non-python code, and `py-spy --native` isn't enoug
 gcore <pid>
 kill -ABRT <pid>
 ```
+`gcore` comes with `gdb` and writes a core file of a running process while leaving it running, whereas `SIGABRT` makes the process abort and dump core on its way out.
 
 and then you can introspect the core file as explained [here](#segfaults-and-getting-a-backtrace-from-a-core-file).
 
@@ -3457,7 +3471,7 @@ The first thing to do is to open port `6000` for incoming and outgoing connectio
 Here are multiple ways that you could use to test whether port 6000 is already open.
 
 ```bash
-telnet localhost:6000
+telnet localhost 6000
 nmap -p 6000 localhost
 nc -zv localhost 6000
 curl -v telnet://localhost:6000
@@ -3623,11 +3637,12 @@ and to run, it's just:
 ```bash
 $ mpirun --hostfile hostfile -np 16 -map-by ppr:8:node python my-program.py
 ```
+`-np 16` is the total number of processes and `-map-by ppr:8:node` ("processes per resource") places 8 of them on each node.
 
 Note that I used `my-program.py` here because [torch-distributed-gpu-test.py](./torch-distributed-gpu-test.py) was written to work with `torch.distributed.run` (also known as `torchrun`). With `mpirun` you will have to check your specific implementation to see which environment variable it uses to pass the rank of the program and replace `LOCAL_RANK` with it, the rest should be mostly the same.
 
 Nuances:
-- You might have to explicitly tell it which interface to use by adding `--mca btl_tcp_if_include 10.0.0.0/24` to match our example. If you have many network interfaces it might use one that isn't open or just the wrong interface.
+- You might have to explicitly tell it which interface to use by adding `--mca btl_tcp_if_include 10.0.0.0/24` to match our example (`--mca` sets an Open MPI component parameter, here for its TCP transport, the `btl`, and `10.0.0.0/24` means every address `10.0.0.*`). If you have many network interfaces it might use one that isn't open or just the wrong interface.
 - You can also do the reverse and exclude some interfaces. e.g. say you have `docker0` and `lo` interfaces - to exclude those add `--mca btl_tcp_if_exclude docker0,lo`.
 
 `mpirun` has a gazillion of flags and I will recommend reading its manpage for more information. My intention was only to show you how you could use it. Also different `mpirun` implementations may use different CLI options.
@@ -3784,7 +3799,7 @@ def mycode(...):
 
 ```
 
-This is the same as `ForkedPdb` (below) but will automatically break for you on the rank of your choice - rank0 in the example above. Just make sure to call `up;;n` right away when the breakpoint hits to get into your normal code.
+This is the same as `ForkedPdb` (below) but will automatically break for you on the rank of your choice - rank0 in the example above. Just make sure to call `up;;n` right away when the breakpoint hits to get into your normal code (`up` moves one stack frame up out of the `breakpoint` helper into your function, `;;` separates two pdb commands, and `n` executes the next line).
 
 Here is what it does underneath:
 
@@ -3981,7 +3996,7 @@ torch.cuda.synchronize()
 If you're working with other devices, most of them have similar or identical API:
 
 - `torch.cuda.Event` - NVIDIA CUDA + AMD ROCm
-- `ht.hpu.Event(enable_timing)` - Intel Gaudi
+- `ht.hpu.Event(enable_timing)` - Intel Gaudi (`ht` being `import habana_frameworks.torch as ht`)
 - `torch.xpu.Event(enable_timing)` - Intel dGPUs
 - Apple MPS has a different API, but we can emulate the same API as can seen in [mamf-finder.py](https://github.com/stas00/ml-engineering/blob/0099885db36a8f06556efe1faf552518852cb1e0/compute/accelerator/benchmarks/mamf-finder.py#L159).
 
@@ -4043,7 +4058,9 @@ Self CPU time total: 3.134ms
 Self CUDA time total: 688.483us
 ```
 
-From the report it's easy to see that the code spends most of its time performing a GEMM operation, since that's what a linear layer does. You can see that it took 687.139us, which accounted for 99.80% of CUDA operations of this run. The rest of the calls are various CUDA functions that were used while launching the GEMM operation `sm90_xmma_gemm_f32f32_tf...`.
+How to read this table: each row is one operator, kernel or CUDA runtime call; "Self" columns count time spent in that row itself and "total" columns include everything it called, while the CPU columns are host-side time and the CUDA columns are time the GPU spent executing kernels (see [Reading `key_averages()`](../training/profiling-and-optimization.md#reading-key_averages) for more). The rows with CUDA time are the GPU kernels, the `cuda*` rows are CUDA runtime API calls made by the CPU, and `Activity Buffer Request` is the profiler's own setup.
+
+From the report it's easy to see that the code spends most of its time performing a GEMM operation, since that's what a linear layer does. You can see that it took 687.139us, which accounted for 99.80% of CUDA operations of this run. The rest of the calls are various CUDA functions that were used while launching the GEMM operation `sm90_xmma_gemm_f32f32_tf...` (a cuBLAS kernel: `sm90` means it targets Hopper, `f32f32` gives the input and output dtypes, and the part cut off by the column width encodes the math mode, tile shape and layouts).
 
 Since kernel names tend to include dtype and shapes they can be pretty long, so if you'd like to see the full name, you can make `max_name_column_width` longer, for example:
 ```diff
@@ -4154,7 +4171,7 @@ class ProfilerContext:
             pass # report nothing
 ```
 
-Now let's use it to profile 2 forward calls using [Liger Kernel](https://github.com/linkedin/Liger-Kernel):
+Now let's use it to profile 2 forward calls using [Liger Kernel](https://github.com/linkedin/Liger-Kernel) (LinkedIn's collection of Triton kernels for LLM training - RMSNorm, RoPE, SwiGLU, fused cross-entropy and so on - which `AutoLigerKernelForCausalLM` swaps into an HF Transformers model in place of the stock PyTorch modules):
 
 ```python
 # liger-kernel-varlen-recompile.py
@@ -4237,6 +4254,8 @@ Now when we rerun the script, we quickly see the issue on the first forward call
         1 0.005175 0.005175 0.005175 0.005175 {method 'all' of 'torch._C.TensorBase' objects}
       376 0.004812 0.000013 0.004812 0.000013 {built-in method posix.stat}
 ```
+
+How to read the cProfile table: `ncalls` is how many times the function was called (`144/7` means 144 calls in total, of which 7 were not recursive), `tottime` is the time spent inside the function itself excluding the functions it called, `cumtime` includes them, and each `percall` is the preceding column divided by the number of calls. Entries in `{...}` are built-in functions implemented in C.
 
 One can instantly see that there are quite a few calls that are clearly from the libc library and which interface with the system, e.g., the `exec`, `posix.stat` and `io.open` calls. This is definitely something we don't want to happen during the super fast `forward`/`backward` calls using PyTorch.
 

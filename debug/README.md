@@ -19,7 +19,7 @@
 
 - [Debug Tools](./tools.md)
 
-- [torch-distributed-gpu-test.py](./torch-distributed-gpu-test.py) - this a `torch.distributed` diagnostics
+- [torch-distributed-gpu-test.py](./torch-distributed-gpu-test.py) - this is a `torch.distributed` diagnostics
   script that checks that all GPUs in the cluster (one or many nodes) can talk to each other and allocate gpu memory.
 
-- [NicerTrace](./NicerTrace.py) - this is an improved `trace` python module with multiple additional flags added to the constructor and more useful output.
+- [NicerTrace](./NicerTrace.py) - this is an improved version of Python's standard-library `trace` module (which logs every line Python executes, see [python `trace`](./pytorch.md#python-trace)) with multiple additional flags added to the constructor and more useful output.

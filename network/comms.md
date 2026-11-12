@@ -14,7 +14,7 @@ PyTorch has `send` and `recv` for blocking, `isend` and `irecv` for non-blocking
 
 Collectives and `send`/`recv` are two-sided: every rank that participates posts a matching call. One-sided (RMA) communication lets one rank write into or read from another rank's memory without that peer posting `recv`. That is the useful shape for irregular access - an embedding lookup, a weight copy, routing a token to one expert - where making every rank join an all-to-all would move more data than the algorithm needs.
 
-Starting from PyTorch 2.14, `nccl2` exposes this as a *window* over the NCCL `Put`/`Get` APIs. Creating the window is still collective - every rank in the group must call it in the same order - and as of 2.14 the Python entry points are experimental (`dist._new_window`, `dist._supports_window`). Use it when the access pattern is sparse; keep two-sided collectives when every rank participates.
+Starting from PyTorch 2.14, `nccl2` exposes this as a *window* (a region of each rank's memory registered so that peers can `Put` data into it or `Get` data out of it) over the NCCL `Put`/`Get` APIs. Creating the window is still collective - every rank in the group must call it in the same order - and as of 2.14 the Python entry points are experimental (`dist._new_window`, `dist._supports_window`). Use it when the access pattern is sparse; keep two-sided collectives when every rank participates.
 
 Reference: [PyTorch 2.14 release blog](https://pytorch.org/blog/pytorch-2-14-release-blog/).
 
@@ -164,6 +164,8 @@ Given:
 
 A naive broadcast will send `N/B` at each step. The total time to broadcast to `k` GPUs will take: `(k-1)*N/B`
 
+Here a step is one hop around the ring, `N/B` is how long it takes to push the whole message over one link, and the message needs `k-1` hops to reach the last GPU.
+
 Here is an example of how a ring-based broadcast is performed:
 
 ![ring-based broadcast](images/broadcast-ring.png)
@@ -177,13 +179,15 @@ The total time to broadcast `N` bytes to `k` GPUs will take:
 
 `S*N/(S*B) + (k − 2)*N/(S*B) = N*(S + k − 2)/(S*B)`
 
+How to read this: the first term is the `S` pieces leaving the source one after another, and the second is the `k-2` further hops the last piece still needs to reach the far end of the ring, while every earlier piece is already moving ahead of it.
+
 and if split messages are very small so that `S>>k`: `S + k − 2` is `~S` and then the total time is about `N/B`.
 
 
 
 #### All-reduce with unidirectional ring
 
-Ring-based `all-reduce` is done similarly to [broadcast](#broadcast-with-unidirectional-ring). The message is split into many small messages and each GPU sends a small message to the next GPU in parallel with other GPUs. `all-reduce` has to perform 2x steps than `broadcast`, because it performs a reduction - so the size of the message needs to be sent twice over the wire.
+Ring-based `all-reduce` is done similarly to [broadcast](#broadcast-with-unidirectional-ring). The message is split into many small messages and each GPU sends a small message to the next GPU in parallel with other GPUs. `all-reduce` has to perform 2x steps than `broadcast`, because it performs a reduction - so the size of the message needs to be sent twice over the wire (worked through step by step in [Ring all-reduce, step by step](../foundations/networking.md#ring-all-reduce-step-by-step)).
 
 Moreover, the whole message can be first split into chunks, to make the process even more efficient. Here is the reduction of the first chunk:
 
@@ -222,7 +226,7 @@ Columns are ordered by ascending per-hop latency, which happens to be ascending 
 Sources:
 1. [Demystifying NCCL: An In-depth Analysis of GPU Communication Protocols and Algorithms](https://arxiv.org/abs/2507.04786) (2025), Table I.
 
-`Simple` sends large chunks and uses memory fences to guarantee the receiver sees a complete chunk. That reaches near-peak bandwidth, but the fence cost dominates anything small. `LL` drops the fences: it pairs 4 bytes of data with a 4-byte flag and writes the 8 bytes atomically, so the receiver proceeds the moment the flag lands. The catch is that the staging buffer has to sit in host memory for the CPU to poll that flag, which rules out GPUDirect RDMA and caps `LL` at 25-50% of peak - acceptable when latency is all that matters, wasteful otherwise.
+`Simple` sends large chunks and uses memory fences (instructions that make all earlier writes visible before any later one, see [Memory models in brief](../foundations/concurrency.md#part-6-memory-models-in-brief)) to guarantee the receiver sees a complete chunk. That reaches near-peak bandwidth, but the fence cost dominates anything small. `LL` drops the fences: it pairs 4 bytes of data with a 4-byte flag and writes the 8 bytes atomically, so the receiver proceeds the moment the flag lands. The catch is that the staging buffer has to sit in host memory for the CPU to poll that flag, which rules out GPUDirect RDMA and caps `LL` at 25-50% of peak - acceptable when latency is all that matters, wasteful otherwise.
 
 `LL128` keeps the flag trick at 128-byte granularity, 120 bytes of data to an 8-byte flag, which is where the ~95% of peak comes from. It pays with a hardware requirement: those 128-byte writes must never be split or reordered by the interconnect, and where that isn't guaranteed - some PCIe paths - NCCL disables `LL128` rather than risk corruption. So it is what you see on NVLink systems, and its strength is intra-node. Over a network the per-128-byte synchronization turns into millions of small operations on a large transfer, and `Simple` takes the lead again.
 

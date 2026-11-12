@@ -6,7 +6,7 @@
 
 ### torch-dist-bench
 
-[torch-dist-bench.py](torch-dist-bench.py) - a tool to benchmark the real network bandwidth and latency while performing `all_reduce` and [other collectives](#other-collectives), over a range of payloads. This is useful for finding out what one gets in reality as compared to the advertised spec. Somewhat similar to `nccl-tests`, but requires just PyTorch to run. You want to use this benchmark if your application uses NCCL collectives via `torch.distributed`, and `nccl-tests` if you write CUDA NCCL kernels. This benchmark calls the collectives the way your program does: through PyTorch, which runs some of them with different NCCL calls than `nccl-tests` does, e.g. `scatter` and `batch_isend_irecv` - see [Other collectives](#other-collectives) - and with `--with-host-overhead` it also includes PyTorch's per-call host overhead of some 20-30µs, which at small payloads is about as long as the collective itself.
+[torch-dist-bench.py](torch-dist-bench.py) - a tool to benchmark the real network bandwidth and latency while performing `all_reduce` and [other collectives](#other-collectives), over a range of payloads. This is useful for finding out what one gets in reality as compared to the advertised spec. Somewhat similar to `nccl-tests`, but requires just PyTorch to run. You want to use this benchmark if your application uses NCCL collectives via `torch.distributed`, and `nccl-tests` if you write CUDA NCCL kernels. This benchmark calls the collectives the way your program does: through PyTorch, which runs some of them with different NCCL calls than `nccl-tests` does, e.g. `scatter` and `batch_isend_irecv` (PyTorch's way of issuing several point-to-point sends and receives as one batch) - see [Other collectives](#other-collectives) - and with `--with-host-overhead` it also includes PyTorch's per-call host overhead of some 20-30µs, which at small payloads is about as long as the collective itself.
 
 footnote: Its previous incarnation was known as `all_reduce_bench.py` as it measured just the all-reduce collective.
 
@@ -51,7 +51,7 @@ The average bandwidth and the per-call latency of all_reduce over 32 ranks (at l
 |   16GiB | 376.17GBps | 194.15GBps | 88813.6us | 89220.5us | 88832.0us |    20 |
 ```
 
-Read the normalized `busbw` column rather than `algbw` - [PERFORMANCE.md](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth) explains why. Like `nccl-tests`, the benchmark measures a unidirectional bandwidth, so compare it against the advertised unidirectional peak throughput, not the bidirectional (duplex) one.
+How to read this table: each row is one payload size; `busbw` and `algbw` are the bandwidths (empty for the smallest payloads, where only latency is measured), the three latency columns describe how long a single call took, and `calls` is how many calls were timed for the latency. Read the normalized `busbw` column rather than `algbw` - [PERFORMANCE.md](https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bandwidth) explains why, and so does [algbw vs busbw](../collectives-internals.md#algbw-vs-busbw). Like `nccl-tests`, the benchmark measures a unidirectional bandwidth, so compare it against the advertised unidirectional peak throughput, not the bidirectional (duplex) one.
 
 And if you have the `matplotlib` pip package installed, it also creates a plot:
 
@@ -339,7 +339,7 @@ To run the collectives on buffers registered as an NCCL symmetric memory window,
 
 ### all_gather_object vs all_reduce
 
-[all_gather_object_vs_all_reduce.py](all_gather_object_vs_all_reduce.py) - a quick benchmark showing 23x speed up when moving from `all_gather_object` to `all_reduce` when collecting completion status from the process group. e.g. when implementing some sort of all-processes-are-done flag. This technique is usually used for synchronizing gpus when they may complete at different number of iterations - which one needs for inference over multiple DP channels, or when one wants to sync a `StopIteration` event in `DataLoader`. See also [all_gather_object_vs_all_gather.py](./all_gather_object_vs_all_gather.py).
+[all_gather_object_vs_all_reduce.py](all_gather_object_vs_all_reduce.py) - a quick benchmark showing 23x speed up when moving from `all_gather_object` (which pickles an arbitrary Python object on each rank and gathers the bytes, with CPU-side serialization on every call) to `all_reduce` when collecting completion status from the process group. e.g. when implementing some sort of all-processes-are-done flag. This technique is usually used for synchronizing gpus when they may complete at different number of iterations - which one needs for inference over multiple DP channels, or when one wants to sync a `StopIteration` event in `DataLoader`. See also [all_gather_object_vs_all_gather.py](./all_gather_object_vs_all_gather.py).
 
 ### all_reduce latency comparison
 
@@ -375,6 +375,8 @@ git clone https://github.com/NVIDIA/nvbandwidth
 cd nvbandwidth
 cmake . && make
 ```
+
+(`cmake .` generates a Makefile from the repository's `CMakeLists.txt`, see [Make and Makefiles](../../foundations/toolkit.md#make-and-makefiles), and `make` then builds it.)
 
 Run it with no arguments for the full sweep, `./nvbandwidth -l` to list the testcases, or `-t <testcase>` to run just one. `-i N` raises the iteration count from its default of 3.
 
@@ -416,10 +418,12 @@ Here is a simple all-reduce benchmark that you can use to quickly measure the th
 
 [torch-dist-bench.py](torch-dist-bench.py)
 
-On CSPs that have enabled [SLURM Pyxis Container Plugin](https://github.com/NVIDIA/pyxis), such as CoreWeave, Crusoe, AWS, Oracle, Azure, GCP, etc, `torch-dist-bench.py` can be easily ran & reproduced via the following command:
+On CSPs (cloud service providers) that have enabled [SLURM Pyxis Container Plugin](https://github.com/NVIDIA/pyxis) (it adds `--container-image` to Slurm's `srun`, see [Apptainer for HPC](../../foundations/containers-and-virtualization.md#5-apptainer-for-hpc); Slurm itself is covered in [Slurm from zero](../../orchestration/slurm/from-zero.md)), such as CoreWeave, Crusoe, AWS, Oracle, Azure, GCP, etc, `torch-dist-bench.py` can be easily ran & reproduced via the following command:
 ```bash
 sbatch -n <num_of_nodes> ./torch-dist-bench-pyxis.sbatch
 ```
+
+(`sbatch` submits a batch script to Slurm; the script's `#SBATCH` lines hold its default resource requests.)
 
 Usually benchmarking at least 4 nodes is recommended, but, of course, if you already have access to all the nodes you will be using during the training, benchmark using all of the nodes.
 
@@ -442,6 +446,8 @@ python -u -m torch.distributed.run \
     torch-dist-bench.py
 ```
 
+`python -u -m torch.distributed.run` is the same launcher as `torchrun` (`-u` makes Python's output unbuffered so log lines appear immediately). `--rdzv_endpoint` and `--rdzv_backend c10d` tell every node where to [rendezvous](../../foundations/distributed-systems.md#rendezvous), `--max_restarts 0` disables automatic restarts on failure, `--role` prefixes each output line with the host's short name, and `--tee 3` copies both stdout and stderr to per-rank log files. `scontrol show hostnames $SLURM_JOB_NODELIST` expands Slurm's compact node list (e.g. `node[1-4]`) into one hostname per line, and `head -n 1` picks the first one as the rendezvous host.
+
 Notes:
 - adapt `MASTER_ADDR` to rank 0 hostname if it's not a SLURM environment where it's derived automatically.
 
@@ -451,13 +457,15 @@ salloc --partition=mypartition --nodes=4 --ntasks-per-node=1 --cpus-per-task=48 
 srun --cpus-per-task=$SLURM_CPUS_PER_TASK --gres=gpu:8 --nodes=4 --tasks-per-node=1 python -u -m torch.distributed.run --nproc_per_node=8 --nnodes 4 --rdzv_endpoint $(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1):6000 --rdzv_backend c10d torch-dist-bench.py
 ```
 
+`salloc` asks Slurm for an allocation (here 4 nodes for an hour, each with 8 GPUs via `--gres=gpu:8`, one task per node with 48 CPU cores) and opens a shell inside it; `srun` then runs one copy of the command per task on the allocated nodes. Both are covered in [Interactive work: salloc and srun](../../orchestration/slurm/from-zero.md#interactive-work-salloc-and-srun).
+
 Notes:
 - You are likely to need to adapt `--cpus-per-task` and `--partition` arguments there.
 - You do `salloc` once and then can repeat `srun` multiple times on the same allocation.
 
 You may get results anywhere between 5Gbps and 6700Gbps (as of 2026-10), and the payload size matters as much as the hardware does - `busbw` climbs by orders of magnitude from a small payload to a large one on the very same setup. In the measured tables under [Inter-node speed depends on intra-node speed](../README.md#inter-node-speed-depends-on-intra-node-speed), at a 16GiB payload a single B200 node reaches 838.97GBps and four nodes 376.60GBps - about 6700Gbps and 3000Gbps - while at 32KiB those same runs report 2.17GBps and 0.64GBps. So always compare like payload with like. The minimal speed to prevent being network bound will depend on your particular training framework, but typically you'd want at least 400Gbps or higher. Though we trained BLOOM on 50Gbps.
 
-Frameworks that shard weights and optim stages like [DeepSpeed](https://github.com/deepspeedai/DeepSpeed) w/ ZeRO Stage-3 do a lot more traffic than frameworks like [Megatron-DeepSpeed](https://github.com/bigscience-workshop/Megatron-DeepSpeed) which do tensor and pipeline parallelism in addition to data parallelism. The latter ones only send activations across and thus don't need as much bandwidth. But they are much more complicated to set up and run.
+Frameworks that shard weights and optim stages like [DeepSpeed](https://github.com/deepspeedai/DeepSpeed) w/ ZeRO Stage-3 (which shards the parameters, gradients and optimizer states across the data-parallel ranks and all-gathers each layer's weights when it is needed, covered in [ZeRO Data Parallelism](../../training/model-parallelism/README.md#zero-data-parallelism)) do a lot more traffic than frameworks like [Megatron-DeepSpeed](https://github.com/bigscience-workshop/Megatron-DeepSpeed) which do tensor and pipeline parallelism in addition to data parallelism (covered in [Tensor Parallelism](../../training/model-parallelism/README.md#tensor-parallelism) and [Pipeline Parallelism](../../training/model-parallelism/README.md#pipeline-parallelism)). The latter ones only send activations across and thus don't need as much bandwidth. But they are much more complicated to set up and run.
 
 Of course, an efficient framework will overlap communications and compute, so that while one stage is fetching data, the other stage in parallel runs computations. So as long as the communication overhead is smaller than compute the network requirements are satisfied and don't have to be super fantastic.
 
@@ -474,18 +482,18 @@ Of course, the requirements are higher for A100 gpu nodes and even higher for H1
 
 ### Extrapolating benchmark results from several nodes to many
 
-As it's often not easy to benchmark hundreds of nodes, often we try to benchmark interconnect performance using, say, 4 nodes. I wasn't sure whether this would give the correct indication for when 40 or 400 nodes will be used so I asked about it [here](https://github.com/NVIDIA/nccl/issues/790) and the answer was:
+As it's often not easy to benchmark hundreds of nodes, often we try to benchmark interconnect performance using, say, 4 nodes. I wasn't sure whether this would give the correct indication for when 40 or 400 nodes will be used so I asked about it [here](https://github.com/NVIDIA/nccl/issues/790) and the answer was (the ring and tree cost models it refers to are derived in [Summary of costs](../collectives-internals.md#summary-of-costs), and `tuning.cc` is described in [The tuning model](../collectives-internals.md#the-tuning-model)):
 
 > Extrapolating at scale is not that hard for ring and tree (we have a function in `tuning.cc` predicting it, based on the ring linear latency and the tree log latency with reduced BW). Now as you scale, there are many factors which may cause your real performance to be very far off the prediction, like routing. Also note on an IB network you'll be able to use SHARP; that way your latency stays mostly constant as you scale, your bandwidth doesn't degrade much either, and you're always better than both ring and tree.
 
 
 ## Disable Access Control Services
 
-PCI Access Control Services (ACS) used for IO virtualization (also known as VT-d or IOMMU) force P2P PCIe transactions to go up through the PCIe Root Complex, which does not enable GDS to bypass the CPU on paths between a network adapter or NVMe and the GPU in systems that include a PCIe switch.
+PCI Access Control Services (ACS) used for IO virtualization (also known as VT-d or IOMMU) force P2P PCIe transactions to go up through the PCIe Root Complex, which does not enable GDS ([GPUDirect Storage](../../foundations/storage-and-data.md#gpudirect-storage-briefly), DMA straight between storage and GPU memory) to bypass the CPU on paths between a network adapter or NVMe and the GPU in systems that include a PCIe switch.
 
 For the optimal GDS performance, disable ACS by following these instructions [here](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html#pci-access-control-services-acs). Here are some [additional notes](https://docs.nvidia.com/gpudirect-storage/best-practices-guide/index.html)
 
-Please note that if you're using Virtual machines you can't disable ACS as it's a required feature. To run with maximum performance inside virtual machines, Address Translation Service (ATS) needs to be enabled in network adapters.
+Please note that if you're using Virtual machines you can't disable ACS as it's a required feature. To run with maximum performance inside virtual machines, Address Translation Service (ATS) needs to be enabled in network adapters (ATS lets the adapter cache its own IOMMU address translations, so its peer-to-peer traffic can go directly to the GPU instead of up to the Root Complex).
 
 
 ## Performance-Oriented NCCL Environment Variables
@@ -502,6 +510,8 @@ This one defines which algorithms NCCL will use. Typically it's one of:
 2. Ring
 3. CollnetDirect and CollnetChain (IB SHARP)
 4. NVLS (NVLink SHARP)
+
+These are derived in [collectives internals](../collectives-internals.md): [Ring all-reduce](../collectives-internals.md#ring-all-reduce), [Double binary tree](../collectives-internals.md#double-binary-tree), [CollNet and IB SHARP](../collectives-internals.md#collnet-and-ib-sharp) and [NVLS (NVLink SHARP)](../collectives-internals.md#nvls-nvlink-sharp).
 
 I was asking questions about how a user can do the optimization and was told at [this NCCL Issue](https://github.com/NVIDIA/nccl/issues/790) that basically the user shouldn't try to optimize anything as NCCL has a ton of smart algorithms inside that will try to automatically switch from one algorithm to another depending on a concrete situation.
 
@@ -525,7 +535,7 @@ NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING NCCL_DEBUG_FILE=/tmp/nccl.%h.%p.lo
 grep -ihoE "AllReduce: [0-9]+ Bytes -> Algo [A-Z]+ proto [A-Z0-9]+" /tmp/nccl.*.log | sort -u
 ```
 
-On an 8x H200 node that prints lines like `AllReduce: 2097152 Bytes -> Algo NVLS proto SIMPLE`, and reveals where NCCL switches over - `RING` with the `LL` protocol for payloads up to 1MiB, then `NVLS` with `SIMPLE` from 2MiB up. `NCCL_DEBUG_FILE` keeps all of this out of the benchmark's own output, which otherwise gets buried.
+In the `grep`, `-i` ignores case, `-h` drops the file names, `-o` prints only the matching part of each line and `-E` enables extended regexes; `sort -u` then keeps one copy of each distinct line. `LL` and `SIMPLE` are NCCL's protocols, explained in [Protocols: Simple, LL, LL128](../collectives-internals.md#protocols-simple-ll-ll128). On an 8x H200 node that prints lines like `AllReduce: 2097152 Bytes -> Algo NVLS proto SIMPLE`, and reveals where NCCL switches over - `RING` with the `LL` protocol for payloads up to 1MiB, then `NVLS` with `SIMPLE` from 2MiB up. `NCCL_DEBUG_FILE` keeps all of this out of the benchmark's own output, which otherwise gets buried.
 
 Setting `NCCL_ALGO` explicitly is still worth doing, but for a different purpose - measuring what each algorithm delivers on your hardware, rather than discovering which one NCCL chose.
 
@@ -552,7 +562,7 @@ Values accepted:
 
 This is relevant if you're on a multi-layer InfiniBand or RoCEv2 network.
 
-`NCCL_IB_QPS_PER_CONNECTION` defines the number of IB queue pairs to use for each connection between two ranks. This can be useful on multi-level fabrics which need multiple queue pairs to have good routing entropy. In other words, when your jobs are crossing spine or super-spine switches.
+`NCCL_IB_QPS_PER_CONNECTION` defines the number of IB queue pairs to use for each connection between two ranks. This can be useful on multi-level fabrics which need multiple queue pairs to have good routing entropy (each queue pair is a separate flow, so more of them give the switches' ECMP hashing more distinct flows to spread over the uplinks - see [Flow collisions and ECMP](../collectives-internals.md#flow-collisions-and-ecmp)). In other words, when your jobs are crossing spine or super-spine switches.
 
 By default it is set to `1`, but having a higher number might benefit throughput.
 
@@ -590,6 +600,6 @@ In order to find the best performance to experiment with different values agains
 
 ### InfiniBand adaptive routing
 
-Make sure your cloud provider enables IB adaptive routing which could greatly improve the performance.
+Make sure your cloud provider enables IB adaptive routing (the switch picks an output port per packet based on congestion, rather than hashing each flow onto a fixed path, see [InfiniBand](../collectives-internals.md#infiniband)) which could greatly improve the performance.
 
 For nuances see this paper: [Adaptive Routing in InfiniBand Hardware](https://web-backend.simula.no/sites/default/files/publications/files/adaptive_routing_in_infiniband_hardware.pdf).

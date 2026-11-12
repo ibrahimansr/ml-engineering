@@ -176,7 +176,7 @@ You can take it as a self-guided course, or teach it to others yourself!
 
 - 5.1. **Multiple DataLoaders in the same process can hang randomly, and the workaround may simply be to not use one of them.**
   - During BLOOM-176B, the training DataLoader ran fine with `num_workers=2`, but adding an evaluation DataLoader alongside it caused random hangs - a known class of long-unresolved PyTorch multi-worker-DataLoader bugs.
-  - **The workaround:** set `num_workers=0` for the eval loader specifically (accepting slower, blocking IO since eval ran far less often), and eventually drop in-training eval entirely in favor of asynchronous lm-harness-style evaluation on saved checkpoints.
+  - **The workaround:** set `num_workers=0` for the eval loader specifically (accepting slower, blocking IO since eval ran far less often), and eventually drop in-training eval entirely in favor of asynchronous lm-harness-style evaluation on saved checkpoints (EleutherAI's [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), a tool that runs standard benchmarks against a saved model).
   - **Bonus:** removing the in-loop eval also sped up the main training loop, since it no longer shared resources with a second DataLoader at all.
 
   📖 [Asynchronous DataLoader](../../training/performance/README.md#asynchronous-dataloader)
@@ -327,7 +327,7 @@ From [The Art of Debugging](https://github.com/stas00/the-art-of-debugging):
 
 - 9.3. **Get a backtrace from a core file to turn a useless, huge traceback into an exact, actionable line of code.**
   - When a compiled extension (CUDA kernel, NCCL, any C/C++-backed library) segfaults, Python can't produce a meaningful exception at all - you're left with nothing, or an unreadable native dump.
-  - **Fix:** `gdb -c /path/to/core /path/to/program` followed by `bt`, which walks the call stack at the moment of the crash and shows the exact source line. `bt full` additionally shows local variable values (e.g. a pointer showing `0x0` reveals it was dereferenced uninitialized).
+  - **Fix:** `gdb -c /path/to/core /path/to/program` (see [gdb basics](../../foundations/linux-and-os.md#gdb-basics)) followed by `bt`, which walks the call stack at the moment of the crash and shows the exact source line. `bt full` additionally shows local variable values (e.g. a pointer showing `0x0` reveals it was dereferenced uninitialized).
   - For multi-threaded programs (essentially all serious PyTorch/CUDA programs), `thread apply all bt` shows every thread's stack, since the real root cause sometimes lives in a different thread than the one that crashed.
   - This is exactly how real PyTorch crash reports get root-caused, turning a massive native dump into one actionable line.
 
@@ -352,8 +352,8 @@ From [The Art of Debugging](https://github.com/stas00/the-art-of-debugging):
 
 - 9.6. **Missing symbols are very often a link-time or library-version problem, not a mysterious runtime bug - and `nm` lets you actually verify what's present.**
   - `undefined symbol: util_b` at runtime, despite the function existing in your codebase, is frequently caused by the wrong version of a shared library being loaded (e.g. via `LD_LIBRARY_PATH` pointing at an older build).
-  - `nm ./your_program | grep symbol_name` shows whether a symbol is defined (`T`) or merely referenced-but-undefined (`U`) in a specific binary or library, turning a guess into a checkable fact.
-  - Combined with `ldd` (which shows exactly which library files a binary actually resolved to), you can directly compare `nm` output across two "same-named" library builds and see that one has the symbol and the other doesn't.
+  - `nm` lists the symbols (the names of functions and global variables) that a compiled binary or shared library defines or needs from elsewhere. `nm ./your_program | grep symbol_name` shows whether a symbol is defined (`T`) or merely referenced-but-undefined (`U`) in a specific binary or library, turning a guess into a checkable fact.
+  - Combined with `ldd` (which shows exactly which library files a binary actually resolved to; see [Shared libraries and LD_LIBRARY_PATH](../../foundations/linux-and-os.md#shared-libraries-and-ld_library_path)), you can directly compare `nm` output across two "same-named" library builds and see that one has the symbol and the other doesn't.
   - This combination - `nm` for "does the symbol exist here" and `ldd` for "which file actually got loaded" - resolves the large majority of "missing symbol" runtime errors.
 
   📖 [nm](https://github.com/stas00/the-art-of-debugging/blob/master/compiled-programs/README.md#nm)

@@ -88,4 +88,4 @@ As explained in the [Hyper-Threads](users.md#hyper-threads) section you should b
 
 However, you should test the performance w/ and w/o HT, compare the results and choose the setting that gives the best outcome.
 
-case study: on AWS p4 nodes I discovered that enabling HT made the network throughput 4x slower. Since then we were careful to have HT disabled on that particular setup.
+case study: on AWS p4 nodes (AWS's 8x A100 instance type) I discovered that enabling HT made the network throughput 4x slower. Since then we were careful to have HT disabled on that particular setup.

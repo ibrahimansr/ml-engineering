@@ -6,7 +6,7 @@ HF Transformers has awesome finetuning examples  https://github.com/huggingface/
 
 Here is a simple hack to accomplish that.
 
-We will use `facebook/opt-1.3b` and we will plan to use bf16 training regime as an example here:
+We will use `facebook/opt-1.3b` and we will plan to use bf16 training regime as an example here. The trick is that `AutoConfig.from_pretrained` downloads only the model's architecture config (layer count, hidden size, vocab size, etc.), and `AutoModelForCausalLM.from_config` builds that architecture with freshly initialized random weights - unlike `AutoModelForCausalLM.from_pretrained`, which would also load the trained weights. The tokenizer is reused as is. (The `cat << EOT > prep-bf16.py ... EOT` wrapper is a shell heredoc that writes everything between the two `EOT` markers into `prep-bf16.py`.)
 
 ```bash
 cat << EOT > prep-bf16.py
@@ -36,7 +36,7 @@ This will create a folder: `opt-1.3b-bf16` with everything you need to train the
 
 Adjust the script above to use `torch.float16` or `torch.float32` if that's what you plan to use instead.
 
-Now you can proceed with finetuning this saved model as normal:
+Now you can proceed with finetuning this saved model as normal. `run_clm.py` (causal language modeling) is one of the example scripts from the HF Transformers repo linked above, so run this from inside a clone of that repo (and point `--model_name_or_path` at wherever you created `opt-1.3b-bf16`). Its flags are the HF `Trainer`'s `TrainingArguments`: `--bf16` enables bf16 mixed precision, `--dataset_name`/`--dataset_config_name` pick a dataset from the HF Hub, `--report_to tensorboard` logs to TensorBoard, and the rest are the usual batch size, optimizer and LR-schedule hyper-parameters:
 
 ```bash
 torchrun \

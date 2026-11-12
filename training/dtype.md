@@ -11,6 +11,8 @@ Floating point formats:
 - fp6 - 6 bits
 - fp4 - 4 bits
 
+The sign/exponent/mantissa layout behind these formats, and why the exponent sets the range and the mantissa the precision, is taught in [Floating point: IEEE 754](../foundations/computer-architecture.md#floating-point-ieee-754).
+
 For visual comparison refer to this representations:
 
 ![fp32-tf32-fp16-bf16](images/fp32-tf32-fp16-bf16.png)
@@ -29,7 +31,7 @@ The new formats that are being adopted by new hardware are:
 
 There is an excellent explanation of each of these variations [here](https://github.com/jax-ml/ml_dtypes?tab=readme-ov-file#specifications-of-implemented-floating-point-formats).
 
-`float8_e8m0fnu` is the odd one out in that list - it is not an element format but the shared scale that block-scaled formats attach to a group of elements, which is why it has no mantissa. Pairing it with a 4-, 6- or 8-bit element encoding is what produces the `MXFP4`/`MXFP6`/`MXFP8` names quoted in accelerator specs: one `E8M0` scale per block of 32 values, whose per-parameter byte cost is worked out in [Model Weights](../inference/README.md#model-weights). NVIDIA's [`NVFP4`](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) is the same two-part idea tuned differently - the same `E2M1` element, but a block of 16 with an `E4M3` scale plus a single fp32 scale for the whole tensor, which tracks local dynamic range more closely than a power-of-two `E8M0` scale can.
+`float8_e8m0fnu` is the odd one out in that list - it is not an element format but the shared scale that block-scaled formats (see the fp4 note under [Floating point: IEEE 754](../foundations/computer-architecture.md#floating-point-ieee-754)) attach to a group of elements, which is why it has no mantissa. Pairing it with a 4-, 6- or 8-bit element encoding is what produces the `MXFP4`/`MXFP6`/`MXFP8` names quoted in accelerator specs: one `E8M0` scale per block of 32 values, whose per-parameter byte cost is worked out in [Model Weights](../inference/README.md#model-weights). NVIDIA's [`NVFP4`](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) is the same two-part idea tuned differently - the same `E2M1` element, but a block of 16 with an `E4M3` scale plus a single fp32 scale for the whole tensor, which tracks local dynamic range more closely than a power-of-two `E8M0` scale can.
 
 To decipher the letters followed by the numbers:
 - The `e` indicates the length of exponent
@@ -45,7 +47,7 @@ To decipher the letters appearing after the numbers:
 So for example: `float8_e4m3b11fnuz` stands for fp8 + 4-bit exponent + 3-bit mantissa + bias 11 + finite values only +  includes NaNs, but only at the outer range + unsigned zero.
 
 
-Integer formats used in quantization:
+Integer formats used in quantization (storing weights, and sometimes activations, as low-bit integers plus a floating-point scale, then dequantizing them for the math):
 
 - int8 - 8 bits
 - int4 - 4 bits
@@ -56,6 +58,8 @@ Integer formats used in quantization:
 Originally ML was using fp32, but it was very slow.
 
 Next [mixed-precision](https://developer.nvidia.com/blog/video-mixed-precision-techniques-tensor-cores-deep-learning/) was invented using a combination of fp16 and fp32, which tremendously sped up the training speed.
+
+In mixed precision the `forward` and `backward` matmuls run in the 16-bit format, while an fp32 "master" copy of the weights and the optimizer states receive the update, and with fp16 the loss is also scaled to keep small gradients from underflowing - the diagram below shows that loop. Why each of those pieces is needed is in [Why range vs precision is the ML tradeoff](../foundations/computer-architecture.md#why-range-vs-precision-is-the-ml-tradeoff), and the full mechanics are in [Mixed precision internals](arithmetic.md#mixed-precision-internals).
 
 ![fp32/fp16 mixed precision](images/mixed-precision-fp16.png)
 
@@ -102,14 +106,14 @@ An fp4 `e2m1` element has 16 bit patterns: ±0, ±0.5, ±1, ±1.5, ±2, ±3, ±4
 
 The block size is in elements, and the bits per element include the block's share of its scale. An `E8M0` scale is a power of two, and nvfp4 adds one FP32 scale per tensor to its `E4M3` block scales. OCP MX is the Open Compute Project's Microscaling spec.
 
-Speed is not what separates them. NVIDIA's Blackwell tensor cores run both through the same instruction at the same peak, which is why the [theoretical TFLOPS table](../compute/accelerator/README.md#tflops-comparison-table) has the same number in both columns. [Measured](../compute/accelerator/README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) on B200 with torch 2.14, nvfp4 came out 8–9% faster than mxfp4 on both MAMF (6746 vs 6183 TFLOPS) and MSMF (5627 vs 5222 TFLOPS), which is a software difference, not a hardware one.
+Speed is not what separates them. NVIDIA's Blackwell tensor cores run both through the same instruction at the same peak, which is why the [theoretical TFLOPS table](../compute/accelerator/README.md#tflops-comparison-table) has the same number in both columns. [Measured](../compute/accelerator/README.md#maximum-achievable-and-sustainable-matmul-flops-comparison-table) on B200 with torch 2.14, nvfp4 came out 8–9% faster than mxfp4 on both MAMF (6746 vs 6183 TFLOPS) and MSMF (5627 vs 5222 TFLOPS) - the maximum achievable and maximum sustainable matmul FLOPS, defined in [How MAMF and MSMF are defined](../compute/accelerator/benchmarks/README.md#how-mamf-and-msmf-are-defined) -, which is a software difference, not a hardware one.
 
 Accuracy is what separates them. A smaller block means one outlier distorts the scale of 15 neighbours rather than 31, and an `E4M3` scale can sit between powers of two where `E8M0` has to round to one. In NVIDIA's [8B-parameter, 1T-token pretraining comparison](https://developer.nvidia.com/blog/train-models-faster-with-jax-and-maxtext-using-nvfp4-on-nvidia-blackwell/), MXFP4 needed ~36% more tokens to reach NVFP4's final loss; see also [Introducing NVFP4](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) for the inference side. Both claims are NVIDIA's own.
 
 So:
 - On NVIDIA Blackwell or newer, use nvfp4: the same compute and better accuracy, for 0.25 extra bits per element.
 - Use mxfp4 where nvfp4 doesn't exist - AMD MI355X and the other non-NVIDIA accelerators that implement OCP MX - or when one checkpoint has to run on more than one vendor's hardware.
-- When a model is released in one of them, as OpenAI's gpt-oss ships its MoE weights in MXFP4, running it in that format saves you requantizing it.
+- When a model is released in one of them, as OpenAI's gpt-oss ships its MoE ([Mixture of Experts](../models/architectures.md#mixture-of-experts)) weights in MXFP4, running it in that format saves you requantizing it.
 
 ## TF32
 
@@ -131,6 +135,8 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 ```
 
+The first line covers `matmul`s and linear layers (dispatched to cuBLAS), the second covers the ops PyTorch sends to cuDNN, mainly convolutions.
+
 For more information about the actual precision loss please see [this](https://docs.pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices).
 
 
@@ -146,11 +152,15 @@ Here are some examples:
 
 1. Reduction collectives
 
+These are the collectives that sum tensors across GPUs, such as [all-reduce](../network/comms.md#all-reduce) and [reduce-scatter](../network/comms.md#reduce-scatter), used to sync gradients in data parallel training.
+
 * fp16: ok to do in fp16 if loss scaling is in place
 
 * bf16: only ok in fp32
 
 2. Gradient accumulation
+
+That is, running several micro-batches through `forward` and `backward` and summing their gradients in a buffer before a single optimizer step (covered in [Gradient Accumulation](performance/README.md#gradient-accumulation); the numerical error of a bf16 buffer is measured in [fp32 accumulation in tensor cores](arithmetic.md#fp32-accumulation-in-tensor-cores)).
 
 * best done in fp32 for fp16 and bf16, but definitely is a must for bf16
 
@@ -159,6 +169,8 @@ Here are some examples:
 * when adding a tiny gradient to a large number, that addition is often nullified therefore typically fp32 master weights and fp32 optim states are used.
 
 * fp16 master weights and optim states can be used when using [Kahan Summation](https://en.wikipedia.org/wiki/Kahan_summation_algorithm) or [Stochastic rounding](https://en.wikipedia.org/wiki/Rounding) (introduced in [Revisiting BFloat16 Training](https://arxiv.org/abs/2010.06192)).
+
+Kahan summation keeps a second low-precision buffer holding the part of each addition that was rounded off, and feeds it back into the next addition, so small updates are not lost. Stochastic rounding rounds up or down at random, with probabilities proportional to the distance to each neighbour, so a tiny update survives on average; it is worked through in [Stochastic rounding](arithmetic.md#stochastic-rounding).
 
 For an example of the latter see: [AnyPrecision optimizer](https://github.com/pytorch/torchdistx/pull/52) with the latest version found [here](https://github.com/facebookresearch/multimodal/blob/6bf3779a064dc72cde48793521a5be151695fc62/torchmultimodal/modules/optimizers/anyprecision.py#L17).
 
