@@ -57,6 +57,12 @@ Startup and overhead figures are orders of magnitude, not benchmarks. The Firecr
 
 A **kernel** is the privileged program that owns the hardware and that every process asks for services through system calls (see [linux-and-os.md](linux-and-os.md#the-kernel-and-why-it-exists)). The "boundary" column is a rough measure of how much code sits between an attacker and the host. The Linux kernel exposes around 450 system calls (Docker's default seccomp profile allows 426 by name; see section 2) and millions of lines of driver code. A microVM exposes the KVM interface and a handful of emulated devices.
 
+Containers are "OS-level virtualization" (left): processes share the host kernel. VMs are "hardware virtualization" (right): each guest brings its own kernel:
+
+![containers vs virtual machines](images/os-vs-hardware-virtualization.png)
+
+([source](https://commons.wikimedia.org/wiki/File:OS_vs_Hardware_virtualization.png))
+
 ### What "containers share the kernel" looks like
 
 A container is a normal Linux process that the kernel shows a restricted view of the world. You can see this directly (ran). First, look from inside a default container:
@@ -370,6 +376,12 @@ Real profiles are allowlists (`"defaultAction": "SCMP_ACT_ERRNO"`). The denylist
 ### overlayfs: layered, copy-on-write filesystems
 
 An image is a stack of read-only directory trees. A container needs a writable `/` on top of that stack without copying gigabytes for each container. **overlayfs** is the kernel filesystem that merges several read-only "lower" directories and one writable "upper" directory into a single view (ran):
+
+Docker's names are on the left and overlayfs's on the right. `file 2` exists in both layers, and the container-layer copy is the one the merged view shows:
+
+![overlayfs lowerdir, upperdir and merged view](images/overlayfs-docker-layers.png)
+
+([source](https://docs.docker.com/engine/storage/drivers/overlayfs-driver/))
 
 ```console
 $ docker run --rm --privileged ubuntu:24.04 bash -c '

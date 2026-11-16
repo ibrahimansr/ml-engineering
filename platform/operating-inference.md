@@ -410,6 +410,12 @@ The **Virtual Token Counter** (VTC) scheduler from the Sheng et al. paper ([arXi
 - **Charge as you go.** Input tokens are added to the counter at admission. Output tokens are added one decode step at a time, as they are generated. So the unknown output length is never needed in advance.
 - **Lift the counter when a client returns.** A client that was idle would otherwise come back with a low counter and get a burst of service as "back pay". When a client goes from no queued requests to some, its counter is raised to at least the smallest counter among queued clients (or, if none are queued, to that of the last client to leave the queue). In the paper's words, credits "cannot be carried over".
 
+The loop in one picture: requests queue per client, the scheduler admits from the client with the smallest counter, and the engine charges tokens back to that counter as it runs:
+
+![Virtual Token Counter scheduling loop](images/vtc-scheduler-architecture.png)
+
+([source](https://arxiv.org/abs/2401.00588))
+
 The paper proves that two clients that are both continuously backlogged never differ in received service by more than $2 \cdot \max(w_p L_{\text{in}}, w_q M)$, where $L_{\text{in}}$ is the maximum input length and $M$ the maximum number of tokens in a running batch, and that no work-conserving non-preemptive scheduler can guarantee better than $w_q M$.
 
 The simulator below is a toy continuous-batching engine: a KV budget of 10,000 tokens, every request 256 tokens in and 256 out, one decode step every 20 ms. It can therefore run 19 requests at once and finish at most 3.71 requests per second. Three clients send Poisson traffic:
@@ -1150,6 +1156,12 @@ Baseten's metrics docs carry one caveat worth repeating: concurrency and queue-s
 ### Tracing through gateway, router and engine
 
 A trace follows one request across processes as a tree of timed spans ([tracing](control-planes.md#tracing)). For an inference request the spans are: gateway (auth, limits, queue wait), router (replica choice and why: prefix match length, load), engine (waiting, prefill, decode), and the return path. Pass the W3C `traceparent` header from the gateway to the router to the engine's HTTP server, and record the router's decision as span attributes. Engine-internal span support differs between engine versions; check yours. Sample traces (1-10%, plus every slow or failed request), and keep the `trace_id` in the request log so you can jump from a bad log line to its trace.
+
+A real trace from llm-d, for one P/D-disaggregated chat completion. The EPP (llm-d's endpoint picker, its router) spans record the routing decision and take under a millisecond; nearly all of the 3.1 s is the decode engine's `llm_request`, including 322 ms of queueing:
+
+![Jaeger waterfall of a request through llm-d router, P/D proxy and two vLLM engines](images/llm-d-pd-request-trace-waterfall.png)
+
+([source](https://llm-d.ai/blog/end-to-end-and-fine-grained-tracing-in-llm-d))
 
 ### Silent quality regressions
 

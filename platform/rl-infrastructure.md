@@ -216,6 +216,12 @@ Phase switches are not free. Moving 8 GB of optimizer state over PCIe at about 2
 
 In a **disaggregated** design inference and training run on separate GPU pools, usually on separate nodes, and weights travel over the network after every step (or every few steps). This only makes sense with asynchronous RL. With a synchronous loop, the training pool sits idle during generation and vice versa. With async, both pools run all the time, and the question becomes how to split the GPUs.
 
+AReaL's comparison on 4 GPUs. Left: synchronous and colocated, so every GPU waits for the longest rollout before training. Right: asynchronous and disaggregated, with GPUs 1-2 generating continuously while GPUs 3-4 train on finished batches:
+
+![synchronous vs asynchronous RL timelines](images/areal-sync-vs-async-rl-timeline.png)
+
+([source](https://arxiv.org/abs/2505.24298))
+
 ```python
 # placement.py - colocated vs disaggregated, using step_budget.py's numbers for 64 GPUs.
 t_gen_tail, t_gen_flat, t_train, G = 837, 432, 473, 64   # seconds on all 64 GPUs
@@ -277,6 +283,12 @@ Systems use the following modes, ordered from fully on-policy to most off-policy
 | In-flight weight updates | a *single* rollout spans several versions; weights change mid-generation | PipelineRL (arXiv 2509.19128), OpenRLHF `--train.partial_rollout_enable`, AReaL interruptible rollouts |
 
 In-flight updates exist because of the tail. Without them, a 32k-token rollout started at version $v$ will finish at version $v+5$ and is entirely 5 steps stale. With them, its last tokens were sampled by a recent policy. The cost is that the KV cache for the first part of the response was computed under the old weights. Systems generally keep that stale KV rather than recompute it, and record per-token versions so the loss can account for them.
+
+PipelineRL's picture of the difference. In (a), the batch shrinks as rollouts finish and GPUs idle until the optimizer step; in (b), weights are swapped into running generations after each step (shading shows the weight version), so the inference batch stays full:
+
+![conventional RL vs in-flight weight updates](images/pipelinerl-inflight-weight-updates.jpg)
+
+([source](https://arxiv.org/abs/2509.19128))
 
 ### A toy async RL pipeline
 
@@ -1411,6 +1423,12 @@ Architecture only, from READMEs, docs and source trees. These projects change mo
 | **NeMo-RL** (NVIDIA) | Megatron / DTensor | vLLM | Ray | both | async support added over 2025 (verify) |
 | **PipelineRL** (ServiceNow; arXiv 2509.19128) | own | vLLM | own | disaggregated | in-flight weight updates |
 | **SkyRL** (Berkeley), **ROLL** (Alibaba) | various | vLLM / SGLang | Ray | both | agentic / multi-turn focus (verify) |
+
+AReaL's layout is a typical fully async design, mapping onto this chapter's vocabulary: rollout workers and a rollout controller (the orchestrator), a reward service, a replay buffer (the batcher), trainer workers, and a parameter service that pushes new weights and interrupts in-progress rollouts:
+
+![AReaL asynchronous RL architecture](images/areal-async-rl-architecture.png)
+
+([source](https://arxiv.org/abs/2505.24298))
 
 ### How to read an open RL codebase
 

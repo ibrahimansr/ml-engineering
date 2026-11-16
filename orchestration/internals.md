@@ -1770,6 +1770,12 @@ The storage write is seconds to minutes. The per-GPU device-to-host copy (GPU me
 - The next checkpoint can't start until the previous upload has finished, so `tau` has to be longer than the time to write one checkpoint to storage.
 - The write is not durable until the upload finishes. A failure during the upload means you fall back to the checkpoint before it. Keep at least 2 checkpoints (see [Frequent checkpoint saving](../training/fault-tolerance-and-reproducibility.md#frequent-checkpoint-saving)).
 
+In the timeline, training blocks only for the pink box (waiting for the previous save) and the GPU-to-CPU copy; serialization to storage runs on the checkpointing thread while step 2 trains:
+
+![DCP async save: the training thread waits on the previous checkpoint's result, copies GPU state to CPU, then continues with step 2 while a checkpointing thread serializes to storage](images/dcp-async-save-timeline.png)
+
+([source](https://pytorch.org/blog/reducing-checkpointing-times/))
+
 The difference between "blocked" and "total" is visible even on a laptop, with a single CPU process and 1.07 GB of tensors. The script also mutates the weights right after `async_save` returns, then checks that the checkpoint still holds the old values, which is the property that makes async saving safe: the snapshot is taken before control returns **[ran]**:
 
 ```python

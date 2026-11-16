@@ -814,6 +814,12 @@ Without **GPUDirect RDMA** (GDR), NCCL sending a GPU buffer to another node copi
 - **`nvidia_peermem`**, a kernel module shipped with the driver (since R470) that plugs into the RDMA core's peer-memory interface. Load it with `modprobe nvidia_peermem` and persist it in `/etc/modules-load.d/`.
 - **DMA-BUF**, the mainline Linux mechanism for sharing device memory between drivers (kernel 5.12+). It needs the open GPU kernel modules and a NIC driver and rdma-core that support it. Recent NCCL versions use it automatically when it is available, so `nvidia_peermem` is not needed on such systems.
 
+The GDR path between two nodes: the orange line goes GPU memory, PCIe, NIC (HCA), network, NIC, PCIe, GPU memory, and never touches system memory or the CPU.
+
+![GPUDirect RDMA data path](images/gpudirect-rdma-data-path.png)
+
+([source](https://developer.nvidia.com/blog/accelerating-io-in-the-modern-data-center-network-io/))
+
 The PCIe side must also cooperate. **ACS** (Access Control Services) on PCIe switches forces peer-to-peer traffic up to the root complex, which kills GDR performance. Disable it for bare metal ([how](../network/measuring-and-debugging.md#disable-access-control-services)). An IOMMU in translating mode can do the same, so `iommu=pt` (passthrough) on the kernel command line (the boot options the bootloader hands to Linux; you can read the current ones in `/proc/cmdline`) is common on GPU nodes. ACS and the IOMMU were introduced in [IOMMU, VFIO and PCIe passthrough](../foundations/containers-and-virtualization.md#iommu-vfio-and-pcie-passthrough).
 
 Checking that GDR is actually used. The NCCL log is the ground truth. `NCCL_DEBUG=INFO` makes NCCL print its setup decisions and `NCCL_DEBUG_SUBSYS` limits that to some subsystems; `torchrun ...` stands for whatever launch command your job uses ([how NCCL builds its connections and how to read these lines](../foundations/networking.md#step-2-nccl-builds-its-own-connections)). **[untested]**

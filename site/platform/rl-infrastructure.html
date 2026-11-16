@@ -227,6 +227,9 @@ llm.wake_up(tags=[&quot;kv_cache&quot;])                          # 6. now alloc
 <p>Phase switches are not free. Moving 8 GB of optimizer state over PCIe at about 25-50 GB/s takes a fraction of a second. Re-creating CUDA graphs, re-allocating the KV pool and running Python-side weight loading take seconds to tens of seconds. That overhead is the <code>t_switch</code> in the next script, and I assume it rather than measure it.</p>
 <h3 id="disaggregated">Disaggregated</h3>
 <p>In a <strong>disaggregated</strong> design inference and training run on separate GPU pools, usually on separate nodes, and weights travel over the network after every step (or every few steps). This only makes sense with asynchronous RL. With a synchronous loop, the training pool sits idle during generation and vice versa. With async, both pools run all the time, and the question becomes how to split the GPUs.</p>
+<p>AReaL's comparison on 4 GPUs. Left: synchronous and colocated, so every GPU waits for the longest rollout before training. Right: asynchronous and disaggregated, with GPUs 1-2 generating continuously while GPUs 3-4 train on finished batches:</p>
+<p><img src="images/areal-sync-vs-async-rl-timeline.png" alt="synchronous vs asynchronous RL timelines" /></p>
+<p>(<a href="https://arxiv.org/abs/2505.24298">source</a>)</p>
 <pre><code class="language-python"># placement.py - colocated vs disaggregated, using step_budget.py's numbers for 64 GPUs.
 t_gen_tail, t_gen_flat, t_train, G = 837, 432, 473, 64   # seconds on all 64 GPUs
 t_switch = 30          # assumed: offload/onload weights+optimizer, KV realloc, weight sync
@@ -335,6 +338,9 @@ disagg 48 gen / 16 train    1892 s/step  (generator idle 70%)
 </tbody>
 </table>
 <p>In-flight updates exist because of the tail. Without them, a 32k-token rollout started at version <span class="math inline"><span class="math-inline">v</span></span> will finish at version <span class="math inline"><span class="math-inline">v+5</span></span> and is entirely 5 steps stale. With them, its last tokens were sampled by a recent policy. The cost is that the KV cache for the first part of the response was computed under the old weights. Systems generally keep that stale KV rather than recompute it, and record per-token versions so the loss can account for them.</p>
+<p>PipelineRL's picture of the difference. In (a), the batch shrinks as rollouts finish and GPUs idle until the optimizer step; in (b), weights are swapped into running generations after each step (shading shows the weight version), so the inference batch stays full:</p>
+<p><img src="images/pipelinerl-inflight-weight-updates.jpg" alt="conventional RL vs in-flight weight updates" /></p>
+<p>(<a href="https://arxiv.org/abs/2509.19128">source</a>)</p>
 <h3 id="a-toy-async-rl-pipeline">A toy async RL pipeline</h3>
 <p>The following toy contains every moving part of an async system, scaled down until it runs in two seconds. The <strong>trainer</strong> is a separate OS process (<code>multiprocessing</code>), as a real trainer would be. The <strong>generator</strong> is one <code>asyncio</code> event loop that keeps <code>SLOTS</code> rollouts in flight at once, as an inference engine with continuous batching does. The two are connected by a <strong>bounded queue</strong>, which provides backpressure. Weights are a shared-memory array published together with a <strong>version counter</strong> under a lock, which stands in for weight sync. The stdlib provides these directly: <code>mp.Array(&quot;d&quot;, A)</code> is an array of <code>A</code> C doubles in shared memory that both processes can index like a list, <code>mp.Value(&quot;i&quot;, 0)</code> is a single shared C int read and written through <code>.value</code>, and <code>lock=False</code> skips their built-in per-object lock because the code uses one explicit <code>mp.Lock()</code> to cover the weights and the version together (<a href="../foundations/concurrency.html#shared-memory">shared memory</a> and its race conditions are covered in the concurrency chapter). The policy is a 4-way softmax, reward is 1 for action 3, and rollout length is lognormal so the tail is real. <span class="math inline"><span class="math-inline">k</span></span> is the maximum lag: a rollout may <em>start</em> only if its batch index is at most <span class="math inline"><span class="math-inline">k</span></span> ahead of the trainer's version. <span class="math inline"><span class="math-inline">k=0</span></span> is the synchronous loop.</p>
 <pre><code class="language-python"># toy_async_rl.py - generator (asyncio, many concurrent rollouts) -&gt; bounded queue -&gt; trainer (process).
@@ -1521,6 +1527,9 @@ ALERT: 6 aborted rollouts (engine restarts?)
 </tr>
 </tbody>
 </table>
+<p>AReaL's layout is a typical fully async design, mapping onto this chapter's vocabulary: rollout workers and a rollout controller (the orchestrator), a reward service, a replay buffer (the batcher), trainer workers, and a parameter service that pushes new weights and interrupts in-progress rollouts:</p>
+<p><img src="images/areal-async-rl-architecture.png" alt="AReaL asynchronous RL architecture" /></p>
+<p>(<a href="https://arxiv.org/abs/2505.24298">source</a>)</p>
 <h3 id="how-to-read-an-open-rl-codebase">How to read an open RL codebase</h3>
 <p>Each of these frameworks implements the same components from this chapter. When you open a new one, look for these, in this order:</p>
 <ol>

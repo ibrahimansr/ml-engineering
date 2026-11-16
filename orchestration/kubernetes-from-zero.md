@@ -1336,6 +1336,12 @@ blocked
 
 For each pending pod the scheduler runs a pipeline of plugins: **filter** plugins remove nodes that can't run the pod (not enough allocatable CPU/memory/GPU, taint not tolerated, node selector not matched, volume in another zone), **score** plugins rank the survivors (spread pods out, prefer nodes with the image already pulled, honor preferred affinities), and the top node wins. It then writes a Binding. One pod at a time, no look-ahead. The default resource scoring strategy is `LeastAllocated`, which spreads load; GPU clusters usually want `MostAllocated` (bin packing), so whole 8-GPU nodes stay free for big jobs.
 
+Each green arrow is an extension point where a plugin can hook in; Filter and Score are two of them, and Permit (last in the scheduling cycle) is where gang-scheduling plugins hold pods back before binding:
+
+![kube-scheduler framework: scheduling cycle (PreFilter, Filter, PostFilter, PreScore, Score, NormalizeScore, Reserve, Permit) then binding cycle (WaitOnPermit, PreBind, Bind, PostBind)](images/kube-scheduling-framework-extension-points.png)
+
+([source](https://kubernetes.io/docs/concepts/scheduling-eviction/scheduling-framework/))
+
 ```python
 # filter-then-score, the shape of kube-scheduler (runnable; numbers illustrative)
 nodes = {"gpu-1": {"gpu": 8, "used": 6, "taints": {"nvidia.com/gpu"}},

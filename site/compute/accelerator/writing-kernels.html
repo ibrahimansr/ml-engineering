@@ -998,6 +998,9 @@ __global__ void layernorm_f32(const float* __restrict__ x, const float* __restri
 </tbody>
 </table>
 <p>The kernels below follow his steps 1 to 6 with the same tile parameters (written for this chapter, not copied; row-major <code>C = A @ B</code>, no <code>alpha</code>/<code>beta</code>). For the theory of each level, see the <a href="../../compute/accelerator/execution-model.html#gemm-tiling-hierarchy">tiling hierarchy</a> and <a href="../../compute/accelerator/execution-model.html#coalescing">coalescing</a>.</p>
+<p>Kernel 3's shared-memory tiling in the CUDA guide's picture: each block computes one <code>BLOCK_SIZE</code> x <code>BLOCK_SIZE</code> tile <span class="math inline"><span class="math-inline">C_{sub}</span></span> of C (here <code>TILE</code>), stepping a row strip of A and a column strip of B through shared memory one tile at a time.</p>
+<p><img src="images/cuda-smem-matmul-tiling.png" alt="shared-memory tiled matmul" /></p>
+<p>(<a href="https://docs.nvidia.com/cuda/archive/12.8.0/cuda-c-programming-guide/index.html">source</a>)</p>
 <pre><code class="language-cuda">// sgemm.cu - C = A @ B, fp32, row-major A (M, K), B (K, N), C (M, N); the steps of the
 // SGEMM worklog. Kernels 1-3 handle any shape; 4-6 require M % BM == N % BN == K % BK == 0.
 
@@ -1544,6 +1547,9 @@ asm volatile(
 </tr>
 </tbody>
 </table>
+<p>NVIDIA's picture of the same split (Triton is a tile model):</p>
+<p><img src="images/simt-vs-tile-model.jpg" alt="SIMT vs tile programming model" /></p>
+<p>(<a href="https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html">source</a>)</p>
 <p>A 2-D tile is built by broadcasting a column of row indices against a row of column indices. This is the pattern in every matmul and attention kernel below. The simulator shows the offsets and the mask for the last row-block of a 5x6 matrix with 4x8 tiles:</p>
 <pre><code class="language-python"># ptr_tile.py - what a 2-D pointer tile and its mask look like (runs in the simulator)
 import torch

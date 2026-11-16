@@ -633,6 +633,12 @@ So know your slowest GPU, and replace one that stays well below its node's media
 
 Accelerators use [High Bandwidth Memory](https://en.wikipedia.org/wiki/High_Bandwidth_Memory) (HBM), a 3D version of SDRAM. "3D" means several DRAM dies are stacked on top of each other and placed in the same package as the accelerator chip, which gives a very wide, short connection. For example, the 80GiB A100-SXM has HBM2e at 2.0TBps, and the 80GiB H100-SXM has HBM3 at 3.35TBps.
 
+A cross-section of the package: the DRAM dies stack on a base die, joined by through-silicon vias (TSVs), and a silicon interposer carries the 1024-bit-wide link to the GPU die beside it. The 500MHz clock and the display controller date the drawing to HBM1 on a graphics card; the stacking is the same on current accelerators.
+
+![HBM stack cross-section](accelerator/images/hbm-stack-cross-section.png)
+
+([source](https://commons.wikimedia.org/wiki/File:High_Bandwidth_Memory_schematic.svg))
+
 The HBM generations:
 
 | Type  | Max data<br> rate speed per<br> pin (Gbps) | Stack<br> Height | Bits per<br> Channel | Number<br> of dies<br> per stack | Die capacity<br> per stack<br> (GiBs) | Max capacity<br> per stack<br> (GiBs) | Max data<br> rate per<br> stack (GBps) |

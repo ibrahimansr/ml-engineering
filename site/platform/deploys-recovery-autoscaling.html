@@ -649,6 +649,9 @@ peer over 200 Gb/s NIC                       1s         0s         6s         3s
 <p>A proof of concept that keeps weights out of the CRIU image and stripes them across 8 local NVMe drives restored gpt-oss-120b in under 5 s. Status in the post: single-GPU vLLM and SGLang only; multi-GPU is in progress, and some of the optimizations are not yet shipped.</p>
 </li>
 </ul>
+<p>The checkpoint/restore lifecycle on Kubernetes: a privileged node agent (a DaemonSet) dumps the ready worker to shared storage (a PVC), and the agent on another node restores it into a placeholder pod:</p>
+<p><img src="images/dynamo-snapshot-checkpoint-restore-lifecycle.png" alt="Dynamo Snapshot checkpoint and restore lifecycle" /></p>
+<p>(<a href="https://developer.nvidia.com/blog/nvidia-dynamo-snapshot-fast-startup-for-inference-workloads-on-kubernetes/">source</a>)</p>
 <p><strong>The limits.</strong> Modal's guide is explicit that GPU snapshots &quot;do not speed up model loading from storage&quot; and that they &quot;are generally incompatible with multi-GPU code&quot;. Both matter for large models. Parasail's <a href="https://www.parasail.io/blogs/cutting-cold-start-latency-snapshotting">vLLM snapshot measurements</a> on H200 show the gain shrinking as the model grows: Qwen2.5-7B at TP1 went from 63.56 s to 15.22 s, while a quantized Llama-3.3-70B at TP1 went from 138.19 s to 119.78 s, because a snapshot of a big model is mostly weights and restoring weights is just loading weights. Snapshots also capture state that should not be shared: Modal warns that anything established before the snapshot &quot;will be reused over and over again&quot; and that &quot;expectations of entropy may be violated&quot;, the same <a href="../foundations/containers-and-virtualization.html#snapshots-starting-from-a-warm-vm">clone problem</a> as VM snapshots. And restores can fail; Modal &quot;automatically fallback[s] to a standard container startup&quot;, which you need too.</p>
 <p><strong>The cheaper equivalent: don't let the process die.</strong> On a fixed fleet the replica you want to start is often the one you just stopped. vLLM's <strong>sleep mode</strong> keeps the process, its CUDA context and its compiled graphs alive and only moves memory (<a href="https://docs.vllm.ai/en/latest/features/sleep_mode.html">docs</a>): level 1 &quot;will offload the model weights and discard the KV cache&quot; (weights go to CPU RAM), level 2 discards both. Waking reverses it. vLLM's <a href="https://vllm.ai/blog/sleep-mode">sleep-mode post</a> measured, on an A100 at TP1:</p>
 <table>
@@ -1513,6 +1516,9 @@ burst price / reserved all reserved all burst best b  hybrid  P(d &gt; b*)
 </tr>
 </tbody>
 </table>
+<p>In Knative, the activator sits in the request path while a revision has no spare capacity (including zero pods) and buffers requests; each pod's queue-proxy sidecar and the activator report concurrency to the autoscaler, which sets the replica count:</p>
+<p><img src="images/knative-request-flow-activator-autoscaler.png" alt="Knative request flow through activator, queue-proxy and autoscaler" /></p>
+<p>(<a href="https://knative.dev/docs/serving/request-flow/">source</a>)</p>
 <p>With an LLM <span class="math inline"><span class="math-inline">T_{\text{start}}</span></span> measured in minutes, a request that queues behind a scale-from-zero usually times out anyway, so scale-to-zero suits development deployments, low-traffic internal tools and batch jobs, and not interactive endpoints.</p>
 <p><strong>On a leased fleet:</strong> scale-to-zero saves nothing on nodes you've already paid for. Its equivalent is &quot;sleep and hand the GPUs to batch&quot;, with a wake time of seconds.</p>
 <h3 id="spot-plus-on-demand">Spot plus on-demand</h3>

@@ -833,6 +833,12 @@ On a fleet of N replicas, each replica has its own prefix cache. A router that i
 
 **Precise** routing knows what each pod holds because every vLLM pod publishes *KV events* (block stored, block evicted) and the router keeps a global index of block hash to pods. **Approximate** routing predicts what each pod holds from its own routing history, without feedback. The precise router doubled throughput over load-only and random routing, and cut P90 TTFT 57x relative to approximate routing. The gap between precise and approximate appears because KV demand was close to capacity: pods evicted blocks the approximate router still believed were cached, so its guesses went stale.
 
+In llm-d's precise scorer, pods emit KV events (A) that update a block index (B); the scheduler scores each candidate pod against that index (1-3):
+
+![llm-d precise prefix-cache scoring](images/llm-d-precise-prefix-cache-scorer.png)
+
+([source](https://llm-d.ai/blog/kvcache-wins-you-can-see))
+
 **Baseten**, using NVIDIA Dynamo's KV router (it hashes requests into a radix tree of cached blocks and weighs overlap against GPU load), reports a stress test on Qwen3-Coder-480B-A35B with 4 replicas, about 50k-token inputs and about 1k-token outputs, against random routing: an 89% cache hit rate, "34% reduction in TPOT and 50% reduction in TTFT on average", 61% more requests per second and 62% more output tokens per second. On shadowed production traffic, P95 TTFT fell 48% and P99 fell 49%. They "often see 2x faster TTFT in production" ([source](https://www.baseten.co/blog/how-baseten-achieved-2x-faster-inference-with-nvidia-dynamo/)).
 
 **SGLang**'s cache-aware router keeps an approximate radix tree per worker. On a workload of long-prefix groups it reported "up to 1.9x throughput increase and 3.8x hit rate improvement": 82,665 to 158,596 tok/s, with the hit rate going from 20% to 75% ([source](https://lmsys.org/blog/2024-12-04-sglang-v0-4/)).
@@ -1310,6 +1316,12 @@ What the published systems report:
 - **Mooncake** (Moonshot AI's serving system for Kimi) builds a disaggregated KV store that "leverages the underutilized CPU, DRAM, and SSD resources" of the GPU cluster. On a trace with an average input of 8,590 tokens and an average output of 182, they found that "up to only 55% of the KVCache can be reused" even with infinite storage. Their production SLOs were a 30 s TTFT and a time between tokens "capped at 0.1 seconds per token", and Mooncake "enables Kimi to handle 75% more requests" under them ([source](https://arxiv.org/html/2407.00079)).
 - **Prime Intellect** puts Mooncake behind vLLM as "a second cache tier in host DRAM" for GLM-5.3 agent traffic, where each turn "adds about 6K tokens to a 140K-token prompt" ([source](https://www.primeintellect.ai/blog/prime-inference)), and offloads to "both CPU and disk" in its RL rollouts ([source](https://www.primeintellect.ai/blog/rl-at-1t-scale)).
 
+Mooncake's layout: separate prefill and decode pools, each node's spare CPU/DRAM/SSD pooled into one distributed KV store, and KV moved between nodes over RDMA:
+
+![Mooncake KVCache-centric architecture](images/mooncake-kvcache-centric-architecture.png)
+
+([source](https://arxiv.org/abs/2407.00079))
+
 **On a leased fleet.** Native CPU offload uses host RAM you are already paying for, and which mostly sits idle while the GPUs serve (check `free -g` on your nodes). That makes it the first long-context lever to turn on. Mooncake's pooled store pays off when sessions move between replicas (after rebalancing or with disaggregation) and needs RDMA between nodes. On 2-4 nodes, per-node offload plus session-affine routing gets most of the benefit.
 
 ### Context-parallel prefill
@@ -1422,6 +1434,12 @@ vllm serve $LARGE_VLM -tp 8 --mm-encoder-tp-mode data
 ### Encode, prefill, decode disaggregation
 
 Encoding can be split out like prefill: separate encoder workers compute embeddings and ship them to the LLM workers. The EPD paper reports, against non-disaggregated serving, up to 15x lower peak memory, up to 22x larger batches, 10x more images per request, 2.2x larger KV caches and up to 71% lower TTFT ([source](https://arxiv.org/abs/2501.05460)). vLLM has `--ec-transfer-config` for moving encoder outputs between instances, and its connector list includes an `ECMooncakeConnector` for it ([source](https://docs.vllm.ai/en/latest/features/disagg_prefill.html)). The same fixed-fleet caution as for P/D applies: it adds a pool that can sit idle, so it pays at scale or when encoding is so heavy (video, many high-resolution images) that it disrupts decode.
+
+The three stages each get their own GPU pool, with a bridge queue and a transfer step (of encoder outputs, then of KV) between pools:
+
+![encode, prefill and decode stages on separate GPU pools](images/epd-encode-prefill-decode-stages.png)
+
+([source](https://arxiv.org/abs/2501.05460))
 
 ### How capacity planning differs
 

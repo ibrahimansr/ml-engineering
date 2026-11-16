@@ -681,6 +681,12 @@ The [NVIDIA DGX H100](https://web.archive.org/web/20231208180425/https://develop
 
 NVIDIA DGX A100 has 6 switches of 12 NVLinks each, for a total of 72.
 
+NVIDIA's diagram of how the in-node topology evolved, from the point-to-point hybrid cube-mesh of DGX-1 to switched DGX A100 and DGX H100. In DGX H100 each GPU spreads its 18 NVLinks over the four NVSwitch chips as 5, 4, 4 and 5 links.
+
+![DGX NVLink topologies 2016 to 2022](images/dgx-nvlink-topology-generations.png)
+
+([source](https://web.archive.org/web/20231208180425/https://developer.nvidia.com/blog/upgrading-multi-gpu-interconnectivity-with-the-third-generation-nvidia-nvswitch/))
+
 A [DGX H100 SuperPOD](https://docs.nvidia.com/dgx-superpod/reference-architecture-scalable-infrastructure-h100/latest/index.html) scalable unit contains 32 DGX H100 systems (256 GPUs), but each DGX remains its own in-node NVSwitch domain. The systems scale out over a separate Quantum-2 NDR400 InfiniBand compute fabric. So cross-node bandwidth has to be worked out from the ConnectX-7/InfiniBand topology, not by halving or summing the internal NVLinks. See [InfiniBand](#infiniband).
 
 NVSwitch gen 3 and later also include [SHARP](#sharp), in-network reduction, which can speed up `all-reduce` both within and across nodes. Recent NCCL versions use it through `NCCL_ALGO=NVLS`, which improves intra-node `all-reduce` bandwidth by up to 30% and inter-node `all-reduce` by about 25%. [SHARP](#sharp) below measures exactly when you get it.
@@ -1118,6 +1124,12 @@ Cornelis's marketing pages sometimes say "400Gbps bidirectional", but the [produ
 NVIDIA's [Scalable Hierarchical Aggregation and Reduction Protocol (SHARP)](https://networking-docs.nvidia.com/sharpum/300) does data reductions and aggregations inside the network itself. This is called *in-network computing*. It helps whenever you run many MPI, NCCL or other collectives that support SHARP, and their latency improves a lot.
 
 Why it matters: for `all-reduce`, a ring needs every rank to send its data around twice (about $2N$ sends, a reduce-scatter pass and an all-gather pass), while with in-switch reduction each rank sends once to the switch and receives the result once, about $N+1$ sends ($N$ is the number of communicating ranks). For large $N$ that almost doubles the effective all-reduce throughput. NVIDIA explains it in the [all-reduce operation compatibility](https://web.archive.org/web/20231208180425/https://developer.nvidia.com/blog/upgrading-multi-gpu-interconnectivity-with-the-third-generation-nvidia-nvswitch/) section of its NVSwitch post (scroll down to it). The exact byte counts per GPU, ring vs NVLS, are derived in [NVLS (NVLink SHARP)](collectives-internals.md#nvls-nvlink-sharp).
+
+That figure, comparing per-GPU traffic for an all-reduce on A100 (no in-switch reduction) and on H100 with NVLink SHARP. NVS is the NVSwitch:
+
+![NVLink SHARP all-reduce traffic](images/nvlink-sharp-traffic.png)
+
+([source](https://web.archive.org/web/20231208180425/https://developer.nvidia.com/blog/upgrading-multi-gpu-interconnectivity-with-the-third-generation-nvidia-nvswitch/))
 
 ```
 ring all-reduce: every byte crosses each        NVLS / SHARP: each GPU sends its buffer to the

@@ -1421,6 +1421,9 @@ wait
 <h2 id="accelerator-memory-size-and-speed">Accelerator memory: size and speed</h2>
 <h3 id="hbm">HBM</h3>
 <p>Accelerators use <a href="https://en.wikipedia.org/wiki/High_Bandwidth_Memory">High Bandwidth Memory</a> (HBM), a 3D version of SDRAM. &quot;3D&quot; means several DRAM dies are stacked on top of each other and placed in the same package as the accelerator chip, which gives a very wide, short connection. For example, the 80GiB A100-SXM has HBM2e at 2.0TBps, and the 80GiB H100-SXM has HBM3 at 3.35TBps.</p>
+<p>A cross-section of the package: the DRAM dies stack on a base die, joined by through-silicon vias (TSVs), and a silicon interposer carries the 1024-bit-wide link to the GPU die beside it. The 500MHz clock and the display controller date the drawing to HBM1 on a graphics card; the stacking is the same on current accelerators.</p>
+<p><img src="accelerator/images/hbm-stack-cross-section.png" alt="HBM stack cross-section" /></p>
+<p>(<a href="https://commons.wikimedia.org/wiki/File:High_Bandwidth_Memory_schematic.svg">source</a>)</p>
 <p>The HBM generations:</p>
 <table>
 <thead>

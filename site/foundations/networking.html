@@ -1206,6 +1206,9 @@ wrong.host.badssl.com    -&gt; Hostname mismatch, certificate is not valid for '
 self-signed.badssl.com   -&gt; self-signed certificate
 </code></pre>
 <p>The TLS 1.3 handshake cost one extra round trip on top of TCP's, which is why connection reuse (keep-alive, connection pools) matters for chatty clients. Note the 90-day certificate lifetime: certificates expire, and an expired internal certificate is a classic cause of a fleet-wide outage at 00:00 UTC.</p>
+<p>One round trip for TCP, one for TLS, then data. <code>ClientHello</code>/<code>ServerHello</code> carry the key exchange (the <code>KeyShare</code>s), <code>Certificate</code> is the server's identity, and <code>Finished</code> confirms both sides derived the same keys:</p>
+<p><img src="images/tls13-handshake.png" alt="TCP plus TLS 1.3 handshake timeline" /></p>
+<p>(<a href="https://commons.wikimedia.org/wiki/File:Full_TLS_1.3_Handshake.svg">source</a>)</p>
 <p><code>openssl s_client</code> is the command-line equivalent and the first thing to run when a client says &quot;certificate verify failed&quot;. <code>-connect host:port</code> opens the TLS connection and <code>-servername</code> sets the SNI; the <code>echo |</code> feeds it an empty input so it exits after the handshake instead of waiting for you to type; <code>openssl x509 -noout -dates -ext subjectAltName</code> parses the certificate it printed and shows just the validity dates and the SAN list:</p>
 <pre><code>$ echo | openssl s_client -connect example.com:443 -servername example.com 2&gt;/dev/null \
     | grep -E 'subject=|issuer=|Protocol|Verify return'

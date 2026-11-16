@@ -1319,6 +1319,12 @@ self-signed.badssl.com   -> self-signed certificate
 
 The TLS 1.3 handshake cost one extra round trip on top of TCP's, which is why connection reuse (keep-alive, connection pools) matters for chatty clients. Note the 90-day certificate lifetime: certificates expire, and an expired internal certificate is a classic cause of a fleet-wide outage at 00:00 UTC.
 
+One round trip for TCP, one for TLS, then data. `ClientHello`/`ServerHello` carry the key exchange (the `KeyShare`s), `Certificate` is the server's identity, and `Finished` confirms both sides derived the same keys:
+
+![TCP plus TLS 1.3 handshake timeline](images/tls13-handshake.png)
+
+([source](https://commons.wikimedia.org/wiki/File:Full_TLS_1.3_Handshake.svg))
+
 `openssl s_client` is the command-line equivalent and the first thing to run when a client says "certificate verify failed". `-connect host:port` opens the TLS connection and `-servername` sets the SNI; the `echo |` feeds it an empty input so it exits after the handshake instead of waiting for you to type; `openssl x509 -noout -dates -ext subjectAltName` parses the certificate it printed and shows just the validity dates and the SAN list:
 
 ```

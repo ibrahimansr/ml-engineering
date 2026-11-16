@@ -452,6 +452,12 @@ and, from the same mechanism, Ministral 3 3B on vLLM went [from about 118 s to a
 
   A proof of concept that keeps weights out of the CRIU image and stripes them across 8 local NVMe drives restored gpt-oss-120b in under 5 s. Status in the post: single-GPU vLLM and SGLang only; multi-GPU is in progress, and some of the optimizations are not yet shipped.
 
+The checkpoint/restore lifecycle on Kubernetes: a privileged node agent (a DaemonSet) dumps the ready worker to shared storage (a PVC), and the agent on another node restores it into a placeholder pod:
+
+![Dynamo Snapshot checkpoint and restore lifecycle](images/dynamo-snapshot-checkpoint-restore-lifecycle.png)
+
+([source](https://developer.nvidia.com/blog/nvidia-dynamo-snapshot-fast-startup-for-inference-workloads-on-kubernetes/))
+
 **The limits.** Modal's guide is explicit that GPU snapshots "do not speed up model loading from storage" and that they "are generally incompatible with multi-GPU code". Both matter for large models. Parasail's [vLLM snapshot measurements](https://www.parasail.io/blogs/cutting-cold-start-latency-snapshotting) on H200 show the gain shrinking as the model grows: Qwen2.5-7B at TP1 went from 63.56 s to 15.22 s, while a quantized Llama-3.3-70B at TP1 went from 138.19 s to 119.78 s, because a snapshot of a big model is mostly weights and restoring weights is just loading weights. Snapshots also capture state that should not be shared: Modal warns that anything established before the snapshot "will be reused over and over again" and that "expectations of entropy may be violated", the same [clone problem](../foundations/containers-and-virtualization.md#snapshots-starting-from-a-warm-vm) as VM snapshots. And restores can fail; Modal "automatically fallback[s] to a standard container startup", which you need too.
 
 **The cheaper equivalent: don't let the process die.** On a fixed fleet the replica you want to start is often the one you just stopped. vLLM's **sleep mode** keeps the process, its CUDA context and its compiled graphs alive and only moves memory ([docs](https://docs.vllm.ai/en/latest/features/sleep_mode.html)): level 1 "will offload the model weights and discard the KV cache" (weights go to CPU RAM), level 2 discards both. Waking reverses it. vLLM's [sleep-mode post](https://vllm.ai/blog/sleep-mode) measured, on an A100 at TP1:
@@ -1303,6 +1309,12 @@ What happens to a request when a deployment has zero replicas differs a lot betw
 | Together | no automatic wake: "requests to a stopped deployment return an error rather than triggering a start" | [autoscaling post](https://www.together.ai/blog/autoscaling-endpoints-for-llm-inference) |
 | Modal | "By default, Modal Functions will scale to zero" ([scaling docs](https://modal.com/docs/guide/scale)), and containers scale back after `scaledown_window` (60 s by default); `min_containers` sets a floor | [cold start](https://modal.com/docs/guide/cold-start) |
 | Knative / KServe | the activator "is responsible for receiving and buffering requests for inactive revisions", so requests wait while the first pod starts | [Knative docs](https://knative.dev/docs/serving/load-balancing/target-burst-capacity/) |
+
+In Knative, the activator sits in the request path while a revision has no spare capacity (including zero pods) and buffers requests; each pod's queue-proxy sidecar and the activator report concurrency to the autoscaler, which sets the replica count:
+
+![Knative request flow through activator, queue-proxy and autoscaler](images/knative-request-flow-activator-autoscaler.png)
+
+([source](https://knative.dev/docs/serving/request-flow/))
 
 With an LLM $T_{\text{start}}$ measured in minutes, a request that queues behind a scale-from-zero usually times out anyway, so scale-to-zero suits development deployments, low-traffic internal tools and batch jobs, and not interactive endpoints.
 

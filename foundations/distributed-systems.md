@@ -892,6 +892,12 @@ Happens-before captures **potential causality**. If `a -> b`, then `a` might hav
 
 A **Lamport clock** guarantees one direction: if `a -> b` then `L(a) < L(b)`. The converse does not hold. `L(a) < L(b)` does *not* tell you that `a` caused `b`. A **vector clock** (Fidge and Mattern, 1988) fixes that by keeping one counter *per process*. Each process increments its own entry on every event, and on receive takes the elementwise max with the incoming vector, then increments its own entry. Then `a -> b` exactly when `V(a) <= V(b)` elementwise and `V(a) != V(b)`. If neither vector is `<=` the other, the events are concurrent.
 
+Three processes, time running right, arrows are messages, and each box is the process's vector clock after that event (missing entries are 0). Blue is everything that happened before B's `A:2 B:4 C:1` event, pink is everything it could have influenced, and the white regions are concurrent with it:
+
+![vector clocks on three processes](images/vector-clock-causality.png)
+
+([source](https://commons.wikimedia.org/wiki/File:Vector_Clock.svg))
+
 ```python
 # vclock.py -- Lamport clocks and vector clocks on a 3-process message trace
 # trace: (process, kind, peer)  kind = "local" | "send" | "recv"; messages matched FIFO
@@ -1877,6 +1883,12 @@ The naive version destroyed the good checkpoint *before* writing the new one: `o
 ### Consistent hashing: sharding that survives membership changes
 
 Many ML services must map keys to machines: which cache node holds this dataset shard, which inference replica holds the KV cache for this prompt prefix (prefix-aware routing), which parameter-server shard owns this embedding row. The obvious scheme, `node = hash(key) % num_nodes`, breaks badly when `num_nodes` changes, because almost every key moves. **Consistent hashing** (Karger et al., 1997) places nodes and keys on the same circle of hash values and assigns each key to the first node clockwise from it. Adding a node only takes keys from its clockwise neighbour. **Virtual nodes** (each physical node placed at many points on the ring) even out the load:
+
+Servers sit on the ring at their hash values (here 0-360). An object whose key hashes to 111 goes clockwise to the server at 139:
+
+![consistent hashing ring](images/consistent-hashing-ring.png)
+
+([source](https://commons.wikimedia.org/wiki/File:Consistent_Hashing_Sample_Illustration.png))
 
 ```python
 # chash.py -- modulo hashing vs a consistent-hash ring with virtual nodes

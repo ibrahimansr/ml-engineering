@@ -1917,6 +1917,9 @@ print(f&quot;no overlap {compute_ms + comm_ms:.1f} ms/step, two-batch overlap {m
 <p>(<a href="https://arxiv.org/abs/2311.18677">source</a>)</p>
 <h3 id="why">Why</h3>
 <p>Prefill is compute-bound with large, bursty steps; decode is memory-bound and latency-sensitive. Colocating them forces one scheduler to trade TTFT against ITL (chunked prefill is the colocated compromise). Disaggregation runs them on separate GPU pools: prefill workers compute the prompt's KV, ship it to a decode worker, and the decode worker generates. Each pool can then use its own parallelism (e.g. high TP for prefill to cut TTFT, wide EP / DP for decode to raise batch) and be scaled independently against its own SLO.</p>
+<p>The resulting system shape, from DistServe: a controller sends each request to a prefill instance, whose KV is then transferred to a decoding instance; each instance has its own parallel layout:</p>
+<p><img src="images/distserve-prefill-decode-instances.png" alt="prefill and decoding instances with KV transfer" /></p>
+<p>(<a href="https://arxiv.org/abs/2401.09670">source</a>)</p>
 <pre><code class="language-python"># phases.py - same request, two phases with opposite bottlenecks (8B model, H100, bounds)
 N, flops, bw = 8e9, 989e12 * 0.5, 3.35e12
 prompt, out = 4000, 300

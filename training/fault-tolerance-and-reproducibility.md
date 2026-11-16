@@ -240,6 +240,12 @@ This is better than filesystem checkpoints because you lose at most one iteratio
 
 The open-source library closest to this idea is [`torchft`](https://github.com/meta-pytorch/torchft) (Meta / PyTorch). It treats each training step as a fault boundary across replica groups, coordinates health with a lighthouse/quorum service, and heals a failed group by live state transfer from a healthy peer instead of rolling back to a filesystem checkpoint. Out of the box it supports fault-tolerant DDP and HSDP, and [`torchtitan`](https://github.com/pytorch/torchtitan) wires it into an end-to-end HSDP training loop: see its [`torchft` experiment docs](https://github.com/pytorch/torchtitan/tree/main/torchtitan/experiments/torchft) and the [PyTorch blog post on a checkpoint-free run under synthetic failures](https://pytorch.org/blog/fault-tolerant-llama-training-with-2000-synthetic-failures-every-15-seconds-and-no-checkpoints-on-crusoe-l40s/). Two differences from the sketch above: the failure domain is a whole replica group rather than a single GPU, and healing is peer recovery through torchft's checkpoint transports rather than an RDMA copy onto a dedicated standby. Same goal (lose at most a step, keep training), different machinery. A runnable torchft example, where one replica is killed and heals from the survivor, is in [Training across datacenters](decentralized-training.md#torchft-as-of-031), the next chapter.
 
+The layout: each column is a replica group (sharded internally with FSDP2 and optionally PP/TP), and the fault-tolerant data-parallel all-reduce runs across groups, so a failure takes out one column while the others keep a full copy:
+
+![torchft layout: replica groups 0, 1, 2 side by side; fault-tolerant DDP across groups, FSDP2 plus PP/TP within each group](images/torchft-replica-groups.png)
+
+([source](https://pytorch.org/blog/fault-tolerant-llama-training-with-2000-synthetic-failures-every-15-seconds-and-no-checkpoints-on-crusoe-l40s/))
+
 Related research systems attack the same problem from other angles:
 
 - [Oobleck](https://github.com/SymbioticLab/Oobleck) (SOSP'23) keeps logically equivalent pipeline replicas and recovers by re-instantiating precomputed pipeline templates after failures, again without a full checkpoint restart.

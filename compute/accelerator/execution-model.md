@@ -511,6 +511,12 @@ Useful bandwidth halves with each doubling of stride: the memory system moves wh
 
 Shared memory has 32 banks (independent memory sub-arrays that can each serve one 4-byte word per clock), each 4 bytes wide; word address $a$ lives in bank $\lfloor a / 4 \rfloor \bmod 32$. A warp's shared memory access completes in one cycle if all 32 threads hit distinct banks (or the same word - broadcast). If $k$ threads hit different words in the same bank, it takes $k$ cycles: a $k$-way conflict.
 
+In the CUDA guide's figure, each column is one warp reading 32-bit words at a different stride: stride 1 (left) and stride 3 (right) hit 32 distinct banks, while stride 2 (middle) puts two threads on each even bank, a 2-way conflict.
+
+![strided shared-memory accesses and bank conflicts](images/smem-bank-strided-access.png)
+
+([source](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-c-programming-guide/index.html))
+
 The canonical case is a transpose through a `float tile[32][32]`: writing rows is conflict-free, reading a column has every thread hitting bank $(32 \cdot \text{row} + c) \bmod 32 = c$, a 32-way conflict. Two fixes:
 
 - **padding**: `float tile[32][33]` shifts each row by one bank. Simple, wastes 3% of the buffer, and breaks the alignment that vectorized and TMA accesses need.

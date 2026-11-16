@@ -1706,6 +1706,9 @@ print(B / 16384 / 25e9 * 1e3)  # ~14 ms device-to-host per GPU at an assumed 25 
 <li>The next checkpoint can't start until the previous upload has finished, so <code>tau</code> has to be longer than the time to write one checkpoint to storage.</li>
 <li>The write is not durable until the upload finishes. A failure during the upload means you fall back to the checkpoint before it. Keep at least 2 checkpoints (see <a href="../training/fault-tolerance-and-reproducibility.html#frequent-checkpoint-saving">Frequent checkpoint saving</a>).</li>
 </ul>
+<p>In the timeline, training blocks only for the pink box (waiting for the previous save) and the GPU-to-CPU copy; serialization to storage runs on the checkpointing thread while step 2 trains:</p>
+<p><img src="images/dcp-async-save-timeline.png" alt="DCP async save: the training thread waits on the previous checkpoint's result, copies GPU state to CPU, then continues with step 2 while a checkpointing thread serializes to storage" /></p>
+<p>(<a href="https://pytorch.org/blog/reducing-checkpointing-times/">source</a>)</p>
 <p>The difference between &quot;blocked&quot; and &quot;total&quot; is visible even on a laptop, with a single CPU process and 1.07 GB of tensors. The script also mutates the weights right after <code>async_save</code> returns, then checks that the checkpoint still holds the old values, which is the property that makes async saving safe: the snapshot is taken before control returns <strong>[ran]</strong>:</p>
 <pre><code class="language-python"># async_ckpt.py -- blocking vs async DCP save, CPU + gloo, single process
 import os, time, shutil, torch, torch.distributed as dist

@@ -2109,6 +2109,12 @@ The two phases of a request, from the Splitwise paper:
 
 Prefill is compute-bound with large, bursty steps; decode is memory-bound and latency-sensitive. Colocating them forces one scheduler to trade TTFT against ITL (chunked prefill is the colocated compromise). Disaggregation runs them on separate GPU pools: prefill workers compute the prompt's KV, ship it to a decode worker, and the decode worker generates. Each pool can then use its own parallelism (e.g. high TP for prefill to cut TTFT, wide EP / DP for decode to raise batch) and be scaled independently against its own SLO.
 
+The resulting system shape, from DistServe: a controller sends each request to a prefill instance, whose KV is then transferred to a decoding instance; each instance has its own parallel layout:
+
+![prefill and decoding instances with KV transfer](images/distserve-prefill-decode-instances.png)
+
+([source](https://arxiv.org/abs/2401.09670))
+
 ```python
 # phases.py - same request, two phases with opposite bottlenecks (8B model, H100, bounds)
 N, flops, bw = 8e9, 989e12 * 0.5, 3.35e12

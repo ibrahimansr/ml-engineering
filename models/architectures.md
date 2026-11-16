@@ -916,6 +916,12 @@ query pos 100, key pos  98: score 0.540
 
 **Step 3: the full vector.** Stack the pairs into a block-diagonal $\text{hd} \times \text{hd}$ rotation $R_m = \operatorname{diag}(R(m\theta_0), R(m\theta_1), \dots, R(m\theta_{\text{hd}/2-1}))$. Each block satisfies Step 1, so the whole thing does too: $(R_m q) \cdot (R_n k) = q^\top R_{n-m} k$.
 
+The RoFormer paper's figure of Steps 1 to 3: the top box rotates one pair $(x_1, x_2)$ by $m\theta_1$, and the bottom shows every pair of every position rotated by its own frequency. The paper numbers frequencies from $\theta_1$; this chapter's $\theta_0$ is its $\theta_1$.
+
+![RoPE rotation of query/key pairs](images/rope-rotation.png)
+
+([source](https://arxiv.org/abs/2104.09864))
+
 **Step 4: complex-number form (the paper's notation).** Treat each pair as a complex number $q_j = q_{2j} + i \cdot q_{2j+1}$. Rotating by angle $a$ is multiplication by $e^{ia}$:
 
 $$
@@ -1706,6 +1712,12 @@ lam=0.8, maps identical -> output scaled by 0.2: True
 ### What and why
 
 **Intuition.** A dense MLP applies all of its weights to every token. A **Mixture of Experts** (MoE) layer replaces it with $E$ separate MLPs (the **experts**) and a tiny linear **router** that scores each token against each expert and sends the token to only the $k$ best-scoring ones ($k$ is 1, 2 or 8, while $E$ is 8 to 256). The token's output is the router-weighted sum of those $k$ experts' outputs. Different tokens go to different experts, so the layer as a whole has $E$ experts' worth of parameters, but each token only pays for $k$ of them.
+
+The Switch Transformer figure, with $E = 4$ and $k = 1$: each of the two tokens gets its own router distribution, goes to one FFN expert, and that expert's output is scaled by the router probability $p$. (The figure draws the original post-LN "Add + Normalize"; routing is the same in pre-LN models.)
+
+![Switch Transformer MoE layer](images/switch-transformer-moe-layer.png)
+
+([source](https://arxiv.org/abs/2101.03961))
 
 ```python
 class TopKMoE(nn.Module):

@@ -1356,6 +1356,12 @@ after scale(x+2, 2): 10 20 15 20
 - **Nothing checks bounds.** `x[10]` compiles and reads whatever happens to be there ([below](#when-c-goes-wrong)).
 - `const float *a` (in kernel signatures everywhere) means "pointer to floats this function promises not to modify". `NULL` is the null pointer, address 0, used to mean "no object".
 
+Each box is one byte. `m` is a 4-byte `int` holding 3 and `p` points at its first byte, so `p+1` lands 4 bytes later, on the next `int`:
+
+![pointer arithmetic on ints](images/c-pointer-arithmetic-ints.png)
+
+([source](https://commons.wikimedia.org/wiki/File:C_language_pointer_arithmetic_ints.png))
+
 ### Structs, the heap and 2-D arrays
 
 A **struct** groups named fields into one block of memory, like a dataclass without methods. And memory comes from two places:

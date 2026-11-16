@@ -295,6 +295,12 @@ When a multi-GPU run hangs, `py-spy` shows *where* each rank's Python is parked,
 
 Start with the first; reach for the second only when you need more.
 
+How the watchdog notices a hang: the main thread records a CUDA event after each collective it schedules, the watchdog thread polls for that event, and on timeout it broadcasts the failure through the TCPStore (the rendezvous key-value store) so the monitor thread on every other rank aborts too:
+
+![PyTorch NCCL watchdog: the watchdog thread polls a CUDA end event that never records, raises a timeout, and broadcasts it via TCPStore to rank 1's monitor thread](images/nccl-watchdog-monitoring.png)
+
+([source](https://pytorch.org/blog/flight-recorder-a-new-lens-for-understanding-nccl-watchdog-timeouts/))
+
 Both come from the `nccl` backend's watchdog. Measured on PyTorch 2.14.0 (in the original source): if the process group uses the [`nccl2` implementation](../training/profiling-and-optimization.md#choosing-between-nccl-nccl2-and-nccl-lazy) instead, selected with `backend="nccl2"` or with `TORCH_DIST_USE_NCCL2=1` (which redirects plain `"nccl"` to it), none of the `TORCH_NCCL_*` and `TORCH_FR_*` variables below do anything. The same hang then reports a single `Operation timed out` line and a Python traceback pointing at the collective the rank was blocked in, rather than the one that diverged, with no desync report and no dump file. Reproduce the hang under `nccl` to diagnose it. (The 2.14 release notes describe a flight recorder that records through process-group hooks rather than only under NCCL. A stock 2.14.0 wheel does not do that for `nccl2`, which is why the advice is to switch back rather than to expect a dump.)
 
 ### The bug we will diagnose

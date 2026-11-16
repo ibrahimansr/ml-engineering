@@ -1240,6 +1240,12 @@ tr '\0' '\n' < /proc/4033/environ | grep -E "^(RANK|LOCAL_RANK|WORLD_SIZE|MASTER
 
 A **file descriptor** (fd) is a small integer that a process uses to refer to an open file, pipe, socket or device. `open()` returns one; `read(fd, ...)` uses it; `close(fd)` releases it.
 
+The fd indexes a per-process table. Each entry points to a kernel *open file* record (the access mode and current offset), which points to the file's inode. Two fds can share one record (0 and 2 here); `2>&1` makes fd 2 share fd 1's record:
+
+![file descriptor, open file and inode tables](images/fd-file-inode-tables.png)
+
+([source](https://commons.wikimedia.org/wiki/File:File_table_and_inode_table.svg))
+
 ```bash
 $ ls -l /proc/4033/fd | head
 lr-x------ 1 me me 64 ... 0 -> /dev/null

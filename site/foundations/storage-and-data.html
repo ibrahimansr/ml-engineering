@@ -220,6 +220,9 @@ $ cat /sys/block/nvme1n1/queue/nr_requests       # the kernel's per-queue reques
 </code></pre>
 <h3 id="striping-local-drives-together">Striping local drives together</h3>
 <p>GPU nodes usually ship with 4-8 data NVMe drives. One drive gives a few GB/s. <strong>RAID 0</strong> (striping) spreads consecutive chunks of every file across all drives, so a big sequential read uses all of them at once. RAID 0 has no redundancy: one dead drive loses everything. That is acceptable for scratch space, which is always reproducible from the shared tier.</p>
+<p>Consecutive chunks of the same data (A1, A2, A3, ...) alternate between drives, so a large read pulls from all of them at once:</p>
+<p><img src="images/raid0-striping.png" alt="RAID 0 striping across two disks" /></p>
+<p>(<a href="https://commons.wikimedia.org/wiki/File:RAID_0.svg">source</a>)</p>
 <pre><code class="language-bash"># untested: creates a 4-drive RAID0 and an XFS filesystem (destroys data on those drives)
 $ sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 --chunk=512K \
       /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 /dev/nvme4n1

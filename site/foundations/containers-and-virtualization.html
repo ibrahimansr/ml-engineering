@@ -115,6 +115,9 @@
 </table>
 <p>Startup and overhead figures are orders of magnitude, not benchmarks. The Firecracker numbers come from its paper and are discussed in section 8. Several names in the table are preview-only: KVM is Linux's built-in hypervisor and a VMM (virtual machine monitor) is the program that runs one VM on top of it (both section 7); the Sentry is gVisor's user-space kernel (section 9).</p>
 <p>A <strong>kernel</strong> is the privileged program that owns the hardware and that every process asks for services through system calls (see <a href="../foundations/linux-and-os.html#the-kernel-and-why-it-exists">linux-and-os.md</a>). The &quot;boundary&quot; column is a rough measure of how much code sits between an attacker and the host. The Linux kernel exposes around 450 system calls (Docker's default seccomp profile allows 426 by name; see section 2) and millions of lines of driver code. A microVM exposes the KVM interface and a handful of emulated devices.</p>
+<p>Containers are &quot;OS-level virtualization&quot; (left): processes share the host kernel. VMs are &quot;hardware virtualization&quot; (right): each guest brings its own kernel:</p>
+<p><img src="images/os-vs-hardware-virtualization.png" alt="containers vs virtual machines" /></p>
+<p>(<a href="https://commons.wikimedia.org/wiki/File:OS_vs_Hardware_virtualization.png">source</a>)</p>
 <h3 id="what-containers-share-the-kernel-looks-like">What &quot;containers share the kernel&quot; looks like</h3>
 <p>A container is a normal Linux process that the kernel shows a restricted view of the world. You can see this directly (ran). First, look from inside a default container:</p>
 <pre><code class="language-console">$ docker run --rm alpine:3.20 sh -c 'echo &quot;my pid: $$&quot;; ps; hostname; uname -r; ls -l /proc/self/ns'
@@ -483,6 +486,9 @@ mkdir: can't create directory '/nope': Operation not permitted
 <p>Real profiles are allowlists (<code>&quot;defaultAction&quot;: &quot;SCMP_ACT_ERRNO&quot;</code>). The denylist above only shows the mechanism. A denylist misses every syscall you didn't think of, including ones added in the next kernel release (<code>clone3</code>, <code>io_uring_setup</code>, ...). Docker's profile blocks <code>io_uring_*</code> in recent versions; io_uring (Linux's newer asynchronous I/O interface, where a process submits batches of I/O through shared-memory rings) has been a rich source of kernel bugs. To build a tight profile for a specific workload, trace it first: <code>strace -f -c -o counts.txt python train.py</code> lists every syscall it makes.</p>
 <h3 id="overlayfs-layered-copy-on-write-filesystems">overlayfs: layered, copy-on-write filesystems</h3>
 <p>An image is a stack of read-only directory trees. A container needs a writable <code>/</code> on top of that stack without copying gigabytes for each container. <strong>overlayfs</strong> is the kernel filesystem that merges several read-only &quot;lower&quot; directories and one writable &quot;upper&quot; directory into a single view (ran):</p>
+<p>Docker's names are on the left and overlayfs's on the right. <code>file 2</code> exists in both layers, and the container-layer copy is the one the merged view shows:</p>
+<p><img src="images/overlayfs-docker-layers.png" alt="overlayfs lowerdir, upperdir and merged view" /></p>
+<p>(<a href="https://docs.docker.com/engine/storage/drivers/overlayfs-driver/">source</a>)</p>
 <pre><code class="language-console">$ docker run --rm --privileged ubuntu:24.04 bash -c '
 mount -t tmpfs tmpfs /mnt &amp;&amp; cd /mnt &amp;&amp; mkdir l1 l2 up wk merged
 echo &quot;from base layer&quot; &gt; l1/a.txt; echo &quot;base&quot; &gt; l1/b.txt

@@ -896,6 +896,12 @@ The best-known hands-on GEMM worklog is Simon Boehm, ["How to Optimize a CUDA Ma
 
 The kernels below follow his steps 1 to 6 with the same tile parameters (written for this chapter, not copied; row-major `C = A @ B`, no `alpha`/`beta`). For the theory of each level, see the [tiling hierarchy](execution-model.md#gemm-tiling-hierarchy) and [coalescing](execution-model.md#coalescing).
 
+Kernel 3's shared-memory tiling in the CUDA guide's picture: each block computes one `BLOCK_SIZE` x `BLOCK_SIZE` tile $C_{sub}$ of C (here `TILE`), stepping a row strip of A and a column strip of B through shared memory one tile at a time.
+
+![shared-memory tiled matmul](images/cuda-smem-matmul-tiling.png)
+
+([source](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-c-programming-guide/index.html))
+
 ```cuda
 // sgemm.cu - C = A @ B, fp32, row-major A (M, K), B (K, N), C (M, N); the steps of the
 // SGEMM worklog. Kernels 1-3 handle any shape; 4-6 require M % BM == N % BN == K % BK == 0.
@@ -1405,6 +1411,12 @@ In CUDA you write the program for **one thread** and reason about warps by hand.
 | `tl.sum / max(x, axis)` | reduction along an axis of the tile | everything in [Reductions](#reductions) |
 | `tl.dot(a, b, acc)` | tile matmul on tensor cores, fp32 accumulate | WMMA / `mma` / `wgmma` |
 | `num_warps`, `num_stages` | threads per program (`32 * num_warps`), software-pipeline depth | `blockDim`, multi-buffering |
+
+NVIDIA's picture of the same split (Triton is a tile model):
+
+![SIMT vs tile programming model](images/simt-vs-tile-model.jpg)
+
+([source](https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html))
 
 A 2-D tile is built by broadcasting a column of row indices against a row of column indices. This is the pattern in every matmul and attention kernel below. The simulator shows the offsets and the mask for the last row-block of a 5x6 matrix with 4x8 tiles:
 
