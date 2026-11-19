@@ -24,7 +24,7 @@ Most network problems in ML training don't need a network engineer. They come in
 
 The chapter follows that order: reproducibility first (a measurement you can't repeat tells you nothing), then getting connectivity right, then the benchmarks, then the performance knobs, and last the debugging tools for counting and logging what NCCL does.
 
-How to use the code: blocks marked **[torch]** run on a laptop CPU with `pip install torch numpy` and the gloo backend, like in [Measuring collectives on a laptop with gloo](collectives-internals.md#measuring-collectives-on-a-laptop-with-gloo). Pure Python and shell blocks need nothing else. Blocks marked **[GPU, untested]** need NVIDIA GPUs and NCCL and were not run while writing this chapter. The GPU tables and plots in this chapter are measurements made with the repository's own [torch-dist-bench.py](benchmarks/torch-dist-bench.py) on the machines named next to each one, quoted as measured. The laptop outputs come from one Apple M4 with PyTorch 2.15.0 and Python 3.14 - one run each, an anecdote, not a benchmark.
+How to use the code: blocks marked **[torch]** run on a laptop CPU with `pip install torch numpy` and the gloo backend, like in [Measuring collectives on a laptop with gloo](collectives-internals-reference.md#measuring-collectives-on-a-laptop-with-gloo). Pure Python and shell blocks need nothing else. Blocks marked **[GPU, untested]** need NVIDIA GPUs and NCCL and were not run while writing this chapter. The GPU tables and plots in this chapter are measurements made with the repository's own [torch-dist-bench.py](benchmarks/torch-dist-bench.py) on the machines named next to each one, quoted as measured. The laptop outputs come from one Apple M4 with PyTorch 2.15.0 and Python 3.14 - one run each, an anecdote, not a benchmark.
 
 ## Glossary
 
@@ -532,9 +532,9 @@ Here is the same benchmark on a single 8x H200 node (`torch=2.14.0+cu130`, `cuda
 
 ![all-reduce-bench-plot 8x H200](benchmarks/images/all-reduce-bench-plot-8xh200.png)
 
-The linear y-axis compresses everything below ~100GBps into the bottom of the plot, so the small-payload end - the part that matters for gradient bucketing - is easier to read off the `default` column of the table in [How the bandwidth is measured](#how-the-bandwidth-is-measured), measured on the same node. That sweep tops out at 482.35GBps, which is *above* the 450GBps unidirectional [NVLink](interconnects.md#nvlink) 4 spec rather than below it. The reason is NVLink SHARP (NVLS): the NVSwitch does part of the reduction itself, so less data crosses each GPU's link than the `busbw` formula assumes ([NVLS (NVLink SHARP)](collectives-internals.md#nvls-nvlink-sharp)); [SHARP](interconnects.md#sharp) in Interconnects shows when it engages and what the same node measures with it disabled.
+The linear y-axis compresses everything below ~100GBps into the bottom of the plot, so the small-payload end - the part that matters for gradient bucketing - is easier to read off the `default` column of the table in [How the bandwidth is measured](#how-the-bandwidth-is-measured), measured on the same node. That sweep tops out at 482.35GBps, which is *above* the 450GBps unidirectional [NVLink](interconnects.md#nvlink) 4 spec rather than below it. The reason is NVLink SHARP (NVLS): the NVSwitch does part of the reduction itself, so less data crosses each GPU's link than the `busbw` formula assumes ([NVLS (NVLink SHARP)](collectives-internals.md#nvls-nvlink-sharp)); [SHARP](interconnects-reference.md#sharp) in Interconnects shows when it engages and what the same node measures with it disabled.
 
-[Inter-node speed depends on intra-node speed](interconnects.md#inter-node-speed-depends-on-intra-node-speed) explains why a 4-node benchmark (32 ranks) tops out at 376.17GBps when a single node (8 ranks) of the same B200s reaches 839.00GBps, and what that number means for each NIC.
+[Inter-node speed depends on intra-node speed](interconnects-reference.md#inter-node-speed-depends-on-intra-node-speed) explains why a 4-node benchmark (32 ranks) tops out at 376.17GBps when a single node (8 ranks) of the same B200s reaches 839.00GBps, and what that number means for each NIC.
 
 This chart gives a good sense of the all-reduce scores to expect on a well-tuned network (left is intra-node, right is inter-node):
 
@@ -610,7 +610,7 @@ Next to the bandwidth, the benchmark reports how long a single call takes - the 
 
 This adds up fast in inference. A model served with tensor parallelism over 8 accelerators does 2 all-reduces per layer for every generated token, and with a hidden size of 8192 in bf16 a batch of up to 32 tokens makes each one a 16-512KiB all-reduce, right in that flat range - so an 80-layer model waits $160 \times 15\ \mu\text{s} = 2.4\ \text{ms}$ per token on all-reduces alone, however fast its links (part 3 of `read_table.py` above). Training has small all-reduces too, to sync flags, scalars or loss values across ranks, and MoE pays the same toll on the [all-to-all](#other-collectives) of its token routing.
 
-And all-reduce is the best case: NCCL gives only all-reduce its tree algorithm, and NVLS can reduce it inside the switch, so other collectives can take longer at the same payload (see [Which collective to measure latency with](interconnects.md#which-collective-to-measure-latency-with)) - time them with `--collectives`.
+And all-reduce is the best case: NCCL gives only all-reduce its tree algorithm, and NVLS can reduce it inside the switch, so other collectives can take longer at the same payload (see [Which collective to measure latency with](interconnects-reference.md#which-collective-to-measure-latency-with)) - time them with `--collectives`.
 
 ![all-reduce-bench latency 8x H200](benchmarks/images/all-reduce-bench-latency-8xh200.png)
 
@@ -840,13 +840,13 @@ Other benchmarks that measure the latency of collectives, with the payload range
 - [Intel MPI Benchmarks](https://github.com/intel/mpi-benchmarks) - `IMB-MPI1 Allreduce` and the other collectives report `t_min`, `t_max` and `t_avg` per call, 0B to 4MiB by default.
 - [PARAM](https://github.com/facebookresearch/param) - Meta's benchmarks, whose `train/comms/pt/comms.py` times collectives through `torch.distributed` like torch-dist-bench does and reports p50, p75 and p95 latency, 8B to 64B by default.
 - [UCC perftest](https://github.com/openucx/ucc) - `ucc_perftest` times collectives through UCC, which can run over NCCL, and reports the average, min and max latency; one 128-element payload by default.
-- [MSCCL++](https://github.com/microsoft/mscclpp) - its `python/mscclpp_benchmark/allreduce_bench.py` times MSCCL++'s all-reduce kernels against NCCL's from 4KiB to 1GiB. See [Other collective libraries](interconnects.md#other-collective-libraries).
-- [DeepEP](https://github.com/deepseek-ai/DeepEP) - DeepSeek's MoE expert-parallel all-to-all library, whose tests time its dispatch and combine kernels at realistic token counts rather than sweeping payload sizes. See [Other collective libraries](interconnects.md#other-collective-libraries).
+- [MSCCL++](https://github.com/microsoft/mscclpp) - its `python/mscclpp_benchmark/allreduce_bench.py` times MSCCL++'s all-reduce kernels against NCCL's from 4KiB to 1GiB. See [Other collective libraries](interconnects-reference.md#other-collective-libraries).
+- [DeepEP](https://github.com/deepseek-ai/DeepEP) - DeepSeek's MoE expert-parallel all-to-all library, whose tests time its dispatch and combine kernels at realistic token counts rather than sweeping payload sizes. See [Other collective libraries](interconnects-reference.md#other-collective-libraries).
 - The [EAI cookbook](https://github.com/EleutherAI/cookbook) has a set of [communication benchmarks](https://github.com/EleutherAI/cookbook/tree/main/benchmarks/communication), one per collective, for quickly measuring inter-node or intra-node throughput.
 
 #### Symmetric memory
 
-Symmetric memory can speed up NCCL comms significantly at small payloads: every rank registers its buffer at the same offset of a collective window, so a kernel can address any peer's buffer directly, without a per-call handshake ([Buffer registration and symmetric memory](collectives-internals.md#buffer-registration-and-symmetric-memory) explains the mechanism; [Symmetric memory](interconnects.md#symmetric-memory) in Interconnects has more measurements).
+Symmetric memory can speed up NCCL comms significantly at small payloads: every rank registers its buffer at the same offset of a collective window, so a kernel can address any peer's buffer directly, without a per-call handshake ([Buffer registration and symmetric memory](collectives-internals.md#buffer-registration-and-symmetric-memory) explains the mechanism; [Symmetric memory](interconnects-reference.md#symmetric-memory) in Interconnects has more measurements).
 
 To run the collectives on buffers registered as an NCCL symmetric memory window, add `--sym-mem` (similar to `nccl-tests -R 2`), which lets NCCL>=2.27 use its symmetric kernels for the collectives that have them. The version history matters here:
 
@@ -995,7 +995,7 @@ How it works: `NCCL_PIP` is the directory of the pip-installed NCCL; the two `ln
 ./build/all_reduce_perf -b 32k -e 16G -f 2 -g 8
 ```
 
-[The same measurement on GPUs](collectives-internals.md#the-same-measurement-on-gpus-nccl-tests-and-torch-dist-bench) shows how to read its output against the cost model.
+[The same measurement on GPUs](collectives-internals-reference.md#the-same-measurement-on-gpus-nccl-tests-and-torch-dist-bench) shows how to read its output against the cost model.
 
 ### nvbandwidth
 
@@ -1103,7 +1103,7 @@ srun --cpus-per-task=$SLURM_CPUS_PER_TASK --gres=gpu:8 --nodes=4 --tasks-per-nod
 
 ### What numbers to expect, and what you need
 
-You may get results anywhere between 5Gbps and 6700Gbps (as of 2026-10), and the payload size matters as much as the hardware: `busbw` climbs by orders of magnitude from a small payload to a large one on the very same setup. In the measured tables under [Inter-node speed depends on intra-node speed](interconnects.md#inter-node-speed-depends-on-intra-node-speed), at a 16GiB payload a single B200 node reaches 838.97GBps and four nodes 376.60GBps - about 6700Gbps and 3000Gbps (part 2 of `read_table.py` above) - while at 32KiB those same runs report 2.17GBps and 0.64GBps. So always compare like payload with like.
+You may get results anywhere between 5Gbps and 6700Gbps (as of 2026-10), and the payload size matters as much as the hardware: `busbw` climbs by orders of magnitude from a small payload to a large one on the very same setup. In the measured tables under [Inter-node speed depends on intra-node speed](interconnects-reference.md#inter-node-speed-depends-on-intra-node-speed), at a 16GiB payload a single B200 node reaches 838.97GBps and four nodes 376.60GBps - about 6700Gbps and 3000Gbps (part 2 of `read_table.py` above) - while at 32KiB those same runs report 2.17GBps and 0.64GBps. So always compare like payload with like.
 
 The minimum speed that avoids being network-bound depends on your training framework, but typically you'd want at least 400Gbps. (BLOOM was trained on 50Gbps, though.)
 
@@ -1150,7 +1150,7 @@ It's often not easy to benchmark hundreds of nodes, so interconnect performance 
 
 > Extrapolating at scale is not that hard for ring and tree (we have a function in `tuning.cc` predicting it, based on the ring linear latency and the tree log latency with reduced BW). Now as you scale, there are many factors which may cause your real performance to be very far off the prediction, like routing. Also note on an IB network you'll be able to use SHARP; that way your latency stays mostly constant as you scale, your bandwidth doesn't degrade much either, and you're always better than both ring and tree.
 
-In practice: fit $\alpha$ and $\beta$ on the nodes you have ([Fitting alpha and beta to the curve](collectives-internals.md#fitting-alpha-and-beta-to-the-curve)), use the models to extrapolate, and treat the result as an upper bound on performance - routing and congestion ([Flow collisions and ECMP](collectives-internals.md#flow-collisions-and-ecmp)) only make it worse.
+In practice: fit $\alpha$ and $\beta$ on the nodes you have ([Fitting alpha and beta to the curve](collectives-internals-reference.md#fitting-alpha-and-beta-to-the-curve)), use the models to extrapolate, and treat the result as an upper bound on performance - routing and congestion ([Flow collisions and ECMP](collectives-internals-reference.md#flow-collisions-and-ecmp)) only make it worse.
 
 ## Performance-Oriented NCCL Environment Variables
 
@@ -1177,7 +1177,7 @@ Asked which algorithm is better, the answer was:
 
 > Roughly speaking, ring is superior in terms of peak bandwidth (except on 2 nodes), tree is superior in terms of base latency (especially as we scale). `Bandwidth = Size / Time`, so whether you look at the time or the bandwidth for a given size, it will be a combination of both the peak bandwidth and the base latency. For a fixed size, as you scale, the base latency of ring will become prevalent and tree will be better.
 
-There is also an algorithm named `NVLS`, which uses NVLink SHARP to do the reduction inside the switch, and can therefore report more than the wire spec - with NVLink 4.0 (450GBps) an `all-reduce` benchmark clocks 480GBps. `NVLSTree` (NCCL 2.18+) is the inter-node counterpart and [requires IB or RoCE](https://github.com/NVIDIA/nccl/issues/1031#issuecomment-1773965518). [SHARP](interconnects.md#sharp) in Interconnects covers when it engages, what it's worth, and why `busbw` stops describing the wire once it does.
+There is also an algorithm named `NVLS`, which uses NVLink SHARP to do the reduction inside the switch, and can therefore report more than the wire spec - with NVLink 4.0 (450GBps) an `all-reduce` benchmark clocks 480GBps. `NVLSTree` (NCCL 2.18+) is the inter-node counterpart and [requires IB or RoCE](https://github.com/NVIDIA/nccl/issues/1031#issuecomment-1773965518). [SHARP](interconnects-reference.md#sharp) in Interconnects covers when it engages, what it's worth, and why `busbw` stops describing the wire once it does.
 
 To find out which algorithm is used, `NCCL_DEBUG=INFO` combined with `NCCL_DEBUG_SUBSYS=INIT,TUNING` reports the selection per payload size **[GPU, untested]**:
 
@@ -1215,7 +1215,7 @@ Values:
 
 This matters on a multi-layer InfiniBand or RoCEv2 network.
 
-`NCCL_IB_QPS_PER_CONNECTION` sets the number of IB queue pairs (a queue pair is the send/receive endpoint of an RDMA connection, see [HPC networking](../foundations/networking.md#hpc-networking-rdma-infiniband-roce-efa)) used for each connection between two ranks. It helps on multi-level fabrics, which need several queue pairs for good routing entropy: each queue pair is a separate flow, so more of them give the switches' ECMP hashing more distinct flows to spread over the uplinks ([Flow collisions and ECMP](collectives-internals.md#flow-collisions-and-ecmp) simulates exactly this). In other words, it matters when your jobs cross spine or super-spine switches.
+`NCCL_IB_QPS_PER_CONNECTION` sets the number of IB queue pairs (a queue pair is the send/receive endpoint of an RDMA connection, see [HPC networking](../foundations/networking.md#hpc-networking-rdma-infiniband-roce-efa)) used for each connection between two ranks. It helps on multi-level fabrics, which need several queue pairs for good routing entropy: each queue pair is a separate flow, so more of them give the switches' ECMP hashing more distinct flows to spread over the uplinks ([Flow collisions and ECMP](collectives-internals-reference.md#flow-collisions-and-ecmp) simulates exactly this). In other words, it matters when your jobs cross spine or super-spine switches.
 
 The default is `1`, but a higher number may improve throughput. The right value depends on the size of the network: you could start with 4 for any cluster over 64 GPUs, i.e. any cluster bigger than the radix (number of ports) of its IB switch - the IB NDR switch radix is 64. Ideally ask your cloud provider whether they have already researched the best value; if they haven't, you can do it yourself, although it may be use-case specific. The other gotcha: a value above `1` consumes additional GPU memory.
 
@@ -1253,7 +1253,7 @@ To find the best value, benchmark against a workload that emulates the intended 
 
 ### InfiniBand adaptive routing
 
-Make sure your cloud provider enables IB adaptive routing, which can greatly improve performance: the switch picks an output port per packet based on congestion, rather than hashing each flow onto a fixed path ([InfiniBand](collectives-internals.md#infiniband), [Flow collisions and ECMP](collectives-internals.md#flow-collisions-and-ecmp)). For the nuances see [Adaptive Routing in InfiniBand Hardware](https://web-backend.simula.no/sites/default/files/publications/files/adaptive_routing_in_infiniband_hardware.pdf).
+Make sure your cloud provider enables IB adaptive routing, which can greatly improve performance: the switch picks an output port per packet based on congestion, rather than hashing each flow onto a fixed path ([InfiniBand](collectives-internals-reference.md#infiniband), [Flow collisions and ECMP](collectives-internals-reference.md#flow-collisions-and-ecmp)). For the nuances see [Adaptive Routing in InfiniBand Hardware](https://web-backend.simula.no/sites/default/files/publications/files/adaptive_routing_in_infiniband_hardware.pdf).
 
 To see whether it's on, ask the provider; on a fabric you administer, the subnet manager's configuration says so. A quick indirect check **[GPU cluster, untested]**: run the same multi-node all-to-all twice, once on a node set that shares leaf switches and once on one that spreads across the spine. With adaptive routing the two `busbw` numbers are close; with static hashing the spread-out run is noticeably and variably slower, because some uplinks get two flows and others none.
 

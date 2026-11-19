@@ -13,7 +13,7 @@ Conventions, as in the rest of the book: blocks marked **[ran]** were executed w
 This appendix assumes you have read the whole book; every term in it is taught in an earlier chapter, and each entry links back to where. The ones used most:
 
 - [Accelerators](../compute/accelerators.md): [TFLOPS](../compute/accelerators.md#tflops), [MAMF and MSMF](../compute/accelerators.md#mamf-and-msmf) (the measured matmul ceilings).
-- [Interconnects](../network/interconnects.md): [unidirectional vs duplex bandwidth](../network/interconnects.md#unidirectional-vs-bidirectional-duplex), [SHARP](../network/interconnects.md#sharp), [intra-node](../network/interconnects.md#intra-node-networking) and [inter-node](../network/interconnects.md#inter-node-networking) networking.
+- [Interconnects](../network/interconnects.md): [unidirectional vs duplex bandwidth](../network/interconnects.md#unidirectional-vs-bidirectional-duplex), [SHARP](../network/interconnects-reference.md#sharp), [intra-node](../network/interconnects.md#intra-node-networking) and [inter-node](../network/interconnects.md#inter-node-networking) networking.
 - [Measuring and debugging networks](../network/measuring-and-debugging.md): [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench).
 - [Storage and data](../foundations/storage-and-data.md), [Slurm from zero](../orchestration/slurm/from-zero.md), [Profiling and optimization](../training/profiling-and-optimization.md), [Training stability](../training/stability.md), [Fault tolerance and reproducibility](../training/fault-tolerance-and-reproducibility.md), [Getting compute](../platform/getting-compute.md).
 - [Linux and the OS](../foundations/linux-and-os.md): [gdb basics](../foundations/linux-and-os.md#gdb-basics), [py-spy](../foundations/linux-and-os.md#py-spy-what-is-python-doing-right-now), [shared libraries and LD_LIBRARY_PATH](../foundations/linux-and-os.md#shared-libraries-and-ld_library_path).
@@ -58,7 +58,7 @@ Three scripts in this repository you will run again and again. Each is explained
 |---|---|---|
 | [torch-dist-bench.py](../network/benchmarks/torch-dist-bench.py) | What network bandwidth do collectives actually get? An easier alternative to nccl-tests (it used to be called `all_reduce_bench.py`). | [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench), [Running the benchmark across nodes](../network/measuring-and-debugging.md#running-the-benchmark-across-nodes) |
 | [torch-distributed-gpu-test.py](../debug/torch-distributed-gpu-test.py) | Can all my GPUs, within a node and across nodes, talk to each other at all? | [Use a small test script, not your application](../network/measuring-and-debugging.md#use-a-small-test-script-not-your-application) |
-| [mamf-finder.py](../compute/accelerator/benchmarks/mamf-finder.py) | What TFLOPS can a matmul really reach on this accelerator and software stack? | [The MAMF finder: `mamf-finder.py`](../compute/accelerators.md#the-mamf-finder-mamf-finderpy) |
+| [mamf-finder.py](../compute/accelerator/benchmarks/mamf-finder.py) | What TFLOPS can a matmul really reach on this accelerator and software stack? | [The MAMF finder: `mamf-finder.py`](../compute/accelerators-reference.md#the-mamf-finder-mamf-finderpy) |
 
 **[GPU, untested]** (run from the repository root):
 
@@ -304,7 +304,7 @@ Covered in: [Omni-Path](../network/interconnects.md#omni-path), and the bytes ea
 - You need more than about 4 GPUs in the collective (the exact switch-over depends on the hardware), and `NCCL_NVLS_ENABLE` must not be set to `0`.
 - SHARP applies only to `all-reduce`. A full-node `all-gather` or `reduce-scatter` runs the ring path and lands at the ordinary ~80% of the unidirectional spec.
 
-Covered in: [SHARP](../network/interconnects.md#sharp).
+Covered in: [SHARP](../network/interconnects-reference.md#sharp).
 
 **2.4. On a shared inter-node network, performance tuning is nearly impossible: you can't tell whether your change or your neighbours changed the number.**
 
@@ -313,7 +313,7 @@ Covered in: [SHARP](../network/interconnects.md#sharp).
 - The fix: just before the BLOOM-176B launch the team got an exclusive, isolated Slurm partition on the then-new A100s, and tuning finally became tractable.
 - For serious pre-training performance work, insist on a dedicated, isolated network partition for the benchmarking phase.
 
-Covered in: [Shared internode network](../network/interconnects.md#shared-internode-network), [Crucial reproducibility requirements](../network/measuring-and-debugging.md#crucial-reproducibility-requirements).
+Covered in: [Shared internode network](../network/interconnects-reference.md#shared-internode-network), [Crucial reproducibility requirements](../network/measuring-and-debugging.md#crucial-reproducibility-requirements).
 
 ### 3. Compute, accelerators and memory
 

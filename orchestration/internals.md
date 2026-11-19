@@ -1871,7 +1871,7 @@ The spares cost 2/66 = 3% of the allocation, which buys a restart that doesn't g
 
 ### Health checks before the job starts (DCGM diag levels)
 
-DCGM (NVIDIA Data Center GPU Manager) is NVIDIA's daemon and tool set for GPU health and telemetry, and `dcgmi` is its CLI. `dcgmi diag -r N` runs increasingly long test suites. The [NVIDIA debug chapter](../compute/gpu-software-stack.md#running-diagnostics-with-dcgmi-diag) has the commands and sample output. Durations vary by GPU and DCGM version. These are rough figures:
+DCGM (NVIDIA Data Center GPU Manager) is NVIDIA's daemon and tool set for GPU health and telemetry, and `dcgmi` is its CLI. `dcgmi diag -r N` runs increasingly long test suites. The [NVIDIA debug chapter](../compute/gpu-software-stack-reference.md#running-diagnostics-with-dcgmi-diag) has the commands and sample output. Durations vary by GPU and DCGM version. These are rough figures:
 
 | Level | Runtime (approx.) | Covers | Where to run it |
 |---|---|---|---|
@@ -1941,7 +1941,7 @@ health signal (prolog fail / epilog fail / NHC / Xid / DCGM health watch / NCCL 
 Some design points:
 
 - **Drain, don't down.** A drained node lets running jobs finish. The node is just no longer scheduled.
-- **The reason string is data.** Encode the failure class and a timestamp so you can count recurrences per GPU serial (see [detecting the same broken node](../compute/gpu-software-stack.md#detecting-that-you-got-the-same-broken-node-again)). Undraining automatically after a reboot without a diag pass brings flaky nodes back into the pool. [undrain-good-nodes.sh](slurm/undrain-good-nodes.sh) is the narrow, safe version of this.
+- **The reason string is data.** Encode the failure class and a timestamp so you can count recurrences per GPU serial (see [detecting the same broken node](../compute/gpu-software-stack-reference.md#detecting-that-you-got-the-same-broken-node-again)). Undraining automatically after a reboot without a diag pass brings flaky nodes back into the pool. [undrain-good-nodes.sh](slurm/undrain-good-nodes.sh) is the narrow, safe version of this.
 - **Attributing an NCCL timeout is hard.** Every rank times out, and only one node is at fault. The NCCL flight recorder (`TORCH_NCCL_TRACE_BUFFER_SIZE`, with dumps on timeout) shows which rank never entered the collective. Llama 3 used it extensively. Automate the analysis that picks the suspect, or you'll drain the wrong node or all of them.
 - **Rate-limit draining.** A bug in a health check or a shared-storage hiccup can drain 30% of the cluster in a minute. Cap automatic drains per time window and page a human above that cap.
 
@@ -1994,7 +1994,7 @@ Training is scheduled as one huge long-lived gang. Inference is many replicas, e
 
 ### Autoscale on queue depth and KV-cache use, not CPU
 
-An **autoscaler** changes the number of replicas in response to a metric. An LLM server's CPU is mostly idle. GPU "utilization" from NVML (NVIDIA's management library) is the fraction of time any kernel (a function launched on the GPU) ran, which reads close to 100% at batch size 1 and at batch size 256 alike, so it says nothing about headroom (see [real GPU utilization](../compute/gpu-software-stack.md#real-gpu-utilization-dcgm-exporter)). The signals that do track saturation in a continuous-batching server (one that adds and removes requests from the running batch at every decoding step):
+An **autoscaler** changes the number of replicas in response to a metric. An LLM server's CPU is mostly idle. GPU "utilization" from NVML (NVIDIA's management library) is the fraction of time any kernel (a function launched on the GPU) ran, which reads close to 100% at batch size 1 and at batch size 256 alike, so it says nothing about headroom (see [real GPU utilization](../compute/gpu-software-stack-reference.md#real-gpu-utilization-dcgm-exporter)). The signals that do track saturation in a continuous-batching server (one that adds and removes requests from the running batch at every decoding step):
 
 | Signal | vLLM metric name (changes across versions; check `/metrics`) | Meaning |
 |---|---|---|
@@ -2183,7 +2183,7 @@ The [dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter) field list is confi
 | Field | Why |
 |---|---|
 | `DCGM_FI_PROF_SM_ACTIVE`, `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` | Real compute use, unlike `DCGM_FI_DEV_GPU_UTIL`. A per-rank drop shows a straggler or a rank stuck in a collective |
-| `DCGM_FI_DEV_XID_ERRORS` | The most recent Xid; any change should page or drain (see [Xid errors](../compute/gpu-software-stack.md#xid-errors-reading-finding-and-looking-them-up)) |
+| `DCGM_FI_DEV_XID_ERRORS` | The most recent Xid; any change should page or drain (see [Xid errors](../compute/gpu-software-stack-reference.md#xid-errors-reading-finding-and-looking-them-up)) |
 | `DCGM_FI_DEV_ECC_DBE_VOL_TOTAL` (ECC double-bit errors: memory errors that error-correcting codes detect but can't fix), `DCGM_FI_DEV_ROW_REMAP_PENDING`, `DCGM_FI_DEV_ROW_REMAP_FAILURE` | Memory health: drain on pending remaps, RMA on a remap failure |
 | `DCGM_FI_DEV_CLOCK_THROTTLE_REASONS` (`DCGM_FI_DEV_CLOCKS_EVENT_REASONS` in newer DCGM) | Thermal or power throttling: the most common cause of a "working but slow" GPU |
 | `DCGM_FI_DEV_SM_CLOCK`, `DCGM_FI_DEV_POWER_USAGE`, `DCGM_FI_DEV_GPU_TEMP`, `DCGM_FI_DEV_MEMORY_TEMP` | Context for throttling; the Llama 3 paper reports a 1-2% diurnal throughput swing from temperature affecting DVFS (dynamic voltage and frequency scaling, where the GPU lowers its clock when hot or power-limited) |
@@ -2387,4 +2387,4 @@ When a straggler is confirmed, it's a drain-and-requeue event just like a crash:
 - PyTorch: [torchrun / elastic](https://pytorch.org/docs/stable/elastic/run.html), [rendezvous](https://pytorch.org/docs/stable/elastic/rendezvous.html), [Distributed Checkpoint async_save](https://pytorch.org/docs/stable/distributed.checkpoint.html), [flight recorder](https://pytorch.org/tutorials/prototype/flight_recorder_tutorial.html)
 - Inference: [Gateway API Inference Extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension), [llm-d](https://github.com/llm-d/llm-d), [KEDA](https://keda.sh/)
 - Gemini: "Fast Failure Recovery in Distributed Training with In-Memory Checkpoints", SOSP 2023
-- In this book: [SLURM for users](slurm/from-zero.md#day-to-day-user-recipes), [SLURM administration](slurm/from-zero.md#a-small-cluster-admin-intro), [launchers](slurm/from-zero.md#ready-made-launcher-scripts), [Kubernetes gotchas](kubernetes-from-zero.md#training-on-kubernetes-gotchas), [Slurm from zero](slurm/from-zero.md), [Kubernetes from zero](kubernetes-from-zero.md), [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md), [NVIDIA GPU troubleshooting](../compute/gpu-software-stack.md#11-troubleshooting-gpus-errors-diagnostics-and-health-checks), [hanging and deadlocks](../development/debugging-distributed.md), [Inference](../inference/arithmetic.md), [Networking](../network/interconnects.md), [Distributed systems](../foundations/distributed-systems.md)
+- In this book: [SLURM for users](slurm/from-zero.md#day-to-day-user-recipes), [SLURM administration](slurm/from-zero.md#a-small-cluster-admin-intro), [launchers](slurm/from-zero.md#ready-made-launcher-scripts), [Kubernetes gotchas](kubernetes-from-zero.md#training-on-kubernetes-gotchas), [Slurm from zero](slurm/from-zero.md), [Kubernetes from zero](kubernetes-from-zero.md), [Fault Tolerance](../training/fault-tolerance-and-reproducibility.md), [NVIDIA GPU troubleshooting](../compute/gpu-software-stack-reference.md#troubleshooting-gpus-errors-diagnostics-and-health-checks), [hanging and deadlocks](../development/debugging-distributed.md), [Inference](../inference/arithmetic.md), [Networking](../network/interconnects.md), [Distributed systems](../foundations/distributed-systems.md)

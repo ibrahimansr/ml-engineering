@@ -897,7 +897,7 @@ The size at which you get half the peak bandwidth is $\text{latency} \times \tex
 
 - many small copies are catastrophically slower than one big copy,
 - collective communication libraries bucket small gradients into large messages,
-- [network benchmarks](../network/interconnects.md#real-network-throughput) report bandwidth as a function of message size and small messages never reach the headline number.
+- [network benchmarks](../network/interconnects-reference.md#real-network-throughput) report bandwidth as a function of message size and small messages never reach the headline number.
 
 **Little's law** ties the two together. To sustain bandwidth $B$ over a path with latency $L$, you need $B \cdot L$ bytes **in flight** at all times (DDR5 below is the current generation of DRAM, detailed in [NUMA](#numa)):
 
@@ -2032,9 +2032,9 @@ How to read it: mapping a 512 MiB file costs nothing, and reading one byte from 
 
 With this chapter behind you, these parts of the book should be accessible:
 
-- [Compute: Accelerators](../compute/accelerators.md) - TFLOPS tables (you now know why bf16 is 2x fp32 and why to ignore sparse numbers), [HBM](../compute/accelerators.md#accelerator-memory-size-and-speed), [caches](../compute/accelerators.md#caches), [clock speed](../compute/accelerators.md#clock-speed), [achievable vs theoretical FLOPS](../compute/accelerators.md#maximum-achievable-and-sustainable-flops).
+- [Compute: Accelerators](../compute/accelerators.md) - TFLOPS tables (you now know why bf16 is 2x fp32 and why to ignore sparse numbers), [HBM](../compute/accelerators.md#accelerator-memory-size-and-speed), [caches](../compute/accelerators-reference.md#caches), [clock speed](../compute/accelerators-reference.md#clock-speed), [achievable vs theoretical FLOPS](../compute/accelerators.md#maximum-achievable-and-sustainable-flops).
 - [GPU Execution Model and Kernels](../compute/accelerator/execution-model.md) - the next level of detail on SMs, warps, memory coalescing, occupancy and launch overhead.
-- [Network](../network/interconnects.md) - [PCIe](../network/interconnects.md#pcie), [NVLink](../network/interconnects.md#nvlink), [intra-node](../network/interconnects.md#intra-node-networking) and [inter-node](../network/interconnects.md#inter-node-networking) networking, [real vs advertised throughput](../network/interconnects.md#real-network-throughput), [latency](../network/interconnects.md#latency).
+- [Network](../network/interconnects.md) - [PCIe](../network/interconnects.md#pcie), [NVLink](../network/interconnects.md#nvlink), [intra-node](../network/interconnects.md#intra-node-networking) and [inter-node](../network/interconnects.md#inter-node-networking) networking, [real vs advertised throughput](../network/interconnects-reference.md#real-network-throughput), [latency](../network/interconnects-reference.md#latency).
 - [Storage](storage-and-data.md) - queue depth, direct vs buffered I/O, sequential vs random, `fio` benchmarks.
 - [Training performance](../training/profiling-and-optimization.md) - [FLOPs and MFU](../training/profiling-and-optimization.md#macs-vs-flop-vs-flops-vs-flops), [NUMA affinity](../training/profiling-and-optimization.md#numa-affinity), [pinned memory](../training/profiling-and-optimization.md#pinned-memory-and-non-blocking-device-copy), [vector and matrix size divisibility](../training/profiling-and-optimization.md#vector-and-matrix-size-divisibility).
 - [Foundations: Linux and the OS](linux-and-os.md) - the OS side of virtual memory, processes, the page cache and I/O.

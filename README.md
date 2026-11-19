@@ -24,13 +24,12 @@ It assumes you know Python, the basics of PyTorch (tensors, `nn.Module`, writing
 
 **Part 3. Hardware and Kernels**
 
-1. **[Accelerators](compute/accelerators.md)** - specs, vendors, TFLOPS, memory, achievable FLOPS and how to measure them
+1. **[Accelerators](compute/accelerators.md)** - specs, TFLOPS, memory, power, achievable FLOPS and how to measure them
 1. **[GPU Execution Model](compute/accelerator/execution-model.md)** - SMs, warps, memory hierarchy, tensor cores, rooflines, FlashAttention, torch.compile
 1. **[Writing GPU Kernels](compute/accelerator/writing-kernels.md)** - CUDA C++ and Triton, from vector add to tensor-core GEMM and FlashAttention
-1. **[The GPU Node Software Stack](compute/gpu-software-stack.md)** - drivers, CUDA, NCCL, RDMA, node bring-up and GPU troubleshooting
-1. **[Interconnect Hardware](network/interconnects.md)** - NVLink, NVSwitch, InfiniBand, RoCE, EFA, SHARP and what they really deliver
+1. **[The GPU Node Software Stack](compute/gpu-software-stack.md)** - drivers, CUDA, NCCL, RDMA, health services, node bring-up
+1. **[Interconnect Hardware](network/interconnects.md)** - NVLink, NVSwitch, InfiniBand, RoCE, EFA and why inter-node speed matters
 1. **[Collective Communication Internals](network/collectives-internals.md)** - communication patterns, ring/tree algorithms, NCCL internals, cost models
-1. **[Measuring and Debugging the Network](network/measuring-and-debugging.md)** - benchmarks, NCCL diagnostics, performance settings
 
 **Part 4. Orchestration**
 
@@ -68,6 +67,15 @@ It assumes you know Python, the basics of PyTorch (tensors, `nn.Module`, writing
 1. **[Debugging PyTorch Programs](development/debugging-pytorch.md)** - tiny models, memory, tensors, crashes, git bisect
 1. **[Debugging Distributed Programs and Performance](development/debugging-distributed.md)** - hangs across ranks, NCCL, multi-node, profiling
 1. **[Writing and Running Tests](development/testing.md)** - pytest for ML code, including GPU and distributed tests
+
+**Part 9. Reference** - read when you need it; earlier chapters link straight to the section they use
+
+1. **[Accelerators: Reference](compute/accelerators-reference.md)** - the MAMF finder, vendors and products, caches, clocks, cooling, AMD tuning, pricing
+1. **[Writing GPU Kernels: Further Topics](compute/accelerator/writing-kernels-reference.md)** - GEMM step by step, grouped GEMM, testing and benchmarking kernels, ncu, CUTLASS and other DSLs
+1. **[GPU Nodes: Driver Install, Acceptance Testing and Troubleshooting](compute/gpu-software-stack-reference.md)** - driver install, AMD/ROCm, a node acceptance script, Xid/ECC/DCGM troubleshooting
+1. **[Interconnects: Reference](network/interconnects-reference.md)** - other network technologies, and the nuances of real link speeds
+1. **[Collectives: Laptop Measurement and Transports](network/collectives-internals-reference.md)** - measuring collectives with gloo, NCCL transports
+1. **[Measuring and Debugging the Network](network/measuring-and-debugging.md)** - benchmarks, NCCL diagnostics, performance settings
 
 **Appendix**
 

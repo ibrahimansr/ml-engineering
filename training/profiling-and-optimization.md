@@ -1807,7 +1807,7 @@ So **an SM count does not tell you a throughput advantage** without your shapes,
 
 A published peak is an **aggregate over the whole part**, never a per-SM rate: B300's 2250 TFLOPS bf16 is what all 148 SMs deliver together, about 15.2 each. A single-wave matmul is bounded by that per-SM rate alone.
 
-**The SM count is SKU-dependent, so the published peak moves with it.** NVIDIA gives 160 SMs for "the full GPU implementation", with the caveat that "available SM count and HBM capacity varies by SKU", the same gap the [cache table](../compute/accelerators.md#caches) records a generation earlier (`GH100 full implementation` at 144 against `H100 SXM`'s 132). Both measured B300 SKUs ship below the full die, and a B200 SKU also reads 148. Dividing each published figure by 148 and scaling to 152 gives what the other SKU is entitled to publish:
+**The SM count is SKU-dependent, so the published peak moves with it.** NVIDIA gives 160 SMs for "the full GPU implementation", with the caveat that "available SM count and HBM capacity varies by SKU", the same gap the [cache table](../compute/accelerators-reference.md#caches) records a generation earlier (`GH100 full implementation` at 144 against `H100 SXM`'s 132). Both measured B300 SKUs ship below the full die, and a B200 SKU also reads 148. Dividing each published figure by 148 and scaling to 152 gives what the other SKU is entitled to publish:
 
 | dtype | published | per SM (/148) | at 152 SMs |
 | :---- | --------: | ------------: | ---------: |

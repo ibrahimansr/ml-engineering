@@ -288,7 +288,7 @@ Answer at least these questions:
 6. **Can you fix it yourself?** Most ML inference frameworks are Python with some C++ or Triton for fused kernels, but not all (NVIDIA's TensorRT-LLM is 99% C++; llama.cpp is C++/CUDA). If something doesn't work and your Issue isn't addressed, will you be able to modify the framework?
 7. **Will it accept your PRs?** Some projects don't want your fixes or features, and you end up maintaining a fork, which is very painful if you want to keep syncing with upstream.
 8. **Is it fast enough for your workload?** Run load [benchmarks](#benchmarking-tools-and-a-minimal-ttft-probe) on your desired workloads, using [the load generator](#writing-a-load-generator) or `vllm bench serve` against each candidate.
-9. **Do you want to keep the option of switching hardware?** Will you want the [most cost-effective accelerator](../compute/accelerators.md#high-end-accelerators-for-ml-workloads) down the road, or are you fine being locked into one vendor? A framework from NVIDIA is unlikely to support other vendors' accelerators; the same goes for AMD and Intel.
+9. **Do you want to keep the option of switching hardware?** Will you want the [most cost-effective accelerator](../compute/accelerators-reference.md#high-end-accelerators-for-ml-workloads) down the road, or are you fine being locked into one vendor? A framework from NVIDIA is unlikely to support other vendors' accelerators; the same goes for AMD and Intel.
 
 Questions 3-5 are quick to answer with the GitHub CLI (untested here; needs `gh` and a login):
 

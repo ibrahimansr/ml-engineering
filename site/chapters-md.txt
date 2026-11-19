@@ -18,7 +18,6 @@ compute/accelerator/writing-kernels.md
 compute/gpu-software-stack.md
 network/interconnects.md
 network/collectives-internals.md
-network/measuring-and-debugging.md
 
 orchestration/slurm/from-zero.md
 orchestration/kubernetes-from-zero.md
@@ -46,5 +45,12 @@ platform/small-inference-provider.md
 development/debugging-pytorch.md
 development/debugging-distributed.md
 development/testing.md
+
+compute/accelerators-reference.md
+compute/accelerator/writing-kernels-reference.md
+compute/gpu-software-stack-reference.md
+network/interconnects-reference.md
+network/collectives-internals-reference.md
+network/measuring-and-debugging.md
 
 appendix/further-reading.md

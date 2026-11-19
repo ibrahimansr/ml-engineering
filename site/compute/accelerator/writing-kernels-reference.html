@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing GPU Kernels: Further Topics - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../../inference/serving-hands-on.html">Serving LLMs in Practice</a></li><li><a href="../../inference/serving-efficiently.html">Serving Efficiently on a Fixed Fleet</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../../platform/deploys-recovery-autoscaling.html">Model Deploys, Recovery and Autoscaling</a></li><li><a href="../../platform/operating-inference.html">Operating an Inference Service</a></li><li><a href="../../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li><li><a href="../../platform/small-inference-provider.html">Running a Small Inference Provider: A Worked Example</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../../development/testing.html">Writing and Running Tests</a></li></ul></details>
+<details open><summary>Part 9. Reference</summary><ul><li><a href="../../compute/accelerators-reference.html">Accelerators: Reference</a></li><li><a href="../../compute/accelerator/writing-kernels-reference.html" class="current">Writing GPU Kernels: Further Topics</a></li><li><a href="../../compute/gpu-software-stack-reference.html">GPU Nodes: Driver Install, Acceptance Testing and Troubleshooting</a></li><li><a href="../../network/interconnects-reference.html">Interconnects: Reference</a></li><li><a href="../../network/collectives-internals-reference.html">Collectives: Laptop Measurement and Transports</a></li><li><a href="../../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li><li><a href="../../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="writing-gpu-kernels-further-topics">Writing GPU Kernels: Further Topics</h1>
+<p>Reference material split out of <a href="../../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a> so the main chapter reads faster. The sections stand alone: read them when you need them. Earlier chapters link straight to the section they use.</p>
+<h2 id="gemm-step-by-step">GEMM step by step</h2>
+<p>The best-known hands-on GEMM worklog is Simon Boehm, <a href="https://siboehm.com/articles/22/CUDA-MMM">&quot;How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog&quot;</a> (2022). It writes fp32 SGEMM kernels in order, each fixing the bottleneck of the previous one. <strong>These numbers are his</strong>, measured mostly on an NVIDIA A6000 with fp32 (no tensor cores) at about 4096x4096 (see his post for exact conditions):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">kernel (Boehm's numbering)</th>
+<th style="text-align:right">GFLOP/s</th>
+<th style="text-align:right">% of cuBLAS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">1: naive</td>
+<td style="text-align:right">309.0</td>
+<td style="text-align:right">1.3%</td>
+</tr>
+<tr>
+<td style="text-align:left">2: global memory coalescing</td>
+<td style="text-align:right">1986.5</td>
+<td style="text-align:right">8.5%</td>
+</tr>
+<tr>
+<td style="text-align:left">3: shared memory caching</td>
+<td style="text-align:right">2980.3</td>
+<td style="text-align:right">12.8%</td>
+</tr>
+<tr>
+<td style="text-align:left">4: 1D blocktiling</td>
+<td style="text-align:right">8474.7</td>
+<td style="text-align:right">36.5%</td>
+</tr>
+<tr>
+<td style="text-align:left">5: 2D blocktiling</td>
+<td style="text-align:right">15971.7</td>
+<td style="text-align:right">68.7%</td>
+</tr>
+<tr>
+<td style="text-align:left">6: vectorized memory access</td>
+<td style="text-align:right">18237.3</td>
+<td style="text-align:right">78.4%</td>
+</tr>
+<tr>
+<td style="text-align:left">9: autotuning</td>
+<td style="text-align:right">19721.0</td>
+<td style="text-align:right">84.8%</td>
+</tr>
+<tr>
+<td style="text-align:left">10: warptiling</td>
+<td style="text-align:right">21779.3</td>
+<td style="text-align:right">93.7%</td>
+</tr>
+<tr>
+<td style="text-align:left">0: cuBLAS</td>
+<td style="text-align:right">23249.6</td>
+<td style="text-align:right">100.0%</td>
+</tr>
+</tbody>
+</table>
+<p>The kernels below follow his steps 1 to 6 with the same tile parameters (written for this chapter, not copied; row-major <code>C = A @ B</code>, no <code>alpha</code>/<code>beta</code>). For the theory of each level, see the <a href="../../compute/accelerator/execution-model.html#gemm-tiling-hierarchy">tiling hierarchy</a> and <a href="../../compute/accelerator/execution-model.html#coalescing">coalescing</a>.</p>
+<p>Kernel 3's shared-memory tiling in the CUDA guide's picture: each block computes one <code>BLOCK_SIZE</code> x <code>BLOCK_SIZE</code> tile <span class="math inline"><span class="math-inline">C_{sub}</span></span> of C (here <code>TILE</code>), stepping a row strip of A and a column strip of B through shared memory one tile at a time.</p>
+<p><img src="images/cuda-smem-matmul-tiling.png" alt="shared-memory tiled matmul" /></p>
+<p>(<a href="https://docs.nvidia.com/cuda/archive/12.8.0/cuda-c-programming-guide/index.html">source</a>)</p>
+<pre><code class="language-cuda">// sgemm.cu - C = A @ B, fp32, row-major A (M, K), B (K, N), C (M, N); the steps of the
+// SGEMM worklog. Kernels 1-3 handle any shape; 4-6 require M % BM == N % BN == K % BK == 0.
+
+// ---- 1: naive. threadIdx.x -&gt; row, so the 32 lanes of a warp read 32 different rows of A
+//      (stride K: 32 sectors per load) and write 32 different rows of C.
+__global__ void sgemm_naive(int M, int N, int K, const float* A, const float* B, float* C) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  const int col = blockIdx.y * blockDim.y + threadIdx.y;
+  if (row &lt; M &amp;&amp; col &lt; N) {
+    float acc = 0.f;
+    for (int k = 0; k &lt; K; ++k) acc += A[row * K + k] * B[k * N + col];
+    C[row * N + col] = acc;
+  }
+}
+// launch: dim3 block(32, 32); dim3 grid(cdiv(M, 32), cdiv(N, 32));
+
+// ---- 2: coalesced. threadIdx.x -&gt; column: a warp reads one A element (broadcast) and 32
+//      consecutive floats of B (4 sectors), and writes 32 consecutive floats of C.
+__global__ void sgemm_coalesced(int M, int N, int K, const float* A, const float* B, float* C) {
+  const int row = blockIdx.y * blockDim.y + threadIdx.y;
+  const int col = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row &lt; M &amp;&amp; col &lt; N) {
+    float acc = 0.f;
+    for (int k = 0; k &lt; K; ++k) acc += A[row * K + k] * B[k * N + col];
+    C[row * N + col] = acc;
+  }
+}
+// launch: dim3 block(32, 32); dim3 grid(cdiv(N, 32), cdiv(M, 32));
+
+// ---- 3: shared-memory tiling. Each A and B element is loaded from global once per block
+//      instead of once per thread: global traffic drops by TILE (32x).
+template &lt;int TILE&gt;
+__global__ void sgemm_smem(int M, int N, int K, const float* A, const float* B, float* C) {
+  __shared__ float As[TILE][TILE];
+  __shared__ float Bs[TILE][TILE];
+  const int tx = threadIdx.x, ty = threadIdx.y;
+  const int row = blockIdx.y * TILE + ty, col = blockIdx.x * TILE + tx;
+  float acc = 0.f;
+  for (int k0 = 0; k0 &lt; K; k0 += TILE) {
+    As[ty][tx] = (row &lt; M &amp;&amp; k0 + tx &lt; K) ? A[row * K + k0 + tx] : 0.f;   // coalesced along tx
+    Bs[ty][tx] = (k0 + ty &lt; K &amp;&amp; col &lt; N) ? B[(k0 + ty) * N + col] : 0.f;
+    __syncthreads();                         // tile fully loaded before anyone reads it
+#pragma unroll
+    for (int k = 0; k &lt; TILE; ++k) acc += As[ty][k] * Bs[k][tx];          // As: broadcast, Bs: 32 banks
+    __syncthreads();                         // everyone done reading before the next overwrite
+  }
+  if (row &lt; M &amp;&amp; col &lt; N) C[row * N + col] = acc;
+}
+// launch: dim3 block(32, 32); dim3 grid(cdiv(N, 32), cdiv(M, 32));
+
+// ---- 4: 1D blocktiling. Each thread computes TM outputs in a column; the B value is loaded
+//      from smem once and reused TM times from a register. 9 smem loads per 8 FMAs instead of 16.
+template &lt;int BM, int BN, int BK, int TM&gt;
+__global__ void __launch_bounds__((BM * BN) / TM)
+sgemm_1d(int M, int N, int K, const float* A, const float* B, float* C) {
+  static_assert(BM * BK == (BM * BN) / TM &amp;&amp; BN * BK == (BM * BN) / TM, &quot;one A and one B element per thread&quot;);
+  __shared__ float As[BM * BK];
+  __shared__ float Bs[BK * BN];
+  const int tCol = threadIdx.x % BN, tRow = threadIdx.x / BN;
+  A += blockIdx.y * BM * K;                  // move to this block's tile
+  B += blockIdx.x * BN;
+  C += blockIdx.y * BM * N + blockIdx.x * BN;
+  const int aRow = threadIdx.x / BK, aCol = threadIdx.x % BK;
+  const int bRow = threadIdx.x / BN, bCol = threadIdx.x % BN;
+  float acc[TM] = {0.f};
+  for (int k0 = 0; k0 &lt; K; k0 += BK) {
+    As[aRow * BK + aCol] = A[aRow * K + aCol];
+    Bs[bRow * BN + bCol] = B[bRow * N + bCol];
+    __syncthreads();
+    A += BK;
+    B += BK * N;
+#pragma unroll
+    for (int k = 0; k &lt; BK; ++k) {
+      const float b = Bs[k * BN + tCol];
+#pragma unroll
+      for (int i = 0; i &lt; TM; ++i) acc[i] += As[(tRow * TM + i) * BK + k] * b;
+    }
+    __syncthreads();
+  }
+#pragma unroll
+  for (int i = 0; i &lt; TM; ++i) C[(tRow * TM + i) * N + tCol] = acc[i];
+}
+// launch BM=BN=64, BK=8, TM=8: dim3 block(512); dim3 grid(N / 64, M / 64);
+
+// ---- 5: 2D blocktiling. Each thread owns a TM x TN register tile and does an outer product
+//      per k: TM + TN smem loads feed TM * TN FMAs (16 loads : 64 FMAs).
+template &lt;int BM, int BN, int BK, int TM, int TN&gt;
+__global__ void __launch_bounds__((BM * BN) / (TM * TN))
+sgemm_2d(int M, int N, int K, const float* A, const float* B, float* C) {
+  constexpr int NT = (BM * BN) / (TM * TN);  // 256 threads for 128x128 / (8x8)
+  __shared__ float As[BM * BK];
+  __shared__ float Bs[BK * BN];
+  const int tRow = threadIdx.x / (BN / TN), tCol = threadIdx.x % (BN / TN);
+  A += blockIdx.y * BM * K;
+  B += blockIdx.x * BN;
+  C += blockIdx.y * BM * N + blockIdx.x * BN;
+  const int aRow = threadIdx.x / BK, aCol = threadIdx.x % BK;
+  const int bRow = threadIdx.x / BN, bCol = threadIdx.x % BN;
+  constexpr int aStride = NT / BK, bStride = NT / BN;   // rows covered per loader pass
+  float acc[TM * TN] = {0.f};
+  float regM[TM], regN[TN];
+  for (int k0 = 0; k0 &lt; K; k0 += BK) {
+#pragma unroll
+    for (int o = 0; o &lt; BM; o += aStride) As[(aRow + o) * BK + aCol] = A[(aRow + o) * K + aCol];
+#pragma unroll
+    for (int o = 0; o &lt; BK; o += bStride) Bs[(bRow + o) * BN + bCol] = B[(bRow + o) * N + bCol];
+    __syncthreads();
+    A += BK;
+    B += BK * N;
+#pragma unroll
+    for (int k = 0; k &lt; BK; ++k) {
+#pragma unroll
+      for (int i = 0; i &lt; TM; ++i) regM[i] = As[(tRow * TM + i) * BK + k];
+#pragma unroll
+      for (int j = 0; j &lt; TN; ++j) regN[j] = Bs[k * BN + tCol * TN + j];
+#pragma unroll
+      for (int i = 0; i &lt; TM; ++i)
+#pragma unroll
+        for (int j = 0; j &lt; TN; ++j) acc[i * TN + j] += regM[i] * regN[j];
+    }
+    __syncthreads();
+  }
+#pragma unroll
+  for (int i = 0; i &lt; TM; ++i)
+#pragma unroll
+    for (int j = 0; j &lt; TN; ++j) C[(tRow * TM + i) * N + tCol * TN + j] = acc[i * TN + j];
+}
+// launch BM=BN=128, BK=8, TM=TN=8: dim3 block(256); dim3 grid(N / 128, M / 128);
+
+// ---- 6: vectorized. 16-byte global loads (LDG.128) and A stored transposed in smem so the
+//      regM reads are contiguous too. Also needs 16-byte aligned A, B, C.
+template &lt;int BM, int BN, int BK, int TM, int TN&gt;
+__global__ void __launch_bounds__((BM * BN) / (TM * TN))
+sgemm_vec(int M, int N, int K, const float* A, const float* B, float* C) {
+  constexpr int NT = (BM * BN) / (TM * TN);
+  static_assert(BM * BK / 4 == NT &amp;&amp; BN * BK / 4 == NT, &quot;one float4 of A and of B per thread&quot;);
+  __shared__ float As[BK * BM];              // transposed: As[k * BM + m]
+  __shared__ float Bs[BK * BN];
+  const int tRow = threadIdx.x / (BN / TN), tCol = threadIdx.x % (BN / TN);
+  A += blockIdx.y * BM * K;
+  B += blockIdx.x * BN;
+  C += blockIdx.y * BM * N + blockIdx.x * BN;
+  const int aRow = threadIdx.x / (BK / 4), aCol = threadIdx.x % (BK / 4);
+  const int bRow = threadIdx.x / (BN / 4), bCol = threadIdx.x % (BN / 4);
+  float acc[TM * TN] = {0.f};
+  float regM[TM], regN[TN];
+  for (int k0 = 0; k0 &lt; K; k0 += BK) {
+    const float4 a = reinterpret_cast&lt;const float4*&gt;(&amp;A[aRow * K + aCol * 4])[0];
+    As[(aCol * 4 + 0) * BM + aRow] = a.x;
+    As[(aCol * 4 + 1) * BM + aRow] = a.y;
+    As[(aCol * 4 + 2) * BM + aRow] = a.z;
+    As[(aCol * 4 + 3) * BM + aRow] = a.w;
+    reinterpret_cast&lt;float4*&gt;(&amp;Bs[bRow * BN + bCol * 4])[0] =
+        reinterpret_cast&lt;const float4*&gt;(&amp;B[bRow * N + bCol * 4])[0];
+    __syncthreads();
+    A += BK;
+    B += BK * N;
+#pragma unroll
+    for (int k = 0; k &lt; BK; ++k) {
+#pragma unroll
+      for (int i = 0; i &lt; TM; ++i) regM[i] = As[k * BM + tRow * TM + i];
+#pragma unroll
+      for (int j = 0; j &lt; TN; ++j) regN[j] = Bs[k * BN + tCol * TN + j];
+#pragma unroll
+      for (int i = 0; i &lt; TM; ++i)
+#pragma unroll
+        for (int j = 0; j &lt; TN; ++j) acc[i * TN + j] += regM[i] * regN[j];
+    }
+    __syncthreads();
+  }
+#pragma unroll
+  for (int i = 0; i &lt; TM; ++i)
+#pragma unroll
+    for (int j = 0; j &lt; TN; j += 4)
+      reinterpret_cast&lt;float4*&gt;(&amp;C[(tRow * TM + i) * N + tCol * TN + j])[0] =
+          make_float4(acc[i * TN + j], acc[i * TN + j + 1], acc[i * TN + j + 2], acc[i * TN + j + 3]);
+}
+// launch BM=BN=128, BK=8, TM=TN=8: dim3 block(256); dim3 grid(N / 128, M / 128);
+</code></pre>
+<h3 id="why-each-step-is-faster">Why each step is faster</h3>
+<p>The whole ladder is about one ratio: <strong>FLOPs per byte moved at each level of the memory hierarchy</strong>. Global memory feeds smem, smem feeds registers, registers feed the FMA units. Each step raises the ratio at one level:</p>
+<pre><code class="language-python"># gemm_ai.py - why each SGEMM step is faster: bytes moved per FMA at each level of the hierarchy
+def step(name, BM, BN, BK, TM, TN, smem_loads_per_k):
+    threads = BM * BN // (TM * TN)
+    glob_bytes = (BM + BN) * BK * 4                  # one A tile + one B tile per K-step, fp32
+    fmas = BM * BN * BK
+    print(f&quot;{name:20s} tile {BM:3d}x{BN:3d}x{BK:2d} thr={threads:4d}  &quot;
+          f&quot;global FLOP/B = {2*fmas/glob_bytes:5.1f}   smem loads per FMA = {smem_loads_per_k/(TM*TN):.3f}&quot;)
+
+# naive/coalesced: no smem; every FMA loads 2 floats from global (L1/L2 may catch some)
+print(f&quot;{'naive / coalesced':20s} global FLOP/B = {2/8:5.2f} (before caches)  -- 2 loads per FMA&quot;)
+step(&quot;k3 smem 32x32&quot;, 32, 32, 32, 1, 1, 2)            # As[ty][k], Bs[k][tx]: 2 smem loads per FMA
+step(&quot;k4 1D TM=8&quot;, 64, 64, 8, 8, 1, 8 + 1)            # per k: 8 A values + 1 B value for 8 FMAs
+step(&quot;k5 2D 8x8&quot;, 128, 128, 8, 8, 8, 8 + 8)           # per k: 8 + 8 values for 64 FMAs
+print(&quot;registers for k5 accumulators+fragments:&quot;, 8 * 8 + 8 + 8, &quot;floats/thread&quot;)
+
+# H100 SXM: 989 TFLOPS bf16 dense, 3.35 TB/s HBM -&gt; ridge point
+print(f&quot;H100 bf16 ridge point: {989e12 / 3.35e12:.0f} FLOP/B&quot;)
+for n in (1024, 4096, 8192):                          # square bf16 GEMM, ideal traffic
+    flops = 2 * n**3; bytes_ = 3 * n * n * 2
+    print(f&quot;  GEMM n={n:5d}: AI={flops/bytes_:6.0f} FLOP/B  -&gt; compute-bound floor {flops/989e12*1e6:8.1f} us,&quot;
+          f&quot; memory floor {bytes_/3.35e12*1e6:6.1f} us&quot;)
+
+# reporting a measurement against the roofline (the 'measured' times are placeholders)
+def report(name, flops, bytes_, t_s, peak_flops=989e12, peak_bw=3.35e12):
+    bound = max(flops / peak_flops, bytes_ / peak_bw)
+    print(f&quot;{name:26s} {flops/t_s/1e12:7.1f} TFLOP/s {bytes_/t_s/1e9:7.0f} GB/s  {100*bound/t_s:5.1f}% of roofline&quot;)
+report(&quot;gemm 4096^3 bf16 @ 180us&quot;, 2 * 4096**3, 3 * 4096**2 * 2, 180e-6)
+report(&quot;softmax 8192x32768 bf16 @ 400us&quot;, 5 * 8192 * 32768, 2 * 8192 * 32768 * 2, 400e-6)
+</code></pre>
+<pre><code>naive / coalesced    global FLOP/B =  0.25 (before caches)  -- 2 loads per FMA
+k3 smem 32x32        tile  32x 32x32 thr=1024  global FLOP/B =   8.0   smem loads per FMA = 2.000
+k4 1D TM=8           tile  64x 64x 8 thr= 512  global FLOP/B =  16.0   smem loads per FMA = 1.125
+k5 2D 8x8            tile 128x128x 8 thr= 256  global FLOP/B =  32.0   smem loads per FMA = 0.250
+registers for k5 accumulators+fragments: 80 floats/thread
+H100 bf16 ridge point: 295 FLOP/B
+  GEMM n= 1024: AI=   341 FLOP/B  -&gt; compute-bound floor      2.2 us, memory floor    1.9 us
+  GEMM n= 4096: AI=  1365 FLOP/B  -&gt; compute-bound floor    139.0 us, memory floor   30.0 us
+  GEMM n= 8192: AI=  2731 FLOP/B  -&gt; compute-bound floor   1111.7 us, memory floor  120.2 us
+gemm 4096^3 bf16 @ 180us     763.5 TFLOP/s     559 GB/s   77.2% of roofline
+softmax 8192x32768 bf16 @ 400us     3.4 TFLOP/s    2684 GB/s   80.1% of roofline
+</code></pre>
+<ul>
+<li><strong>1 to 2 (coalescing, 6.4x in Boehm's table).</strong> Same FLOPs, same algorithm. Only the mapping of <code>threadIdx.x</code> changes. In kernel 1 a warp's 32 lanes read 32 different rows of A (one 32-byte sector each, so 32 sectors for 128 useful bytes) and write C with stride <code>N</code>. In kernel 2 they read 32 consecutive floats of B (4 sectors) and one broadcast element of A. Check it with the <a href="../../compute/accelerator/execution-model.html#coalescing">sector counter</a>.</li>
+<li><strong>2 to 3 (shared memory, 1.5x).</strong> Each element of A and B is loaded from global memory once per 32x32 block instead of once per thread: global FLOP/byte rises from 0.25 to 8. The gain is small because the bottleneck moves to the smem-to-register level. Every FMA still needs two smem loads, and the smem pipe sustains far fewer loads per clock than the FMA units do FMAs.</li>
+<li><strong>3 to 4 (1D blocktiling, 2.8x).</strong> Each thread computes 8 outputs and reuses one <code>Bs</code> value from a register 8 times: 9 smem loads per 8 FMAs instead of 16. The tile is also taller (64x64x8), so global intensity doubles.</li>
+<li><strong>4 to 5 (2D blocktiling, 1.9x).</strong> An 8x8 register tile per thread is an outer product: 8 + 8 smem loads feed 64 FMAs (0.25 loads per FMA, an 8x reduction from kernel 3). The cost is 64 accumulators + 16 fragment registers per thread. That is fine at 256 threads per block, but it limits occupancy (<a href="../../compute/accelerator/execution-model.html#occupancy-worked">occupancy arithmetic</a>). From here on the kernel is limited by instruction issue and latency, not bandwidth.</li>
+<li><strong>5 to 6 (vectorized, 1.14x).</strong> 128-bit loads (<code>LDG.128</code>, <code>LDS.128</code>) cut load instruction count by 4x. Storing A transposed in smem makes each thread's 8 <code>regM</code> values contiguous, so they can be read as two vector loads too.</li>
+<li><strong>Beyond (Boehm's 7-10).</strong> Autotuning tile sizes per GPU. <em>Warptiling</em> adds an explicit warp-level tile between block and thread, which improves register-level locality and makes the code map naturally onto tensor core instructions. <em>Double buffering</em> (Boehm's kernel 11, and the <a href="../../compute/accelerator/execution-model.html#software-pipelining">software pipelining</a> section) overlaps the next tile's loads with the current tile's math.</li>
+</ul>
+<p>Kernels 4 to 6 assume <code>M</code>, <code>N</code>, <code>K</code> are multiples of the tile sizes. Production GEMMs handle the edges with predicated (masked) loads for the last tiles, or with a separate edge kernel. The wrapper below enforces the assumption with <code>TORCH_CHECK</code> rather than silently computing garbage.</p>
+<h3 id="checking-the-index-arithmetic-without-a-gpu">Checking the index arithmetic without a GPU</h3>
+<p>Register-tiled kernels are dense index arithmetic, and an off-by-one in <code>tRow * TM + i</code> produces wrong numbers, not a crash. This mirror runs each kernel's exact index expressions thread by thread on bounds-checked flat buffers. The two barriers become phase boundaries: all threads finish loading before any thread computes. C is pre-filled with NaN, so an element no thread wrote shows up as a failure:</p>
+<pre><code class="language-python"># gemm_mirror.py - execute the CUDA SGEMM kernels' index arithmetic thread by thread in Python,
+# on flat buffers, and check C against numpy. Barriers become phase boundaries: every thread
+# finishes the load phase before any thread starts the compute phase.
+import numpy as np
+
+
+class Buf:                                   # a bounds-checked float* (base offset + flat array)
+    def __init__(self, a, off=0): self.a, self.off = a, off
+    def __getitem__(self, i):
+        j = self.off + i; assert 0 &lt;= j &lt; self.a.size, f&quot;OOB read {j}&quot;; return self.a[j]
+    def __setitem__(self, i, v):
+        j = self.off + i; assert 0 &lt;= j &lt; self.a.size, f&quot;OOB write {j}&quot;; self.a[j] = v
+    def __add__(self, d): return Buf(self.a, self.off + d)
+
+
+def k3_smem(M, N, K, A, B, C, TILE=32):
+    for by in range(-(-M // TILE)):
+        for bx in range(-(-N // TILE)):
+            As = np.zeros((TILE, TILE), np.float32); Bs = np.zeros((TILE, TILE), np.float32)
+            acc = np.zeros((TILE, TILE), np.float32)
+            for k0 in range(0, K, TILE):
+                for ty in range(TILE):
+                    for tx in range(TILE):                              # load phase
+                        row, col = by * TILE + ty, bx * TILE + tx
+                        As[ty][tx] = A[row * K + k0 + tx] if (row &lt; M and k0 + tx &lt; K) else 0.0
+                        Bs[ty][tx] = B[(k0 + ty) * N + col] if (k0 + ty &lt; K and col &lt; N) else 0.0
+                for ty in range(TILE):                                  # compute phase
+                    for tx in range(TILE):
+                        for k in range(TILE): acc[ty][tx] += As[ty][k] * Bs[k][tx]
+            for ty in range(TILE):
+                for tx in range(TILE):
+                    row, col = by * TILE + ty, bx * TILE + tx
+                    if row &lt; M and col &lt; N: C[row * N + col] = acc[ty][tx]
+
+
+def k4_1d(M, N, K, A0, B0, C0, BM=64, BN=64, BK=8, TM=8):
+    NT = BM * BN // TM
+    assert BM * BK == NT and BN * BK == NT
+    for cRow in range(M // BM):
+        for cCol in range(N // BN):
+            As = np.zeros(BM * BK, np.float32); Bs = np.zeros(BK * BN, np.float32)
+            acc = np.zeros((NT, TM), np.float32)
+            A, B, C = A0 + cRow * BM * K, B0 + cCol * BN, C0 + cRow * BM * N + cCol * BN
+            for k0 in range(0, K, BK):
+                for t in range(NT):
+                    aRow, aCol, bRow, bCol = t // BK, t % BK, t // BN, t % BN
+                    As[aRow * BK + aCol] = A[aRow * K + aCol]
+                    Bs[bRow * BN + bCol] = B[bRow * N + bCol]
+                A, B = A + BK, B + BK * N
+                for t in range(NT):
+                    tCol, tRow = t % BN, t // BN
+                    for k in range(BK):
+                        b = Bs[k * BN + tCol]
+                        for i in range(TM): acc[t][i] += As[(tRow * TM + i) * BK + k] * b
+            for t in range(NT):
+                for i in range(TM): C[(t // BN * TM + i) * N + t % BN] = acc[t][i]
+
+
+def k5_2d(M, N, K, A0, B0, C0, BM=128, BN=128, BK=8, TM=8, TN=8, vec=False):
+    NT = BM * BN // (TM * TN)
+    for cRow in range(M // BM):
+        for cCol in range(N // BN):
+            As = np.zeros(BM * BK, np.float32); Bs = np.zeros(BK * BN, np.float32)
+            acc = np.zeros((NT, TM * TN), np.float32)
+            A, B, C = A0 + cRow * BM * K, B0 + cCol * BN, C0 + cRow * BM * N + cCol * BN
+            for k0 in range(0, K, BK):
+                for t in range(NT):
+                    if not vec:                                          # kernel 5 loaders
+                        aRow, aCol, bRow, bCol = t // BK, t % BK, t // BN, t % BN
+                        for o in range(0, BM, NT // BK): As[(aRow + o) * BK + aCol] = A[(aRow + o) * K + aCol]
+                        for o in range(0, BK, NT // BN): Bs[(bRow + o) * BN + bCol] = B[(bRow + o) * N + bCol]
+                    else:                                                # kernel 6: float4, A transposed
+                        aRow, aCol, bRow, bCol = t // (BK // 4), t % (BK // 4), t // (BN // 4), t % (BN // 4)
+                        a4 = [A[aRow * K + aCol * 4 + q] for q in range(4)]
+                        for q in range(4): As[(aCol * 4 + q) * BM + aRow] = a4[q]
+                        for q in range(4): Bs[bRow * BN + bCol * 4 + q] = B[bRow * N + bCol * 4 + q]
+                A, B = A + BK, B + BK * N
+                for t in range(NT):
+                    tRow, tCol = t // (BN // TN), t % (BN // TN)
+                    for k in range(BK):
+                        if not vec: regM = [As[(tRow * TM + i) * BK + k] for i in range(TM)]
+                        else:       regM = [As[k * BM + tRow * TM + i] for i in range(TM)]
+                        regN = [Bs[k * BN + tCol * TN + j] for j in range(TN)]
+                        for i in range(TM):
+                            for j in range(TN): acc[t][i * TN + j] += regM[i] * regN[j]
+            for t in range(NT):
+                tRow, tCol = t // (BN // TN), t % (BN // TN)
+                for i in range(TM):
+                    for j in range(TN): C[(tRow * TM + i) * N + tCol * TN + j] = acc[t][i * TN + j]
+
+
+rng = np.random.default_rng(0)
+def check(name, fn, M, N, K, **kw):
+    A = rng.standard_normal((M, K), dtype=np.float32); B = rng.standard_normal((K, N), dtype=np.float32)
+    C = np.full(M * N, np.nan, np.float32)                   # nan: any element never written shows up
+    fn(M, N, K, Buf(A.ravel()), Buf(B.ravel()), Buf(C), **kw)
+    err = np.abs(C.reshape(M, N) - A @ B).max()
+    print(f&quot;{name:28s} M={M:3d} N={N:3d} K={K:3d}  max|C - A@B| = {err:.2e}&quot;)
+    assert err &lt; 1e-3
+
+check(&quot;k3 smem tiling (bounds-checked)&quot;, k3_smem, 33, 65, 40)
+check(&quot;k4 1D blocktiling&quot;, k4_1d, 128, 128, 32)
+check(&quot;k5 2D blocktiling&quot;, k5_2d, 128, 256, 16)
+check(&quot;k6 vectorized + transposed As&quot;, k5_2d, 256, 128, 16, vec=True)
+</code></pre>
+<pre><code>k3 smem tiling (bounds-checked) M= 33 N= 65 K= 40  max|C - A@B| = 3.81e-06
+k4 1D blocktiling            M=128 N=128 K= 32  max|C - A@B| = 3.81e-06
+k5 2D blocktiling            M=128 N=256 K= 16  max|C - A@B| = 2.86e-06
+k6 vectorized + transposed As M=256 N=128 K= 16  max|C - A@B| = 3.81e-06
+</code></pre>
+<p>This verifies the indexing and tiling logic of kernels 3 to 6. It does not verify the CUDA compilation (syntax-checked only) or the performance. Kernels 1 and 2 differ only in which index is <code>threadIdx.x</code>.</p>
+<h3 id="testing-and-benchmarking-the-ladder-against-cublas">Testing and benchmarking the ladder against cuBLAS</h3>
+<p>The harness compares each kernel to <code>torch.matmul</code> with TF32 disabled, so cuBLAS runs a true fp32 SGEMM. With TF32 enabled, cuBLAS would use tensor cores at lower precision and the comparison would be meaningless. Untested; the output format is what it would print:</p>
+<pre><code class="language-python"># sgemm_ext.py - build sgemm.cu into PyTorch, test every kernel, benchmark against cuBLAS (untested: needs a GPU)
+import pathlib, torch, triton
+from torch.utils.cpp_extension import load_inline
+
+launcher = r&quot;&quot;&quot;
+#include &lt;torch/extension.h&gt;
+#include &lt;ATen/cuda/CUDAContext.h&gt;
+#include &lt;c10/cuda/CUDAGuard.h&gt;
+
+static inline int cdiv(int a, int b) { return (a + b - 1) / b; }
+
+torch::Tensor sgemm(torch::Tensor A, torch::Tensor B, int64_t version) {
+  TORCH_CHECK(A.is_cuda() &amp;&amp; B.is_cuda() &amp;&amp; A.scalar_type() == torch::kFloat32 &amp;&amp; B.scalar_type() == torch::kFloat32);
+  TORCH_CHECK(A.dim() == 2 &amp;&amp; B.dim() == 2 &amp;&amp; A.size(1) == B.size(0), &quot;shape mismatch&quot;);
+  const at::cuda::OptionalCUDAGuard guard(A.device());
+  A = A.contiguous(); B = B.contiguous();
+  const int M = A.size(0), K = A.size(1), N = B.size(1);
+  auto C = torch::empty({M, N}, A.options());
+  const float *a = A.data_ptr&lt;float&gt;(), *b = B.data_ptr&lt;float&gt;(); float* c = C.data_ptr&lt;float&gt;();
+  auto s = at::cuda::getCurrentCUDAStream();
+  if (version &gt;= 4) TORCH_CHECK(M % 128 == 0 &amp;&amp; N % 128 == 0 &amp;&amp; K % 8 == 0, &quot;kernels 4-6 need tile multiples&quot;);
+  switch (version) {
+    case 1: sgemm_naive&lt;&lt;&lt;dim3(cdiv(M, 32), cdiv(N, 32)), dim3(32, 32), 0, s&gt;&gt;&gt;(M, N, K, a, b, c); break;
+    case 2: sgemm_coalesced&lt;&lt;&lt;dim3(cdiv(N, 32), cdiv(M, 32)), dim3(32, 32), 0, s&gt;&gt;&gt;(M, N, K, a, b, c); break;
+    case 3: sgemm_smem&lt;32&gt;&lt;&lt;&lt;dim3(cdiv(N, 32), cdiv(M, 32)), dim3(32, 32), 0, s&gt;&gt;&gt;(M, N, K, a, b, c); break;
+    case 4: sgemm_1d&lt;64, 64, 8, 8&gt;&lt;&lt;&lt;dim3(N / 64, M / 64), 512, 0, s&gt;&gt;&gt;(M, N, K, a, b, c); break;
+    case 5: sgemm_2d&lt;128, 128, 8, 8, 8&gt;&lt;&lt;&lt;dim3(N / 128, M / 128), 256, 0, s&gt;&gt;&gt;(M, N, K, a, b, c); break;
+    case 6: sgemm_vec&lt;128, 128, 8, 8, 8&gt;&lt;&lt;&lt;dim3(N / 128, M / 128), 256, 0, s&gt;&gt;&gt;(M, N, K, a, b, c); break;
+    default: TORCH_CHECK(false, &quot;unknown version&quot;);
+  }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return C;
+}
+&quot;&quot;&quot;
+src = (pathlib.Path(__file__).parent / &quot;sgemm.cu&quot;).read_text() + launcher
+ext = load_inline(&quot;sgemm_ext&quot;, cpp_sources=&quot;torch::Tensor sgemm(torch::Tensor A, torch::Tensor B, int64_t version);&quot;,
+                  cuda_sources=src, functions=[&quot;sgemm&quot;], extra_cuda_cflags=[&quot;-O3&quot;, &quot;-lineinfo&quot;, &quot;--ptxas-options=-v&quot;])
+
+torch.backends.cuda.matmul.allow_tf32 = False              # compare against true fp32 SGEMM
+torch.manual_seed(0)
+for v in range(1, 7):                                       # correctness first
+    shapes = [(1, 1, 1), (33, 65, 17), (100, 37, 300)] if v &lt;= 3 else [(128, 128, 8), (256, 384, 136)]
+    for M, N, K in shapes:
+        A, B = torch.randn(M, K, device=&quot;cuda&quot;), torch.randn(K, N, device=&quot;cuda&quot;)
+        torch.testing.assert_close(ext.sgemm(A, B, v), A @ B, rtol=1e-4, atol=1e-4)
+print(&quot;all kernels correct&quot;)
+
+n = 4096
+A, B = torch.randn(n, n, device=&quot;cuda&quot;), torch.randn(n, n, device=&quot;cuda&quot;)
+ms_cublas = triton.testing.do_bench(lambda: A @ B)
+for v in range(1, 7):
+    ms = triton.testing.do_bench(lambda: ext.sgemm(A, B, v))
+    print(f&quot;kernel {v}: {2 * n**3 / ms / 1e9:8.0f} GFLOP/s  {100 * ms_cublas / ms:5.1f}% of cuBLAS&quot;)
+print(f&quot;cuBLAS  : {2 * n**3 / ms_cublas / 1e9:8.0f} GFLOP/s&quot;)
+</code></pre>
+<pre><code>all kernels correct
+kernel 1:  &lt;your GPU&gt;  GFLOP/s   x.x% of cuBLAS        &lt;- not measured; see Boehm's table for an A6000
+...
+</code></pre>
+<p>The <code>--ptxas-options=-v</code> flag prints registers per kernel at build time. Kernel 5 should report on the order of 100+ registers. If it reports <code>spill stores</code>, the accumulator array did not stay in registers (usually a loop index the compiler could not resolve at compile time, which is why every loop is <code>#pragma unroll</code> with constant bounds).</p>
+<h3 id="tensor-cores-wmma-mmasync-and-why-you-stop-there">Tensor cores: WMMA, <code>mma.sync</code>, and why you stop there</h3>
+<p>fp32 SGEMM on CUDA cores tops out at the FP32 peak, about 67 TFLOPS on H100 SXM. bf16 on tensor cores is rated at 989 TFLOPS dense. For ML dtypes, every serious GEMM therefore runs on tensor cores (<a href="../../compute/accelerator/execution-model.html#tensor-cores">instruction generations</a>). There are three levels of API:</p>
+<ol>
+<li><strong>WMMA</strong> (<code>nvcuda::wmma</code>, <code>&lt;mma.h&gt;</code>, sm_70+): a portable C++ API. A <em>fragment</em> is a warp-wide tile whose element-to-lane mapping is opaque. You <code>load_matrix_sync</code>, <code>mma_sync</code>, <code>store_matrix_sync</code>. It is easy and portable, but you cannot control register layouts, so you cannot do the smem swizzles and <code>ldmatrix</code> loads fast kernels need.</li>
+</ol>
+<pre><code class="language-cuda">// wmma.cu - tensor cores through the WMMA API: one warp computes one 16x16 tile of C.
+// fp16 inputs, fp32 accumulate; requires M, N, K multiples of 16. sm_70+.
+#include &lt;cuda_fp16.h&gt;
+#include &lt;mma.h&gt;
+using namespace nvcuda;
+
+__global__ void hgemm_wmma(int M, int N, int K, const half* A, const half* B, float* C) {
+  const int tileM = blockIdx.y * blockDim.y + threadIdx.y;          // warp-uniform
+  const int tileN = (blockIdx.x * blockDim.x + threadIdx.x) / 32;   // warp-uniform
+  if (tileM * 16 &gt;= M || tileN * 16 &gt;= N) return;                    // whole warp exits together
+  wmma::fragment&lt;wmma::matrix_a, 16, 16, 16, half, wmma::row_major&gt; a;
+  wmma::fragment&lt;wmma::matrix_b, 16, 16, 16, half, wmma::row_major&gt; b;
+  wmma::fragment&lt;wmma::accumulator, 16, 16, 16, float&gt; c;
+  wmma::fill_fragment(c, 0.0f);
+  for (int k = 0; k &lt; K; k += 16) {
+    wmma::load_matrix_sync(a, A + tileM * 16 * K + k, K);   // last arg: leading dimension
+    wmma::load_matrix_sync(b, B + k * N + tileN * 16, N);
+    wmma::mma_sync(c, a, b, c);                             // c += a @ b on the tensor cores
+  }
+  wmma::store_matrix_sync(C + tileM * 16 * N + tileN * 16, c, N, wmma::mem_row_major);
+}
+// launch: dim3 block(128, 4) = 4x4 warps -&gt; a 64x64 C tile per block;
+//         dim3 grid(N / 64, M / 64)
+</code></pre>
+<p>This version loads fragments straight from global memory, so it repeats kernel 2's mistake at the tensor core level: there is no smem reuse across warps. The next steps mirror the SGEMM ladder. Stage block tiles of A and B through shared memory, use <code>cp.async</code> to overlap the copies (<a href="../../compute/accelerator/execution-model.html#software-pipelining">pipelining</a>), give each warp a larger warp tile (e.g. 64x64, i.e. 4x4 fragments), and pad or swizzle smem rows to avoid bank conflicts on fragment loads.</p>
+<ol start="2">
+<li><strong><code>mma.sync</code> PTX + <code>ldmatrix</code></strong> (sm_80+): inline PTX that exposes the documented register layout of each fragment (<a href="../../compute/accelerator/execution-model.html#ampere-mmasync">the layout</a>). <code>ldmatrix</code> loads 8x8 tiles from smem directly into that layout. This is what fast Ampere kernels (and CUTLASS's SM80 path, and FlashAttention-2) use:</li>
+</ol>
+<pre><code class="language-cuda">// one m16n8k16 bf16 MMA with fp32 accumulators: d = a @ b + c, per warp.
+// a: 4 x 32-bit regs (8 bf16), b: 2 regs (4 bf16), c/d: 4 fp32 per lane. Untested; see PTX ISA &quot;mma&quot;.
+asm volatile(
+    &quot;mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 &quot;
+    &quot;{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};\n&quot;
+    : &quot;=f&quot;(d[0]), &quot;=f&quot;(d[1]), &quot;=f&quot;(d[2]), &quot;=f&quot;(d[3])
+    : &quot;r&quot;(a[0]), &quot;r&quot;(a[1]), &quot;r&quot;(a[2]), &quot;r&quot;(a[3]), &quot;r&quot;(b[0]), &quot;r&quot;(b[1]),
+      &quot;f&quot;(c[0]), &quot;f&quot;(c[1]), &quot;f&quot;(c[2]), &quot;f&quot;(c[3]));
+// fragments come from shared memory via ldmatrix, e.g.
+// asm volatile(&quot;ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n&quot;
+//              : &quot;=r&quot;(a[0]), &quot;=r&quot;(a[1]), &quot;=r&quot;(a[2]), &quot;=r&quot;(a[3]) : &quot;r&quot;(smem_addr));
+</code></pre>
+<ol start="3">
+<li><strong>Hopper <code>wgmma</code> + TMA + warp specialization</strong> (sm_90a), and <strong>Blackwell <code>tcgen05</code> + TMEM</strong> (sm_100a). These are asynchronous warpgroup-wide MMAs that read operands from smem descriptors, fed by the TMA copy engine through <code>mbarrier</code>s, with producer and consumer warpgroups (<a href="../../compute/accelerator/execution-model.html#hopper-wgmma">Hopper</a>, <a href="../../compute/accelerator/execution-model.html#blackwell-tcgen05-and-tmem">Blackwell</a>). Hand-writing this is possible but long. In practice people write it in CUTLASS/CuTe, ThunderKittens or Triton, which emit these instructions for you.</li>
+</ol>
+<p>Published tensor-core worklogs, with <strong>their</strong> numbers:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">worklog</th>
+<th style="text-align:left">GPU, dtype, size</th>
+<th style="text-align:left">result (author's measurement)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Alex Armbruster, <a href="https://alexarmbr.github.io/2024/08/10/How-To-Write-A-Fast-Matrix-Multiplication-From-Scratch-With-Tensor-Cores.html">&quot;How To Write A Fast Matrix Multiplication From Scratch With Tensor Cores&quot;</a> (2024)</td>
+<td style="text-align:left">Tesla T4, fp16, 8192^3</td>
+<td style="text-align:left">6 kernels from ~8% to ~96% of cuBLAS (<code>mma.sync</code>, <code>ldmatrix</code>, swizzling, pipelining)</td>
+</tr>
+<tr>
+<td style="text-align:left">Pranjal Shankhdhar, <a href="https://cudaforfun.substack.com/p/outperforming-cublas-on-h100-a-worklog">&quot;Outperforming cuBLAS on H100: a Worklog&quot;</a> (2024)</td>
+<td style="text-align:left">H100 SXM, bf16, 4096^3</td>
+<td style="text-align:left">Boehm-style fp32 kernel ported to bf16: 32 TFLOPS; first <code>wgmma</code> kernel 317; warp specialization 498; two consumer warpgroups 610; L2-aware scheduling 660; clusters 734; final (Hilbert-curve tile order) 764 vs cuBLAS 716</td>
+</tr>
+</tbody>
+</table>
+<p>The H100 row is the best one-paragraph argument for tensor cores. A well-tuned CUDA-core kernel reaches 32 TFLOPS, and the <em>first, unoptimized</em> <code>wgmma</code> kernel reaches 10x that.</p>
+<h2 id="grouped-gemm-for-moe">Grouped GEMM for MoE</h2>
+<p>A mixture-of-experts layer routes each token to <code>topk</code> of <code>E</code> experts. Each expert does its own GEMM on the tokens it received, and the counts per expert are uneven and change every step. Running <code>E</code> separate <code>torch.matmul</code>s means <code>E</code> launches, most of them on tiny or empty batches. A <strong>grouped GEMM</strong> does all experts in one launch:</p>
+<ol>
+<li>Sort the <code>T * topk</code> routed rows by expert, so each expert's rows are contiguous. Record <code>offs[e]</code>, where expert <code>e</code>'s rows start.</li>
+<li>Build a <strong>tile schedule</strong>: one work item per <code>(expert, BLOCK_M rows of that expert)</code>. A hot expert gets many tiles and an empty one gets none, so the grid size matches the real work.</li>
+<li>Each program looks up its expert and row range, <strong>gathers</strong> its token rows through an index array (no permuted copy of <code>X</code>), and multiplies by <code>W[e]</code>. Rows past the expert's end are masked.</li>
+</ol>
+<pre><code class="language-python"># grouped_gemm.py - MoE expert GEMMs as ONE launch: Y[i] = X[tok[i]] @ W[expert(i)] for every routed row
+import torch
+from backend import triton, tl, DEV
+
+
+@triton.jit
+def grouped_gemm_kernel(X, W, Y, TOK, TILE_E, TILE_START, OFFS, N, K,
+                        stride_xt, stride_we, stride_wk, stride_yr,
+                        BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr):
+    tile = tl.program_id(0)                                   # one (expert, row-block) work item
+    pid_n = tl.program_id(1)
+    e = tl.load(TILE_E + tile)                                # which expert's weights
+    r0 = tl.load(TILE_START + tile)                           # first sorted row of this tile
+    r_end = tl.load(OFFS + e + 1)                             # end of this expert's rows
+    rows = r0 + tl.arange(0, BLOCK_M)                         # (BM,) rows in expert-sorted order
+    row_ok = rows &lt; r_end                                     # tile may run past the expert's last row
+    tok = tl.load(TOK + rows, mask=row_ok, other=0)           # (BM,) gather: which token each row is
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+    for k0 in range(0, K, BLOCK_K):
+        kk = k0 + rk
+        a = tl.load(X + tok[:, None] * stride_xt + kk[None, :],
+                    mask=row_ok[:, None] &amp; (kk[None, :] &lt; K), other=0.0)                 # (BM, BK)
+        b = tl.load(W + e * stride_we + kk[:, None] * stride_wk + rn[None, :],
+                    mask=(kk[:, None] &lt; K) &amp; (rn[None, :] &lt; N), other=0.0)               # (BK, BN)
+        acc = tl.dot(a, b, acc)
+    tl.store(Y + rows[:, None] * stride_yr + rn[None, :], acc.to(Y.dtype.element_ty),
+             mask=row_ok[:, None] &amp; (rn[None, :] &lt; N))
+
+
+def moe_grouped_gemm(x, w, expert_idx, BLOCK_M=64, BLOCK_N=64, BLOCK_K=32):
+    &quot;&quot;&quot;x (T, K), w (E, K, N), expert_idx (T, topk) -&gt; y (T*topk, N) in expert-sorted order, plus the order.&quot;&quot;&quot;
+    E, K, N = w.shape
+    flat = expert_idx.reshape(-1)                             # (T*topk,)
+    order = torch.argsort(flat, stable=True)                  # routed rows sorted by expert
+    tok = (order // expert_idx.shape[1]).to(torch.int64)      # token id of each sorted row
+    counts = torch.bincount(flat, minlength=E)                # (E,)
+    offs = torch.zeros(E + 1, dtype=torch.int64, device=x.device)
+    offs[1:] = torch.cumsum(counts, 0)
+    # tile schedule on the host: experts with 0 rows get 0 tiles, hot experts get many
+    tiles_per_e = (counts + BLOCK_M - 1) // BLOCK_M
+    tile_e = torch.repeat_interleave(torch.arange(E, device=x.device), tiles_per_e)
+    first_tile = torch.cumsum(tiles_per_e, 0) - tiles_per_e
+    tile_start = offs[tile_e] + (torch.arange(len(tile_e), device=x.device) - first_tile[tile_e]) * BLOCK_M
+    y = torch.empty(flat.numel(), N, device=x.device, dtype=x.dtype)
+    grid = (len(tile_e), triton.cdiv(N, BLOCK_N))
+    grouped_gemm_kernel[grid](x, w, y, tok, tile_e, tile_start, offs, N, K,
+                              x.stride(0), w.stride(0), w.stride(1), y.stride(0),
+                              BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, BLOCK_K=BLOCK_K)
+    return y, order
+
+
+if __name__ == &quot;__main__&quot;:
+    torch.manual_seed(0)
+    T, K, N, E, topk = 300, 96, 80, 8, 2
+    x = torch.randn(T, K, device=DEV, dtype=torch.bfloat16)
+    w = torch.randn(E, K, N, device=DEV, dtype=torch.bfloat16) / K ** 0.5
+    logits = torch.randn(T, E, device=DEV)
+    logits[:, 0] += 3                                         # skewed router: expert 0 is hot
+    logits[:, 7] -= 100                                       # expert 7 gets no tokens
+    expert_idx = logits.topk(topk, dim=-1).indices            # (T, topk)
+    y, order = moe_grouped_gemm(x, w, expert_idx)
+    print(&quot;rows per expert:&quot;, torch.bincount(expert_idx.reshape(-1), minlength=E).tolist())
+    ref = torch.empty_like(y)
+    for i, r in enumerate(order.tolist()):                    # slow reference: one row at a time
+        t, j = divmod(r, topk)
+        ref[i] = (x[t].float() @ w[expert_idx[t, j]].float()).to(y.dtype)
+    torch.testing.assert_close(y, ref)
+    print(&quot;grouped GEMM matches per-row reference&quot;)
+</code></pre>
+<pre><code>rows per expert: [295, 52, 38, 57, 43, 54, 61, 0]
+grouped GEMM matches per-row reference
+</code></pre>
+<p>Expert 0 received 295 of 600 routed rows and expert 7 received none. The schedule gives expert 0 five 64-row tiles and expert 7 zero, all in one launch. Production versions differ in where the schedule is built. vLLM's <code>fused_moe</code> computes the sorted, block-padded token ids on the GPU (<code>moe_align_block_size</code>), so the whole thing is CUDA-graph capturable with no host sync. MegaBlocks (Gale et al., arXiv 2211.15841) frames the same computation as block-sparse matmul. DeepGEMM (DeepSeek, 2025) provides FP8 grouped GEMMs in two layouts: &quot;contiguous&quot; (sorted rows, as here, for training and prefill) and &quot;masked&quot; (a fixed-capacity slot per expert, for CUDA-graph decode). Prefill and decode are the two phases of generation (<a href="../../models/architectures.html#the-kv-cache">the KV cache</a>); <a href="../../compute/accelerator/execution-model.html#cuda-graphs">CUDA graphs</a> need fixed shapes, hence the fixed-capacity slots. The scatter back to token order, weighted by router probabilities, is usually fused into the next kernel or done with an <code>index_add_</code>. <em>Expert parallelism</em> places different experts on different GPUs, so each token's row has to be sent to the GPU holding its expert and the result sent back: an <a href="../../foundations/distributed-systems.html#collectives-the-workhorse-of-distributed-training">all-to-all</a> collective. Kernels for that exchange are covered later (<a href="../../inference/serving-engine-internals.html#all-to-all-kernels-deepep">DeepEP</a>; the collective itself in <a href="../../network/collectives-internals.html">collectives internals</a>).</p>
+<h2 id="testing-kernels">Testing kernels</h2>
+<p>A kernel that is fast and wrong is worse than useless, because it corrupts training silently. Reviewers of kernel PRs check these things, roughly in this order:</p>
+<ol>
+<li><strong>A reference implementation in plain PyTorch</strong>, as simple as possible, computed in <strong>fp64 (or fp32) on the same rounded inputs</strong>. The &quot;same rounded inputs&quot; part is easy to get wrong. The harness below first compared a bf16 kernel to an fp64 softmax of the <em>unrounded</em> data, and failed with a relative error of 0.021 against bf16's tolerance of 0.016. The failure was the rounding of the input, not the kernel. Comparing against <code>softmax(x_bf16.double())</code> fixed it.</li>
+<li><strong>Tolerances per dtype.</strong> <code>torch.testing.assert_close</code> defaults, printed from this PyTorch version: fp32 <code>rtol=1.3e-6, atol=1e-5</code>; fp16 <code>rtol=1e-3, atol=1e-5</code>; bf16 <code>rtol=1.6e-2, atol=1e-5</code>. For long reductions (GEMMs with big K, attention), a fixed tolerance is too tight or too loose. The more robust bar, used by FlashAttention's tests, is: <strong>your error against the fp64 reference is at most ~2x the error of PyTorch's own implementation at the same dtype.</strong></li>
+<li><strong>Shapes that break kernels</strong>: 1; sizes just below, at and above every block size (<code>BLOCK-1, BLOCK, BLOCK+1</code>); primes; large values that overflow int32 offsets (<span class="math inline"><span class="math-inline">M \cdot \text{stride} &gt; 2^{31}</span></span>); empty tensors; and random shapes from a <em>seeded</em> generator, so that a failure reproduces.</li>
+<li><strong>Layouts</strong>: non-contiguous views (transposes, slices with <code>stride(-1) != 1</code>), storage offsets, different alignments.</li>
+<li><strong>Special values</strong>: <code>-inf</code> rows (fully masked attention), very large magnitudes (overflow in <code>exp</code> without max subtraction), NaN propagation where PyTorch propagates it.</li>
+<li><strong>Determinism</strong>: same input, same bits, run twice. If a kernel is non-deterministic by design (atomics, split-K), document it and offer a deterministic path.</li>
+<li><strong>Gradients</strong>: compare <code>torch.autograd.grad</code> against the reference, or use <code>torch.autograd.gradcheck</code> in fp64 on tiny shapes.</li>
+</ol>
+<pre><code class="language-python"># test_kernels.py - the testing pattern: fp64 reference, per-dtype tolerances, random + edge shapes,
+# &quot;no worse than PyTorch's own low-precision op&quot;, determinism, strided inputs.
+import random, torch
+from backend import DEV
+from softmax import softmax
+from matmul import matmul
+
+TOL = {torch.float32: dict(rtol=1.3e-6, atol=1e-5),     # torch.testing defaults, printed from
+       torch.float16: dict(rtol=1e-3, atol=1e-5),       # torch.testing._comparison._DTYPE_PRECISIONS
+       torch.bfloat16: dict(rtol=1.6e-2, atol=1e-5)}
+
+def edge_sizes(block):                                   # the sizes that break kernels
+    return [1, 2, 3, block - 1, block, block + 1, 2 * block + 1]
+
+def rand_sizes(k, lo, hi, rng):
+    return [rng.randint(lo, hi) for _ in range(k)]
+
+def test_softmax(rng):
+    n = 0
+    for N in edge_sizes(64) + rand_sizes(4, 1, 3000, rng):
+        for dt in TOL:
+            xl = (torch.randn(rng.randint(1, 9), N, device=DEV) * 4).to(dt)
+            ref = torch.softmax(xl.double(), -1)         # fp64 reference ON THE ROUNDED INPUT
+            for online in (False, True):
+                y = softmax(xl, online=online, BLOCK_N=64)
+                torch.testing.assert_close(y, ref.to(dt), **TOL[dt])
+                n += 1
+    return n
+
+def test_matmul_vs_torch_error(rng):
+    # low-precision outputs differ from fp64 by rounding no matter what; the useful bar is
+    # &quot;our error is within 2x of PyTorch's own error at the same dtype&quot;
+    worst = 0.0
+    for _ in range(6):
+        M, N, K = rand_sizes(3, 1, 300, rng)
+        for dt in (torch.float16, torch.bfloat16):
+            a = torch.randn(M, K, device=DEV, dtype=dt); b = torch.randn(K, N, device=DEV, dtype=dt)
+            ref = a.double() @ b.double()
+            err_ours = (matmul(a, b).double() - ref).abs().max().item()
+            err_torch = ((a @ b).double() - ref).abs().max().item()
+            assert err_ours &lt;= 2 * err_torch + 1e-6, (M, N, K, dt, err_ours, err_torch)
+            worst = max(worst, err_ours / max(err_torch, 1e-12))
+    return worst
+
+def test_determinism_and_strides():
+    x = torch.randn(64, 1000, device=DEV, dtype=torch.bfloat16)
+    assert torch.equal(softmax(x), softmax(x)), &quot;same input, different bits&quot;
+    big = torch.randn(64, 2000, device=DEV)
+    xs = big[:, ::2]                                     # non-contiguous view, stride(1) = 2
+    torch.testing.assert_close(softmax(xs), torch.softmax(xs, -1))
+    a = torch.randn(70, 50, device=DEV, dtype=torch.float16)
+    torch.testing.assert_close(matmul(a.t(), a), (a.float().t() @ a.float()).half(), **TOL[torch.float16])
+
+if __name__ == &quot;__main__&quot;:
+    rng = random.Random(0)                               # record the seed: failures must reproduce
+    print(&quot;softmax cases passed:&quot;, test_softmax(rng))
+    print(f&quot;matmul worst error ratio vs torch: {test_matmul_vs_torch_error(rng):.2f}x&quot;)
+    test_determinism_and_strides()
+    print(&quot;determinism + strided inputs OK&quot;)
+</code></pre>
+<pre><code>softmax cases passed: 66
+matmul worst error ratio vs torch: 1.00x
+determinism + strided inputs OK
+</code></pre>
+<p>This harness found a real bug while the chapter was being written. The first version of the <code>softmax</code> launcher passed <code>x.stride(0)</code> but silently assumed <code>stride(1) == 1</code>. On a <code>[:, ::2]</code> view it returned values off by up to 453x relative (<code>Mismatched elements: 63213 / 64000</code>). The fix (now in <code>softmax.py</code>) is <code>x = x.contiguous()</code> when <code>stride(-1) != 1</code>. The alternative is to pass the column stride into the kernel. Either way, only a strided-input test catches this.</p>
+<p>The matmul ratio of 1.00x means the kernel's error equals CPU PyTorch's: both accumulate in fp32 and round once. On a GPU, compare against cuBLAS the same way.</p>
+<p><strong>Memory and race checkers on a GPU</strong> (untested here). <code>compute-sanitizer</code> ships with the CUDA toolkit and works on Triton kernels too, because it instruments the binary:</p>
+<pre><code class="language-bash">compute-sanitizer --tool memcheck  python test_kernels.py   # out-of-bounds / misaligned accesses
+compute-sanitizer --tool racecheck python test_kernels.py   # shared-memory races (missing __syncthreads)
+compute-sanitizer --tool synccheck python test_kernels.py   # barriers inside divergent code
+compute-sanitizer --tool initcheck python test_kernels.py   # reads of uninitialized device memory
+# ========= Invalid __global__ read of size 4 bytes ... by thread (24,0,0) in block (3,0,0)   &lt;- sketch
+</code></pre>
+<p>Run the shape sweep under memcheck once per kernel change. Many out-of-bounds reads land inside a valid allocation, never crash, and produce plausible numbers, so the sanitizer is the only thing that sees them. For kernel PRs, pytest's <code>@pytest.mark.parametrize</code> over <code>(shape, dtype, layout)</code> is the standard way to express the sweep (pytest is the usual Python test runner: it finds functions named <code>test_*</code> and runs them, and <code>parametrize</code> runs one test function once per listed argument combination). Keep the sweep small enough to run in CI on one GPU in minutes.</p>
+<h2 id="benchmarking-kernels">Benchmarking kernels</h2>
+<p>Timing a GPU kernel badly is easy. The three mistakes, demonstrated on the CPU (the physics is the same):</p>
+<pre><code class="language-python"># bench_pitfalls.py - the three benchmarking mistakes, demonstrated on a CPU (same physics as a GPU)
+import time, statistics, torch
+torch.set_num_threads(1)
+
+def bench(fn, reps=50, warmup=5):
+    for _ in range(warmup): fn()
+    ts = []
+    for _ in range(reps):
+        t0 = time.perf_counter(); fn(); ts.append(time.perf_counter() - t0)
+    return statistics.median(ts), min(ts), max(ts)
+
+n = 1 &lt;&lt; 20                                         # 1M fp32 = 4 MB per tensor: fits in cache
+x, y, out = torch.randn(n), torch.randn(n), torch.empty(n)
+t0 = time.perf_counter(); torch.add(x, y, out=out); first = time.perf_counter() - t0
+med, lo, hi = bench(lambda: torch.add(x, y, out=out))
+print(f&quot;1. first call {first*1e6:8.1f} us vs warm median {med*1e6:6.1f} us  (min {lo*1e6:.1f}, max {hi*1e6:.1f})&quot;)
+
+hot = 3 * 4 * n / med / 1e9                         # read x, read y, write out
+bufs = [(torch.randn(n), torch.randn(n), torch.empty(n)) for _ in range(64)]   # 768 MB: no cache holds it
+it = iter(range(10**9))
+def cold():
+    a, b, c = bufs[next(it) % 64]; torch.add(a, b, out=c)
+med_c, _, _ = bench(cold, reps=64)
+print(f&quot;2. same buffers every rep: {hot:5.1f} GB/s   rotating 64 buffer sets: {3*4*n/med_c/1e9:5.1f} GB/s  (cache vs DRAM)&quot;)
+
+ms = [bench(lambda: torch.add(x, y, out=out), reps=20)[0] * 1e6 for _ in range(5)]
+print(&quot;3. five repeated medians (us):&quot;, [round(m, 1) for m in ms])
+</code></pre>
+<pre><code>1. first call    378.7 us vs warm median  104.1 us  (min 100.0, max 111.5)
+2. same buffers every rep: 120.8 GB/s   rotating 64 buffer sets:  31.0 GB/s  (cache vs DRAM)
+3. five repeated medians (us): [105.3, 105.2, 105.3, 105.3, 105.3]
+</code></pre>
+<ol>
+<li><strong>No warmup.</strong> The first call cost more than 3x the warm median, all of it one-time work. On a GPU, first calls include CUDA context creation, module loading, Triton JIT compilation (seconds) and autotuning.</li>
+<li><strong>Warm caches.</strong> Re-running on the same 12 MB of buffers measured cache bandwidth: almost 4x the bandwidth seen when the buffers rotate through more memory than any cache holds. On a GPU the trap is the L2 (50 MB on H100): a 16 MB input re-timed in a loop is served from L2. Flush it between repetitions by writing a buffer larger than the L2.</li>
+<li><strong>One sample.</strong> Report the median (or several quantiles) of many repetitions, and repeat the whole measurement to see its spread.</li>
+</ol>
+<p>A correct GPU timing harness, using CUDA events (timestamps recorded <em>on the GPU stream</em>, so no host sync sits inside the timed region). Untested here:</p>
+<pre><code class="language-python"># bench_cuda.py - CUDA-event timing with warmup, L2 flush and quantiles (untested: needs a GPU)
+import torch
+
+def bench(fn, warmup=25, rep=100):
+    flush = torch.empty(256 * 1024 * 1024, dtype=torch.int8, device=&quot;cuda&quot;)   # &gt; L2 of current GPUs
+    for _ in range(warmup):
+        fn()
+    starts = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
+    ends = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
+    for i in range(rep):
+        flush.zero_()                      # evict L2; its own kernel, outside the timed region
+        starts[i].record()
+        fn()
+        ends[i].record()
+    torch.cuda.synchronize()               # wait once, at the end
+    ts = sorted(s.elapsed_time(e) for s, e in zip(starts, ends))   # ms
+    return {&quot;p20&quot;: ts[rep // 5], &quot;median&quot;: ts[rep // 2], &quot;p80&quot;: ts[4 * rep // 5]}
+</code></pre>
+<p><code>triton.testing.do_bench(fn, warmup=25, rep=100, quantiles=None, return_mode=&quot;mean&quot;)</code> does the same (warmup and rep are in <em>milliseconds</em> of running time, not iteration counts; it flushes L2 with a 256 MB buffer and returns the mean unless you ask for quantiles). <code>triton.testing.do_bench_cudagraph</code> captures <code>fn</code> in a CUDA graph first, which removes launch overhead. Use it for microsecond kernels, where the <a href="../../compute/accelerator/execution-model.html#launch-overhead-and-cpu-boundness">launch cost</a> of a few microseconds is the same order as the kernel. <code>triton.testing.perf_report</code> + <code>triton.testing.Benchmark</code> sweep a shape axis and plot several implementations; the Triton tutorials use them.</p>
+<p>Other rules for numbers you put in a PR:</p>
+<ul>
+<li><strong>Report against the roofline, not just &quot;x% faster&quot;.</strong> Compute the minimum bytes and FLOPs, and report achieved TFLOP/s and GB/s and the fraction of whichever bound applies (<code>gemm_ai.py</code> above has a <code>report</code> function; the inputs to it there are placeholders, not measurements). A 2x speedup over a bad baseline that still sits at 20% of bandwidth is not done.</li>
+<li><strong>Always include the vendor library and <code>torch.compile</code> as baselines</strong> (cuBLAS via <code>torch.matmul</code>, FlashAttention via <code>F.scaled_dot_product_attention</code>, Inductor's generated Triton kernel). The <a href="../../compute/accelerator/execution-model.html#benchmarking-notes">RMSNorm benchmark</a> in the execution model chapter shows the pattern, plus the <code>copy_</code> ceiling for memory-bound kernels.</li>
+<li><strong>Sweep shapes from the real workload</strong>: decode shapes (<code>M = batch</code>, tiny) behave nothing like training shapes. Report the whole sweep.</li>
+<li><strong>Control clocks.</strong> GPUs boost and throttle with temperature and power. <code>nvidia-smi -q -d CLOCK</code> shows current clocks. Nsight Compute locks to base clock by default (<code>--clock-control base</code>). For comparisons that matter, keep the machine otherwise idle and report the GPU model, driver, CUDA version and clock policy.</li>
+</ul>
+<h2 id="reading-ncu-to-choose-the-next-optimization">Reading ncu to choose the next optimization</h2>
+<p><a href="../../compute/accelerator/execution-model.html#profiling-nsys-and-ncu">The execution model chapter</a> covers the Nsight tools, the Speed Of Light sections and the stall-reason table. This section is the loop you run with them while optimizing one kernel. Profile one launch, read four numbers, make one change, re-measure.</p>
+<pre><code class="language-bash"># full report for one launch of one kernel, with source correlation (needs -lineinfo for CUDA)
+ncu --set full --import-source yes -k regex:sgemm_2d --launch-skip 3 --launch-count 1 \
+    -o sgemm_2d python sgemm_ext.py
+ncu -i sgemm_2d.ncu-rep --page details            # text version of the GUI's Details page
+ncu -i sgemm_2d.ncu-rep --page raw --csv &gt; raw.csv # every metric, for diffing two versions
+# the GUI can set any report as a baseline and show per-metric deltas against it
+</code></pre>
+<p>The four questions, and what the SGEMM ladder looks like through them. The &quot;what ncu shows&quot; column is the expected signature from the analysis above, not a measured report:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">kernel</th>
+<th style="text-align:left">1. which SOL is high?</th>
+<th style="text-align:left">2. what is the top stall?</th>
+<th style="text-align:left">3. memory detail</th>
+<th style="text-align:left">next step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">1 naive</td>
+<td style="text-align:left">both low (latency-bound)</td>
+<td style="text-align:left">Long Scoreboard (waiting on global loads)</td>
+<td style="text-align:left">global load sectors/request ~32 (ideal 4)</td>
+<td style="text-align:left">coalesce (kernel 2)</td>
+</tr>
+<tr>
+<td style="text-align:left">2 coalesced</td>
+<td style="text-align:left">memory (L1/L2) high-ish, compute low</td>
+<td style="text-align:left">Long Scoreboard</td>
+<td style="text-align:left">sectors/request ~4; DRAM traffic far above the ideal <span class="math inline"><span class="math-inline">(MK + KN + MN) \cdot 4</span></span> bytes</td>
+<td style="text-align:left">reuse via smem (kernel 3)</td>
+</tr>
+<tr>
+<td style="text-align:left">3 smem</td>
+<td style="text-align:left">L1/shared high, FMA pipe low</td>
+<td style="text-align:left">MIO Throttle / Short Scoreboard (smem queue)</td>
+<td style="text-align:left">smem loads per FMA = 2</td>
+<td style="text-align:left">more work per smem load (kernels 4, 5)</td>
+</tr>
+<tr>
+<td style="text-align:left">5 2D tile</td>
+<td style="text-align:left">compute (FMA) rising</td>
+<td style="text-align:left">fewer smem stalls; LG Throttle, issue-bound</td>
+<td style="text-align:left">many scalar LDG/LDS instructions</td>
+<td style="text-align:left">128-bit loads (kernel 6)</td>
+</tr>
+<tr>
+<td style="text-align:left">6 vectorized</td>
+<td style="text-align:left">FMA pipe high</td>
+<td style="text-align:left">Not Selected / Math Pipe Throttle</td>
+<td style="text-align:left">spills? check <code>--ptxas-options=-v</code></td>
+<td style="text-align:left">warptiling, double buffering, autotune</td>
+</tr>
+<tr>
+<td style="text-align:left">any tensor-core GEMM</td>
+<td style="text-align:left">tensor pipe %</td>
+<td style="text-align:left">Barrier / Long Scoreboard at the <code>mbarrier</code> waits</td>
+<td style="text-align:left">smem bank conflicts on fragment loads</td>
+<td style="text-align:left">more stages, swizzle, warp specialization</td>
+</tr>
+<tr>
+<td style="text-align:left">memory-bound (norms, softmax)</td>
+<td style="text-align:left">DRAM % of peak</td>
+<td style="text-align:left">Long Scoreboard</td>
+<td style="text-align:left">DRAM throughput near the <code>copy_</code> ceiling</td>
+<td style="text-align:left">if &gt; ~85% of copy: stop, or fuse with a neighbour</td>
+</tr>
+</tbody>
+</table>
+<p>The specific metrics behind those questions (names as in the Nsight Compute profiling guide; verify with <code>ncu --query-metrics</code> on your GPU, since names change across versions and architectures):</p>
+<pre><code class="language-bash">ncu -k regex:sgemm --metrics \
+gpu__time_duration.sum,\
+sm__throughput.avg.pct_of_peak_sustained_elapsed,\
+gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed,\
+dram__bytes_read.sum,dram__bytes_write.sum,\
+l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum,l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum,\
+l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld.sum,\
+sm__warps_active.avg.pct_of_peak_sustained_active,\
+launch__registers_per_thread,launch__occupancy_limit_registers \
+python sgemm_ext.py
+# sectors / requests for global loads = sectors per warp-wide load: 4 is perfect for fp32,
+# 32 means every lane touched its own sector (kernel 1).
+# dram__bytes_read vs the ideal bytes: the reuse factor your tiling achieves.
+</code></pre>
+<p>Habits that save days. Look at the <strong>Source</strong> page with SASS next to source: the hot instruction tells you more than any summary (an unexpected <code>LDL</code>/<code>STL</code> is a register spill; a hot <code>BAR.SYNC</code> is load imbalance; <code>F2F</code> conversions in the inner loop are a dtype mistake). When the profile says &quot;latency-bound, low occupancy, high registers&quot;, decide deliberately between more occupancy (smaller tiles, <code>__launch_bounds__</code>, fewer registers) and more ILP per thread (bigger tiles). The GEMM ladder above took the ILP route on purpose.</p>
+<h2 id="cutlass-cute-thunderkittens-and-other-kernel-dsls">CUTLASS, CuTe, ThunderKittens and other kernel DSLs</h2>
+<p>You will meet these in other people's repositories. Status as of late 2025 to 2026. This area moves fast: check each project's README before relying on any detail here.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">tool</th>
+<th style="text-align:left">what it is</th>
+<th style="text-align:left">when people use it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><a href="https://github.com/NVIDIA/cutlass">CUTLASS</a> 3.x (C++)</td>
+<td style="text-align:left">NVIDIA's header-only template library: GEMM/conv collectives, epilogues, TMA/<code>wgmma</code>/<code>tcgen05</code> paths, built on CuTe</td>
+<td style="text-align:left">peak GEMMs on Hopper/Blackwell with custom epilogues; what vLLM, FlashAttention-3 and many FP8 kernels build on</td>
+</tr>
+<tr>
+<td style="text-align:left">CuTe (C++, part of CUTLASS)</td>
+<td style="text-align:left">layouts as <code>(shape, stride)</code> algebra, tensors, copy and MMA &quot;atoms&quot; (<a href="../../compute/accelerator/execution-model.html#cutlass-and-cute-in-one-screen">one screen</a>)</td>
+<td style="text-align:left">writing your own kernel with CUTLASS's building blocks instead of its full GEMM templates</td>
+</tr>
+<tr>
+<td style="text-align:left">CuTe DSL (Python, CUTLASS 4.x, 2025)</td>
+<td style="text-align:left">the CuTe concepts as a Python DSL, JIT-compiled, no C++ templates (<a href="https://docs.nvidia.com/cutlass/media/docs/pythonDSL/overview.html">docs</a>); in public beta per its PyPI page</td>
+<td style="text-align:left">new Hopper/Blackwell kernels with full hardware control and fast compile times (e.g. Tri Dao's QuACK kernels, FlashAttention-4 work)</td>
+</tr>
+<tr>
+<td style="text-align:left"><a href="https://github.com/triton-lang/triton">Triton</a></td>
+<td style="text-align:left">tile-level Python DSL, this chapter</td>
+<td style="text-align:left">most new ML kernels: Liger-Kernel, Inductor output, vLLM's <code>fused_moe</code>, Unsloth</td>
+</tr>
+<tr>
+<td style="text-align:left">Gluon (in the Triton repo, 2025)</td>
+<td style="text-align:left">a lower-level Triton dialect that exposes layouts, shared memory and warp specialization explicitly</td>
+<td style="text-align:left">when Triton's compiler will not produce the Hopper/Blackwell schedule you need</td>
+</tr>
+<tr>
+<td style="text-align:left"><a href="https://github.com/HazyResearch/ThunderKittens">ThunderKittens</a> (Spector et al., arXiv 2410.20399)</td>
+<td style="text-align:left">small C++ embedded library built around 16x16 register and shared tiles, warp/warpgroup operations and a producer/consumer template</td>
+<td style="text-align:left">attention variants, linear attention, state-space kernels; the paper reports matching cuBLAS and FA3 on GEMM and attention inference</td>
+</tr>
+<tr>
+<td style="text-align:left">TileLang (tile-ai; arXiv 2504.17577, id unverified)</td>
+<td style="text-align:left">Python tile DSL on TVM (Apache TVM, an open-source ML compiler), separating dataflow from scheduling annotations</td>
+<td style="text-align:left">DeepSeek-style MLA and FP8 kernels; AMD and NVIDIA backends</td>
+</tr>
+<tr>
+<td style="text-align:left">Helion (PyTorch, 2025)</td>
+<td style="text-align:left">higher-level Python DSL that compiles to Triton with heavy autotuning</td>
+<td style="text-align:left">PyTorch-native authoring where Triton tiling decisions are searched automatically</td>
+</tr>
+<tr>
+<td style="text-align:left">NVIDIA cuTile / CUDA Tile IR (CUDA 13.x, late 2025)</td>
+<td style="text-align:left">NVIDIA's tile-based programming model and IR, with a Python front end</td>
+<td style="text-align:left">early; worth watching as NVIDIA's own answer to Triton</td>
+</tr>
+<tr>
+<td style="text-align:left"><a href="https://docs.jax.dev/en/latest/pallas/index.html">Pallas</a> (JAX)</td>
+<td style="text-align:left">JAX's kernel language for TPU and GPU (Triton or Mosaic GPU backends)</td>
+<td style="text-align:left">kernels in JAX codebases</td>
+</tr>
+<tr>
+<td style="text-align:left">Mojo (Modular)</td>
+<td style="text-align:left">systems language with GPU kernels; Modular's MAX kernels</td>
+<td style="text-align:left">Modular's stack</td>
+</tr>
+<tr>
+<td style="text-align:left">Composable Kernel, AITER (AMD)</td>
+<td style="text-align:left">AMD's CUTLASS-analogue and its LLM-kernel library</td>
+<td style="text-align:left">ROCm; see <a href="../../compute/accelerator/execution-model.html#amd-differences">AMD differences</a></td>
+</tr>
+</tbody>
+</table>
+<p>How to choose, as a working rule:</p>
+<ul>
+<li><strong>Default to Triton</strong> for anything memory-bound or fusion-shaped (norms, activations, losses, RoPE, quantize/dequantize, MoE routing), and for GEMM-like kernels where 80-95% of peak is enough.</li>
+<li><strong>Use CUTLASS/CuTe (C++ or DSL)</strong> when you need the last 10-20% on Hopper/Blackwell GEMMs and attention, custom FP8/FP4 block-scaled formats, or features Triton does not expose (clusters, TMA multicast, exact warp specialization). Expect a steep learning curve and slow C++ compiles.</li>
+<li><strong>Use ThunderKittens</strong> for attention-like kernels where its tile abstractions fit and you want readable C++.</li>
+<li><strong>Read the generated code.</strong> Whatever you write in, the PTX/SASS (<code>cuobjdump -sass</code>, the Triton cache) is the ground truth for what runs.</li>
+</ul>
+<h2 id="a-checklist-before-you-open-a-kernel-pr">A checklist before you open a kernel PR</h2>
+<p>What reviewers in kernel repositories (FlashAttention, vLLM, Liger, SGLang, TransformerEngine) look for, condensed:</p>
+<pre><code class="language-text">[ ] reference implementation in plain PyTorch, in the test file
+[ ] tests: dtypes x shapes (edge sizes, primes, random seeded) x layouts (strided, offset) x special values
+[ ] tolerance justified: vs fp64 reference, and no worse than ~2x PyTorch's own error at that dtype
+[ ] gradients tested (if there is a backward), determinism stated
+[ ] compute-sanitizer memcheck clean on the test sweep
+[ ] benchmark script: real-workload shapes, vs vendor library + torch.compile + previous kernel,
+    median of many reps with L2 flush, reported as TFLOP/s or GB/s and % of roofline
+[ ] GPU model, driver, CUDA, PyTorch and Triton versions in the PR description
+[ ] preconditions enforced with TORCH_CHECK / asserts (alignment, contiguity, shape multiples)
+[ ] registered as a torch.library op with a fake impl; torch.compile(fullgraph=True) test
+[ ] CUDA-graph capturable (no host syncs, no per-call allocation outside PyTorch's allocator)
+[ ] no regression on other architectures you claim to support (sm_80 / sm_90 / sm_100, ROCm)
+</code></pre>
+<p>The fastest way to become useful in a kernel repo is not writing a new kernel. It is taking an existing one, adding the missing shape or dtype test that fails, and fixing it. Every repository listed above has open issues of exactly that kind.</p>
+
+</article>
+<footer><a class="prev" href="../../compute/accelerators-reference.html">&larr; Accelerators: Reference</a><a class="next" href="../../compute/gpu-software-stack-reference.html">GPU Nodes: Driver Install, Acceptance Testing and Troubleshooting &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../../assets/site.js"></script>
+</body></html>

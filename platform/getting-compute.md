@@ -12,15 +12,15 @@ Much of the material comes from Stas Bekman's years of training large models (BL
 
 This chapter leans on almost everything before it. The most important ones:
 
-- [Accelerators](../compute/accelerators.md): [TFLOPS](../compute/accelerators.md#tflops), the [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table), [MAMF and MSMF](../compute/accelerators.md#maximum-achievable-and-sustainable-flops) (the measured matmul ceilings), [silicon lottery](../compute/accelerators.md#not-all-accelerators-are-created-equal), [Where you can get what](../compute/accelerators.md#where-you-can-get-what), [Software stacks](../compute/accelerators.md#software-stacks) and [How to get the best price](../compute/accelerators.md#how-to-get-the-best-price).
-- [Interconnects](../network/interconnects.md): [intra-node](../network/interconnects.md#intra-node-networking) (NVLink) and [inter-node](../network/interconnects.md#inter-node-networking) (InfiniBand, RoCE, EFA) networking, [SHARP/NVLS](../network/interconnects.md#sharp), [Real network throughput](../network/interconnects.md#real-network-throughput) and [Inter-node speed depends on intra-node speed](../network/interconnects.md#inter-node-speed-depends-on-intra-node-speed).
+- [Accelerators](../compute/accelerators.md): [TFLOPS](../compute/accelerators.md#tflops), the [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table), [MAMF and MSMF](../compute/accelerators.md#maximum-achievable-and-sustainable-flops) (the measured matmul ceilings), [silicon lottery](../compute/accelerators.md#not-all-accelerators-are-created-equal), [Where you can get what](../compute/accelerators-reference.md#where-you-can-get-what), [Software stacks](../compute/accelerators-reference.md#software-stacks) and [How to get the best price](../compute/accelerators-reference.md#how-to-get-the-best-price).
+- [Interconnects](../network/interconnects.md): [intra-node](../network/interconnects.md#intra-node-networking) (NVLink) and [inter-node](../network/interconnects.md#inter-node-networking) (InfiniBand, RoCE, EFA) networking, [SHARP/NVLS](../network/interconnects-reference.md#sharp), [Real network throughput](../network/interconnects-reference.md#real-network-throughput) and [Inter-node speed depends on intra-node speed](../network/interconnects-reference.md#inter-node-speed-depends-on-intra-node-speed).
 - [Measuring and Debugging the Network](../network/measuring-and-debugging.md): [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench), [nccl-tests](../network/measuring-and-debugging.md#nccl-tests) and `busbw`.
 - [Networking](../foundations/networking.md): [leaf-spine and fat-tree topologies](../foundations/networking.md#top-of-rack-leaf-spine-fat-tree) and [RoCE](../foundations/networking.md#roce-and-lossless-ethernet).
 - [Storage and Data](../foundations/storage-and-data.md): parallel filesystems, [metadata storms](../foundations/storage-and-data.md#metadata-storms-and-how-ml-jobs-cause-them) (why tiny files hurt), [measuring storage with fio](../foundations/storage-and-data.md#5-measuring-storage) and [rsync](../foundations/storage-and-data.md#rsync).
 - [Training Arithmetic](../training/arithmetic.md): `6N` FLOPs per token, [MFU and HFU](../training/arithmetic.md#mfu-and-hfu-properly), [the attention term](../training/arithmetic.md#the-attention-term-and-which-constant), [static memory per parameter](../training/arithmetic.md#static-per-parameter), [FP4 formats](../training/arithmetic.md#fp4-formats) and the [Transformer Engine](../training/arithmetic.md#transformer-engine-mechanics).
 - [Profiling and Optimization](../training/profiling-and-optimization.md): [TFLOPS as a performance metric](../training/profiling-and-optimization.md#tflops-as-a-performance-metric), [MFU vs HFU](../training/profiling-and-optimization.md#mfu-vs-hfu), [where GPU memory goes](../training/profiling-and-optimization.md#anatomy-of-models-memory-usage) and [memory profiler tools](../training/profiling-and-optimization.md#memory-profiler-tools).
 - [Model Parallelism: Derivations](../training/model-parallelism/derivations.md): ZeRO/FSDP, [tensor parallelism](../training/model-parallelism/derivations.md#tensor-parallelism-megatron) and [sequence/context parallelism](../training/model-parallelism/derivations.md#sequence-parallelism-and-context-parallelism).
-- [The GPU node software stack](../compute/gpu-software-stack.md): [DCGM](../compute/gpu-software-stack.md#dcgm-the-health-daemon-and-diagnostics) and the [node acceptance script](../compute/gpu-software-stack.md#10-a-node-acceptance-script).
+- [The GPU node software stack](../compute/gpu-software-stack.md): [DCGM](../compute/gpu-software-stack.md#dcgm-the-health-daemon-and-diagnostics) and the [node acceptance script](../compute/gpu-software-stack-reference.md#a-node-acceptance-script).
 - [Fault Tolerance and Reproducibility](../training/fault-tolerance-and-reproducibility.md): [spare nodes](../training/fault-tolerance-and-reproducibility.md#always-plan-to-have-more-nodes-than-needed) and [fixed allocations](../training/fault-tolerance-and-reproducibility.md#preferring-fixed-accelerator-allocations-to-dynamic-ones).
 - [Slurm from zero](../orchestration/slurm/from-zero.md) and [Kubernetes from zero](../orchestration/kubernetes-from-zero.md), especially [Slurm vs Kubernetes](../orchestration/slurm/from-zero.md#slurm-vs-kubernetes).
 - [Inference Arithmetic](../inference/arithmetic.md): TTFT and TPOT, the [user experience metrics](../inference/arithmetic.md#user-experience-metrics).
@@ -173,7 +173,7 @@ Cons:
 - A few years after purchase you're stuck with outdated hardware. You may be able to resell it.
 - You must buy more than you need. Hardware breaks, especially under 24/7 load, and an RMA can take weeks.
 - You must hire people to run it.
-- You must sort out cooling, electricity, insurance and so on. The power and cooling numbers per card are in [Power consumption](../compute/accelerators.md#power-consumption) and [Cooling](../compute/accelerators.md#cooling).
+- You must sort out cooling, electricity, insurance and so on. The power and cooling numbers per card are in [Power consumption](../compute/accelerators.md#power-consumption) and [Cooling](../compute/accelerators-reference.md#cooling).
 
 Whether "a few years" of 24/7 use is enough depends on your prices. A minimal break-even sketch, with every number an assumption you should replace:
 
@@ -333,7 +333,7 @@ As of 2026-08, the accelerators most commonly used for training, finetuning and 
 
 - Huawei Ascend - real scale, but in practice China-only, and the specs are only on Huawei's Chinese pages.
 
-"Announced" is not "available". The [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table) is split in two for exactly this reason: generally available parts first, then announced parts whose availability isn't confirmed. For the full list, per-vendor details and numbers see [Where you can get what](../compute/accelerators.md#where-you-can-get-what) and [Vendors and products](../compute/accelerators.md#vendors-and-products).
+"Announced" is not "available". The [TFLOPS comparison table](../compute/accelerators.md#tflops-comparison-table) is split in two for exactly this reason: generally available parts first, then announced parts whose availability isn't confirmed. For the full list, per-vendor details and numbers see [Where you can get what](../compute/accelerators-reference.md#where-you-can-get-what) and [Vendors and products](../compute/accelerators-reference.md#vendors-and-products).
 
 #### Accelerator interoperability
 
@@ -365,7 +365,7 @@ bench_flash_attn.py:20:    from flash_attn.cute import flash_attn_func
 
 How to read this: each hit is a line that ties the code to NVIDIA (here FA3 for Hopper and FA4 for Blackwell). Zero hits means plain PyTorch, which should move to AMD with little work and to XLA devices with more. Many hits in your model code means a switch of vendor is a porting project, which belongs in the cost of any non-NVIDIA offer.
 
-Triton (which `torch.compile` also generates) is a partial exception: it supports AMD GPUs as well as NVIDIA, but not XLA devices. [Software stacks](../compute/accelerators.md#software-stacks) shows how to tell from Python which backend you're on.
+Triton (which `torch.compile` also generates) is a partial exception: it supports AMD GPUs as well as NVIDIA, but not XLA devices. [Software stacks](../compute/accelerators-reference.md#software-stacks) shows how to tell from Python which backend you're on.
 
 ### Network
 
@@ -402,7 +402,7 @@ All the details are in [Intra-node networking](../network/interconnects.md#intra
 #### Inter-node network
 
 - You'll see a wide range of speeds, from 200Gbps to 6400Gbps per node.
-- Inter-node links are still about an order of magnitude slower than intra-node ones - for example 50GBps per accelerator of EFA v4 on an AWS P6-B200 instance vs 900GBps of NVLink 5. But the practical gap is much smaller, because an inter-node collective also does most of its data movement over the intra-node links: a 4GiB `all-reduce` across 4 nodes measures only about 2x slower than on one node, not 18x. See [Inter-node speed depends on intra-node speed](../network/interconnects.md#inter-node-speed-depends-on-intra-node-speed).
+- Inter-node links are still about an order of magnitude slower than intra-node ones - for example 50GBps per accelerator of EFA v4 on an AWS P6-B200 instance vs 900GBps of NVLink 5. But the practical gap is much smaller, because an inter-node collective also does most of its data movement over the intra-node links: a 4GiB `all-reduce` across 4 nodes measures only about 2x slower than on one node, not 18x. See [Inter-node speed depends on intra-node speed](../network/interconnects-reference.md#inter-node-speed-depends-on-intra-node-speed).
 - You need to reduce gradients and other tensors (e.g. MoE token exchanges) faster than you compute, or the accelerators idle.
 - Expect at most about 80% of the advertised speed. If you're told 800Gbps, expect about 640Gbps.
 
@@ -542,7 +542,7 @@ In Stas Bekman's experience there are three questions you absolutely need answer
 
 ### Contracts
 
-If you pay per hour, you don't need to worry about contracts. But it's a bad long-term strategy: you pay many times more and you don't get a steady, reliable pool of accelerators. A long-term contract, with a good negotiator, can save as much as 10x in TCO (and time). [How to get the best price](../compute/accelerators.md#how-to-get-the-best-price) covers the negotiation itself; this section covers what to put in the contract.
+If you pay per hour, you don't need to worry about contracts. But it's a bad long-term strategy: you pay many times more and you don't get a steady, reliable pool of accelerators. A long-term contract, with a good negotiator, can save as much as 10x in TCO (and time). [How to get the best price](../compute/accelerators-reference.md#how-to-get-the-best-price) covers the negotiation itself; this section covers what to put in the contract.
 
 #### Free trials
 
@@ -621,7 +621,7 @@ If that isn't done, you discover the bad apples the hard way, while running your
 
 So ask your provider how long they burned in your systems, if at all. There's no golden reference point yet, but [SemiAnalysis](https://newsletter.semianalysis.com/p/ai-neocloud-playbook-and-anatomy#%C2%A7cluster-deployment-and-acceptance-test) suggests the OEM performs a 3-4 week burn-in and then the CSP runs another 2-3 day burn-in/acceptance test. If that's the norm, make sure your systems were stress-tested for at least 2-3 days.
 
-Nothing stops you from doing your own burn-in with a large real training run, if you don't mind stopping and restarting on failures: if it works, you've made progress. Make sure it stresses every part of the system in a sustained way - compute, memory, NVLink, the inter-node network and storage. The [node acceptance script](../compute/gpu-software-stack.md#10-a-node-acceptance-script) is a shorter, structured version of the same idea.
+Nothing stops you from doing your own burn-in with a large real training run, if you don't mind stopping and restarting on failures: if it works, you've made progress. Make sure it stresses every part of the system in a sustained way - compute, memory, NVLink, the inter-node network and storage. The [node acceptance script](../compute/gpu-software-stack-reference.md#a-node-acceptance-script) is a shorter, structured version of the same idea.
 
 How much does a 3-10% failure rate matter? It depends on how many accelerators one job touches:
 
@@ -658,7 +658,7 @@ That said, if time matters to you, always pay for about 10% more nodes than you 
 
 Unless you rent 10k GPUs, a smaller cluster can easily sit under one network spine (the top tier of switches in a leaf-spine fabric, see [Top-of-rack, leaf-spine, fat-tree](../foundations/networking.md#top-of-rack-leaf-spine-fat-tree)), so that inter-node traffic takes the same time between any two nodes.
 
-Make sure the backup nodes - the ones you don't pay for but that cover failures - are on the same spine as the nodes you pay for. If not, multi-node training gets a big problem: that one replacement node is further from all the others and slows the whole ensemble down, because a synchronous job runs at the speed of its weakest link. See also [Node Proximity](../network/interconnects.md#node-proximity).
+Make sure the backup nodes - the ones you don't pay for but that cover failures - are on the same spine as the nodes you pay for. If not, multi-node training gets a big problem: that one replacement node is further from all the others and slows the whole ensemble down, because a synchronous job runs at the speed of its weakest link. See also [Node Proximity](../network/interconnects-reference.md#node-proximity).
 
 #### Keep your good accelerators on reboot
 
@@ -733,13 +733,13 @@ Many CSPs offer only one tier of file storage at one price. But organizations ne
 
 This part matters mostly for training and finetuning. If you rent accelerators for inference via large deployments of microservices, or for small on-demand interactive work (notebooks), you can safely skip it - unless you serve models so big that a single replica needs more than one node.
 
-In general, make sure the offered [intra-node](../network/interconnects.md#intra-node-networking) and [inter-node](../network/interconnects.md#inter-node-networking) speeds match the promise and your expectations. When you measure, ask which NCCL environment variables the platform needs; a safe default is `NCCL_NVLS_ENABLE=2`, which uses NVLink SHARP when available (NVLS is explained in [SHARP](../network/interconnects.md#sharp)).
+In general, make sure the offered [intra-node](../network/interconnects.md#intra-node-networking) and [inter-node](../network/interconnects.md#inter-node-networking) speeds match the promise and your expectations. When you measure, ask which NCCL environment variables the platform needs; a safe default is `NCCL_NVLS_ENABLE=2`, which uses NVLink SHARP when available (NVLS is explained in [SHARP](../network/interconnects-reference.md#sharp)).
 
 #### Ask for the actual performance numbers
 
 Compute theory never matches reality, and reality can vary dramatically between providers even with identical components, because it depends on the quality of every part and on how well the racks were designed and put together.
 
-The easiest ask is an `all-reduce` benchmark plot over 4, 8, 16, 32 and 64 nodes (more if your cluster is bigger). Bandwidth should degrade gradually with more nodes, but not dramatically; some networks become very inefficient at higher node counts. See [Real network throughput](../network/interconnects.md#real-network-throughput).
+The easiest ask is an `all-reduce` benchmark plot over 4, 8, 16, 32 and 64 nodes (more if your cluster is bigger). Bandwidth should degrade gradually with more nodes, but not dramatically; some networks become very inefficient at higher node counts. See [Real network throughput](../network/interconnects-reference.md#real-network-throughput).
 
 Ideally benchmark a few payload sizes - the ones you know your workload's collectives use. Stas usually starts by asking for a plot at a big payload, 4-16GiB (16GiB gets the best bandwidth on the newest, fastest inter-node networks), which immediately tells him whether the network is good. You'll very likely also want 256-512MiB, so ask for the wider range.
 
@@ -942,7 +942,7 @@ Copy every log and plot **off the cluster as soon as it's written**. Trial acces
 
 ### A. Network
 
-Intra-node: run [`torch-dist-bench.py`](../network/benchmarks/torch-dist-bench.py) with `torchrun --nproc_per_node=8` (or however many GPUs the node has). Inter-node: the same script on **every node you were given** (at least 4 if you have the choice; ranks = nodes x GPUs per node). The script header has a `pdsh` recipe that needs passwordless SSH between those nodes; Slurm `srun` and `deepspeed -H <hostfile>` are the other common launchers. See [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench), [Network throughput](../network/measuring-and-debugging.md#network-throughput) and [Real network throughput](../network/interconnects.md#real-network-throughput).
+Intra-node: run [`torch-dist-bench.py`](../network/benchmarks/torch-dist-bench.py) with `torchrun --nproc_per_node=8` (or however many GPUs the node has). Inter-node: the same script on **every node you were given** (at least 4 if you have the choice; ranks = nodes x GPUs per node). The script header has a `pdsh` recipe that needs passwordless SSH between those nodes; Slurm `srun` and `deepspeed -H <hostfile>` are the other common launchers. See [torch-dist-bench](../network/measuring-and-debugging.md#torch-dist-bench), [Network throughput](../network/measuring-and-debugging.md#network-throughput) and [Real network throughput](../network/interconnects-reference.md#real-network-throughput).
 
 ```bash
 "$PY" -u -m torch.distributed.run --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d \
@@ -1035,7 +1035,7 @@ The number to report is **`busbw`** (unidirectional). Intra-node, compare it to 
 
 #### Latency: every collective, no target
 
-Don't let all-reduce stand in for latency. Its small-payload latency is the best of all collectives: NCCL gives only all-reduce its tree algorithm, whose latency grows with the log of the node count while the other collectives' rings grow linearly, and with NVLS or InfiniBand SHARP a small all-reduce is reduced inside the switch ([which collective to measure latency with](../network/interconnects.md#which-collective-to-measure-latency-with)). Report the 8B and 64KiB median and p99 (99th percentile) of all nine; at both sizes a call is nearly all latency (on 8x H200 every all-reduce up to 512KiB took 15-23 µs). The ones to comment on:
+Don't let all-reduce stand in for latency. Its small-payload latency is the best of all collectives: NCCL gives only all-reduce its tree algorithm, whose latency grows with the log of the node count while the other collectives' rings grow linearly, and with NVLS or InfiniBand SHARP a small all-reduce is reduced inside the switch ([which collective to measure latency with](../network/interconnects-reference.md#which-collective-to-measure-latency-with)). Report the 8B and 64KiB median and p99 (99th percentile) of all nine; at both sizes a call is nearly all latency (on 8x H200 every all-reduce up to 512KiB took 15-23 µs). The ones to comment on:
 
 - `batch_isend_irecv`: point-to-point, the latency the NICs and switches add with no collective algorithm in the way (pipeline parallelism, KV-cache transfer).
 - `all_to_all`: every GPU sends to every other at once, which exposes oversubscription and incast (mixture-of-experts dispatch and combine).
@@ -1066,7 +1066,7 @@ Report Pass or Fail per plugin and per GPU. If your container can't run it, writ
 OUT_DIR=mamf "$PY" mamf-finder-all-gpus.py --dtype bfloat16 > mamf-all.console 2>&1
 ```
 
-On 8x H200 it took about 4.5 minutes. GPU0 runs the full `--search auto` and finds MAMF, MSMF and their matmul shapes; each other GPU then measures GPU0's shapes only; `mamf/summary.txt` lists each GPU's MAMF and MSMF with shape, watts and MHz, and gives the node figure (the median GPU), the slowest GPU (what a synchronous job runs at) and the spread. Compare both to the official bf16 TFLOPS in the [accelerator tables](../compute/accelerators.md#tflops-comparison-table); the definitions are in [MAMF and MSMF](../compute/accelerators.md#mamf-and-msmf) and the tool in [The MAMF finder](../compute/accelerators.md#the-mamf-finder-mamf-finderpy). Don't replace it with plain `mamf-finder.py` on each GPU while the others sit idle: that measures a single-GPU upper bound, because an idle board has power and cooling headroom a busy node never has.
+On 8x H200 it took about 4.5 minutes. GPU0 runs the full `--search auto` and finds MAMF, MSMF and their matmul shapes; each other GPU then measures GPU0's shapes only; `mamf/summary.txt` lists each GPU's MAMF and MSMF with shape, watts and MHz, and gives the node figure (the median GPU), the slowest GPU (what a synchronous job runs at) and the spread. Compare both to the official bf16 TFLOPS in the [accelerator tables](../compute/accelerators.md#tflops-comparison-table); the definitions are in [MAMF and MSMF](../compute/accelerators.md#mamf-and-msmf) and the tool in [The MAMF finder](../compute/accelerators-reference.md#the-mamf-finder-mamf-finderpy). Don't replace it with plain `mamf-finder.py` on each GPU while the others sit idle: that measures a single-GPU upper bound, because an idle board has power and cooling headroom a busy node never has.
 
 One pass can't call a GPU slow, and a few percent isn't slow. On healthy 8x H200 and 8x B200 nodes, the slowest GPU's MSMF sat 0.9-1.7% below the node median, and one GPU's MSMF moved by up to 2.2% between passes, so a healthy GPU can read about 4% below the median in a single pass ([Silicon lottery](../compute/accelerators.md#silicon-lottery)). Treat a GPU as a candidate only if it is more than 5% below the node median. Then rerun twice with the shape pinned (`--m M --n N --k K` from the summary's MSMF shape, `OUT_DIR=mamf-rep2` and `mamf-rep3`, about 3.5 minutes each on 8x H200), and call it underperforming only if it is more than 5% below its node median in **all three** passes. A `saw idle siblings` warning in `summary.txt` means a sibling's matmul stopped during that measurement, so that MSMF reads high: rerun.
 

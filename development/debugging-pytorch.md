@@ -33,8 +33,8 @@ Conventions:
 - [Computer architecture](../foundations/computer-architecture.md#floating-point-ieee-754): IEEE 754 floating point, range vs precision.
 - [Distributed systems](../foundations/distributed-systems.md#hangs-vs-crashes): hangs vs crashes and `faulthandler` as a hang-to-crash converter; [per-rank printing](../foundations/distributed-systems.md#per-rank-logs-and-rank-prefixed-printing).
 - [Model architectures](../models/architectures.md): [encoder-decoder vs decoder-only](../models/architectures.md#encoder-only-encoder-decoder-decoder-only), [Mixture of Experts](../models/architectures.md#mixture-of-experts), [tokenizers and vocab size](../models/architectures.md#embeddings-heads-vocab-and-tokenizers).
-- [GPU execution model](../compute/accelerator/execution-model.md) (warps, shared memory) and [writing kernels](../compute/accelerator/writing-kernels.md): [compiling with `nvcc`](../compute/accelerator/writing-kernels.md#compiling-nvcc-ptx-sass), [loading a kernel into PyTorch](../compute/accelerator/writing-kernels.md#loading-a-kernel-into-pytorch-load_inline), [testing kernels](../compute/accelerator/writing-kernels.md#testing-kernels).
-- [The GPU software stack](../compute/gpu-software-stack.md#11-troubleshooting-gpus-errors-diagnostics-and-health-checks) for hardware-side errors (Xid, ECC), and [NVLink-C2C](../network/interconnects.md#nvlink-c2c).
+- [GPU execution model](../compute/accelerator/execution-model.md) (warps, shared memory) and [writing kernels](../compute/accelerator/writing-kernels.md): [compiling with `nvcc`](../compute/accelerator/writing-kernels.md#compiling-nvcc-ptx-sass), [loading a kernel into PyTorch](../compute/accelerator/writing-kernels.md#loading-a-kernel-into-pytorch-load_inline), [testing kernels](../compute/accelerator/writing-kernels-reference.md#testing-kernels).
+- [The GPU software stack](../compute/gpu-software-stack-reference.md#troubleshooting-gpus-errors-diagnostics-and-health-checks) for hardware-side errors (Xid, ECC), and [NVLink-C2C](../network/interconnects.md#nvlink-c2c).
 - [Training arithmetic](../training/arithmetic.md): [the caching allocator](../training/arithmetic.md#pytorch-caching-allocator-internals), [reading a memory snapshot](../training/arithmetic.md#reading-torchcudamemory_snapshot), [the dtype progression](../training/arithmetic.md#ml-dtype-progression) and [loss scaling](../training/arithmetic.md#loss-scaling-fp16-only).
 - [Profiling and optimization](../training/profiling-and-optimization.md): [CUDA memory snapshots](../training/profiling-and-optimization.md#cuda-memory-snapshots), [OOM triage](../training/profiling-and-optimization.md#oom-triage), [activation checkpointing](../training/profiling-and-optimization.md#gradient-checkpointing) and [its CPU offloading](../training/profiling-and-optimization.md#offloading-the-activation-checkpoints-to-cpu-memory).
 - [Training stability](../training/stability.md#numerical-instabilities) for why `inf`/`nan` happen during training, and [reproducibility](../training/fault-tolerance-and-reproducibility.md#achieve-determinism-in-randomness-based-software).
@@ -2229,7 +2229,7 @@ Usually small differences don't matter, but sometimes they are clearly visible, 
 
 ## Crashes, hangs and tracing execution
 
-If you suspect faulty hardware rather than your code (Xid errors, ECC errors, a GPU falling off the bus), start with [Troubleshooting GPUs](../compute/gpu-software-stack.md#11-troubleshooting-gpus-errors-diagnostics-and-health-checks). Everything below is about a single process; when the problem involves several ranks, use these tools on each rank and then continue in [Debugging distributed training](debugging-distributed.md).
+If you suspect faulty hardware rather than your code (Xid errors, ECC errors, a GPU falling off the bus), start with [Troubleshooting GPUs](../compute/gpu-software-stack-reference.md#troubleshooting-gpus-errors-diagnostics-and-health-checks). Everything below is about a single process; when the problem involves several ranks, use these tools on each rank and then continue in [Debugging distributed training](debugging-distributed.md).
 
 ### Async CUDA errors
 
@@ -2272,7 +2272,7 @@ Note: [NCCL 2.14.3, shipped with `pytorch==1.13`, hangs](https://github.com/NVID
 
 ### Kernel memory errors with `compute-sanitizer`
 
-`CUDA_VISIBLE_DEVICES=""` and `CUDA_LAUNCH_BLOCKING=1` tell you *which* operator failed but can't look *inside* a kernel. When the bug is a bad memory access, a race, or use of uninitialised device memory, NVIDIA's `compute-sanitizer` (part of the CUDA toolkit; it replaced the old `cuda-memcheck`) instruments every kernel and reports the offending access. [Testing kernels](../compute/accelerator/writing-kernels.md#testing-kernels) introduced it for your own kernels; here is the debugging side in full.
+`CUDA_VISIBLE_DEVICES=""` and `CUDA_LAUNCH_BLOCKING=1` tell you *which* operator failed but can't look *inside* a kernel. When the bug is a bad memory access, a race, or use of uninitialised device memory, NVIDIA's `compute-sanitizer` (part of the CUDA toolkit; it replaced the old `cuda-memcheck`) instruments every kernel and reports the offending access. [Testing kernels](../compute/accelerator/writing-kernels-reference.md#testing-kernels) introduced it for your own kernels; here is the debugging side in full.
 
 Its four tools, selected with `--tool`:
 
@@ -2748,7 +2748,7 @@ The remaining hang tools are shared with multi-process debugging, so they live i
 - **Line tracing.** When the process stops responding and `py-spy` can't attach, log every executed line to a per-process file with the standard-library `trace` module or the improved [NicerTrace](../debug/NicerTrace.py), and read the last lines of each file: [tracing every call](debugging-distributed.md#when-the-process-stops-responding-tracing-every-call), [NicerTrace](debugging-distributed.md#nicertrace), [working with per-rank trace files](debugging-distributed.md#working-with-per-rank-trace-files).
 - **Core dumps of a hung process** (`gcore <pid>`, `kill -ABRT <pid>`) and enabling core files (`ulimit -c unlimited`, `kernel.core_pattern`, Ubuntu's `apport`): [native hangs: core files](debugging-distributed.md#native-hangs-core-files). Analyse the result as in [the previous section](#segfaults-and-backtraces-from-core-files).
 - **`print` with a rank prefix and `printflock`** for non-interleaved output: [printing from many ranks](debugging-distributed.md#print-with-a-rank-prefix-and-printflock).
-- **AMD/ROCm hangs from the IOMMU**: [AMD: hangs or slow multi-GPU runs and the IOMMU](../compute/gpu-software-stack.md#amd-hangs-or-slow-multi-gpu-runs-and-the-iommu).
+- **AMD/ROCm hangs from the IOMMU**: [AMD: hangs or slow multi-GPU runs and the IOMMU](../compute/gpu-software-stack-reference.md#amd-hangs-or-slow-multi-gpu-runs-and-the-iommu).
 
 One trap with `trace` found while testing for this chapter **[ran]**: the usual `ignoredirs=[sys.prefix, sys.exec_prefix]` does *not* skip the standard library inside a venv, because there `sys.prefix` is the venv, not where the stdlib lives. On our Mac a hanging `threading.Event().wait()` was traced line by line through `threading.py` with that setting. Even `sys.base_prefix` failed, because it reached the stdlib through a symlink (`/opt/homebrew/opt/...`) while module paths used the real one (`/opt/homebrew/Cellar/...`). `os.path.dirname(os.__file__)`, the actual stdlib directory, worked:
 

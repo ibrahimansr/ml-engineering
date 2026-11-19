@@ -1,0 +1,1190 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interconnects: Reference - Machine Learning Engineering</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.10.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="../assets/style.css">
+</head><body>
+<button id="menu" aria-label="toggle navigation">&#9776;</button>
+<nav id="sidebar">
+  <a class="home" href="../index.html">Machine Learning Engineering</a>
+  <input id="filter" type="search" placeholder="Filter pages...">
+  <details><summary>Start here</summary><ul><li><a href="../README.html">Machine Learning Engineering</a></li></ul></details>
+<details><summary>Part 1. Foundations</summary><ul><li><a href="../foundations/toolkit.html">Foundations: The Working Toolkit</a></li><li><a href="../foundations/computer-architecture.html">Foundations: Computer Architecture for ML Engineers</a></li><li><a href="../foundations/linux-and-os.html">Foundations: Linux and Operating Systems for ML Engineers</a></li><li><a href="../foundations/concurrency.html">Foundations: Concurrency and Parallelism for ML Engineers</a></li><li><a href="../foundations/networking.html">Foundations: Computer Networking for ML Engineers</a></li><li><a href="../foundations/distributed-systems.html">Foundations: Distributed Systems for ML Engineers</a></li><li><a href="../foundations/containers-and-virtualization.html">Foundations: Containers, VMs, MicroVMs and Sandboxing</a></li><li><a href="../foundations/storage-and-data.html">Foundations: Storage, Checkpoints and Data Pipelines</a></li></ul></details>
+<details><summary>Part 2. Model Architectures</summary><ul><li><a href="../models/architectures.html">Model Architectures I: The Transformer and Its Evolution</a></li><li><a href="../models/beyond-transformers.html">Model Architectures II: Beyond the Standard Transformer</a></li></ul></details>
+<details><summary>Part 3. Hardware and Kernels</summary><ul><li><a href="../compute/accelerators.html">Accelerators: Specs, Vendors and Achievable Performance</a></li><li><a href="../compute/accelerator/execution-model.html">GPU Execution Model and Kernels for ML Engineers</a></li><li><a href="../compute/accelerator/writing-kernels.html">Writing GPU Kernels, Hands-On</a></li><li><a href="../compute/gpu-software-stack.html">The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up</a></li><li><a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a></li><li><a href="../network/collectives-internals.html">Collective Communication Internals and Cost Models</a></li></ul></details>
+<details><summary>Part 4. Orchestration</summary><ul><li><a href="../orchestration/slurm/from-zero.html">Slurm From Zero</a></li><li><a href="../orchestration/kubernetes-from-zero.html">Kubernetes From Zero</a></li><li><a href="../orchestration/internals.html">Orchestration Internals for ML Workloads</a></li></ul></details>
+<details><summary>Part 5. Training</summary><ul><li><a href="../training/arithmetic.html">Training Arithmetic and Numerics: Going Deeper</a></li><li><a href="../training/model-parallelism/derivations.html">Parallelism From First Principles: Derivations and Cost Models</a></li><li><a href="../training/profiling-and-optimization.html">Profiling and Optimizing Training, Hands-On</a></li><li><a href="../training/stability.html">Training Stability: Hyperparameters, Instabilities and Reading Loss Curves</a></li><li><a href="../training/fault-tolerance-and-reproducibility.html">Fault Tolerance, Checkpoints and Reproducibility</a></li><li><a href="../training/decentralized-training.html">Training Across Datacenters and the Internet</a></li></ul></details>
+<details><summary>Part 6. Inference</summary><ul><li><a href="../inference/arithmetic.html">Inference Internals I: The Arithmetic of LLM Inference</a></li><li><a href="../inference/serving-engine-internals.html">Inference Internals II: Inside a Serving Engine</a></li><li><a href="../inference/serving-hands-on.html">Serving LLMs in Practice</a></li><li><a href="../inference/serving-efficiently.html">Serving Efficiently on a Fixed Fleet</a></li></ul></details>
+<details><summary>Part 7. Platforms</summary><ul><li><a href="../platform/control-planes.html">Control Planes and Fleet Management</a></li><li><a href="../platform/deploys-recovery-autoscaling.html">Model Deploys, Recovery and Autoscaling</a></li><li><a href="../platform/operating-inference.html">Operating an Inference Service</a></li><li><a href="../platform/rl-infrastructure.html">Infrastructure for Large-Scale RL on LLMs</a></li><li><a href="../platform/getting-compute.html">Getting Compute: Clouds, Clusters and When to Upgrade</a></li><li><a href="../platform/small-inference-provider.html">Running a Small Inference Provider: A Worked Example</a></li></ul></details>
+<details><summary>Part 8. Development</summary><ul><li><a href="../development/debugging-pytorch.html">Debugging PyTorch Programs</a></li><li><a href="../development/debugging-distributed.html">Debugging Distributed and Multi-Node Programs, and Performance</a></li><li><a href="../development/testing.html">Writing and Running Tests</a></li></ul></details>
+<details open><summary>Part 9. Reference</summary><ul><li><a href="../compute/accelerators-reference.html">Accelerators: Reference</a></li><li><a href="../compute/accelerator/writing-kernels-reference.html">Writing GPU Kernels: Further Topics</a></li><li><a href="../compute/gpu-software-stack-reference.html">GPU Nodes: Driver Install, Acceptance Testing and Troubleshooting</a></li><li><a href="../network/interconnects-reference.html" class="current">Interconnects: Reference</a></li><li><a href="../network/collectives-internals-reference.html">Collectives: Laptop Measurement and Transports</a></li><li><a href="../network/measuring-and-debugging.html">Measuring and Debugging the Network</a></li><li><a href="../appendix/further-reading.html">Appendix: Further Reading and Quick Reference</a></li></ul></details>
+<details><summary>Other pages: build</summary><ul><li><a href="../build/README.html">Book Building - build/README.md</a></li></ul></details>
+</nav>
+<main>
+<article>
+<h1 id="interconnects-reference">Interconnects: Reference</h1>
+<p>Reference material split out of <a href="../network/interconnects.html">Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More</a> so the main chapter reads faster. The sections stand alone: read them when you need them. Earlier chapters link straight to the section they use.</p>
+<h2 id="other-essential-network-technologies">Other essential network technologies</h2>
+<h3 id="sharp">SHARP</h3>
+<p>NVIDIA's <a href="https://networking-docs.nvidia.com/sharpum/300">Scalable Hierarchical Aggregation and Reduction Protocol (SHARP)</a> does data reductions and aggregations inside the network itself. This is called <em>in-network computing</em>. It helps whenever you run many MPI, NCCL or other collectives that support SHARP, and their latency improves a lot.</p>
+<p>Why it matters: for <code>all-reduce</code>, a ring needs every rank to send its data around twice (about <span class="math inline"><span class="math-inline">2N</span></span> sends, a reduce-scatter pass and an all-gather pass), while with in-switch reduction each rank sends once to the switch and receives the result once, about <span class="math inline"><span class="math-inline">N+1</span></span> sends (<span class="math inline"><span class="math-inline">N</span></span> is the number of communicating ranks). For large <span class="math inline"><span class="math-inline">N</span></span> that almost doubles the effective all-reduce throughput. NVIDIA explains it in the <a href="https://web.archive.org/web/20231208180425/https://developer.nvidia.com/blog/upgrading-multi-gpu-interconnectivity-with-the-third-generation-nvidia-nvswitch/">all-reduce operation compatibility</a> section of its NVSwitch post (scroll down to it). The exact byte counts per GPU, ring vs NVLS, are derived in <a href="../network/collectives-internals.html#nvls-nvlink-sharp">NVLS (NVLink SHARP)</a>.</p>
+<p>That figure, comparing per-GPU traffic for an all-reduce on A100 (no in-switch reduction) and on H100 with NVLink SHARP. NVS is the NVSwitch:</p>
+<p><img src="images/nvlink-sharp-traffic.png" alt="NVLink SHARP all-reduce traffic" /></p>
+<p>(<a href="https://web.archive.org/web/20231208180425/https://developer.nvidia.com/blog/upgrading-multi-gpu-interconnectivity-with-the-third-generation-nvidia-nvswitch/">source</a>)</p>
+<pre><code>ring all-reduce: every byte crosses each        NVLS / SHARP: each GPU sends its buffer to the
+GPU's link ~2x (reduce-scatter + all-gather)    switch once; the switch's ALUs add them and
+                                                multicast the sum back once
+ GPU0 -&gt; GPU1 -&gt; GPU2 -&gt; ... -&gt; GPU7 -&gt; GPU0      GPU0..GPU7 ==&gt; [NVSwitch: sum] ==&gt; GPU0..GPU7
+</code></pre>
+<p>There are two separate SHARPs that share a name but not a mechanism:</p>
+<ul>
+<li><strong>NVLink SHARP (NVLS)</strong> lives in the NVSwitch (NVLink 4 and later). It speeds up all-reduce among the GPUs of one NVLink domain: an 8-GPU node, or a whole NVL72 rack.</li>
+<li><strong>InfiniBand SHARP</strong> lives in the Quantum InfiniBand switches. It speeds up collectives that cross the scale-out network. NCCL reaches it through its CollNet algorithms (<a href="../network/collectives-internals.html#collnet-and-ib-sharp">CollNet and IB SHARP</a>).</li>
+</ul>
+<p>Recent NCCL versions use NVLink SHARP automatically when it is available, as <code>NCCL_ALGO=NVLS</code>. In practice, at the moment, intra-node <code>all-reduce</code> bandwidth improves by about 30% and inter-node <code>all-reduce</code> by about 25%. Both of those figures are NVLink SHARP: the slide further down puts the 30% at NVLink 4 inside a node and the 25% across an NVL72 domain, so even the &quot;inter-node&quot; case stays within a scale-up fabric.</p>
+<p>The SHARP hardware, part of NVSwitch (NVLink 4 and later) and of InfiniBand switches, includes arithmetic logic units (ALUs) that do the math themselves instead of using GPUs. It reportedly supports FP64, FP32, FP16 and BF16.</p>
+<p>A case study from Stas Bekman: he discovered SHARP by accident when an H100 intra-node NVLink 4 <a href="benchmarks/torch-dist-bench.py">torch-dist-bench.py</a> run reported 480GBps for a 4GiB payload, when the theoretical spec was only 450GBps. The cause was NCCL turning on the then-new <code>NVLS</code> algorithm, which engaged NVLink SHARP. How can a benchmark clock faster than the physical medium allows? Because <code>busbw</code> is computed as if a ring had run: the formula assumes each byte crossed each link ~2x, the <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> factor. With in-switch reduction only about half those bytes actually cross, so the formula credits the wire with traffic it never carried. Conceptually the correction factor should change from &quot;2N&quot; to &quot;N+1&quot;. There is a detailed discussion <a href="https://github.com/NVIDIA/nccl-tests/issues/153#issuecomment-1628415956">in the nccl-tests tracker</a>. The bottom line: <code>busbw</code> may or may not be the real bandwidth depending on which algorithm NCCL chose. Only when NCCL uses the <code>Ring</code> algorithm does <code>busbw</code> describe the wire.</p>
+<p>To benefit from SHARP:</p>
+<ul>
+<li>The collective has to engage enough GPUs that NCCL actually selects <code>NVLS</code>. The switch-over is above 4 GPUs on H200 and above 5 on B200 (measurements below), so measure yours rather than assuming either number.</li>
+<li>The env var <code>NCCL_NVLS_ENABLE</code> must be unset or set to <code>1</code>.</li>
+</ul>
+<h4 id="how-many-gpus-does-nvls-need">How many GPUs does NVLS need?</h4>
+<p>Measured on an 8x H200 node at an 8GiB payload with <code>nccl-tests</code>, running each GPU count twice, once as-is and once with <code>NCCL_NVLS_ENABLE=0</code> to force the ring, so that the last column isolates what SHARP actually contributes:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">GPUs</th>
+<th style="text-align:left">algo NCCL picks</th>
+<th style="text-align:right">busbw</th>
+<th style="text-align:right">busbw, NVLS off</th>
+<th style="text-align:right">gain from SHARP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">4</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">363.3GBps</td>
+<td style="text-align:right">363.3GBps</td>
+<td style="text-align:right">1.00x</td>
+</tr>
+<tr>
+<td style="text-align:right">5</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">414.2GBps</td>
+<td style="text-align:right">364.4GBps</td>
+<td style="text-align:right">1.14x</td>
+</tr>
+<tr>
+<td style="text-align:right">6</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">435.6GBps</td>
+<td style="text-align:right">365.1GBps</td>
+<td style="text-align:right">1.19x</td>
+</tr>
+<tr>
+<td style="text-align:right">7</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">460.0GBps</td>
+<td style="text-align:right">365.7GBps</td>
+<td style="text-align:right">1.26x</td>
+</tr>
+<tr>
+<td style="text-align:right">8</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">473.1GBps</td>
+<td style="text-align:right">365.6GBps</td>
+<td style="text-align:right">1.29x</td>
+</tr>
+</tbody>
+</table>
+<p>So the benefit isn't a cliff at 8 GPUs but a ramp that starts above 4. At 4 GPUs NCCL doesn't even select <code>NVLS</code>, and the ring number is identical either way, exactly 1.00x. From 5 GPUs up it selects <code>NVLS</code>, and the gain grows with each accelerator added. A 5- or 7-GPU collective is an odd thing to run, but it means a partial-node job gets a partial benefit rather than none.</p>
+<p>The same sweep on an 8x B200 <code>p6-b200.48xlarge</code> node (<code>nccl=2.27.7</code>, 8GiB, measured 2026-08-09) shows the ramp is not portable across generations. NCCL stays on <code>Ring</code> at 5 GPUs and only switches to <code>NVLS</code> from 6 up, confirmed with <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">GPUs</th>
+<th style="text-align:left">algo NCCL picks</th>
+<th style="text-align:right">busbw</th>
+<th style="text-align:right">busbw, NVLS off</th>
+<th style="text-align:right">gain from SHARP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">4</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">673.2GBps</td>
+<td style="text-align:right">673.8GBps</td>
+<td style="text-align:right">1.00x</td>
+</tr>
+<tr>
+<td style="text-align:right">5</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">677.8GBps</td>
+<td style="text-align:right">677.8GBps</td>
+<td style="text-align:right">1.00x</td>
+</tr>
+<tr>
+<td style="text-align:right">6</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">778.2GBps</td>
+<td style="text-align:right">677.8GBps</td>
+<td style="text-align:right">1.15x</td>
+</tr>
+<tr>
+<td style="text-align:right">7</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">811.2GBps</td>
+<td style="text-align:right">680.5GBps</td>
+<td style="text-align:right">1.19x</td>
+</tr>
+<tr>
+<td style="text-align:right">8</td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">838.0GBps</td>
+<td style="text-align:right">682.2GBps</td>
+<td style="text-align:right">1.23x</td>
+</tr>
+</tbody>
+</table>
+<p>At full node the gain is still real, 1.23x here against H200's 1.29x, but a 5-GPU job on this B200 node gets none of it. The chooser on this box is AWS's <code>NCCL_TUNER_PLUGIN=ofi</code>. A tuner plugin is a library NCCL loads to choose the algorithm and protocol in place of its built-in tuner (<a href="../network/collectives-internals.html#the-tuning-model">the tuning model</a> explains what the built-in one does). Its log line reads <code>base Tuner is chosen for platform: p6-b200.48xlarge</code>, so don't carry the H200 threshold over to a different instance type.</p>
+<p>NVIDIA's own documentation draws a 4-GPU line, though it takes one step to see why. NVLink SHARP is implemented with <em>multicast</em>: the switch reduces and then fans the result back out to every participant, which is why NCCL's setup log for <code>NVLS</code> literally reads <code>Created Multicast group</code>. So a statement about multicast is a statement about SHARP. The <a href="https://docs.nvidia.com/multi-node-nvlink-systems/partition-guide-v1-0.pdf">GB200 NVL Partition User Guide</a> says that &quot;partitions that have less than or equal to four GPUs will not benefit from multicast and can accomplish all traffic through unicast&quot;. That matches the H200 boundary above and sits one GPU below the B200 one. For more on why multicast is needed for NVLink SHARP, see <a href="https://github.com/NVIDIA/nccl/issues/807#issuecomment-1480585042">this NCCL issue comment</a>.</p>
+<p>Two traps here:</p>
+<ul>
+<li>The multicast group is created regardless of whether NVLS is used. <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=NVLS</code> reports <code>NVLS Created Multicast group</code> at 4 GPUs just as at 8, along with the same 16 nvls channels. What changes above the threshold is that NCCL starts <em>using</em> the <code>NVLS</code> algorithm. So &quot;is a multicast group set up?&quot; and &quot;is SHARP doing anything for you?&quot; are separate questions.</li>
+<li>Don't confuse the GPU count with <code>multicastGroupsLimit</code>, which the same guide says &quot;must be 0 or a multiple of 4&quot;. That is the number of multicast <em>teams</em> reserved to a partition out of the 1,024 the system provides. It is a fabric-manager resource allocation, unrelated to how many GPUs your collective engages.</li>
+</ul>
+<p>On NVL36, NVL72 and other domains bigger than NVL8, the granularity is likely 4 GPUs rather than 8, since a compute tray holds 2 GB200 modules and each module is 1 Grace CPU + 2 Blackwell GPUs. The partition guide points the same way: its partition sizing examples step in fours (72, 68 and 64 GPUs), alongside the &quot;less than or equal to four GPUs&quot; statement quoted above.</p>
+<p><strong>This still needs validating on real NVL hardware.</strong> The two HGX sweeps above already disagree with each other (H200 switches at 5, B200 at 6). The guide's statements concern fabric-level partitioning, not which algorithm NCCL selects inside a partition, so the NVL case could land on either threshold or on neither. Treat the 4-GPU granularity as the likely case from the docs, not an established one, until someone runs the sweep on an NVL36 or NVL72 system.</p>
+<p>Part of what makes this murky is that GB200 GPU counting is confusing: 1x GB200 = 2x B200 + 1x CPU. So when the NVIDIA doc talks about 4x GB200, that is 8x B200, and reading &quot;4x&quot; as a minimum partition size is an easy way to arrive at a granularity of 8 GPUs, when a tray holds only 4.</p>
+<h4 id="what-nvls-buys-at-full-node">What NVLS buys at full node</h4>
+<p>The left side of the following slide shows a ~30% speed-up of <code>all-reduce</code> bandwidth from NVLink 4 without SHARP (370GBps) to NVLink 4 with SHARP (480GBps). Stas matched these results with a payload of about 8GiB. For <code>all-reduce</code> on NVL72 (right side) it shows a 25% improvement (<code>850/680</code>).</p>
+<p><img src="images/all-reduce-bw-2025.png" alt="all-reduce bw" /></p>
+<p><a href="https://www.nvidia.com/en-us/on-demand/session/gtc25-s72583/">source</a></p>
+<p>How to read the slide: both panels are bar charts of nccl-tests all-reduce <code>busbw</code> in GB/s at large messages. The left panel is 8 GPUs in one node: PCIe Gen6 96, NVLink 3 (A100) 232, NVLink 4 (H100) 370, NVLink 4 SHARP 480, NVLink 5 (B200) 700, NVLink 5 SHARP 850. The right panel is 32 GPUs: 2x200Gb RDMA 48, DGX A100 with 8x200Gb 192, DGX H100 with 8x400Gb 370, the same with SHARP 480, GB200 NVL72 680, and NVL72 with SHARP 850. Note that the 32-GPU DGX H100 number equals the 8-GPU one, the effect <a href="#inter-node-speed-depends-on-intra-node-speed">Inter-node speed depends on intra-node speed</a> explains.</p>
+<p>To see it on your own node, run the same benchmark twice. <code>NCCL_NVLS_ENABLE=0</code> forces the ring path (untested here; needs an NVSwitch node with NVLink 4 or later):</p>
+<pre><code class="language-bash"># SHARP (default)
+torchrun --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d torch-dist-bench.py
+# ring
+NCCL_NVLS_ENABLE=0 torchrun --nproc_per_node=8 --rdzv_endpoint localhost:6000 --rdzv_backend c10d torch-dist-bench.py
+</code></pre>
+<p>How to read the commands: <code>torchrun</code> launches 8 processes, one per GPU. <code>--rdzv_endpoint</code> and <code>--rdzv_backend</code> tell them where to meet (<a href="../foundations/networking.html#how-pytorch-distributed-bootstraps">how PyTorch distributed bootstraps</a>). A <code>NAME=value</code> prefix sets an environment variable for that one command.</p>
+<p>On 8x H200 with <code>nccl=2.27.7</code> this gives 482.26GBps against 367.61GBps at a 16GiB payload, a 1.31x gain, matching the 480/370 on the slide. Add <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,GRAPH,TUNING</code> to confirm which path was taken and to find where the switch happens. It reports <code>Algo RING proto LL</code> up to a 1MiB payload and <code>Algo NVLS proto SIMPLE</code> from 2MiB up, and <code>Algo RING proto SIMPLE</code> throughout when NVLS is disabled. <code>NCCL_DEBUG_FILE=/tmp/nccl.%h.%p.log</code> keeps that output out of the benchmark's own (<code>%h</code> is the host name and <code>%p</code> the process id). The <code>proto</code> part of those lines is NCCL's protocol, <code>LL</code>, <code>LL128</code> or <code>Simple</code>, which trade latency against bandwidth. They are explained in <a href="../network/collectives-internals.html#protocols-simple-ll-ll128">Protocols: Simple, LL, LL128</a>.</p>
+<p>The GPU count is only one of the two conditions. The other is the collective itself: <code>NVLS</code> implements <code>all-reduce</code> and nothing else. Measured on the same node at a 16GiB payload, all with 8 GPUs engaged:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">collective</th>
+<th style="text-align:left">algo</th>
+<th style="text-align:right">busbw</th>
+<th style="text-align:right">% of 450GBps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">all-reduce, <code>NCCL_NVLS_ENABLE=1</code></td>
+<td style="text-align:left">NVLS</td>
+<td style="text-align:right">480.0GBps</td>
+<td style="text-align:right">107%</td>
+</tr>
+<tr>
+<td style="text-align:left">all-reduce, <code>NCCL_NVLS_ENABLE=0</code></td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">367.2GBps</td>
+<td style="text-align:right">82%</td>
+</tr>
+<tr>
+<td style="text-align:left">all-gather</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">361.4GBps</td>
+<td style="text-align:right">80%</td>
+</tr>
+<tr>
+<td style="text-align:left">reduce-scatter</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">362.9GBps</td>
+<td style="text-align:right">81%</td>
+</tr>
+</tbody>
+</table>
+<p>The second row, the same collective at the same width with SHARP switched off, is the one that makes the other two readable. <code>all-gather</code> and <code>reduce-scatter</code> are not slow collectives. They are simply running the ring path that <code>all-reduce</code> also falls back to. All three land at 80-82% of the unidirectional spec, the ordinary NVLink efficiency you would expect from <a href="../network/interconnects.html#unidirectional-vs-bidirectional-duplex">Unidirectional vs Bidirectional (Duplex)</a>. So <code>~80%</code> is the normal case and 107% is the exception, reachable only by an <code>all-reduce</code> wide enough that NCCL selects <code>NVLS</code>.</p>
+<p>To reproduce these numbers, use <code>nccl-tests</code> (<a href="../compute/gpu-software-stack.html#nccl-tests-single-node-then-two-then-all">nccl-tests: single node, then two, then all</a> builds it). <code>-b</code>/<code>-e</code> are the smallest and largest payload (equal here, so a single size), <code>-g</code> is the number of GPUs per process, and <code>-z 1</code> makes each collective call blocking:</p>
+<pre><code class="language-bash">NCCL_NVLS_ENABLE=1 ./build/all_reduce_perf     -b 16G -e 16G -g 8 -z 1  # 480.0 - NVLS
+NCCL_NVLS_ENABLE=0 ./build/all_reduce_perf     -b 16G -e 16G -g 8 -z 1  # 367.2 - Ring, SHARP off
+./build/all_gather_perf                        -b 16G -e 16G -g 8 -z 1  # 361.4 - Ring, wrong collective
+./build/reduce_scatter_perf                    -b 16G -e 16G -g 8 -z 1  # 362.9 - Ring, wrong collective
+</code></pre>
+<p><code>busbw</code> uses a different correction factor per collective, <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> for <code>all-reduce</code> against <span class="math inline"><span class="math-inline">(n-1)/n</span></span> for <code>all-gather</code> and <code>reduce-scatter</code>. <code>nccl-tests</code> applies the right one for each, so the last column really is comparable across rows as a fraction of the wire.</p>
+<h2 id="important-nuances">Important nuances</h2>
+<h3 id="real-network-throughput">Real network throughput</h3>
+<p>Advertised and actual network throughput are never the same. In the best case you can expect about 80-90% of the advertised spec.</p>
+<p>Throughput also depends on the size of the payload sent in each communication: the bigger the payload, the higher the throughput.</p>
+<p>Here is a demonstration using <a href="../network/measuring-and-debugging.html#nccl-tests">nccl-tests</a> on a single A100 node. <code>-f 2</code> doubles the payload at each step from <code>-b</code> to <code>-e</code>, and <code>-n 50</code> times 50 iterations per size:</p>
+<pre><code class="language-bash">$ ./build/all_reduce_perf -b 32k -e 16G -f 2 -g 8 -n 50
+[...]
+           size    time   algbw   busbw
+            (B)    (us)  (GB/s)  (GB/s)
+         32_768   43.83    0.75    1.31
+         65_536   46.80    1.40    2.45
+        131_072   51.76    2.53    4.43
+        262_144   61.38    4.27    7.47
+        524_288   80.40    6.52   11.41
+       1048_576   101.9   10.29   18.00
+       2097_152   101.4   20.68   36.18
+      4_194_304   101.5   41.33   72.33
+      8_388_608   133.5   62.82  109.93
+     16_777_216   276.6   60.66  106.16
+     33_554_432   424.0   79.14  138.49
+     67_108_864   684.6   98.02  171.54
+    134_217_728  1327.6  101.10  176.92
+    268_435_456  2420.6  110.90  194.07
+    536_870_912  4218.4  127.27  222.72
+  1_073_741_824  8203.9  130.88  229.04
+  2_147_483_648   16240  132.23  231.41
+  4_294_967_296   32136  133.65  233.88
+  8_589_934_592   64074  134.06  234.61
+ 17_179_869_184  127997  134.22  234.89
+</code></pre>
+<p>(The output was trimmed to these columns, and the sizes were reformatted to be more readable.)</p>
+<p>How to read it: each row is one payload size, from 32KiB to 16GiB. <code>time</code> is the per-call time in microseconds. <code>algbw</code> is payload / time. <code>busbw</code> is <code>algbw</code> times <span class="math inline"><span class="math-inline">2(n-1)/n</span></span> = 1.75 for 8 GPUs, which is the column to compare with the link speed (<a href="../network/collectives-internals.html#algbw-vs-busbw">algbw vs busbw</a>; nccl-tests' own explanation is <a href="https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md#bus-bandwidth">here</a>).</p>
+<p>For payloads smaller than 8MiB the throughput is very low, and it starts to saturate around 512MiB. Notice that the time column barely moves from 1MiB to 4MiB (~101μs): in that range the call costs the same regardless of size, i.e. it is latency-bound. That is why reducing a single 4GB payload is much faster than reducing 1000x 4MB payloads. This A100 node runs NVLink advertised at 300GBps unidirectional, so at 16GiB we get about 78% of the theoretical speed. The benchmark crashed for anything larger, and the last few rows show that not much more can be squeezed out anyway.</p>
+<p>Here is the same sweep on an 8x H200 node (<code>torch=2.14.1+cu130</code>, <code>nccl=2.30.7</code>), using this repo's <a href="benchmarks/torch-dist-bench.py">torch-dist-bench.py</a>. <code>busbw</code> and <code>algbw</code> are the same two columns as above, and this table also reports per-call latency. <code>python -m torch.distributed.run</code> is the module behind the <code>torchrun</code> command, and <code>-u</code> unbuffers Python's output:</p>
+<pre><code class="language-bash">$ python -u -m torch.distributed.run --nproc_per_node=8 torch-dist-bench.py
+
+The average bandwidth and the per-call latency of all_reduce over 8 ranks (at least 5 warmups / 20 trials, up to 10 queued calls per trial):
+
+| payload |   busbw    |   algbw    |              latency              | calls |
+|         |            |            |   median  |    p99    |    mean   |       |
+| ------: | ---------: | ---------: | --------: | --------: | --------: | ----: |
+|      8B |            |            |    15.3us |    15.8us |    15.3us |   927 |
+|     16B |            |            |    15.3us |    15.8us |    15.3us |   981 |
+|     32B |            |            |    15.8us |    16.5us |    15.8us |   972 |
+|     64B |            |            |    17.4us |    18.4us |    17.4us |   963 |
+|    128B |            |            |    17.8us |    18.4us |    17.8us |   972 |
+|    256B |            |            |    17.9us |    18.5us |    17.9us |   963 |
+|    512B |            |            |    18.0us |    18.7us |    18.1us |   972 |
+|    1KiB |            |            |    18.3us |    19.2us |    18.3us |   981 |
+|    2KiB |            |            |    18.6us |    19.4us |    18.6us |   954 |
+|    4KiB |            |            |    18.8us |    19.5us |    18.8us |   972 |
+|    8KiB |            |            |    19.0us |    19.8us |    19.0us |   963 |
+|   16KiB |            |            |    19.4us |    20.1us |    19.4us |   990 |
+|   32KiB |   3.22GBps |   1.84GBps |    20.7us |    21.4us |    20.7us |   981 |
+|   64KiB |   6.35GBps |   3.63GBps |    20.9us |    21.5us |    20.9us |   612 |
+|  128KiB |  12.60GBps |   7.20GBps |    21.0us |    21.4us |    21.0us |   324 |
+|  256KiB |  24.71GBps |  14.12GBps |    21.4us |    21.8us |    21.4us |   180 |
+|  512KiB |  48.63GBps |  27.79GBps |    22.8us |    24.1us |    22.7us |   171 |
+|    1MiB |  76.78GBps |  43.88GBps |    27.7us |    28.5us |    27.6us |   180 |
+|    2MiB |  97.64GBps |  55.80GBps |    41.8us |    42.8us |    41.6us |   180 |
+|    4MiB | 145.65GBps |  83.23GBps |    54.6us |    55.7us |    54.4us |   171 |
+|    8MiB | 198.06GBps | 113.18GBps |    78.4us |    80.0us |    78.3us |   180 |
+|   16MiB | 256.83GBps | 146.76GBps |   119.3us |   123.4us |   119.1us |   180 |
+|   32MiB | 302.04GBps | 172.60GBps |   200.3us |   205.7us |   200.5us |   180 |
+|   64MiB | 369.60GBps | 211.20GBps |   323.7us |   330.7us |   323.9us |   180 |
+|  128MiB | 415.67GBps | 237.53GBps |   576.1us |   586.5us |   575.7us |   140 |
+|  256MiB | 442.53GBps | 252.88GBps |  1075.5us |  1091.5us |  1076.7us |    60 |
+|  512MiB | 457.46GBps | 261.41GBps |  2078.8us |  2098.3us |  2079.0us |    20 |
+|    1GiB | 467.17GBps | 266.95GBps |  4040.6us |  4055.3us |  4041.2us |    20 |
+|    2GiB | 471.88GBps | 269.65GBps |  8000.6us |  8046.7us |  8006.1us |    20 |
+|    4GiB | 474.03GBps | 270.88GBps | 15904.3us | 15980.2us | 15905.9us |    20 |
+|    8GiB | 478.22GBps | 273.27GBps | 31654.0us | 31716.5us | 31639.4us |    20 |
+|   16GiB | 482.19GBps | 275.54GBps | 62526.9us | 62614.5us | 62533.6us |    20 |
+</code></pre>
+<p>How to read it: below 32KiB the bandwidth columns are blank, because the time is pure latency and a bandwidth figure would be meaningless. <code>median</code>, <code>p99</code> (99th percentile) and <code>mean</code> latency are per call. When p99 sits close to the median, the measurement is stable. <code>calls</code> is how many calls were timed at that size.</p>
+<p>The curve has the same shape as the A100 one: low until a few MiB, most of the way there by 512MiB. The saturated end is instructive. Comparing the 16GiB rows with each node's unidirectional spec:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">node</th>
+<th style="text-align:right">busbw @16GiB</th>
+<th style="text-align:right">uni-dir. spec</th>
+<th style="text-align:right">% of spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">A100, <a href="../network/interconnects.html#nvlink">NVLink 3</a></td>
+<td style="text-align:right">234.89GBps</td>
+<td style="text-align:right">300</td>
+<td style="text-align:right">78%</td>
+</tr>
+<tr>
+<td style="text-align:left">H200, <a href="../network/interconnects.html#nvlink">NVLink 4</a>, ring</td>
+<td style="text-align:right">367.61GBps</td>
+<td style="text-align:right">450</td>
+<td style="text-align:right">82%</td>
+</tr>
+<tr>
+<td style="text-align:left">H200, <a href="../network/interconnects.html#nvlink">NVLink 4</a>, SHARP</td>
+<td style="text-align:right">482.19GBps</td>
+<td style="text-align:right">450</td>
+<td style="text-align:right">107%</td>
+</tr>
+</tbody>
+</table>
+<p>The ~80% rule of thumb from <a href="../network/interconnects.html#unidirectional-vs-bidirectional-duplex">Unidirectional vs Bidirectional (Duplex)</a> holds: the H200 node lands at 82% when NCCL uses a ring, which is what the middle row measures with <code>NCCL_NVLS_ENABLE=0</code>. What takes the top row past the wire spec is <a href="#sharp">SHARP</a>: at large payloads NCCL reduces inside the NVSwitch, fewer bytes cross the links than a ring would need, and <code>busbw</code>'s ring-based formula stops describing the wire. The A100 node has no such path, which is why its number obeys the rule without any flag.</p>
+<h4 id="many-small-payloads-vs-one-big-one">Many small payloads vs one big one</h4>
+<p><a href="benchmarks/all_reduce_latency_comp.py">all_reduce_latency_comp.py</a> demonstrates the payload effect directly. It all-reduces 4GB once, then the same 4GB as 1000 calls of 4MB each. On an 8x H200 node:</p>
+<pre><code class="language-bash">$ python -u -m torch.distributed.run --nproc_per_node=8 all_reduce_latency_comp.py
+
+----------- 1x 4.0GB ----------------
+ busbw: 3722.778 Gbps
+
+----------- 1000x 0.004GB ----------------
+ busbw: 1146.127 Gbps
+</code></pre>
+<p>How to read it: the script reports <code>busbw</code> in Gbps, so divide by 8 for GBps: 465GBps vs 143GBps, consistent with the 4GiB and 4MiB rows of the sweep above. Sending the same payload as 1000 smaller chunks is about 3x slower here.</p>
+<p>This benchmark does 3 warmup iterations before timing anything, and it has to. NCCL sets up its channels and buffers on the first collective of a given size, and on NVLink 4 and later it also registers the NVLS multicast group. Without the warmup, all of that would be charged to the <code>1x</code> measurement, since it runs first. Without warmup the same 4GB payload measured 561Gbps instead of 3722Gbps on this node. That is not only 6x low, it is enough to reverse the comparison and make 1000 small chunks look faster than one big one. Any benchmark you write needs warmup.</p>
+<p>So when you calculate how long it takes to <code>all_reduce</code> a given payload, use the <code>busbw</code> measured at that payload size on your own hardware and environment.</p>
+<p>Working out the payload can be tricky, because it depends on the framework's implementation. Some implementations reduce each weight's gradient on its own, which gives very small payloads and a very slow network. Others bucket multiple gradients together before reducing, which increases the payload and minimizes the impact of latency. (PyTorch DDP's <code>bucket_cap_mb</code> is that knob; see <a href="../training/model-parallelism/derivations.html#bucketing-and-overlap">bucketing and overlap</a>.)</p>
+<h4 id="pairwise-copies-p2pbandwidthlatencytest">Pairwise copies: p2pBandwidthLatencyTest</h4>
+<p><code>p2pBandwidthLatencyTest</code>, a CUDA sample program, runs a low-level peer-to-peer benchmark between every pair of GPUs (<a href="../network/measuring-and-debugging.html#p2pbandwidthlatencytest">p2pBandwidthLatencyTest</a> shows where to get it). In its matrix, each row is the GPU doing the writing and each column the GPU written to. The diagonal is a GPU copying within its own memory, which measures HBM rather than NVLink, so ignore it.</p>
+<p>On A100:</p>
+<pre><code class="language-bash">./p2pBandwidthLatencyTest
+[...]
+Unidirectional P2P=Enabled Bandwidth (P2P Writes) Matrix (GB/s)
+   D\D     0      1      2      3      4      5      6      7
+     0 1581.48 274.55 275.92 272.02 275.35 275.28 273.62 273.20
+     1 274.70 1581.48 275.33 272.83 275.38 273.70 273.45 273.70
+     2 274.81 276.90 1594.39 272.66 275.39 275.79 273.97 273.94
+     3 273.25 274.87 272.12 1545.50 274.38 274.37 274.22 274.38
+     4 274.24 275.15 273.44 271.57 1584.69 275.76 275.04 273.49
+     5 274.37 275.77 273.53 270.84 274.59 1583.08 276.04 273.74
+     6 275.61 274.86 275.47 273.19 272.58 275.69 1586.29 274.76
+     7 275.26 275.46 275.49 273.61 275.50 273.28 272.24 1591.14
+[...]
+</code></pre>
+<p>In the unidirectional section we get 274GBps of the advertised 300GBps (~91%).</p>
+<p>On H100s (NVLink 4) the efficiency was noticeably worse:</p>
+<pre><code>Unidirectional P2P=Enabled Bandwidth (P2P Writes) Matrix (GB/s)
+   D\D     0      1      2      3      4      5      6      7
+     0 2494.51 364.13 375.99 378.03 376.77 376.71 374.85 375.66
+     1 375.18 2533.95 376.08 374.98 376.21 375.96 375.76 375.12
+     2 363.43 393.28 2532.67 376.35 377.14 376.47 375.76 375.48
+     3 369.90 375.92 393.63 2525.38 376.58 375.88 376.13 377.01
+     4 376.20 376.28 375.20 393.52 2526.02 375.82 375.05 376.10
+     5 376.26 376.60 375.54 375.52 376.81 2521.18 376.37 376.60
+     6 374.31 376.19 376.80 376.32 376.83 376.44 2529.85 376.39
+     7 376.17 376.49 376.53 374.95 376.30 376.82 375.71 2519.78
+</code></pre>
+<p>376GBps of 450GBps is 84%. (A few cells just off the diagonal read ~393GBps. They are real but not something to plan around.)</p>
+<p>On GB200 (NVLink 5), within a single NVL4 tray of 4 GPUs:</p>
+<pre><code>Unidirectional P2P=Enabled Bandwidth (P2P Writes) Matrix (GB/s)
+   D\D     0      1      2      3
+     0 5714.94 746.74 746.56 748.08
+     1 743.89 5820.72 747.18 746.83
+     2 746.16 750.28 5814.63 746.71
+     3 744.82 749.00 747.16 5816.66
+</code></pre>
+<p>746GBps of 900GBps (83%), very similar to NVLink 4's efficiency.</p>
+<p>The bottom line for this kind of setup:</p>
+<ol>
+<li>With huge payloads you can use about 80% of the advertised bandwidth.</li>
+<li>If each communication's payload is smallish, you can get far, far less.</li>
+</ol>
+<p><a href="https://github.com/NVIDIA/nvbandwidth">NVIDIA/nvbandwidth</a> is meant to be a more detailed and correct replacement for <code>p2pBandwidthLatencyTest</code>, but Stas found the two give very similar results. <code>nvbandwidth</code> is the tool used for the H200 and GB300 copy measurements earlier in this chapter.</p>
+<h4 id="published-bandwidth-curves">Published bandwidth curves</h4>
+<p>The following plot shows how actual all-reduce bandwidth changes with message size and the number of participating nodes, from 4 to 512 nodes:</p>
+<p><img src="images/nccl-all-reduce-scan.png" alt="nccl all-reduce scan benchmark" />
+(<a href="https://arxiv.org/abs/2411.13055">source</a>)</p>
+<p>How to read it: x is the message size (512B to 16GiB, log scale), y the achieved <code>busbw</code> in GB/s, one curve per node count. Every curve has the same S-shape as the single-node tables above. More nodes push the curve to the right, so you need bigger messages to reach the plateau, because each extra hop adds latency. At 16GiB all curves converge at ~340-360GB/s whatever the node count.</p>
+<p>Here is a similar plot using the NVLSTree algorithm, which reaches even better performance on H100s, from 4 to 1024 nodes (32 to 8192 GPUs; the plateau is ~370-380GB/s):</p>
+<p><img src="images/nccl-all-reduce-scan-nvlstree.png" alt="nccl all-reduce nvlstree scan benchmark" />
+<a href="https://www.nvidia.com/en-us/on-demand/session/gtc24-s62129/">source</a></p>
+<p>And a similar plot comparing message sizes across several networks:</p>
+<p><img src="images/ccgrid11-uni-direction-bandwidth.png" alt="Low-level Uni-directional Bandwidth Measurements" />
+(<a href="https://ieeexplore.ieee.org/document/5238655">source</a>)</p>
+<p>That last plot is from 2011 and the previous two are from 2024. Comparing them, you can appreciate how much faster networks have become and how much bigger the messages being sent are.</p>
+<p>Here are 2025 plots of actually achievable bandwidth with modern hardware, for the all-reduce and all-to-all collectives:</p>
+<p><img src="images/all-reduce-bw-2025.png" alt="all-reduce bw" />
+<img src="images/all-to-all-bw-2025.png" alt="all-to-all bw" /></p>
+<p><a href="https://www.nvidia.com/en-us/on-demand/session/gtc25-s72583/">source</a></p>
+<p>The all-reduce slide is the one read under <a href="#what-nvls-buys-at-full-node">What NVLS buys at full node</a>. The all-to-all slide has the same layout, with nccl-tests <code>alltoall</code> bus bandwidth. Inside a node it tracks the fabric: PCIe Gen5 12 and Gen6 24 (2x4 GPUs), NVLink 3 210, NVLink 4 320, NVLink 5 640. Across 32 GPUs on RDMA it collapses to 6-48GB/s (2x200Gb up to DGX H100's 8x400Gb), while GB200 NVL72, where all 32 GPUs are still on NVLink, keeps 640. Unlike all-reduce, an all-to-all can't keep most of its bytes on NVLink: every GPU sends a slice to every other GPU, so most of the data has to cross the network. That is why mixture-of-experts dispatch, which is an all-to-all (<a href="#which-collective-to-measure-latency-with">which collective to measure latency with</a>), pushes towards large NVLink domains.</p>
+<h4 id="symmetric-memory">Symmetric memory</h4>
+<p>Normally NCCL passes each payload through its own internal staging buffers, because it knows nothing about where the peers keep their data. If instead every rank's buffer sits at the same offset of a registered NCCL <em>symmetric memory window</em>, each GPU knows where its peers' buffers are. NCCL (2.27+) can then switch to its symmetric kernels: each GPU loads the data it needs straight from the other GPUs' buffers over NVLink and stores its results straight into them. This requires every rank to be reachable over direct NVLink. <a href="../network/collectives-internals.html#buffer-registration-and-symmetric-memory">Buffer registration and symmetric memory</a> explains why skipping the staging copy helps.</p>
+<p>In PyTorch you allocate the buffers from a <code>torch.cuda.MemPool</code> created with the backend's <code>mem_allocator</code>, and register the pool with <code>ProcessGroupNCCL.register_mem_pool(pool, symm=True)</code>. See <a href="https://docs.pytorch.org/docs/stable/symmetric_memory.html#nccl-symmetric-kernels">NCCL Symmetric Kernels</a> in the PyTorch documentation. Version requirements:</p>
+<ul>
+<li><code>torch&gt;=2.9</code> is the first release whose <code>register_mem_pool</code> takes <code>symm</code>. <code>torch==2.7</code> and <code>2.8</code> can register a pool too, but only as a local, non-symmetric buffer.</li>
+<li>torch 2.9.1 (NCCL 2.27.7), 2.10.0 and 2.11.0 (both NCCL 2.28.9) hang in <code>broadcast</code> on that path.</li>
+<li>torch 2.12.0 with NCCL 2.29.7 is the oldest cu130 (built for CUDA 13.0) release that completes it, and the benchmark refuses <code>--sym-mem</code> below torch 2.12 and NCCL 2.29.</li>
+</ul>
+<p>To measure it, add <code>--sym-mem</code> to <a href="benchmarks/torch-dist-bench.py">torch-dist-bench.py</a>, or <code>-R 2</code> (register the buffers as symmetric) to <code>nccl-tests</code> if you call NCCL directly. Use it only if the workload you're benchmarking for also all-reduces symmetric memory buffers, registering them itself as above or through a framework that does. Otherwise that workload gets the regular bandwidth, and the symmetric memory numbers won't reflect what it actually gets.</p>
+<p>To check that the symmetric kernels are used, add <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=TUNING</code>. Each call that used one is logged as <code>AllReduce [Symmetric]: ... -&gt; Kernel ...</code>.</p>
+<p>Here is the <code>all-reduce</code> <code>busbw</code> with and without it on an 8x B200 node and an 8x H200 node (both <code>torch=2.14.0+cu130</code>, <code>nccl=2.30.7</code>, each the mean of 2 sweeps).</p>
+<p><strong>8x B200</strong>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:right">regular</th>
+<th style="text-align:right">symmetric memory</th>
+<th style="text-align:right">speed up</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">32KiB</td>
+<td style="text-align:right">2.09GBps</td>
+<td style="text-align:right">5.31GBps</td>
+<td style="text-align:right">154%</td>
+</tr>
+<tr>
+<td style="text-align:right">64KiB</td>
+<td style="text-align:right">3.88GBps</td>
+<td style="text-align:right">8.64GBps</td>
+<td style="text-align:right">122%</td>
+</tr>
+<tr>
+<td style="text-align:right">128KiB</td>
+<td style="text-align:right">7.86GBps</td>
+<td style="text-align:right">16.52GBps</td>
+<td style="text-align:right">110%</td>
+</tr>
+<tr>
+<td style="text-align:right">256KiB</td>
+<td style="text-align:right">15.20GBps</td>
+<td style="text-align:right">33.53GBps</td>
+<td style="text-align:right">121%</td>
+</tr>
+<tr>
+<td style="text-align:right">512KiB</td>
+<td style="text-align:right">28.33GBps</td>
+<td style="text-align:right">61.56GBps</td>
+<td style="text-align:right">117%</td>
+</tr>
+<tr>
+<td style="text-align:right">1MiB</td>
+<td style="text-align:right">56.98GBps</td>
+<td style="text-align:right">104.34GBps</td>
+<td style="text-align:right">83%</td>
+</tr>
+<tr>
+<td style="text-align:right">2MiB</td>
+<td style="text-align:right">101.81GBps</td>
+<td style="text-align:right">184.07GBps</td>
+<td style="text-align:right">81%</td>
+</tr>
+<tr>
+<td style="text-align:right">4MiB</td>
+<td style="text-align:right">128.25GBps</td>
+<td style="text-align:right">301.25GBps</td>
+<td style="text-align:right">135%</td>
+</tr>
+<tr>
+<td style="text-align:right">8MiB</td>
+<td style="text-align:right">195.46GBps</td>
+<td style="text-align:right">426.89GBps</td>
+<td style="text-align:right">118%</td>
+</tr>
+<tr>
+<td style="text-align:right">16MiB</td>
+<td style="text-align:right">290.77GBps</td>
+<td style="text-align:right">568.35GBps</td>
+<td style="text-align:right">95%</td>
+</tr>
+<tr>
+<td style="text-align:right">32MiB</td>
+<td style="text-align:right">361.21GBps</td>
+<td style="text-align:right">679.39GBps</td>
+<td style="text-align:right">88%</td>
+</tr>
+<tr>
+<td style="text-align:right">64MiB</td>
+<td style="text-align:right">418.92GBps</td>
+<td style="text-align:right">738.62GBps</td>
+<td style="text-align:right">76%</td>
+</tr>
+<tr>
+<td style="text-align:right">128MiB</td>
+<td style="text-align:right">589.35GBps</td>
+<td style="text-align:right">776.80GBps</td>
+<td style="text-align:right">32%</td>
+</tr>
+<tr>
+<td style="text-align:right">256MiB</td>
+<td style="text-align:right">655.48GBps</td>
+<td style="text-align:right">794.80GBps</td>
+<td style="text-align:right">21%</td>
+</tr>
+<tr>
+<td style="text-align:right">512MiB</td>
+<td style="text-align:right">700.30GBps</td>
+<td style="text-align:right">806.40GBps</td>
+<td style="text-align:right">15%</td>
+</tr>
+<tr>
+<td style="text-align:right">1GiB</td>
+<td style="text-align:right">722.44GBps</td>
+<td style="text-align:right">809.47GBps</td>
+<td style="text-align:right">12%</td>
+</tr>
+<tr>
+<td style="text-align:right">2GiB</td>
+<td style="text-align:right">737.76GBps</td>
+<td style="text-align:right">807.06GBps</td>
+<td style="text-align:right">9%</td>
+</tr>
+<tr>
+<td style="text-align:right">4GiB</td>
+<td style="text-align:right">747.53GBps</td>
+<td style="text-align:right">816.49GBps</td>
+<td style="text-align:right">9%</td>
+</tr>
+<tr>
+<td style="text-align:right">8GiB</td>
+<td style="text-align:right">832.30GBps</td>
+<td style="text-align:right">819.30GBps</td>
+<td style="text-align:right">-2%</td>
+</tr>
+<tr>
+<td style="text-align:right">16GiB</td>
+<td style="text-align:right">838.96GBps</td>
+<td style="text-align:right">820.04GBps</td>
+<td style="text-align:right">-2%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>8x H200</strong>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:right">regular</th>
+<th style="text-align:right">symmetric memory</th>
+<th style="text-align:right">speed up</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">32KiB</td>
+<td style="text-align:right">3.15GBps</td>
+<td style="text-align:right">7.34GBps</td>
+<td style="text-align:right">133%</td>
+</tr>
+<tr>
+<td style="text-align:right">64KiB</td>
+<td style="text-align:right">6.16GBps</td>
+<td style="text-align:right">14.36GBps</td>
+<td style="text-align:right">133%</td>
+</tr>
+<tr>
+<td style="text-align:right">128KiB</td>
+<td style="text-align:right">12.46GBps</td>
+<td style="text-align:right">27.91GBps</td>
+<td style="text-align:right">124%</td>
+</tr>
+<tr>
+<td style="text-align:right">256KiB</td>
+<td style="text-align:right">24.68GBps</td>
+<td style="text-align:right">48.50GBps</td>
+<td style="text-align:right">97%</td>
+</tr>
+<tr>
+<td style="text-align:right">512KiB</td>
+<td style="text-align:right">48.15GBps</td>
+<td style="text-align:right">87.84GBps</td>
+<td style="text-align:right">82%</td>
+</tr>
+<tr>
+<td style="text-align:right">1MiB</td>
+<td style="text-align:right">74.57GBps</td>
+<td style="text-align:right">145.04GBps</td>
+<td style="text-align:right">95%</td>
+</tr>
+<tr>
+<td style="text-align:right">2MiB</td>
+<td style="text-align:right">96.26GBps</td>
+<td style="text-align:right">210.12GBps</td>
+<td style="text-align:right">118%</td>
+</tr>
+<tr>
+<td style="text-align:right">4MiB</td>
+<td style="text-align:right">145.14GBps</td>
+<td style="text-align:right">297.81GBps</td>
+<td style="text-align:right">105%</td>
+</tr>
+<tr>
+<td style="text-align:right">8MiB</td>
+<td style="text-align:right">196.56GBps</td>
+<td style="text-align:right">370.67GBps</td>
+<td style="text-align:right">89%</td>
+</tr>
+<tr>
+<td style="text-align:right">16MiB</td>
+<td style="text-align:right">255.90GBps</td>
+<td style="text-align:right">408.19GBps</td>
+<td style="text-align:right">60%</td>
+</tr>
+<tr>
+<td style="text-align:right">32MiB</td>
+<td style="text-align:right">301.25GBps</td>
+<td style="text-align:right">448.22GBps</td>
+<td style="text-align:right">49%</td>
+</tr>
+<tr>
+<td style="text-align:right">64MiB</td>
+<td style="text-align:right">368.86GBps</td>
+<td style="text-align:right">460.66GBps</td>
+<td style="text-align:right">25%</td>
+</tr>
+<tr>
+<td style="text-align:right">128MiB</td>
+<td style="text-align:right">414.54GBps</td>
+<td style="text-align:right">469.36GBps</td>
+<td style="text-align:right">13%</td>
+</tr>
+<tr>
+<td style="text-align:right">256MiB</td>
+<td style="text-align:right">441.87GBps</td>
+<td style="text-align:right">475.13GBps</td>
+<td style="text-align:right">8%</td>
+</tr>
+<tr>
+<td style="text-align:right">512MiB</td>
+<td style="text-align:right">456.23GBps</td>
+<td style="text-align:right">477.34GBps</td>
+<td style="text-align:right">5%</td>
+</tr>
+<tr>
+<td style="text-align:right">1GiB</td>
+<td style="text-align:right">465.91GBps</td>
+<td style="text-align:right">479.98GBps</td>
+<td style="text-align:right">3%</td>
+</tr>
+<tr>
+<td style="text-align:right">2GiB</td>
+<td style="text-align:right">471.06GBps</td>
+<td style="text-align:right">480.64GBps</td>
+<td style="text-align:right">2%</td>
+</tr>
+<tr>
+<td style="text-align:right">4GiB</td>
+<td style="text-align:right">474.13GBps</td>
+<td style="text-align:right">483.06GBps</td>
+<td style="text-align:right">2%</td>
+</tr>
+<tr>
+<td style="text-align:right">8GiB</td>
+<td style="text-align:right">478.24GBps</td>
+<td style="text-align:right">483.94GBps</td>
+<td style="text-align:right">1%</td>
+</tr>
+<tr>
+<td style="text-align:right">16GiB</td>
+<td style="text-align:right">482.25GBps</td>
+<td style="text-align:right">484.08GBps</td>
+<td style="text-align:right">0.4%</td>
+</tr>
+</tbody>
+</table>
+<p>How to read the tables: <code>speed up</code> is symmetric / regular - 1, so 154% means 2.54x as fast.</p>
+<p>The gains differ from one GPU to the next. On B200, symmetric memory is faster at every payload up to 4GiB: by 76-154% up to 64MiB, and still by 9-12% from 1GiB to 4GiB. At 8GiB and above the regular path pulls ahead by 2%, right where it jumps from 748GBps to 832GBps, most likely because NCCL switches it to a different algorithm there. On H200 the gain is about as large at small payloads, 82-133% up to 4MiB, but it fades sooner, to 25% at 64MiB and 3% by 1GiB, where the regular path already reaches ~470GBps, and it never turns into a loss. So measure on your hardware, at the payload sizes your workload actually uses, rather than assuming a gain carries over from another GPU.</p>
+<p>These gains assume the all-reduces are queued while the GPU is busy, which is how the benchmark measures by default, and how a training loop whose host runs ahead of the GPU issues them. If your program instead waits on each all-reduce, PyTorch's 20-30μs of host overhead per call lands on top of the faster kernel and eats most of the small-payload gain. With the benchmark's <code>--with-host-overhead</code> timing, symmetric memory makes a 32KiB all-reduce 37% faster on B200 rather than 154%, and 16% faster on H200 rather than 133%.</p>
+<h3 id="inter-node-speed-depends-on-intra-node-speed">Inter-node speed depends on intra-node speed</h3>
+<p>The specs make inter-node networking look hopeless. On a P6-B200 node (AWS), each accelerator has 900GBps of <a href="../network/interconnects.html#nvlink">NVLink 5</a> but only 50GBps of <a href="../network/interconnects.html#efa">EFA v4</a> inter-node bandwidth, so the links really are about 18x apart. (The spec for an IB NDR400 node of this type is also 50GBps per accelerator.) It is natural to conclude that an <code>all-reduce</code> becomes ~18x slower the moment it crosses a node boundary. It doesn't, and this is probably the single most confusing thing about inter-node networking, so it is worth working through carefully.</p>
+<p>The following table collects <code>busbw</code> measurements for <code>all_reduce</code> with <a href="benchmarks/torch-dist-bench.py">torch-dist-bench.py</a> on 1x and 4x P6-B200 nodes: 8x B200 per node, NVLink 5 inside, 8x 50GBps EFA v4 out, on <code>torch=2.14.0+cu130, cuda=13.0, nccl=2.30.7</code>, each column the mean of 2 sweeps. The <code>slowdown</code> column is the price of leaving the node. The last column is the algorithm the 4-node run used at that payload, read from <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=TUNING</code>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:right">1 node</th>
+<th style="text-align:right">4 nodes</th>
+<th style="text-align:right">slowdown</th>
+<th style="text-align:left">4-node algorithm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">32KiB</td>
+<td style="text-align:right">2.17GBps</td>
+<td style="text-align:right">0.64GBps</td>
+<td style="text-align:right">3.4x</td>
+<td style="text-align:left">Tree LL</td>
+</tr>
+<tr>
+<td style="text-align:right">64KiB</td>
+<td style="text-align:right">3.95GBps</td>
+<td style="text-align:right">1.26GBps</td>
+<td style="text-align:right">3.1x</td>
+<td style="text-align:left">Tree LL</td>
+</tr>
+<tr>
+<td style="text-align:right">128KiB</td>
+<td style="text-align:right">8.07GBps</td>
+<td style="text-align:right">2.33GBps</td>
+<td style="text-align:right">3.5x</td>
+<td style="text-align:left">Tree LL</td>
+</tr>
+<tr>
+<td style="text-align:right">256KiB</td>
+<td style="text-align:right">15.57GBps</td>
+<td style="text-align:right">3.97GBps</td>
+<td style="text-align:right">3.9x</td>
+<td style="text-align:left">Tree LL</td>
+</tr>
+<tr>
+<td style="text-align:right">512KiB</td>
+<td style="text-align:right">29.07GBps</td>
+<td style="text-align:right">6.97GBps</td>
+<td style="text-align:right">4.2x</td>
+<td style="text-align:left">Tree LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">1MiB</td>
+<td style="text-align:right">58.54GBps</td>
+<td style="text-align:right">12.56GBps</td>
+<td style="text-align:right">4.7x</td>
+<td style="text-align:left">Tree LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">2MiB</td>
+<td style="text-align:right">104.27GBps</td>
+<td style="text-align:right">20.82GBps</td>
+<td style="text-align:right">5.0x</td>
+<td style="text-align:left">Tree LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">4MiB</td>
+<td style="text-align:right">127.85GBps</td>
+<td style="text-align:right">31.56GBps</td>
+<td style="text-align:right">4.1x</td>
+<td style="text-align:left">Tree LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">8MiB</td>
+<td style="text-align:right">195.60GBps</td>
+<td style="text-align:right">49.73GBps</td>
+<td style="text-align:right">3.9x</td>
+<td style="text-align:left">Tree LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">16MiB</td>
+<td style="text-align:right">294.36GBps</td>
+<td style="text-align:right">72.03GBps</td>
+<td style="text-align:right">4.1x</td>
+<td style="text-align:left">Tree LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">32MiB</td>
+<td style="text-align:right">362.00GBps</td>
+<td style="text-align:right">142.50GBps</td>
+<td style="text-align:right">2.5x</td>
+<td style="text-align:left">Ring LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">64MiB</td>
+<td style="text-align:right">419.98GBps</td>
+<td style="text-align:right">198.07GBps</td>
+<td style="text-align:right">2.1x</td>
+<td style="text-align:left">Ring LL128</td>
+</tr>
+<tr>
+<td style="text-align:right">128MiB</td>
+<td style="text-align:right">591.14GBps</td>
+<td style="text-align:right">260.25GBps</td>
+<td style="text-align:right">2.3x</td>
+<td style="text-align:left">NVLSTree Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">256MiB</td>
+<td style="text-align:right">658.63GBps</td>
+<td style="text-align:right">282.60GBps</td>
+<td style="text-align:right">2.3x</td>
+<td style="text-align:left">NVLSTree Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">512MiB</td>
+<td style="text-align:right">703.38GBps</td>
+<td style="text-align:right">310.96GBps</td>
+<td style="text-align:right">2.3x</td>
+<td style="text-align:left">Ring Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">1GiB</td>
+<td style="text-align:right">721.37GBps</td>
+<td style="text-align:right">366.15GBps</td>
+<td style="text-align:right">2.0x</td>
+<td style="text-align:left">Ring Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">2GiB</td>
+<td style="text-align:right">739.47GBps</td>
+<td style="text-align:right">371.24GBps</td>
+<td style="text-align:right">2.0x</td>
+<td style="text-align:left">Ring Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">4GiB</td>
+<td style="text-align:right">749.12GBps</td>
+<td style="text-align:right">374.66GBps</td>
+<td style="text-align:right">2.0x</td>
+<td style="text-align:left">Ring Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">8GiB</td>
+<td style="text-align:right">832.48GBps</td>
+<td style="text-align:right">376.05GBps</td>
+<td style="text-align:right">2.2x</td>
+<td style="text-align:left">Ring Simple</td>
+</tr>
+<tr>
+<td style="text-align:right">16GiB</td>
+<td style="text-align:right">838.97GBps</td>
+<td style="text-align:right">376.60GBps</td>
+<td style="text-align:right">2.2x</td>
+<td style="text-align:left">Ring Simple</td>
+</tr>
+</tbody>
+</table>
+<p>The same nodes on <code>torch=2.9.1+cu130, nccl=2.27.7</code> agree within 0.5% from 1GiB up and pick the same algorithm at every payload. Yet the middle of the 4-node column moved both ways with the NCCL version: on 2.27.7 it was 53% higher at 16MiB and 16% higher at 64MiB, but 10% lower at 32MiB. Each version reproduced its own numbers within 2% across sweeps, so this is the library, not noise. Re-measure after an NCCL upgrade rather than carrying mid-size numbers over.</p>
+<p><strong>At large payloads, leaving the node costs about 2x, not 18x.</strong></p>
+<p>The reason is that an inter-node NCCL collective doesn't stop using NVLink. It leans on NVLink for nearly all of the data movement, and it keeps every NIC in the node busy at the same time. A ring, for example, visits all 8 accelerators of a node over NVLink before hopping to the next node, so only 1 hop in 8 crosses the slow links. And NCCL runs several rings at once, each leaving the node through a different accelerator's NIC. A hierarchical algorithm gets there differently: it reduces within each node first, sends only the reduced shard out over the network, and then broadcasts the result back inside each node (<a href="../network/collectives-internals.html#hierarchical-all-reduce">hierarchical all-reduce</a> simulates it).</p>
+<pre><code>one ring over 2 nodes x 4 GPUs (NCCL runs several such rings at once, each crossing at a different GPU)
+
+  node A: GPU0 -&gt; GPU1 -&gt; GPU2 -&gt; GPU3 --NIC3==&gt;  node B: GPU4 -&gt; GPU5 -&gt; GPU6 -&gt; GPU7 --NIC7==&gt; back to GPU0
+          \_____________ NVLink ____________/              \_____________ NVLink ____________/
+  2 of 8 hops cross the network; with 8 GPUs per node it is 1 hop in 8 per node
+</code></pre>
+<h4 id="three-models-of-the-4-node-all-reduce">Three models of the 4-node all-reduce</h4>
+<p>Here is the arithmetic for a 4GiB <code>all-reduce</code> over 32 ranks (4 nodes x 8 accelerators). Write <span class="math inline"><span class="math-inline">P</span></span> for the payload, <span class="math inline"><span class="math-inline">g</span></span> for the accelerators per node, <span class="math inline"><span class="math-inline">k</span></span> for the number of nodes and <span class="math inline"><span class="math-inline">n = g k</span></span> for the total ranks: here <span class="math inline"><span class="math-inline">P</span></span> = 4GiB, <span class="math inline"><span class="math-inline">g</span></span> = 8, <span class="math inline"><span class="math-inline">k</span></span> = 4 and <span class="math inline"><span class="math-inline">n</span></span> = 32.</p>
+<p>The table reports <a href="../network/interconnects.html#glossary-and-concepts"><code>busbw</code></a>, which is payload over elapsed time scaled by the <code>all-reduce</code> correction factor <span class="math inline"><span class="math-inline">2(n-1)/n</span></span>. Undoing that scaling recovers the elapsed time:</p>
+<div class="math block">
+<div class="math-display">t = \frac{P}{\text{busbw} / (2(n-1)/n)}</div>
+</div>
+<p>For 4 nodes this is <span class="math inline"><span class="math-inline">4\ \text{GiB} / (374.66\ \text{GBps} / 1.9375)</span></span> = 22.21ms, against <span class="math inline"><span class="math-inline">4\ \text{GiB} / (749.12\ \text{GBps} / 1.75)</span></span> = 10.03ms on a single node, where <span class="math inline"><span class="math-inline">n</span></span> = 8 makes the factor <span class="math inline"><span class="math-inline">2(8-1)/8</span></span> = 1.75.</p>
+<p>Mind the bases when you do this yourself. The benchmark prints <code>1GiB = 2**30 Bytes</code> but <code>1GBps = 10**9 Bytes per second</code>, so 4GiB is 4.29e9 bytes, not 4e9. Dividing GiB by GBps as if they shared a base understates every time in this section by about 7%. The script below keeps them apart.</p>
+<pre><code class="language-python"># internode_models.py - three models for a 4 GiB all-reduce on 4 x 8 B200 (EFA v4, 50 GBps/accel)
+GiB, GB = 2**30, 1e9             # the benchmark prints GiB payloads but decimal GBps rates
+P, g, k = 4 * GiB, 8, 4
+n = g * k
+nic = 50 * GB                    # 400 Gbps per accelerator
+
+def elapsed(busbw_GBps, ranks, payload=P):  # undo busbw's factor: t = P * 2(n-1)/n / busbw
+    return payload * 2 * (ranks - 1) / ranks / (busbw_GBps * GB)
+
+t4, t1 = elapsed(374.66, n), elapsed(749.12, g)
+print(f&quot;measured: 4 nodes {t4*1e3:.2f} ms, 1 node {t1*1e3:.2f} ms&quot;)
+
+m1 = P / nic
+print(f&quot;model 1, whole payload through one NIC:  {m1*1e3:6.1f} ms ({m1/t4:.1f}x measured)&quot;)
+
+ring_bytes = 2 * (n - 1) / n * P
+print(f&quot;model 2, flat ring, bytes per link:      {ring_bytes/GiB:.2f} GiB&quot;)
+print(f&quot;   ... over one NIC:                     {ring_bytes/nic*1e3:6.1f} ms ({ring_bytes/nic/t4:.1f}x measured)&quot;)
+print(f&quot;   ... over all {g} NICs ({g*50} GBps):        {ring_bytes/(g*nic)*1e3:6.1f} ms ({ring_bytes/(g*nic)/t4:.0%} of measured)&quot;)
+
+rs = (g - 1) / g * P             # intra-node reduce-scatter, per accelerator
+x = 2 * (k - 1) / k * P / g      # inter-node all-reduce of the P/g shard, per accelerator
+ag = (g - 1) / g * P             # intra-node all-gather
+print(f&quot;model 3, hierarchical: NVLink {(rs+ag)/GiB:.2f} GiB, EFA {x/GiB:.2f} GiB per accel &quot;
+      f&quot;-&gt; {x/(rs+ag+x):.1%} leaves the node&quot;)
+t_x = x / nic
+print(f&quot;   EFA phase at wire rate {t_x*1e3:.1f} ms (-&gt; {t_x/t4:.0%} of wire rate if it were all of t);&quot;
+      f&quot; serialized with the 1-node time: {(t_x+t1)*1e3:.1f} ms&quot;)
+
+# busbw -&gt; per-accelerator NIC rate: ring busbw/g, hierarchical busbw*(k-1)/(n-1)
+print(f&quot;\nring conversion busbw/g = 1/{g}; hierarchical (k-1)/(n-1) = {(k-1)/(n-1):.3f}&quot;)
+for payload, bw in [(&quot;32MiB&quot;, 142.50), (&quot;64MiB&quot;, 198.07), (&quot;512MiB&quot;, 310.96), (&quot;1GiB&quot;, 366.15),
+                    (&quot;2GiB&quot;, 371.24), (&quot;4GiB&quot;, 374.66), (&quot;8GiB&quot;, 376.05), (&quot;16GiB&quot;, 376.60)]:
+    per = bw / g
+    print(f&quot;{payload:&gt;6}: busbw {bw:6.2f} -&gt; {per:5.2f} GBps per accel = {per/50:5.1%} of 50 GBps&quot;
+          f&quot;   (hierarchical formula would say {bw*(k-1)/(n-1)/50:5.1%})&quot;)
+
+# the long way round for 16 GiB: elapsed, then bytes per NIC
+t16 = elapsed(376.60, n, 16 * GiB)
+per_nic = 2 * (n - 1) / n * 16 * GiB / g
+print(f&quot;\n16GiB: elapsed {t16*1e3:.1f} ms, {per_nic/GiB:.3f} GiB per NIC -&gt; {per_nic/t16/GB:.2f} GBps&quot;)
+print(f&quot;16GiB busbw vs one NIC: {376.60/50:.1f}x&quot;)
+</code></pre>
+<pre><code>measured: 4 nodes 22.21 ms, 1 node 10.03 ms
+model 1, whole payload through one NIC:    85.9 ms (3.9x measured)
+model 2, flat ring, bytes per link:      7.75 GiB
+   ... over one NIC:                      166.4 ms (7.5x measured)
+   ... over all 8 NICs (400 GBps):          20.8 ms (94% of measured)
+model 3, hierarchical: NVLink 7.00 GiB, EFA 0.75 GiB per accel -&gt; 9.7% leaves the node
+   EFA phase at wire rate 16.1 ms (-&gt; 73% of wire rate if it were all of t); serialized with the 1-node time: 26.1 ms
+
+ring conversion busbw/g = 1/8; hierarchical (k-1)/(n-1) = 0.097
+ 32MiB: busbw 142.50 -&gt; 17.81 GBps per accel = 35.6% of 50 GBps   (hierarchical formula would say 27.6%)
+ 64MiB: busbw 198.07 -&gt; 24.76 GBps per accel = 49.5% of 50 GBps   (hierarchical formula would say 38.3%)
+512MiB: busbw 310.96 -&gt; 38.87 GBps per accel = 77.7% of 50 GBps   (hierarchical formula would say 60.2%)
+  1GiB: busbw 366.15 -&gt; 45.77 GBps per accel = 91.5% of 50 GBps   (hierarchical formula would say 70.9%)
+  2GiB: busbw 371.24 -&gt; 46.41 GBps per accel = 92.8% of 50 GBps   (hierarchical formula would say 71.9%)
+  4GiB: busbw 374.66 -&gt; 46.83 GBps per accel = 93.7% of 50 GBps   (hierarchical formula would say 72.5%)
+  8GiB: busbw 376.05 -&gt; 47.01 GBps per accel = 94.0% of 50 GBps   (hierarchical formula would say 72.8%)
+ 16GiB: busbw 376.60 -&gt; 47.08 GBps per accel = 94.2% of 50 GBps   (hierarchical formula would say 72.9%)
+
+16GiB: elapsed 88.4 ms, 3.875 GiB per NIC -&gt; 47.08 GBps
+16GiB busbw vs one NIC: 7.5x
+</code></pre>
+<p>How to read the output, top block (the three models):</p>
+<ol>
+<li>
+<p><strong>The naive inter-node model</strong>: the whole payload has to cross one accelerator's NIC, <span class="math inline"><span class="math-inline">P / 50\ \text{GBps}</span></span> = <span class="math inline"><span class="math-inline">4\ \text{GiB} / 50\ \text{GBps}</span></span> = 85.9ms. That is 3.9x more than measured, and it is the arithmetic to avoid. (It is also the model <a href="../network/interconnects.html#multiple-node-training">Multiple node training</a> used, to make its point.)</p>
+</li>
+<li>
+<p><strong>A flat ring across all <span class="math inline"><span class="math-inline">n</span></span> ranks.</strong> Each link carries <span class="math inline"><span class="math-inline">2(n-1)/n \cdot P</span></span> = <span class="math inline"><span class="math-inline">2(32-1)/32 \cdot 4\ \text{GiB}</span></span> = 7.75GiB, and a ring laid over <span class="math inline"><span class="math-inline">k</span></span> nodes crosses a node boundary <span class="math inline"><span class="math-inline">k</span></span> = 4 times, so each node has one boundary link's worth to push out. What that costs depends on how many NICs carry it. Over a single accelerator's NIC it would be <span class="math inline"><span class="math-inline">7.75\ \text{GiB} / 50\ \text{GBps}</span></span> = 166.4ms, 7.5x more than measured. But NCCL opens multiple channels, so different rings cross the boundary at different accelerators and all the node's NICs are in flight, as in model 3 below. Over the node's <span class="math inline"><span class="math-inline">g \cdot 50\ \text{GBps}</span></span> = 400GBps that is <span class="math inline"><span class="math-inline">7.75\ \text{GiB} / 400\ \text{GBps}</span></span> = 20.8ms, 94% of the 22.21ms measured.</p>
+</li>
+<li>
+<p><strong>The hierarchical model</strong>: reduce inside each node, exchange the shard between nodes, broadcast back inside. Each phase moves its own collective's correction factor times the payload it operates on:</p>
+<ul>
+<li>intra-node reduce-scatter: <span class="math inline"><span class="math-inline">(g-1)/g \cdot P</span></span> = <span class="math inline"><span class="math-inline">(8-1)/8 \cdot 4\ \text{GiB}</span></span> = 3.5GiB per accelerator over NVLink</li>
+<li>inter-node all-reduce of the resulting <span class="math inline"><span class="math-inline">P/g</span></span> = 0.5GiB shard across the <span class="math inline"><span class="math-inline">k</span></span> nodes: <span class="math inline"><span class="math-inline">2(k-1)/k \cdot P/g</span></span> = <span class="math inline"><span class="math-inline">2(4-1)/4 \cdot 0.5\ \text{GiB}</span></span> = 0.75GiB per accelerator over EFA</li>
+<li>intra-node all-gather: <span class="math inline"><span class="math-inline">(g-1)/g \cdot P</span></span> = <span class="math inline"><span class="math-inline">(8-1)/8 \cdot 4\ \text{GiB}</span></span> = 3.5GiB per accelerator over NVLink</li>
+</ul>
+<p>Per accelerator that is <span class="math inline"><span class="math-inline">2(g-1)/g \cdot P</span></span> = 7GiB over NVLink against <span class="math inline"><span class="math-inline">2(k-1)/k \cdot P/g</span></span> = 0.75GiB over EFA, so only <span class="math inline"><span class="math-inline">0.75/(7+0.75)</span></span> = 9.7% of the traffic leaves the node. And because each accelerator drives its own NIC, all <span class="math inline"><span class="math-inline">g</span></span> NICs are in flight at once, giving the node <span class="math inline"><span class="math-inline">g \cdot 50\ \text{GBps}</span></span> = 400GBps of inter-node bandwidth rather than one link's 50GBps.</p>
+<p>At wire rate that shard would cross in <span class="math inline"><span class="math-inline">0.75\ \text{GiB} / 50\ \text{GBps}</span></span> = 16.1ms, against 22.21ms measured, so the exchange would effectively run at ~73% of wire rate, with NIC efficiency and any non-overlapping intra-node time both folded into that figure. The two can't simply add up: <span class="math inline"><span class="math-inline">16.1 + 10.03</span></span> = 26.1ms would exceed the measured time, so the intra-node phases would have to overlap the exchange substantially rather than queue behind it. So this model brackets the measurement: 16.1ms fully overlapped, 26.1ms fully serialized, and 22.21ms in between.</p>
+</li>
+</ol>
+<p>Models 2 and 3 both fit the measurement, model 2 with the NICs at 94% of wire rate and model 3 at 73%. So the arithmetic alone doesn't tell you which one ran, only that the naive model 1 is badly wrong. Which one it was depends on the algorithm NCCL selected, and that is directly readable. <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING</code> reports it, and forcing <code>NCCL_ALGO=allreduce:&lt;algo&gt;</code> and comparing with the default confirms it. On these nodes the 4GiB selection is <code>Ring</code>. Forcing <code>NCCL_ALGO=allreduce:ring</code> reproduced the default within 0.1% (375.22 against 375.42GBps), while <code>NCCL_ALGO=allreduce:nvlstree</code>, a hierarchical algorithm, ran 18% slower at 308.15GBps. So model 2 is what ran, with each NIC sustaining 94% of its line rate.</p>
+<p>The selection is made per payload, as the algorithm column of the table shows: <code>Tree</code> up to 16MiB, <code>Ring</code> at 32-64MiB, <code>NVLSTree</code> at 128-256MiB and <code>Ring</code> again from 512MiB up. On this cluster the chooser is AWS's <code>NCCL_TUNER_PLUGIN=ofi</code> rather than NCCL's own tuner, and its log line, <code>base Tuner is chosen for platform: p6-b200.48xlarge</code>, shows it keying off the instance type. A different instance gets a different tuner table, so the only way to know what your own runs pick is to read it.</p>
+<p>Either way, two effects rescue the inter-node case:</p>
+<ul>
+<li>The node's whole NIC bandwidth is used, not a single link's.</li>
+<li>Only a fraction of the traffic crosses the slow links at all: 1 hop in 8 for this ring, 9.7% of the bytes for the hierarchical model.</li>
+</ul>
+<p>That is why the naive single-NIC arithmetic is wrong by 3.9x whichever algorithm runs. It is also why a fast intra-node fabric matters even for workloads whose bottleneck you would call inter-node: degrade NVLink and the inter-node numbers degrade with it.</p>
+<p>Two warnings come with this:</p>
+<ul>
+<li><strong>It is a large-payload effect.</strong> The <code>slowdown</code> column grows at small payloads, 3-5x below 32MiB against 2x from 1GiB up, because latency rather than bandwidth dominates there and every node hop adds some. The absolute numbers are tiny too: at 32KiB the 4 nodes move 0.64GBps, under 0.2% of what they move at 16GiB. This is the strongest possible argument for bucketing gradients into large reductions rather than reducing each tensor separately.</li>
+<li><strong>Don't read the 4-node <code>busbw</code> as a NIC speed.</strong> 376.60GBps at 16GiB is 7.5x what one NIC can do. Undoing the correction factor gives 88.4ms for that reduction, during which the ring pushes <span class="math inline"><span class="math-inline">2(n-1)/n \cdot 16\ \text{GiB}</span></span> = 31GiB out of each node across its 8 NICs. That is 3.875GiB each, i.e. 47.08GBps, or 94% of each NIC's 50GBps (the last lines of the output). <code>busbw</code> is derived from the payload and elapsed time with a per-collective correction factor, so once NCCL spreads a collective over several NICs it no longer maps onto any single link. This is the same caveat as in <a href="#sharp">SHARP</a>.</li>
+</ul>
+<h4 id="so-what-should-you-expect">So what should you expect?</h4>
+<p>If <code>busbw</code> isn't a wire speed, what number can you hold up against the NIC's spec? Undo both scalings at once. The elapsed time is <span class="math inline"><span class="math-inline">P \cdot (2(n-1)/n) / \text{busbw}</span></span>, and the bytes each accelerator's NIC moves during it depend on the algorithm.</p>
+<ul>
+<li>In a ring that leaves the node once per channel, spread across all <span class="math inline"><span class="math-inline">g</span></span> accelerators, each NIC moves <span class="math inline"><span class="math-inline">2(n-1)/n \cdot P/g</span></span>. Dividing bytes by time cancels the payload entirely, units and all, and leaves a payload-free conversion:</li>
+</ul>
+<div class="math block">
+<div class="math-display">\text{per-accelerator rate} = \text{busbw} / g</div>
+</div>
+<ul>
+<li>In the hierarchical model each NIC moves <span class="math inline"><span class="math-inline">2(k-1)/k \cdot P/g</span></span> instead, which gives <span class="math inline"><span class="math-inline">\text{busbw} \cdot (k-1)/(n-1)</span></span>.</li>
+</ul>
+<p>For the 4GiB 4-node row, which ran <code>Ring</code>, that is <span class="math inline"><span class="math-inline">374.66\ \text{GBps} / 8</span></span> = 46.83GBps per accelerator, or 94% of the 50GBps of inter-node bandwidth each accelerator has on this node type. That is even higher than the single-node column's own <span class="math inline"><span class="math-inline">749.12\ \text{GBps} / 900\ \text{GBps}</span></span> = 83% against NVLink 5. Expressed per accelerator, the inter-node result stops looking anomalous.</p>
+<p>It is per accelerator, not per NIC, because the two only coincide when the node puts one interface on each accelerator, as P6-B200 does with its 8 EFA devices for 8 accelerators. P6-B300 puts 16 devices on 8 accelerators, so there the same conversion has to be compared with two interfaces' worth of bandwidth.</p>
+<p>This is the one place in this section where the <code>GiB</code> vs <code>GBps</code> base trap doesn't bite, and it is worth seeing why. <span class="math inline"><span class="math-inline">P</span></span> appears in both the byte count and the elapsed time, so it cancels whatever unit it was quoted in, and the result comes out in <code>busbw</code>'s own decimal <code>GBps</code>, the same base the interface spec uses (400Gbps is 50GBps decimal). Going the long way round does need the conversion, and agrees: the script reaches 47.08GBps for 16GiB by converting 3.875GiB to 4.16e9 bytes and dividing by 88.4ms, while <span class="math inline"><span class="math-inline">376.60\ \text{GBps} / 8</span></span> = 47.08GBps.</p>
+<p><span class="math inline"><span class="math-inline">1/g</span></span> = 1/8 is also the share of a ring's hops that cross a node boundary, just as <span class="math inline"><span class="math-inline">(k-1)/(n-1)</span></span> = <span class="math inline"><span class="math-inline">3/31</span></span> is the 9.7% of the hierarchical model's bytes that leave the node. That is the tidiest statement of this whole section: <strong><code>busbw</code> overstates the wire by exactly the reciprocal of the fraction of traffic that crosses it.</strong></p>
+<p>Two things to keep in mind about the resulting number. It is comparable to a spec figure, whereas <code>busbw</code> is not comparable to anything. And it is a floor rather than a wire measurement, because it charges the whole elapsed time to the NICs, including the ring's fill and drain and any time they wait on NVLink. The true wire rate is somewhat higher.</p>
+<p>It also only reaches its plateau at large payloads. The same 4-node measurements converted, sorted by payload ascending (only the <code>Ring</code> rows, since the <code>Tree</code> and <code>NVLSTree</code> rows would each need their own derivation):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">payload</th>
+<th style="text-align:left">algorithm</th>
+<th style="text-align:right">4-node<br><code>busbw</code><br>GBps</th>
+<th style="text-align:right">per-accel.<br>GBps</th>
+<th style="text-align:right">% of spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">32MiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">142.50</td>
+<td style="text-align:right">17.81</td>
+<td style="text-align:right">35.6%</td>
+</tr>
+<tr>
+<td style="text-align:right">64MiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">198.07</td>
+<td style="text-align:right">24.76</td>
+<td style="text-align:right">49.5%</td>
+</tr>
+<tr>
+<td style="text-align:right">512MiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">310.96</td>
+<td style="text-align:right">38.87</td>
+<td style="text-align:right">77.7%</td>
+</tr>
+<tr>
+<td style="text-align:right">1GiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">366.15</td>
+<td style="text-align:right">45.77</td>
+<td style="text-align:right">91.5%</td>
+</tr>
+<tr>
+<td style="text-align:right">2GiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">371.24</td>
+<td style="text-align:right">46.41</td>
+<td style="text-align:right">92.8%</td>
+</tr>
+<tr>
+<td style="text-align:right">4GiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">374.66</td>
+<td style="text-align:right">46.83</td>
+<td style="text-align:right">93.7%</td>
+</tr>
+<tr>
+<td style="text-align:right">8GiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">376.05</td>
+<td style="text-align:right">47.01</td>
+<td style="text-align:right">94.0%</td>
+</tr>
+<tr>
+<td style="text-align:right">16GiB</td>
+<td style="text-align:left">Ring</td>
+<td style="text-align:right">376.60</td>
+<td style="text-align:right">47.08</td>
+<td style="text-align:right">94.2%</td>
+</tr>
+</tbody>
+</table>
+<p><code>% of spec</code> is against the 50GBps of inter-node bandwidth per accelerator on this node type. (The 16GiB row reads 47.08 here and 47.07 in the original measurement notes. That is rounding of 47.075.) Below about 1GiB it falls off a cliff, and at 32MiB a perfectly healthy fabric reports 35.6%. Remember that before reading anything into a small-payload number.</p>
+<p>Now the caveat that matters most: these percentages describe <em>this</em> system, and they may or may not carry over to another one. The conversion itself depends only on topology and algorithm (<span class="math inline"><span class="math-inline">g</span></span> accelerators per node, <span class="math inline"><span class="math-inline">k</span></span> nodes, <span class="math inline"><span class="math-inline">n</span></span> ranks; no link speeds appear in it), so that part transfers anywhere. The <em>value</em> it produces does not, because it depends on how the intra-node and inter-node fabrics are balanced against each other, and that balance is a property of the node type. B300 shows how far it can shift without even changing accelerator generation. It keeps <a href="../network/interconnects.html#nvlink">NVLink 5</a> at the same 900GBps per accelerator as B200, while its inter-node side is twice as fast, 800Gbps per accelerator against B200's 400Gbps. Whatever the algorithm, the inter-node time shrinks in proportion while the NVLink time doesn't move at all. So a larger share of the elapsed time is intra-node work, a figure that charges all of that time to the NICs has to be read differently, and the tuner may well pick a different algorithm to begin with. What it actually comes out as is unknown, since this benchmark has not been run on a B300 cluster. Derive the number from that system's own measurements instead of carrying 94% across.</p>
+<p>The conversion depends on the algorithm: <span class="math inline"><span class="math-inline">\text{busbw} / g</span></span> for model 2's ring and <span class="math inline"><span class="math-inline">\text{busbw} \cdot (k-1)/(n-1)</span></span> for model 3's hierarchical exchange. NCCL picks the algorithm per payload size, so capture <code>NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING</code> alongside the numbers. Applying the wrong formula is not a small error: the hierarchical formula would have put the 16GiB row above at 73% instead of 94% (the last column of the script output).</p>
+<p>For how to get these numbers out of a provider in the first place, see <a href="../platform/getting-compute.html">Getting compute</a>, which covers asking for the actual performance numbers before you sign.</p>
+<h4 id="measuring-the-inter-node-fabric-on-its-own">Measuring the inter-node fabric on its own</h4>
+<p>A collective can't give you the wire speed. An <code>all-reduce</code> across nodes always leans on the intra-node fabric, which is the whole point of this section. To measure the wire itself, use a point-to-point RDMA benchmark.</p>
+<p><a href="https://manpages.debian.org/testing/perftest/ib_write_bw.1.en.html"><code>ib_write_bw</code></a> from <a href="https://github.com/linux-rdma/perftest">perftest</a> runs between two hosts using one adapter (<code>-d</code>) and one queue pair (<code>-q</code>, default 1). No second local accelerator and no collective are involved: the isolation comes from how the tool is built, not from anything you configure. Add <code>--use_cuda=&lt;gpu&gt;</code> for the GPUDirect RDMA path out of accelerator memory instead of host memory, and <code>-a</code> to sweep payload sizes for comparison with the <a href="#inter-node-speed-depends-on-intra-node-speed"><code>busbw</code> table</a>. <a href="../compute/gpu-software-stack.html#perftest-measuring-one-link">perftest: measuring one link</a> shows a basic server/client run.</p>
+<p>Despite the name, it is not InfiniBand-only. It is written over <code>uverbs</code>, the userspace RDMA API, so it works on any adapter the RDMA stack enumerates. A few conditions:</p>
+<ul>
+<li>On InfiniBand, a Subnet Manager must be running first.</li>
+<li>On EFA, pass <code>-c SRD</code>, since the default <a href="../network/interconnects.html#glossary-and-concepts">RC</a> connection type doesn't exist there. Omit it and the run dies at setup with <code>Unable to create QP</code> / <code>Couldn't create IB resources</code>, because there is no RC transport to fall back to.</li>
+<li>Both sides need identical options and identical <code>perftest</code> versions.</li>
+<li>The result is a synthetic operation stream, not application traffic.</li>
+</ul>
+<p>RDMA-write-over-<a href="../network/interconnects.html#glossary-and-concepts">SRD</a> support was contributed to <code>perftest</code> by AWS (<a href="https://github.com/linux-rdma/perftest/pull/206">PR 206</a>). Confirmed on a live instance on 2026-08-07 on an 8x H200 <code>p5en.48xlarge</code> node:</p>
+<pre><code class="language-bash">ib_write_bw -d rdmap110s0 -c SRD -x 0 --report_gbits -D 10              # on the server node
+ib_write_bw -d rdmap110s0 -c SRD -x 0 --report_gbits -D 10 &lt;server-ip&gt;  # on the client node
+</code></pre>
+<p><code>-d</code> names the adapter (an EFA device from <code>/sys/class/infiniband/</code>), <code>-x 0</code> selects GID index 0, <code>--report_gbits</code> reports in Gbps, and <code>-D 10</code> runs for 10 seconds. Between two nodes it sustained <strong>193.72Gbps on one adapter, or 96.9% of that adapter's 200Gbps line rate</strong>.</p>
+<p>Fabrics with their own userspace stack instead of verbs (<a href="../network/interconnects.html#hpe-slingshot-interconnect">Slingshot</a>, <a href="../network/interconnects.html#omni-path">Omni-Path</a> via OPX, <a href="../network/interconnects.html#gpudirect-tcpx">GPUDirect-TCPX</a>) need their own tools. The nearest equivalent there is <code>fi_rma_bw</code> from <a href="https://ofiwg.github.io/libfabric/">libfabric</a>'s fabtests, an <a href="../network/interconnects.html#glossary-and-concepts">RMA</a> read and write bandwidth test, the same shape of measurement as <code>ib_write_bw</code>. libfabric's own documentation warns that its tests are &quot;designed to test functionality and not performance&quot;, with the benchmarks as the stated exception, and that even those are &quot;not guaranteed to provide the best latency or bandwidth performance numbers a given provider or system may achieve&quot;. So treat the figure as a floor rather than the fabric's capability.</p>
+<p>It is tempting to keep all the accelerators and take the intra-node fabric away with <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html"><code>NCCL_P2P_DISABLE=1</code></a> instead. But that only pushes intra-node traffic down to host memory: the documented fallback order is P2P, then SHM, then network, so <code>NCCL_SHM_DISABLE=1</code> is needed as well before NCCL puts same-node ranks on a NIC. On EFA even that isn't enough, because <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html">the libfabric provider uses the instance's shared memory for intra-node communication</a>: NCCL asks for the network and libfabric serves the transfer from host memory instead. <a href="https://ofiwg.github.io/libfabric/main/man/fi_efa.7.html"><code>FI_EFA_ENABLE_SHM_TRANSFER=0</code></a> overrides that.</p>
+<h3 id="latency">Latency</h3>
+<p>Latency is how long it takes to send or receive a message. For small messages, latency rather than bandwidth decides how long a transfer takes, and faster fabrics generally have lower latency as well as higher bandwidth. <a href="../foundations/computer-architecture.html#bandwidth-vs-latency">Bandwidth vs latency</a> and the <a href="../network/collectives-internals.html#the-alpha-beta-model">alpha-beta model</a> separate the two properly.</p>
+<p>Here is an old but good plot showing how latency changes with message size and network type:</p>
+<p><img src="images/ccgrid11-low-level-latency.png" alt="Low-level Latency Measurements" />
+(<a href="https://ieeexplore.ieee.org/document/5238655">source</a>)</p>
+<p>How to read it: two panels, small messages (2B-4KB) on the left and large (8KB-8MB) on the right. y is latency in microseconds, one curve per network, measured on 2011-era ConnectX-DDR hardware. On the left, native IB sits at ~1.7μs and RoCE at ~3μs for tiny messages, and Ethernet through the same card (VPI-Eth, no RDMA) at 12-15μs. Each curve is flat while latency dominates and turns upward once message size takes over, which on the right becomes nearly linear in size. The slide's own note: RoCE's small overhead over IB there came from running at a slower clock (a 10Gbps Ethernet link vs a 32Gbps IB link).</p>
+<p>Typically, the more &quot;hops&quot; a message travels, the bigger the latency:</p>
+<ul>
+<li>2 accelerators on the same node connected directly (e.g. NVLink) have the lowest latency.</li>
+<li>If their path goes through a PCIe switch, latency is higher.</li>
+<li>2 accelerators on 2 different nodes that share a single switch have higher latency still, because there is a switch to traverse.</li>
+<li>The further apart they are, the more switches the message passes through, and the bigger the latency.</li>
+</ul>
+<h4 id="which-collective-to-measure-latency-with">Which collective to measure latency with</h4>
+<p>The latency of a small all-reduce is the most flattering of all collectives, so on its own it says little about the latency of other traffic:</p>
+<ul>
+<li><strong>It gets the only tree.</strong> NCCL implements its tree algorithm for all-reduce only; the other collectives use rings. A NCCL maintainer models the tree's latency as <span class="math inline"><span class="math-inline">2(G-1)\,l + 2\log_2(N)\,L</span></span>, which grows with the log of the node count, and the ring's as <span class="math inline"><span class="math-inline">N(G-1)\,l + N L</span></span>, which grows linearly (<a href="https://github.com/NVIDIA/nccl/issues/1049">NCCL #1049</a>; <span class="math inline"><span class="math-inline">N</span></span> nodes, <span class="math inline"><span class="math-inline">G</span></span> accelerators per node, <span class="math inline"><span class="math-inline">L</span></span> network latency, <span class="math inline"><span class="math-inline">l</span></span> NVLink latency). <a href="../network/collectives-internals.html#double-binary-tree">Double binary tree</a> derives where the log comes from.</li>
+<li><strong>The other collectives lack an equivalent.</strong> NCCL 2.23 added the PAT (Parallel Aggregated Trees) algorithm for all-gather and reduce-scatter, but only for one GPU per node, and a maintainer says it is &quot;not yet as low-latency as the Tree allreduce&quot; (<a href="https://github.com/NVIDIA/nccl/issues/1473">NCCL #1473</a>, <a href="https://developer.nvidia.com/blog/new-scaling-algorithm-and-initialization-with-nvidia-collective-communications-library-2-23/">NVIDIA blog</a>).</li>
+<li><strong>The switch may do the work.</strong> With <a href="#sharp">NVLS</a> (NVLink SHARP) or InfiniBand <a href="#sharp">SHARP</a>, a small all-reduce is reduced inside the switch, so its latency describes the switch's reduction, not the path ordinary traffic takes.</li>
+</ul>
+<p>The two latency models, evaluated with assumed hop latencies to show the shape:</p>
+<pre><code class="language-python"># latency_models.py - NCCL maintainer's small-message latency models (NCCL issue #1049)
+# tree all-reduce: 2(G-1) l + 2 log2(N) L      ring: N(G-1) l + N L
+# N nodes, G accelerators per node, l = NVLink hop latency, L = network hop latency.
+# ASSUMED values, for the shape only: l = 1 us, L = 5 us.
+from math import log2
+G, l, L = 8, 1.0, 5.0
+print(f&quot;{'nodes':&gt;6} {'tree us':&gt;8} {'ring us':&gt;8}&quot;)
+for N in (2, 4, 16, 64, 256, 1024):
+    tree = 2 * (G - 1) * l + 2 * log2(N) * L
+    ring = N * (G - 1) * l + N * L
+    print(f&quot;{N:&gt;6} {tree:&gt;8.0f} {ring:&gt;8.0f}&quot;)
+</code></pre>
+<pre><code> nodes  tree us  ring us
+     2       24       24
+     4       34       48
+    16       54      192
+    64       74      768
+   256       94     3072
+  1024      114    12288
+</code></pre>
+<p>How to read it: the absolute numbers are only as good as the assumed <span class="math inline"><span class="math-inline">l</span></span> and <span class="math inline"><span class="math-inline">L</span></span>, which are not measurements. The shape is the point. At 1024 nodes a small ring all-reduce costs ~100x what the tree does. An all-gather, which has no tree, pays the ring column.</p>
+<p>No single collective stands for latency. Here is what each one's small-payload latency tells you, and the workload where it is on the critical path:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Collective</th>
+<th style="text-align:left">What its small-payload latency shows</th>
+<th style="text-align:left">Workload where it's the critical path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">point-to-point send/recv</td>
+<td style="text-align:left">How much latency the NIC and switches add, without any collective algorithm in the way</td>
+<td style="text-align:left">Pipeline parallelism, KV-cache transfer</td>
+</tr>
+<tr>
+<td style="text-align:left">all-to-all</td>
+<td style="text-align:left">Every accelerator sends to every other at once, which exposes oversubscription and incast (many senders converging on one port)</td>
+<td style="text-align:left">MoE expert-parallel dispatch and combine, the most latency-sensitive inter-node pattern in inference decode</td>
+</tr>
+<tr>
+<td style="text-align:left">all-reduce</td>
+<td style="text-align:left">The best case, using the tree or in-switch reduction</td>
+<td style="text-align:left">Tensor-parallel inference within a node, where it really is the workload</td>
+</tr>
+<tr>
+<td style="text-align:left">all-gather and reduce-scatter</td>
+<td style="text-align:left">Ring latency, growing linearly with the rank count</td>
+<td style="text-align:left">FSDP/ZeRO training at scale with small buckets</td>
+</tr>
+</tbody>
+</table>
+<p><a href="benchmarks/torch-dist-bench.py"><code>torch-dist-bench.py</code></a> times the per-call latency of all of them, e.g. with <code>--collectives all</code>. <a href="../network/measuring-and-debugging.html#other-collectives">Other collectives</a> and <a href="../network/measuring-and-debugging.html#latency">Latency</a> in the measuring chapter cover that mode in detail.</p>
+<h3 id="proprietary-network-hardware-and-nccl">Proprietary network hardware and NCCL</h3>
+<p>Vendors of proprietary network hardware, like AWS with EFA, don't disclose their internals, so public libraries like <a href="https://github.com/NVIDIA/nccl">NCCL</a> can't support that hardware out of the box. The vendors have to supply their own versions of the collective libraries for their users.</p>
+<p>Originally they did this by telling users to set <code>LD_LIBRARY_PATH</code> and/or <code>LD_PRELOAD</code> so that the dynamic loader picks up their custom <code>libnccl.so</code> instead of the one bundled with PyTorch or another framework. Since NCCL v2.12 there is a proper mechanism instead, the <a href="https://github.com/NVIDIA/nccl/tree/master/plugins/net">NCCL Net Plugin</a>.</p>
+<p>When NCCL initializes, it looks for a <code>libnccl-net.so</code> library, loads it dynamically, and looks for known symbols inside it. That is where proprietary hardware vendors now put their custom transport. The library must still be findable via <code>LD_LIBRARY_PATH</code> or the <code>/etc/ld.so.conf</code> configuration (<code>NCCL_NET_PLUGIN</code> can name it explicitly). <a href="../compute/gpu-software-stack.html#network-plugins">Network plugins</a> covers installing them.</p>
+<p>On EFA that plugin is <a href="https://github.com/aws/aws-ofi-nccl">aws-ofi-nccl</a>. NCCL has no transport for that NIC, so it can't run over EFA without the plugin. Without it, NCCL silently falls back to TCP sockets, a very common cause of &quot;training on AWS is mysteriously slow&quot;.</p>
+<p>To check what a process actually loaded (untested here; Linux):</p>
+<pre><code class="language-bash">NCCL_DEBUG=INFO python train.py 2&gt;&amp;1 | grep -E 'NET/Plugin|Using network'   # e.g. &quot;Using network AWS Libfabric&quot; or &quot;Using network Socket&quot;
+ldd $(python -c &quot;import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'lib', 'libtorch_cuda.so'))&quot;) | grep nccl
+</code></pre>
+<p>How to read it: the first line shows which network transport NCCL chose. <code>Socket</code> on a machine with EFA or InfiniBand means the plugin or verbs path wasn't found. The second shows which <code>libnccl.so</code> the PyTorch build links against, if it links one dynamically; pip wheels usually ship NCCL as a separate <code>nvidia-nccl</code> package.</p>
+<p>For more on dynamic library loading (<code>ldd</code>, <code>LD_LIBRARY_PATH</code>, <code>LD_PRELOAD</code>, <code>ld.so.conf</code>), see <a href="https://github.com/stas00/the-art-of-debugging/tree/master/compiled-programs#shared-libraries-ldsoconf-nm-unresolved-symbols-ldd-ld_library_path-ld_preload">this section of The Art of Debugging</a>.</p>
+<h3 id="other-collective-libraries">Other collective libraries</h3>
+<p>The collectives measured in this chapter go through NCCL. Three libraries replace part of that path:</p>
+<ul>
+<li>
+<p><a href="https://github.com/microsoft/mscclpp">MSCCL++</a> implements the NCCL collective API in <code>libmscclpp_nccl.so</code>, which takes the place of <code>libnccl.so</code>. The application keeps its NCCL calls, and the collective runs an MSCCL++ schedule on the GPU. On AMD the same library takes the place of <code>librccl.so</code>, AMD's collective library RCCL.</p>
+</li>
+<li>
+<p><a href="https://github.com/uccl-project/uccl">UCCL-collective</a>, also called UCCL-Tran, is a <a href="#proprietary-network-hardware-and-nccl">NCCL Net Plugin</a>. NCCL still chooses the algorithm. The plugin replaces the transport: it sprays packets over many paths, runs congestion control itself, and retransmits lost packets. Point <code>NCCL_NET_PLUGIN</code> at the path the package prints:</p>
+<pre><code class="language-bash">NCCL_NET_PLUGIN=$(python -c &quot;import uccl; print(uccl.nccl_plugin_path())&quot;)
+</code></pre>
+<p>On AMD, <code>uccl.rccl_plugin_path()</code> prints the path of the RCCL build of the same plugin.</p>
+</li>
+<li>
+<p><a href="https://github.com/deepseek-ai/DeepEP">DeepEP</a> is DeepSeek's library for <a href="../training/model-parallelism/derivations.html#expert-parallelism">expert-parallel</a> dispatch and combine. A call moves the hidden states of the tokens a rank holds, and only toward the experts those tokens were routed to. The API is DeepEP's own, separate from NCCL's all-to-all.</p>
+</li>
+</ul>
+<p>When to use which library:</p>
+<p><strong>Short collectives, link idle.</strong> On an 8x H200 node an 8B all-reduce takes 15μs, and every payload through 512KiB stays in the same 15-23μs band (the <a href="#real-network-throughput">sweep above</a>), so a faster NIC changes nothing. NCCL serves that size with its ring, forwarding around the ranks. For a short all-reduce MSCCL++ uses an all-pairs schedule, sending to every other rank directly, which NCCL doesn't offer. The swap is worth it for a step that issues many such short collectives: the same measurement prices an 80-layer decode at 2.4ms per token of all-reduces. Once the payload fills the wire, the schedule stops mattering.</p>
+<p><strong>Large collectives, congested fabric.</strong> A large collective is limited by the path once the payload fills the wire. NCCL's transport uses one or a few routes and lets the NIC recover a lost packet. UCCL-collective is the swap when that path is what leaves bandwidth unused: many equal routes, or a NIC whose own congestion control is weak. On p5, p5en and p6, UCCL's README says the stock <a href="#proprietary-network-hardware-and-nccl">aws-ofi-nccl</a> plugin already performs well, and UCCL's own EFA path only covers <code>p4d.24xlarge</code>, so those instances keep aws-ofi-nccl. Upstream reports up to 2.5x on all-reduce across six HGX H100 nodes with 8x400Gbps RoCE, and up to 3.7x on two AWS <code>g4dn.8xlarge</code>. Those figures are the project's own and were not measured here.</p>
+<p><strong>Small all-to-all.</strong> MoE dispatch sends each token's hidden state to a few experts, in many small writes that have to overlap the expert compute. NCCL's all-to-all moves an equal slab from every rank, and the CPU starts each call. DeepEP is the library for those writes when they cross nodes. Within one node, time the all-to-all first with the collectives benchmark (<code>torch-dist-bench.py --collectives all</code>): at small payloads it takes 17.4μs on an 8x B200, against 24.5μs for an all-reduce.</p>
+<h3 id="node-proximity">Node Proximity</h3>
+<p>If you get 2 random nodes from a cloud, they may not be on the same subnet, and every transmission pays extra latency.</p>
+<p>You want all nodes of a single training job on the same subnet/spine, so they are all one hop from each other (<a href="../foundations/networking.html#top-of-rack-leaf-spine-fat-tree">top-of-rack, leaf-spine, fat-tree</a> explains the hops). If you plan to grow from a small cluster to a large one, make sure your provider can expand the cluster while keeping all the nodes close together.</p>
+<p>Cloud-specific ways to get node proximity:</p>
+<ul>
+<li>Azure: <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/availability-set-overview?source=recommendations">availability set</a></li>
+<li>AWS: <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/placement-groups.html">cluster placement groups</a></li>
+<li>GCP: <a href="https://docs.cloud.google.com/compute/docs/instances/use-compact-placement-policies">compact placement policies</a></li>
+</ul>
+<p>Depending on the package you have or the type of machines you rent, you may or may not be able to use these.</p>
+<h3 id="shared-internode-network">Shared internode network</h3>
+<p>On a shared HPC environment, or even on your own cluster shared with colleagues, expect network bandwidth to be unreliable and to fluctuate at different times of day.</p>
+<p>Unfortunately this makes it extremely hard to tune your training setup's performance. Every test run gives different TFLOPS, so how do you optimize? That is at least the situation on SLURM-based clusters. With Kubernetes, cluster namespaces can reportedly be used to separate network traffic.</p>
+<p>A case study from Stas Bekman: the BigScience team had this problem at the JeanZay HPC during preliminary experiments before training BLOOM-176B. The HPC had many users, so speed optimization was practically impossible: running the exact same setup again and again gave different throughput. Luckily, just before the BLOOM-176B launch, the team got exclusive access to the then-new A100 partition, and as the only users they were able to optimize throughput greatly.</p>
+<p>Parts of this chapter are adapted from Stas Bekman's <a href="https://github.com/stas00/ml-engineering">Machine Learning Engineering Open Book</a> (CC BY-SA 4.0).</p>
+
+</article>
+<footer><a class="prev" href="../compute/gpu-software-stack-reference.html">&larr; GPU Nodes: Driver Install, Acceptance Testing and Troubleshooting</a><a class="next" href="../network/collectives-internals-reference.html">Collectives: Laptop Measurement and Transports &rarr;</a></footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script src="../assets/site.js"></script>
+</body></html>

@@ -10,7 +10,7 @@
 
 Forward links (later chapters that go deeper on terms this chapter only touches): [Writing GPU kernels](writing-kernels.md) teaches CUDA C++ and Triton from zero; [Model parallelism derivations](../../training/model-parallelism/derivations.md) covers tensor parallelism; [Serving engine internals](../../inference/serving-engine-internals.md) covers continuous batching and paged KV caches; [Profiling and optimization](../../training/profiling-and-optimization.md) covers `torch.compile` and activation checkpointing as tools.
 
-The [Accelerators](../accelerators.md) chapter tells you what a GPU is rated at - [TFLOPS](../accelerators.md#tflops), [memory bandwidth](../accelerators.md#accelerator-memory-size-and-speed), [caches](../accelerators.md#caches), and how much of the peak is [actually achievable](../accelerators.md#maximum-achievable-and-sustainable-flops). This chapter is about *why* a given kernel (a function compiled for the GPU and launched from the CPU to run across thousands of GPU threads at once) gets the fraction it gets: how the hardware schedules threads (independent streams of instructions, each with its own registers), where the bytes live, what a tensor core instruction looks like, and how the kernels that dominate an LLM step (GEMM, attention, normalization) are structured to hit or miss the roofline (the performance ceiling set by whichever of compute or memory bandwidth runs out first, [defined below](#roofline-per-op)). It ends with the tools that tell you which case you are in.
+The [Accelerators](../accelerators.md) chapter tells you what a GPU is rated at - [TFLOPS](../accelerators.md#tflops), [memory bandwidth](../accelerators.md#accelerator-memory-size-and-speed), [caches](../accelerators-reference.md#caches), and how much of the peak is [actually achievable](../accelerators.md#maximum-achievable-and-sustainable-flops). This chapter is about *why* a given kernel (a function compiled for the GPU and launched from the CPU to run across thousands of GPU threads at once) gets the fraction it gets: how the hardware schedules threads (independent streams of instructions, each with its own registers), where the bytes live, what a tensor core instruction looks like, and how the kernels that dominate an LLM step (GEMM, attention, normalization) are structured to hit or miss the roofline (the performance ceiling set by whichever of compute or memory bandwidth runs out first, [defined below](#roofline-per-op)). It ends with the tools that tell you which case you are in.
 
 Two terms used throughout: *HBM* (High Bandwidth Memory) is the GPU's main memory, the tens of GB of DRAM stacked next to the chip where tensors live; the *host* is the CPU and its RAM, as opposed to the *device* (the GPU).
 
@@ -380,7 +380,7 @@ y = tl.where(x > 0, x, 0.01 * x)          # leaky ReLU, both sides computed, one
 | registers          | 256KB per SM, 33MiB total                    | 256KB per SM                            | per thread (private)    | 64K x 4B; $132 \times 256\ \text{KB} = 33\ \text{MiB}$                                              |
 | tensor memory      | -                                            | 256KB per SM                            | per CTA (allocated)     | `sm_100` only; 128 lanes x 512 columns x 4B, see [tcgen05](#blackwell-tcgen05-and-tmem) |
 | L1 / shared memory | 256KB per SM combined, up to 228KB as smem   | 256KB per SM combined, up to 228KB smem | per CTA (smem) / per SM | Hopper / Blackwell tuning guides                                              |
-| L2                 | 50MB                                         | 126MB (GB200 figure)                    | whole GPU (2 partitions)| [caches table](../accelerators.md#caches)                                              |
+| L2                 | 50MB                                         | 126MB (GB200 figure)                    | whole GPU (2 partitions)| [caches table](../accelerators-reference.md#caches)                                              |
 | HBM                | 80GB HBM3, 3.35TBps                          | 180GB HBM3e, 8.0TBps                    | whole GPU               | [memory table](../accelerators.md#accelerator-memory-size-and-speed)                   |
 
 Bandwidths NVIDIA does not publish as a single figure:
@@ -2588,7 +2588,7 @@ The same concepts apply to AMD Instinct (CDNA) GPUs with different names and num
 | HBM                   | 3.35TBps                              | 5.3TBps                                                   |
 | bulk async copy       | TMA                                   | no direct TMA equivalent on CDNA3 (to my knowledge)       |
 
-Sources: [AMD CDNA3 ISA and MI300 documentation](https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html) and the [MI300X specifications](https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html); cache numbers as in the [caches table](../accelerators.md#caches).
+Sources: [AMD CDNA3 ISA and MI300 documentation](https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html) and the [MI300X specifications](https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html); cache numbers as in the [caches table](../accelerators-reference.md#caches).
 
 What changes in practice:
 

@@ -616,7 +616,7 @@ The total bytes are the same in every row. What changes is that you need a link 
 
 ### Overlap over a real collective
 
-This is the overlap mechanism, minus fragments, with a real Gloo all-reduce between two processes. **Gloo** is PyTorch's CPU collective backend, which runs over plain TCP; launching it on one machine with `init_process_group` and `mp.spawn` is shown in [collectives internals](../network/collectives-internals.md#launching-a-process-group-on-one-machine). `dist.all_reduce(..., async_op=True)` returns a `Work` handle immediately ([what "async" means for collectives](../network/collectives-internals.md#streams-and-what-async-means)). Gloo moves the bytes on its own background thread while the main thread keeps running inner steps. **[ran]**
+This is the overlap mechanism, minus fragments, with a real Gloo all-reduce between two processes. **Gloo** is PyTorch's CPU collective backend, which runs over plain TCP; launching it on one machine with `init_process_group` and `mp.spawn` is shown in [collectives internals](../network/collectives-internals-reference.md#launching-a-process-group-on-one-machine). `dist.all_reduce(..., async_op=True)` returns a `Work` handle immediately ([what "async" means for collectives](../network/collectives-internals.md#streams-and-what-async-means)). Gloo moves the bytes on its own background thread while the main thread keeps running inner steps. **[ran]**
 
 ```python
 # overlap_gloo.py -- DiLoCo outer sync over real Gloo (TCP, localhost): blocking vs overlapped with tau inner steps.

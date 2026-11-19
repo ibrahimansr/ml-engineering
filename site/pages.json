@@ -16,7 +16,6 @@
  "compute/gpu-software-stack.md": "The GPU Node Software Stack From Zero: Drivers, CUDA, NCCL and Fabric Bring-up",
  "network/interconnects.md": "Interconnect Hardware: NVLink, InfiniBand, RoCE, EFA and More",
  "network/collectives-internals.md": "Collective Communication Internals and Cost Models",
- "network/measuring-and-debugging.md": "Measuring and Debugging the Network",
  "orchestration/slurm/from-zero.md": "Slurm From Zero",
  "orchestration/kubernetes-from-zero.md": "Kubernetes From Zero",
  "orchestration/internals.md": "Orchestration Internals for ML Workloads",
@@ -39,6 +38,12 @@
  "development/debugging-pytorch.md": "Debugging PyTorch Programs",
  "development/debugging-distributed.md": "Debugging Distributed and Multi-Node Programs, and Performance",
  "development/testing.md": "Writing and Running Tests",
+ "compute/accelerators-reference.md": "Accelerators: Reference",
+ "compute/accelerator/writing-kernels-reference.md": "Writing GPU Kernels: Further Topics",
+ "compute/gpu-software-stack-reference.md": "GPU Nodes: Driver Install, Acceptance Testing and Troubleshooting",
+ "network/interconnects-reference.md": "Interconnects: Reference",
+ "network/collectives-internals-reference.md": "Collectives: Laptop Measurement and Transports",
+ "network/measuring-and-debugging.md": "Measuring and Debugging the Network",
  "appendix/further-reading.md": "Appendix: Further Reading and Quick Reference",
  "build/README.md": "Book Building"
 }

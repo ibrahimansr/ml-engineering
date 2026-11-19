@@ -2106,7 +2106,7 @@ sudo dmesg -T | grep -i -E "oom|killed process"
 sudo dmesg -T | grep -i -E "nfs|lustre|lnet"   # network FS trouble
 ```
 
-The kernel log is where hardware and driver problems appear that your program never sees: GPU **Xid** errors (`NVRM: Xid (PCI:0000:3b:00): 79, GPU has fallen off the bus`), ECC errors (memory bit-flips caught by error-correcting memory), PCIe errors, OOM kills, network filesystem timeouts, NIC link flaps. When a job dies mysteriously, `dmesg` on the node is the second place to look (after your own stderr). Interpreting Xids is covered in [Troubleshooting NVIDIA GPUs](../compute/gpu-software-stack.md#xid-errors-reading-finding-and-looking-them-up).
+The kernel log is where hardware and driver problems appear that your program never sees: GPU **Xid** errors (`NVRM: Xid (PCI:0000:3b:00): 79, GPU has fallen off the bus`), ECC errors (memory bit-flips caught by error-correcting memory), PCIe errors, OOM kills, network filesystem timeouts, NIC link flaps. When a job dies mysteriously, `dmesg` on the node is the second place to look (after your own stderr). Interpreting Xids is covered in [Troubleshooting NVIDIA GPUs](../compute/gpu-software-stack-reference.md#xid-errors-reading-finding-and-looking-them-up).
 
 Plain-text logs also still live in `/var/log/` (`syslog`, `kern.log`, sometimes `slurm/`).
 
@@ -2232,7 +2232,7 @@ nvidia-smi -L                                      # list GPUs and UUIDs
 nvidia-smi topo -m                                 # interconnect and CPU/NUMA affinity
 ```
 
-The "GPU-Util" column is the fraction of time *any* kernel was running, not how busy the SMs are - 100% can still mean poor efficiency. See [How to get the real GPU utilization metrics](../compute/gpu-software-stack.md#real-gpu-utilization-dcgm-exporter). Inside a SLURM job or container, you'll see only your allocated GPUs, renumbered from 0.
+The "GPU-Util" column is the fraction of time *any* kernel was running, not how busy the SMs are - 100% can still mean poor efficiency. See [How to get the real GPU utilization metrics](../compute/gpu-software-stack-reference.md#real-gpu-utilization-dcgm-exporter). Inside a SLURM job or container, you'll see only your allocated GPUs, renumbered from 0.
 
 ### top / htop
 
@@ -2486,7 +2486,7 @@ This version launches one process per GPU with `srun` instead of `torchrun`, whi
 - [Fault tolerance](../training/fault-tolerance-and-reproducibility.md) - preemption signals, watchdogs, checkpoint frequency, slow memory leaks.
 - [Debugging and Troubleshooting](../development/debugging-pytorch.md), [Debugging PyTorch programs](../development/debugging-pytorch.md), [Hanging solutions](../development/debugging-distributed.md), [Debug Tools](../development/debugging-pytorch.md#finding-the-commit-that-broke-it-git-bisect) - `py-spy`, `strace`, `gdb` applied to distributed training.
 - [CPU](computer-architecture.md#sizing-the-cpu-side-of-a-gpu-node) and [CPU memory](computer-architecture.md#host-memory-how-much-and-what-for) - cores for DataLoaders, NUMA affinity, hyperthreads, host RAM needs.
-- [Troubleshooting NVIDIA GPUs](../compute/gpu-software-stack.md#11-troubleshooting-gpus-errors-diagnostics-and-health-checks) - Xid errors from `dmesg`, diagnostics, health checks.
+- [Troubleshooting NVIDIA GPUs](../compute/gpu-software-stack-reference.md#troubleshooting-gpus-errors-diagnostics-and-health-checks) - Xid errors from `dmesg`, diagnostics, health checks.
 
 
 ## Further reading

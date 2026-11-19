@@ -490,11 +490,11 @@ CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node 2 --nnodes 1 torch-distribute
 CUDA_VISIBLE_DEVICES=2,3 torchrun --nproc_per_node 2 --nnodes 1 torch-distributed-gpu-test.py
 ```
 
-`CUDA_VISIBLE_DEVICES` hides all other GPUs from the process. If one pair passes and the other hangs, keep halving until one GPU (or one GPU pair's link) is left. The same bisection works at node level: if 64 nodes hang and 32 don't, test each half. If you suspect faulty hardware rather than code, see [Xid errors](../compute/gpu-software-stack.md#xid-errors-reading-finding-and-looking-them-up).
+`CUDA_VISIBLE_DEVICES` hides all other GPUs from the process. If one pair passes and the other hangs, keep halving until one GPU (or one GPU pair's link) is left. The same bisection works at node level: if 64 nodes hang and 32 don't, test each half. If you suspect faulty hardware rather than code, see [Xid errors](../compute/gpu-software-stack-reference.md#xid-errors-reading-finding-and-looking-them-up).
 
 ### AMD/ROCm: hangs or slowness with the IOMMU
 
-On AMD GPUs, multi-GPU runs that hang or run slowly are often caused by the IOMMU (the unit that translates device memory addresses) configuration. See [AMD: hangs or slow multi-GPU runs and the IOMMU](../compute/gpu-software-stack.md#amd-hangs-or-slow-multi-gpu-runs-and-the-iommu).
+On AMD GPUs, multi-GPU runs that hang or run slowly are often caused by the IOMMU (the unit that translates device memory addresses) configuration. See [AMD: hangs or slow multi-GPU runs and the IOMMU](../compute/gpu-software-stack-reference.md#amd-hangs-or-slow-multi-gpu-runs-and-the-iommu).
 
 
 ## When the process stops responding: tracing every call
